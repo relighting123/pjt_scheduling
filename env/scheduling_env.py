@@ -30,11 +30,13 @@ class SchedulingEnv(gym.Env):
         self._env_data = env_data
 
         env_cfg = CONFIG.env
-        Q = env_cfg.max_queue_size
+        O = env_cfg.max_oper_count
         P = env_cfg.max_prod_count
 
-        # 관측 벡터 차원: 전역(4) + EQP(3) + 큐LOT×6×Q + 계획달성P
-        obs_dim = 7 + 6 * Q + P
+        # 이분 그래프 집계 관측 차원 (EQP/LOT 수와 무관한 고정 크기)
+        #   Group A [O×P×4] WIP 노드  + Group B [O×4] EQP 노드
+        #   Group C [O×P×3] 계획 노드 + Group D [6]   컨텍스트
+        obs_dim = O * P * 7 + O * 4 + 6
 
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32
@@ -124,6 +126,7 @@ class SchedulingEnv(gym.Env):
         """
         eqp_id = self.sim.current_idle_eqp() if self.sim else None
         n_lots = len(self.sim.available_lots(eqp_id)) if eqp_id else 0
-        mask = np.zeros(CONFIG.env.max_queue_size, dtype=bool)
+        Q = CONFIG.env.max_queue_size
+        mask = np.zeros(Q, dtype=bool)
         mask[:max(n_lots, 1)] = True  # 최소 1개는 True (PPO 요건)
         return mask

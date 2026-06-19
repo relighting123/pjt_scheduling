@@ -152,6 +152,22 @@ def preprocess(raw: Dict[str, List[dict]]) -> dict:
     for ppk in flow_list:
         flow_list[ppk].sort(key=lambda x: x["seq_id"])
 
+    # ── EQP → 처리 가능 OPER 집합 (이분 그래프 우측 노드 특성용) ──────────────
+    # availability와 flow_map을 결합해 (EQP, OPER) 호환성 도출
+    eqp_oper_cap: Dict[str, List[str]] = {}
+    for r in avail_raw:
+        eqp_id = r["EQP_ID"]
+        lot_id = r["LOT_ID"]
+        if lot_id in lot_info:
+            oper_id = lot_info[lot_id]["oper_id"]
+            eqp_oper_cap.setdefault(eqp_id, [])
+            if oper_id not in eqp_oper_cap[eqp_id]:
+                eqp_oper_cap[eqp_id].append(oper_id)
+
+    # 집계 통계 계산용 스케일 팩터
+    max_proc_time = max((v["processing_time"] for v in lot_info.values()), default=1)
+    max_wf_qty    = max((v["wf_qty"]          for v in lot_info.values()), default=1)
+
     return {
         "sim_base_time":    base_time,
         "sim_end_minutes":  sim_end_minutes,
@@ -162,6 +178,9 @@ def preprocess(raw: Dict[str, List[dict]]) -> dict:
         "prod_idx":         prod_idx,
         "lots":             list(lot_info.values()),
         "eqp_lot_map":      eqp_lot_map,
+        "eqp_oper_cap":     eqp_oper_cap,   # {eqp_id: [oper_id, ...]} – 이분 그래프 엣지
+        "max_proc_time":    max_proc_time,   # 관측 정규화 스케일
+        "max_wf_qty":       max_wf_qty,
         "plan":             plan_list,
         "initial_schedule": initial_schedule,
         "flow":             flow_list,
