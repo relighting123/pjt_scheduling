@@ -2,24 +2,69 @@
 config.py – 전체 프로젝트 설정
 모든 경로·환경·RL·보상 파라미터를 한 곳에서 관리합니다.
 """
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 # ── 기본 경로 ─────────────────────────────────────────────────────────────────
 BASE_DIR     = Path(__file__).parent          # pjt_scheduling/
-EXTERNAL_DIR = BASE_DIR.parent / "external"  # git 외부 폴더 (DB 연동)
+EXTERNAL_DIR = BASE_DIR / "external"          # 프로젝트 내 DB 연동 데이터 폴더
+
+_INPUT_FOLDER_RE = re.compile(r"^[\w.-]+$")
+
+
+def validate_input_folder(name: str) -> str:
+    """external/ 하위 입력 폴더명 검증 (경로 탐색 방지)"""
+    name = name.strip().strip("/\\")
+    if not name or not _INPUT_FOLDER_RE.match(name):
+        raise ValueError(
+            f"입력 폴더명이 올바르지 않습니다: {name!r} "
+            "(영문·숫자·_·.·- 만 사용)"
+        )
+    return name
+
+
+def list_input_folders() -> list[str]:
+    """external/ 아래 사용 가능한 입력 폴더 목록"""
+    if not EXTERNAL_DIR.exists():
+        return ["input"]
+    found: list[str] = []
+    for path in EXTERNAL_DIR.iterdir():
+        if not path.is_dir() or path.name == "output":
+            continue
+        if (path / "plan.json").exists() or (path / "schedule.json").exists():
+            found.append(path.name)
+    current = CONFIG.path.input_folder
+    if current not in found:
+        found.append(current)
+    return sorted(set(found))
+
+
+def set_input_folder(name: str) -> Path:
+    """입력 데이터셋 폴더 설정 → external/{name}/"""
+    CONFIG.path.input_folder = validate_input_folder(name)
+    return CONFIG.path.input_dir
 
 
 @dataclass
 class PathConfig:
-    input_dir:   Path = field(default_factory=lambda: EXTERNAL_DIR / "input")
-    output_dir:  Path = field(default_factory=lambda: EXTERNAL_DIR / "output")
-    model_dir:   Path = field(default_factory=lambda: BASE_DIR / "models")
+    input_folder: str = "input"   # external/{input_folder}/
+    model_dir:    Path = field(default_factory=lambda: BASE_DIR / "models")
 
-    schedule_file:     str = "schedule.json"      # 초기 스케줄링 결과
-    availability_file: str = "availability.json"  # 투입 가능 여부
-    plan_file:         str = "plan.json"           # 계획 데이터
-    flow_file:         str = "flow.json"           # FLOW 데이터
+    schedule_file:     str = "schedule.json"
+    availability_file: str = "availability.json"
+    incoming_wip_file: str = "incoming_wip.json"
+    plan_file:         str = "plan.json"
+    flow_file:         str = "flow.json"
+
+    @property
+    def input_dir(self) -> Path:
+        return EXTERNAL_DIR / self.input_folder
+
+    @property
+    def output_dir(self) -> Path:
+        return EXTERNAL_DIR / "output" / self.input_folder
 
 
 @dataclass
@@ -79,3 +124,7 @@ class Config:
 
 # 싱글톤 인스턴스 – 전 모듈에서 import하여 사용
 CONFIG = Config()
+
+_env_input = os.environ.get("SCHEDULING_INPUT", "").strip()
+if _env_input:
+    set_input_folder(_env_input)

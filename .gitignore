@@ -8,8 +8,8 @@ venv/
 dist/
 build/
 
-# External data folders (DB-linked, not in git)
-../external/
+# External data folders (DB-linked JSON, git 제외)
+external/
 
 # Trained models (large binary files – keep only the latest manually)
 models/*.zip
@@ -21,4 +21,5 @@ models/*.zip
 # Logs & temp
 *.log
 logs/
-.streamlit/secrets.toml
+frontend/node_modules/
+frontend/dist/

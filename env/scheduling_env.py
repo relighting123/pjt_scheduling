@@ -76,7 +76,18 @@ class SchedulingEnv(gym.Env):
             info:       dict        통계 정보
         """
         eqp_id = self.sim.current_idle_eqp()
+        time_at_step_start = self.sim.current_time
+        # 처리 중인 재공만 있을 때는 END_TM까지 시간 전진
+        while eqp_id is None and self.sim._has_pending_processing():
+            self.sim._advance_to_next_decision()
+            eqp_id = self.sim.current_idle_eqp()
+        time_advanced = self.sim.current_time != time_at_step_start
+
         available = self.sim.available_lots(eqp_id) if eqp_id else []
+        # UI: 이 스텝에서 에이전트가 본 투입 가능 조합 (배정 전 스냅샷)
+        arrange_actual_before = self.sim.get_remaining_arrange_actual()
+        arrange_abstract_before = self.sim.get_abstract_arrange()
+        wip_waiting_before = self.sim.get_wip_waiting()
 
         # 행동이 큐 범위를 벗어나면 모듈로로 클램핑
         if available:
@@ -86,7 +97,17 @@ class SchedulingEnv(gym.Env):
         else:
             reward = 0.0
 
-        self.sim.save_history_step()
+        wip_for_history = (
+            wip_waiting_before
+            if time_advanced
+            else self.sim.get_wip_waiting()
+        )
+
+        self.sim.save_history_step(
+            arrange_snapshot=arrange_actual_before,
+            arrange_abstract_snapshot=arrange_abstract_before,
+            wip_waiting_snapshot=wip_for_history,
+        )
         self._total_reward += reward
 
         terminated = self.sim.is_done()

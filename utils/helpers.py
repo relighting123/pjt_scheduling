@@ -83,6 +83,8 @@ REQUIRED_AVAILABILITY_FIELDS = {"EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "ST", "WF_Q
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_KEY", "OPER_ID",
                                  "D0_PLAN_QTY", "D1_PLAN_QTY", "PLAN_PRIORITY"}
 REQUIRED_FLOW_FIELDS         = {"PLAN_PROD_KEY", "SEQ_ID", "OPER_ID"}
+REQUIRED_INCOMING_WIP_FIELDS = {"PLAN_PROD_KEY", "EQP_MODEL", "ARRIVE_TM",
+                                 "PROC_TIME", "LOT_QTY", "WF_QTY", "OPER_ID"}
 
 
 def validate_records(records: List[dict], required: set, label: str) -> List[str]:
