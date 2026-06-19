@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# External data folders (DB-linked, not in git)
+../external/
+
+# Trained models (large binary files – keep only the latest manually)
+models/*.zip
+
+# IDE
+.vscode/
+.idea/
+
+# Logs & temp
+*.log
+logs/
+.streamlit/secrets.toml
