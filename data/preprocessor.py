@@ -152,21 +152,61 @@ def preprocess(raw: Dict[str, List[dict]]) -> dict:
     for ppk in flow_list:
         flow_list[ppk].sort(key=lambda x: x["seq_id"])
 
-    # ── EQP → 처리 가능 OPER 집합 (이분 그래프 우측 노드 특성용) ──────────────
-    # availability와 flow_map을 결합해 (EQP, OPER) 호환성 도출
+    # ── (LOT, EQP) 조합별 처리시간 행렬 ────────────────────────────────────────
+    # 처리시간은 재공(LOT) 단독이 아닌 WIP×EQP 조합에 의해 결정됨.
+    # schedule에 기록된 원래 배정에서 처리시간을 추출하고,
+    # availability에 있는 대체 조합(다른 EQP에서 같은 LOT)은 동일 OPER의
+    # 해당 EQP 평균 처리시간으로 추정합니다.
+    #
+    # proc_time_matrix[(lot_id, eqp_id)] → 처리시간(분)
+    proc_time_matrix: Dict[Tuple[str, str], int] = {}
+
+    # Step 1: 원본 스케줄에서 직접 도출 (가장 신뢰할 수 있는 데이터)
+    for r in sched_raw:
+        lid = r["LOT_ID"]
+        eid = r["EQP_ID"]
+        start = datetime_to_minutes(parse_datetime(r["STARTTM"]), base_time)
+        end   = datetime_to_minutes(parse_datetime(r["ENDTM"]),   base_time)
+        proc_time_matrix[(lid, eid)] = max(end - start, 1)
+
+    # Step 2: (EQP, OPER)별 평균 처리시간 계산 → 대체 조합 추정용
+    eqp_oper_avg: Dict[Tuple[str, str], list] = {}  # {(eqp_id, oper_id): [times]}
+    for (lid, eid), pt in proc_time_matrix.items():
+        oper_id = lot_info.get(lid, {}).get("oper_id", "")
+        eqp_oper_avg.setdefault((eid, oper_id), []).append(pt)
+    eqp_oper_avg_val: Dict[Tuple[str, str], int] = {
+        k: int(sum(v) / len(v)) for k, v in eqp_oper_avg.items()
+    }
+
+    # Step 3: availability에는 있지만 schedule에 없는 (lot, eqp) 조합 보완
+    for r in avail_raw:
+        lid = r["LOT_ID"]
+        eid = r["EQP_ID"]
+        if (lid, eid) not in proc_time_matrix:
+            oper_id = lot_info.get(lid, {}).get("oper_id", "")
+            fallback = eqp_oper_avg_val.get(
+                (eid, oper_id),
+                lot_info.get(lid, {}).get("processing_time", 60)
+            )
+            proc_time_matrix[(lid, eid)] = fallback
+
+    # ── EQP → 처리 가능 OPER 집합 ────────────────────────────────────────────
     eqp_oper_cap: Dict[str, List[str]] = {}
     for r in avail_raw:
-        eqp_id = r["EQP_ID"]
-        lot_id = r["LOT_ID"]
-        if lot_id in lot_info:
-            oper_id = lot_info[lot_id]["oper_id"]
-            eqp_oper_cap.setdefault(eqp_id, [])
-            if oper_id not in eqp_oper_cap[eqp_id]:
-                eqp_oper_cap[eqp_id].append(oper_id)
+        eid = r["EQP_ID"]
+        lid = r["LOT_ID"]
+        if lid in lot_info:
+            oper_id = lot_info[lid]["oper_id"]
+            eqp_oper_cap.setdefault(eid, [])
+            if oper_id not in eqp_oper_cap[eid]:
+                eqp_oper_cap[eid].append(oper_id)
 
-    # 집계 통계 계산용 스케일 팩터
-    max_proc_time = max((v["processing_time"] for v in lot_info.values()), default=1)
-    max_wf_qty    = max((v["wf_qty"]          for v in lot_info.values()), default=1)
+    # ── EQP 인덱스 맵 (Group E 관측 행렬 열 인덱싱용) ─────────────────────────
+    eqp_idx = {eid: i for i, eid in enumerate(eqp_ids)}
+
+    # 집계 정규화 스케일 팩터
+    max_proc_time = max((v for v in proc_time_matrix.values()), default=1)
+    max_wf_qty    = max((v["wf_qty"] for v in lot_info.values()), default=1)
 
     return {
         "sim_base_time":    base_time,
@@ -178,8 +218,11 @@ def preprocess(raw: Dict[str, List[dict]]) -> dict:
         "prod_idx":         prod_idx,
         "lots":             list(lot_info.values()),
         "eqp_lot_map":      eqp_lot_map,
-        "eqp_oper_cap":     eqp_oper_cap,   # {eqp_id: [oper_id, ...]} – 이분 그래프 엣지
-        "max_proc_time":    max_proc_time,   # 관측 정규화 스케일
+        "proc_time_matrix": proc_time_matrix,  # {(lot_id, eqp_id): proc_time} – 핵심 엣지 속성
+        "eqp_oper_avg":     eqp_oper_avg_val, # {(eqp_id, oper_id): avg_proc_time}
+        "eqp_oper_cap":     eqp_oper_cap,     # {eqp_id: [oper_id, ...]}
+        "eqp_idx":          eqp_idx,           # {eqp_id: int} – Group E 인덱싱용
+        "max_proc_time":    max_proc_time,     # 관측 정규화 스케일
         "max_wf_qty":       max_wf_qty,
         "plan":             plan_list,
         "initial_schedule": initial_schedule,

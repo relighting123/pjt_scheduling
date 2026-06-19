@@ -32,11 +32,13 @@ class SchedulingEnv(gym.Env):
         env_cfg = CONFIG.env
         O = env_cfg.max_oper_count
         P = env_cfg.max_prod_count
+        M = env_cfg.max_eqp_count
 
         # 이분 그래프 집계 관측 차원 (EQP/LOT 수와 무관한 고정 크기)
-        #   Group A [O×P×4] WIP 노드  + Group B [O×4] EQP 노드
-        #   Group C [O×P×3] 계획 노드 + Group D [6]   컨텍스트
-        obs_dim = O * P * 7 + O * 4 + 6
+        #   Group A [O*P*3] WIP 노드  + Group B [O*4]   EQP 노드
+        #   Group E [O*M*2] WIP x EQP 엣지 노드 (처리시간은 조합 속성)
+        #   Group C [O*P*2] 계획 노드 + Group D [6]     컨텍스트
+        obs_dim = O * P * 5 + O * (4 + M * 2) + 6
 
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32
