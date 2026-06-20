@@ -959,12 +959,138 @@ class SchedulingSimulator:
             },
         })
 
-    # ── 관측 벡터 생성 (이분 그래프 WIP x EQP 엣지 노드 포함) ────────────────
+    # ── Bucket(=PPK×MODEL×OPER) feature 텐서 ──────────────────────────────────
+    BUCKET_FEATURES = 10
+
+    def get_bucket_features(self) -> np.ndarray:
+        """
+        Bucket = (oper, ppk, model) 단위 feature 텐서. shape (O, P, K, F).
+        채널: 0 valid, 1 wip/total, 2 wip/ppk, 3 min_end_time,
+              4 throughput_ratio, 5 same_ppk, 6 prev_takt, 7 post_takt,
+              8 self_st(per-wafer), 9 plan_urgency.
+        ST = per-wafer 처리시간 → lot 처리시간 = ST × wf_unit.
+        """
+        data = self._env_data
+        cfg = CONFIG.env
+        O, P, K = cfg.max_oper_count, cfg.max_prod_count, cfg.max_model_count
+        F = self.BUCKET_FEATURES
+
+        eqp_models = data.get("eqp_models", [])
+        eqp_model_map = data.get("eqp_model_map", {})
+        eqp_oper_cap = data.get("eqp_oper_cap", {})
+        route_map = data.get("abstract_route_map", {})
+        routes_by = data.get("abstract_routes_by_ppk_oper", {})
+        plan_meta = data.get("plan_meta", {})
+        n_eqp_per_oper = data.get("n_eqp_per_oper", {})
+        flow_prev = data.get("flow_prev", {})
+        flow_post = data.get("flow_post", {})
+        max_route_st = max(data.get("max_route_st", 1), 1)
+        wf_unit = max(data.get("max_wf_qty", 1), 1)
+        completed = self.stats["completed_qty"]
+
+        feats = np.zeros((O, P, K, F), dtype=np.float32)
+
+        # (oper, model) → 처리 가능 EQP 목록 (min_end_time / throughput용)
+        eqps_by_om: Dict[tuple, List[str]] = {}
+        for e, model in eqp_model_map.items():
+            for op in eqp_oper_cap.get(e, []):
+                eqps_by_om.setdefault((op, model), []).append(e)
+
+        # WIP 집계 (ppk, oper)
+        wip_po: Dict[tuple, float] = {}
+        ppk_wip: Dict[str, float] = {}
+        total_wip = 0.0
+        for key, q in self.get_wip_waiting().items():
+            ppk, op = key.split("|", 1)
+            wip_po[(ppk, op)] = wip_po.get((ppk, op), 0.0) + q
+            ppk_wip[ppk] = ppk_wip.get(ppk, 0.0) + q
+            total_wip += q
+        total_wip = max(total_wip, 1.0)
+
+        max_gantt_end = max((r["END_TM"] for r in self.schedule), default=0)
+        T_avail = max(self.soft_cutoff - self.current_time, 1)
+        max_takt = max(T_avail * wf_unit, 1.0)
+        last_ppk = (
+            self._last_assigned.get("plan_prod_key") if self._last_assigned else None
+        )
+
+        def st_per_wafer(ppk: str, op: Optional[str], model: str) -> Optional[float]:
+            if op is None:
+                return None
+            st = route_map.get((ppk, op, model))
+            if st is not None:
+                return float(st)
+            lst = routes_by.get((ppk, op))
+            if lst:
+                return sum(s for _, s in lst) / len(lst)
+            return None
+
+        def eff_takt(ppk: str, op: Optional[str]) -> float:
+            """수요 페이싱 + capacity. per-lot 간격(분)."""
+            if op is None:
+                return 0.0
+            pm = plan_meta.get((ppk, op))
+            q_plan = max(
+                (pm["d0_plan_qty"] if pm else 0) - completed.get((ppk, op), 0), 1,
+            )
+            demand_takt = T_avail / q_plan
+            lst = routes_by.get((ppk, op))
+            spw = (sum(s for _, s in lst) / len(lst)) if lst else None
+            n = max(n_eqp_per_oper.get(op, 0), 1)
+            cap_takt = (spw / n) if spw is not None else 0.0
+            return max(demand_takt, cap_takt) * wf_unit
+
+        oper_ids = data["oper_ids"]
+        prod_keys = data["prod_keys"]
+        for oi in range(min(O, len(oper_ids))):
+            op = oper_ids[oi]
+            for pi in range(min(P, len(prod_keys))):
+                ppk = prod_keys[pi]
+                is_step = (
+                    (ppk, op) in routes_by
+                    or (ppk, op) in plan_meta
+                    or (ppk, op) in wip_po
+                )
+                if not is_step:
+                    continue
+                wip_q = wip_po.get((ppk, op), 0.0)
+                ppk_total = max(ppk_wip.get(ppk, 0.0), 1.0)
+                urgency = 0.0
+                pm = plan_meta.get((ppk, op))
+                if pm:
+                    plan_qty = max(pm["d0_plan_qty"], 1)
+                    gap = max(plan_qty - completed.get((ppk, op), 0), 0)
+                    urgency = min(gap / T_avail / plan_qty, 1.0)
+                same = 1.0 if ppk == last_ppk else 0.0
+                prev_takt = eff_takt(ppk, flow_prev.get(ppk, {}).get(op)) / max_takt
+                post_takt = eff_takt(ppk, flow_post.get(ppk, {}).get(op)) / max_takt
+
+                for mi in range(min(K, len(eqp_models))):
+                    model = eqp_models[mi]
+                    eqp_list = eqps_by_om.get((op, model))
+                    if not eqp_list:
+                        continue  # 이 model로 처리 불가 → invalid 패딩(0)
+                    st = st_per_wafer(ppk, op, model)
+                    min_end = min(self.eqps[e].free_at for e in eqp_list)
+                    proc_full = (st * wf_unit) if st is not None else 0.0
+                    denom = max(max_gantt_end, min_end + proc_full, 1.0)
+
+                    feats[oi, pi, mi, 0] = 1.0
+                    feats[oi, pi, mi, 1] = wip_q / total_wip
+                    feats[oi, pi, mi, 2] = wip_q / ppk_total
+                    feats[oi, pi, mi, 3] = min(min_end / max(self.sim_end, 1), 1.0)
+                    feats[oi, pi, mi, 4] = max(wip_q, 0.0) / denom
+                    feats[oi, pi, mi, 5] = same
+                    feats[oi, pi, mi, 6] = min(prev_takt, 1.0)
+                    feats[oi, pi, mi, 7] = min(post_takt, 1.0)
+                    feats[oi, pi, mi, 8] = (st / max_route_st) if st is not None else 0.0
+                    feats[oi, pi, mi, 9] = urgency
+        return feats
+
+    # ── 관측 벡터 생성 (Global + Bucket + EQP local + Context) ────────────────
 
     def get_observation(self) -> np.ndarray:
-        """
-        관측: Global + WIP share + Plan progress + EQP local + Context + proc time (O×M)
-        """
+        """관측: Global(6) + Bucket(O×P×K×F) + EQP local(M×5) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P, M = cfg.max_oper_count, cfg.max_prod_count, cfg.max_eqp_count
@@ -973,43 +1099,10 @@ class SchedulingSimulator:
         eqp_idx = data.get("eqp_idx", {eid: i for i, eid in enumerate(data["eqp_ids"])})
         lot_cd_idx = data.get("lot_cd_idx", {})
         temp_idx = data.get("temp_idx", {})
-        proc_time_matrix = data.get("proc_time_matrix", {})
-        max_proc = max(data.get("max_proc_time", 1), 1)
         total_plan = max(sum(p["d0_plan_qty"] for p in data["plan"]), 1)
         initial_lot_count = max(len(data["lots"]), 1)
 
-        wip_qty = np.zeros((O, P), dtype=np.float32)
-        for lot in self.lot_pool.values():
-            oi = oper_idx.get(lot.oper_id, -1)
-            pi = prod_idx.get(lot.plan_prod_key, -1)
-            if 0 <= oi < O and 0 <= pi < P:
-                wip_qty[oi, pi] += lot.wf_qty
-        for row in self._abstract_rows:
-            oi = oper_idx.get(row["oper_id"], -1)
-            pi = prod_idx.get(row["plan_prod_key"], -1)
-            if oi < 0 or pi < 0:
-                continue
-            for unit in row.get("lot_units", []):
-                if unit.get("assigned"):
-                    continue
-                wip_qty[oi, pi] += unit.get("wf_qty", row.get("wf_qty", 0))
-
-        total_wip = max(float(wip_qty.sum()), 1.0)
-        wip_share = (wip_qty / total_wip).flatten()
-
-        plan_achieve = np.zeros((O, P), dtype=np.float32)
-        plan_urgency = np.zeros((O, P), dtype=np.float32)
-        time_left = max(self.soft_cutoff - self.current_time, 1)
-        for p in data["plan"]:
-            oi = oper_idx.get(p["oper_id"], -1)
-            pi = prod_idx.get(p["plan_prod_key"], -1)
-            if 0 <= oi < O and 0 <= pi < P:
-                key = (p["plan_prod_key"], p["oper_id"])
-                done = self.stats["completed_qty"].get(key, 0)
-                plan_qty = max(p["d0_plan_qty"], 1)
-                plan_achieve[oi, pi] = min(done / plan_qty, 1.0)
-                gap = max(plan_qty - done, 0)
-                plan_urgency[oi, pi] = min(gap / time_left / plan_qty, 1.0)
+        bucket = self.get_bucket_features().flatten()
 
         eqp_local = np.zeros((M, 5), dtype=np.float32)
         conv_eqps = 0
@@ -1051,27 +1144,10 @@ class SchedulingSimulator:
             context[2] = encode_normalized(la.get("eqp_id"), eqp_idx, M)
             context[3] = encode_normalized(la.get("lot_cd"), lot_cd_idx, max(len(lot_cd_idx), 1))
 
-        proc_norm = np.zeros((O, M), dtype=np.float32)
-        for eqp_id in data["eqp_ids"]:
-            ei = eqp_idx.get(eqp_id, -1)
-            if ei < 0 or ei >= M:
-                continue
-            for lot_id in self.eqp_queues.get(eqp_id, []):
-                if lot_id not in self.lot_pool:
-                    continue
-                lot = self.lot_pool[lot_id]
-                oi = oper_idx.get(lot.oper_id, -1)
-                if 0 <= oi < O:
-                    pt = proc_time_matrix.get((lot_id, eqp_id), lot.processing_time)
-                    proc_norm[oi, ei] = max(proc_norm[oi, ei], pt / max_proc)
-
         obs = np.concatenate([
             group_global,
-            wip_share,
-            plan_achieve.flatten(),
-            plan_urgency.flatten(),
+            bucket,
             eqp_local.flatten(),
             context,
-            proc_norm.flatten(),
         ])
         return np.clip(obs, 0.0, 1.0).astype(np.float32)

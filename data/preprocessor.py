@@ -550,6 +550,21 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
 
     max_wf_qty = max((v["wf_qty"] for v in lot_info.values()), default=1)
 
+    # ── Bucket(state) 사전계산: model 인덱스 / 공정별 장비 수 / takt 상수 / flow 전후 ──
+    model_idx = build_index_map(eqp_models)
+    n_eqp_per_oper: Dict[str, int] = {}
+    for opers in eqp_oper_cap.values():
+        for op in opers:
+            n_eqp_per_oper[op] = n_eqp_per_oper.get(op, 0) + 1
+    max_route_st = max((v for v in abstract_route_map.values()), default=1)
+    flow_prev: Dict[str, Dict[str, Optional[str]]] = {}
+    flow_post: Dict[str, Dict[str, Optional[str]]] = {}
+    for ppk, steps in flow_list.items():
+        ordered = [s["oper_id"] for s in sorted(steps, key=lambda x: x["seq_id"])]
+        for i, op in enumerate(ordered):
+            flow_prev.setdefault(ppk, {})[op] = ordered[i - 1] if i > 0 else None
+            flow_post.setdefault(ppk, {})[op] = ordered[i + 1] if i + 1 < len(ordered) else None
+
     return {
         "sim_base_time":    base_time,
         "sim_end_minutes":  sim_end_minutes,
@@ -573,6 +588,12 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "eqp_oper_avg":     eqp_oper_avg_val,
         "eqp_oper_cap":     eqp_oper_cap,
         "eqp_model_map":    eqp_model_map,
+        "eqp_models":       eqp_models,
+        "model_idx":        model_idx,
+        "n_eqp_per_oper":   n_eqp_per_oper,
+        "max_route_st":     max_route_st,
+        "flow_prev":        flow_prev,
+        "flow_post":        flow_post,
         "flow_next":        flow_next,
         "oper_eqp_models":  oper_eqp_models,
         "abstract_proc_time": abstract_proc_time_val,
