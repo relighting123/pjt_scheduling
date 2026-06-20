@@ -101,10 +101,9 @@ def test_pacing_steady_scenario_preprocess_and_episode():
         build_split_rules,
     )
 
-    schedule, discrete, plan, flow = _build_pacing_steady_sample()
+    discrete, plan, flow = _build_pacing_steady_sample()
     abstract = build_pacing_steady_abstract_arrange()
     raw = {
-        "schedule": schedule,
         "discrete_arrange": discrete,
         "abstract_arrange": abstract,
         "plan": plan,
@@ -118,6 +117,11 @@ def test_pacing_steady_scenario_preprocess_and_episode():
     assert ("PPK001", "OPER002") in routes
     assert ("PPK002", "OPER002") in routes
     assert env_data["plan_meta"][("PPK002", "OPER001")]["d0_plan_qty"] == 100
+    assert env_data["abstract_inventory"], "abstract 템플릿이 있어야 함"
+    wip = env_data["abstract_wip_init"]
+    assert wip[("PPK001", "OPER001")]["wip_qty"] > 0
+    assert wip[("PPK002", "OPER001")]["wip_qty"] > 0
+    assert wip.get(("PPK001", "OPER002"), {}).get("wip_qty", 0) == 0
 
     from agent.minprogress_agent import MinProgressAgent
 

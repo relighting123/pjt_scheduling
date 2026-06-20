@@ -62,6 +62,35 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
   return traces;
 }
 
+/** 간트 공통 스타일 (둥근 pill 바 + 소프트 그리드) */
+const GANTT_THEME = {
+  plotBg: "#f8f9fc",
+  paperBg: "#ffffff",
+  gridColor: "rgba(148, 163, 184, 0.18)",
+  gridWidth: 1,
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  titleColor: "#1e293b",
+  axisColor: "#64748b",
+  barRadius: 10,
+  barOpacity: 0.92,
+} as const;
+
+function ganttBarMarker(
+  fillColor: string,
+  operColor: string,
+  visible: boolean,
+) {
+  return {
+    color: fillColor,
+    opacity: visible ? GANTT_THEME.barOpacity : 0.12,
+    line: {
+      color: operColor,
+      width: visible ? 2 : 0,
+    },
+    cornerradius: GANTT_THEME.barRadius,
+  };
+}
+
 function ganttTraces(
   schedule: ScheduleRecord[],
   prodKeys: string[],
@@ -81,14 +110,15 @@ function ganttTraces(
       x: [width],
       y: [rec.EQP_ID],
       base: [rec.START_TM],
-      marker: {
-        color: prodColorMap[rec.PLAN_PROD_KEY] ?? "#888888",
-        opacity: visible ? 1 : 0.15,
-        line: { color: operColorMap[rec.OPER_ID ?? ""] ?? "#222222", width: 3 },
-      },
+      marker: ganttBarMarker(
+        prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
+        operColorMap[rec.OPER_ID ?? ""] ?? "#475569",
+        visible,
+      ),
       text: visible ? rec.LOT_ID : "",
       textposition: "inside",
       insidetextanchor: "middle",
+      textfont: { size: 11, color: "#ffffff", family: GANTT_THEME.fontFamily },
       hovertemplate:
         `<b>LOT: ${rec.LOT_ID}</b><br>` +
         `EQP: ${rec.EQP_ID}<br>` +
@@ -112,25 +142,46 @@ function buildGanttLayout(
   const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
 
   return {
-    title: { text: title, font: { size: 16 } },
+    title: {
+      text: title,
+      font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
+    },
     xaxis: {
-      title: { text: "시뮬레이션 시간 (분)" },
+      title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
       showgrid: true,
-      gridcolor: "#E5E5E5",
+      gridcolor: GANTT_THEME.gridColor,
+      gridwidth: GANTT_THEME.gridWidth,
+      zeroline: false,
       range: [timeStart, timeEnd],
+      tickfont: { size: 11, color: GANTT_THEME.axisColor },
       ...(axis.fixedRange ? { fixedrange: true } : {}),
     },
     yaxis: {
       categoryorder: "array",
       categoryarray: eqps,
-      title: { text: "설비(EQP)" },
+      title: { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } },
+      tickfont: { size: 11, color: GANTT_THEME.axisColor },
+      showgrid: false,
     },
     barmode: "overlay",
-    legend: { title: { text: "제품 / 공정" }, orientation: "v", x: 1.02 },
-    height: Math.max(350, 60 * Math.max(eqps.length, 1)),
-    plot_bgcolor: "white",
-    paper_bgcolor: "white",
-    margin: { l: 80, r: 180, t: 60, b: 60 },
+    bargap: 0.35,
+    legend: {
+      title: { text: "제품 / 공정", font: { size: 11 } },
+      orientation: "v",
+      x: 1.02,
+      bgcolor: "rgba(255,255,255,0.85)",
+      bordercolor: "rgba(148,163,184,0.25)",
+      borderwidth: 1,
+    },
+    height: Math.max(350, 72 * Math.max(eqps.length, 1)),
+    plot_bgcolor: GANTT_THEME.plotBg,
+    paper_bgcolor: GANTT_THEME.paperBg,
+    margin: { l: 88, r: 188, t: 56, b: 52 },
+    hoverlabel: {
+      bgcolor: "#ffffff",
+      bordercolor: "rgba(148,163,184,0.35)",
+      font: { family: GANTT_THEME.fontFamily, size: 12 },
+    },
   };
 }
 
@@ -670,14 +721,25 @@ export function buildAlgorithmGanttComparison(
   const data: Data[] = [];
   const layout: Partial<Layout> = {
     grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
-    height: Math.max(280 * n, 400),
+    height: Math.max(300 * n, 420),
     barmode: "overlay",
+    bargap: 0.35,
     showlegend: n === 1,
-    plot_bgcolor: "white",
-    paper_bgcolor: "white",
-    legend: { x: 1.02 },
+    plot_bgcolor: GANTT_THEME.plotBg,
+    paper_bgcolor: GANTT_THEME.paperBg,
+    legend: {
+      x: 1.02,
+      bgcolor: "rgba(255,255,255,0.85)",
+      bordercolor: "rgba(148,163,184,0.25)",
+      borderwidth: 1,
+    },
+    hoverlabel: {
+      bgcolor: "#ffffff",
+      bordercolor: "rgba(148,163,184,0.35)",
+      font: { family: GANTT_THEME.fontFamily, size: 12 },
+    },
     annotations: [],
-    margin: { l: 80, r: 180, t: 40, b: 50 },
+    margin: { l: 88, r: 188, t: 44, b: 52 },
   };
 
   entries.forEach((entry, i) => {
@@ -695,18 +757,23 @@ export function buildAlgorithmGanttComparison(
     (layout as Record<string, unknown>)[xKey] = {
       domain: [0, 1],
       anchor: yName,
-      title: i === n - 1 ? { text: "시뮬레이션 시간 (분)" } : undefined,
+      title: i === n - 1 ? { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
       showgrid: true,
-      gridcolor: "#E5E5E5",
+      gridcolor: GANTT_THEME.gridColor,
+      gridwidth: GANTT_THEME.gridWidth,
+      zeroline: false,
+      tickfont: { size: 11, color: GANTT_THEME.axisColor },
       range: [timeStart, timeEnd],
       ...(axis.fixedRange ? { fixedrange: true } : {}),
     };
     (layout as Record<string, unknown>)[yKey] = {
       domain,
       anchor: xName,
-      title: { text: "설비(EQP)" },
+      title: { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } },
+      tickfont: { size: 11, color: GANTT_THEME.axisColor },
       categoryorder: "array",
       categoryarray: eqps,
+      showgrid: false,
     };
 
     const yMid = (domain[0] + domain[1]) / 2;

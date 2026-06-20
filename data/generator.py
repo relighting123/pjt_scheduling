@@ -111,13 +111,30 @@ def _schedule_row(
 
 
 def _discrete_row(
-    eqp_id: str, lot_id: str, ppk: str, proc_time: int,
-    wf_qty: int = 25, eqp_model: str = "A",
+    eqp_id: str,
+    lot_id: str,
+    ppk: str,
+    oper_id: str,
+    proc_time: int,
+    wf_qty: int = 25,
+    eqp_model: str = "A",
+    seq: Optional[int] = None,
+    carrier_id: Optional[str] = None,
 ) -> dict:
-    return {
-        "EQP_ID": eqp_id, "LOT_ID": lot_id, "PLAN_PROD_KEY": ppk,
-        "ST": proc_time, "EQP_MODEL": eqp_model, "WF_QTY": wf_qty,
+    row = {
+        "EQP_ID": eqp_id,
+        "LOT_ID": lot_id,
+        "PLAN_PROD_KEY": ppk,
+        "OPER_ID": oper_id,
+        "ST": proc_time,
+        "EQP_MODEL": eqp_model,
+        "WF_QTY": wf_qty,
     }
+    if seq is not None:
+        row["SEQ"] = seq
+    if carrier_id:
+        row["CARRIER_ID"] = carrier_id
+    return row
 
 
 def _abstract_row(ppk: str, oper_id: str, eqp_model: str, st: int) -> dict:
@@ -131,31 +148,18 @@ def _abstract_row(ppk: str, oper_id: str, eqp_model: str, st: int) -> dict:
 
 def build_abstract_arrange(
     discrete_arrange: List[dict],
-    schedule: List[dict],
-    flow: List[dict],
+    flow: Optional[List[dict]] = None,
 ) -> List[dict]:
-    """discrete_arrange + schedule/flow → PPK×OPER×MODEL feasible routes."""
-    flow_oper: Dict[Tuple[str, int], str] = {}
-    for r in flow:
-        flow_oper[(r["PLAN_PROD_KEY"], int(r["SEQ_ID"]))] = r["OPER_ID"]
-
-    lot_oper: Dict[str, Tuple[str, str]] = {}
-    for r in schedule:
-        ppk = r["PLAN_PROD_KEY"]
-        oper = flow_oper.get((ppk, int(r["SEQ"])))
-        if oper:
-            lot_oper[r["LOT_ID"]] = (ppk, oper)
-
+    """discrete_arrange → PPK×OPER×MODEL feasible routes (OPER_ID·ST 집계)."""
+    del flow
     route_st: Dict[Tuple[str, str, str], List[int]] = {}
     for r in discrete_arrange:
-        lot_id = r["LOT_ID"]
+        oper = r.get("OPER_ID")
+        if not oper:
+            continue
         ppk = r["PLAN_PROD_KEY"]
         model = str(r.get("EQP_MODEL") or "A")
         st = int(r.get("ST") or 60)
-        if lot_id in lot_oper:
-            _, oper = lot_oper[lot_id]
-        else:
-            continue
         route_st.setdefault((ppk, oper, model), []).append(st)
 
     return [
@@ -189,13 +193,10 @@ def build_split_rules(
     ]
 
 
-def build_lot_master_from_schedule(
-    schedule: List[dict],
-    flow_map: Dict[str, Dict[int, str]],
-) -> List[dict]:
+def build_lot_master_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
     rows = []
     seen = set()
-    for r in schedule:
+    for r in discrete_arrange:
         lid = r["LOT_ID"]
         if lid in seen:
             continue
@@ -207,6 +208,15 @@ def build_lot_master_from_schedule(
             "TEMP": "T650" if int(ppk[-3:]) % 2 else "T700",
         })
     return rows
+
+
+def build_lot_master_from_schedule(
+    schedule: List[dict],
+    flow_map: Dict[str, Dict[int, str]],
+) -> List[dict]:
+    """@deprecated schedule 하위 호환"""
+    del flow_map
+    return build_lot_master_from_discrete(schedule)
 
 
 def build_tool_capacity_from_lots(
@@ -224,7 +234,6 @@ def build_tool_capacity_from_lots(
 
 def write_json_bundle(
     output_dir: Path,
-    schedule: List[dict],
     discrete_arrange: List[dict],
     plan: List[dict],
     flow: List[dict],
@@ -236,19 +245,15 @@ def write_json_bundle(
     output_dir.mkdir(parents=True, exist_ok=True)
     split_data = split if split is not None else build_split_rules(flow)
     abstract_data = abstract_arrange if abstract_arrange is not None else build_abstract_arrange(
-        discrete_arrange, schedule, flow,
+        discrete_arrange,
     )
-    flow_map: Dict[str, Dict[int, str]] = {}
-    for r in flow:
-        flow_map.setdefault(r["PLAN_PROD_KEY"], {})[int(r["SEQ_ID"])] = r["OPER_ID"]
-    lot_master_data = lot_master if lot_master is not None else build_lot_master_from_schedule(
-        schedule, flow_map,
+    lot_master_data = lot_master if lot_master is not None else build_lot_master_from_discrete(
+        discrete_arrange,
     )
     tool_capacity_data = tool_capacity if tool_capacity is not None else build_tool_capacity_from_lots(
         lot_master_data,
     )
     for filename, data in [
-        (CONFIG.path.schedule_file, schedule),
         (CONFIG.path.discrete_arrange_file, discrete_arrange),
         (CONFIG.path.abstract_arrange_file, abstract_data),
         (CONFIG.path.plan_file, plan),
@@ -269,30 +274,26 @@ def ensure_split_dirs(fac_id: str, split: str, snapshot: Optional[str] = None) -
     return inp, out
 
 
-def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
-    schedule = [
-        _schedule_row("EQP001", "LOT001", "CAR001", "PPK001", 1, 0, 120),
-        _schedule_row("EQP001", "LOT002", "CAR002", "PPK002", 1, 120, 210),
-        _schedule_row("EQP001", "LOT003", "CAR003", "PPK001", 1, 210, 330),
-        _schedule_row("EQP002", "LOT004", "CAR004", "PPK003", 1, 0, 105),
-        _schedule_row("EQP002", "LOT005", "CAR005", "PPK001", 1, 105, 225),
-        _schedule_row("EQP002", "LOT006", "CAR006", "PPK002", 1, 225, 345),
-        _schedule_row("EQP003", "LOT007", "CAR007", "PPK002", 2, 0, 180),
-        _schedule_row("EQP003", "LOT008", "CAR008", "PPK003", 2, 180, 300),
-        _schedule_row("EQP003", "LOT009", "CAR009", "PPK001", 2, 300, 480),
+def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict]]:
+    oper1, oper2 = "OPER001", "OPER002"
+    discrete: List[dict] = []
+    lot_specs = [
+        ("LOT001", "CAR001", "PPK001", oper1, 1, 120, ("EQP001",)),
+        ("LOT002", "CAR002", "PPK002", oper1, 1, 90, ("EQP001",)),
+        ("LOT003", "CAR003", "PPK001", oper1, 1, 120, ("EQP001",)),
+        ("LOT004", "CAR004", "PPK003", oper1, 1, 105, ("EQP001", "EQP002")),
+        ("LOT005", "CAR005", "PPK001", oper1, 1, 120, ("EQP002",)),
+        ("LOT006", "CAR006", "PPK002", oper1, 1, 120, ("EQP002",)),
+        ("LOT007", "CAR007", "PPK002", oper2, 2, 180, ("EQP003",)),
+        ("LOT008", "CAR008", "PPK003", oper2, 2, 120, ("EQP003",)),
+        ("LOT009", "CAR009", "PPK001", oper2, 2, 180, ("EQP003",)),
     ]
-    availability = [
-        _avail_row("EQP001", "LOT001", "PPK001", 120),
-        _avail_row("EQP001", "LOT002", "PPK002", 90),
-        _avail_row("EQP001", "LOT003", "PPK001", 120),
-        _avail_row("EQP001", "LOT004", "PPK003", 105),
-        _avail_row("EQP002", "LOT004", "PPK003", 105),
-        _avail_row("EQP002", "LOT005", "PPK001", 120),
-        _avail_row("EQP002", "LOT006", "PPK002", 120),
-        _avail_row("EQP003", "LOT007", "PPK002", 180),
-        _avail_row("EQP003", "LOT008", "PPK003", 120),
-        _avail_row("EQP003", "LOT009", "PPK001", 180),
-    ]
+    for lot_id, carrier, ppk, oper_id, seq, st, eqps in lot_specs:
+        for eqp_id in eqps:
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk, oper_id, st,
+                carrier_id=carrier, seq=seq,
+            ))
     plan = [
         {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001",
          "D0_PLAN_QTY": 75, "D1_PLAN_QTY": 100, "PLAN_PRIORITY": 1},
@@ -315,10 +316,10 @@ def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict], List[di
         {"PLAN_PROD_KEY": "PPK003", "SEQ_ID": 1, "OPER_ID": "OPER001"},
         {"PLAN_PROD_KEY": "PPK003", "SEQ_ID": 2, "OPER_ID": "OPER002"},
     ]
-    return schedule, availability, plan, flow
+    return discrete, plan, flow
 
 
-def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]]:
     ppk = "PPK001"
     wf_qty = 25
     n_lots = 8
@@ -329,27 +330,24 @@ def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]
     oper1_eqps = ("EQP001", "EQP002")
     all_eqps = ("EQP001", "EQP002", "EQP003")
 
-    schedule: List[dict] = []
-    availability: List[dict] = []
+    discrete: List[dict] = []
 
     for i in range(n_lots):
         lot_id = f"LOT{i + 1:03d}"
-        st_min = i * st_step1
         eqp = "EQP001" if i < n_lots // 2 else "EQP002"
-        schedule.append(_schedule_row(
-            eqp, lot_id, f"CAR{i + 1:03d}", ppk, 1, st_min, st_min + proc1,
-        ))
         for eqp_id in oper1_eqps:
-            availability.append(_avail_row(eqp_id, lot_id, ppk, proc1, wf_qty))
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk, "OPER001", proc1, wf_qty,
+                carrier_id=f"CAR{i + 1:03d}", seq=1,
+            ))
 
     for i in range(n_lots):
         lot_id = f"LOT{101 + i}"
-        st_min = i * st_step2
-        schedule.append(_schedule_row(
-            "EQP003", lot_id, f"CAR{101 + i}", ppk, 2, st_min, st_min + proc2,
-        ))
         for eqp_id in all_eqps:
-            availability.append(_avail_row(eqp_id, lot_id, ppk, proc2, wf_qty))
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk, "OPER002", proc2, wf_qty,
+                carrier_id=f"CAR{101 + i}", seq=2,
+            ))
 
     total = n_lots * wf_qty
     plan = [
@@ -362,7 +360,7 @@ def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]
         {"PLAN_PROD_KEY": ppk, "SEQ_ID": 1, "OPER_ID": "OPER001"},
         {"PLAN_PROD_KEY": ppk, "SEQ_ID": 2, "OPER_ID": "OPER002"},
     ]
-    return schedule, availability, plan, flow
+    return discrete, plan, flow
 
 
 def _sample_st(rng: random.Random, cfg: GeneratorConfig) -> int:
@@ -396,7 +394,7 @@ def _is_eqp_eligible(
 
 def _build_random_sample(
     cfg: Optional[GeneratorConfig] = None,
-) -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+) -> Tuple[List[dict], List[dict], List[dict]]:
     cfg = cfg or DEFAULT_GENERATOR_CONFIG
     cfg.validate()
     rng = random.Random(cfg.seed)
@@ -430,14 +428,13 @@ def _build_random_sample(
                 "PLAN_PRIORITY": cfg.plan_priority,
             })
 
-    schedule: List[dict] = []
-    availability: List[dict] = []
-    eqp_timeline = {eqp: 0 for eqp in eqps}
+    discrete: List[dict] = []
     lot_counter = 0
 
     for p_idx, ppk in enumerate(products):
         for o_idx in range(cfg.n_opers):
             seq = o_idx + 1
+            oper_id = opers[o_idx]
             for _ in range(cfg.lots_per_oper):
                 lot_counter += 1
                 lot_id = f"LOT{lot_counter:03d}"
@@ -450,28 +447,19 @@ def _build_random_sample(
                 if not eligible_eqps:
                     eligible_eqps = [eqps[p_idx % cfg.n_eqps]]
 
-                sched_eqp = rng.choice(eligible_eqps)
-                proc = _sample_st(rng, cfg)
-                start = eqp_timeline[sched_eqp]
-                end = start + proc
-                eqp_timeline[sched_eqp] = end
-
                 eqp_model = eqp_models[p_idx % len(eqp_models)]
-                schedule.append(_schedule_row(
-                    sched_eqp, lot_id, carrier_id, ppk, seq, start, end, eqp_model,
-                ))
-
                 for e_idx, eqp in enumerate(eqps):
                     if _is_eqp_eligible(rng, p_idx, e_idx, cfg.n_eqps, cfg.eligibility):
                         st = _sample_st(rng, cfg)
-                        availability.append(_avail_row(
-                            eqp, lot_id, ppk, st, cfg.wf_qty, eqp_model,
+                        discrete.append(_discrete_row(
+                            eqp, lot_id, ppk, oper_id, st, cfg.wf_qty, eqp_model,
+                            seq=seq, carrier_id=carrier_id,
                         ))
 
-    return schedule, availability, plan, flow
+    return discrete, plan, flow
 
 
-def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict]]:
     """
     Pacing·PPK 전환 검증용 미니 문제.
 
@@ -503,31 +491,25 @@ def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict], L
          "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
     ]
 
-    schedule: List[dict] = []
     discrete: List[dict] = []
 
-    # PPK001 — OPER001 4 LOT (시작 시각 분산 → 한꺼번에 투입 시 OPER002 계단 유발)
-    pacing_starts = (0, 45, 90, 135)
-    for i, st in enumerate(pacing_starts):
+    for i in range(4):
         lot_id = f"LOT{i + 1:03d}"
-        eqp = "EQP001" if i % 2 == 0 else "EQP002"
-        schedule.append(_schedule_row(
-            eqp, lot_id, f"CAR{i + 1:03d}", ppk_a, 1, st, st + proc,
-        ))
         for eqp_id in ("EQP001", "EQP002"):
-            discrete.append(_discrete_row(eqp_id, lot_id, ppk_a, proc, wf_qty))
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk_a, "OPER001", proc, wf_qty,
+                carrier_id=f"CAR{i + 1:03d}", seq=1,
+            ))
 
-    # PPK002 — OPER001 2 LOT만 (50매) → OPER002 계획 100 대비 재공 부족
-    for i, st in enumerate((200, 260)):
+    for i in range(2):
         lot_id = f"LOT{101 + i}"
-        eqp = "EQP001" if i == 0 else "EQP002"
-        schedule.append(_schedule_row(
-            eqp, lot_id, f"CAR{101 + i}", ppk_b, 1, st, st + proc,
-        ))
         for eqp_id in ("EQP001", "EQP002"):
-            discrete.append(_discrete_row(eqp_id, lot_id, ppk_b, proc, wf_qty))
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk_b, "OPER001", proc, wf_qty,
+                carrier_id=f"CAR{101 + i}", seq=1,
+            ))
 
-    return schedule, discrete, plan, flow
+    return discrete, plan, flow
 
 
 def build_pacing_steady_abstract_arrange() -> List[dict]:
@@ -540,7 +522,7 @@ def build_pacing_steady_abstract_arrange() -> List[dict]:
     return rows
 
 
-SampleBuilder = Callable[[], Tuple[List[dict], List[dict], List[dict], List[dict]]]
+SampleBuilder = Callable[[], Tuple[List[dict], List[dict], List[dict]]]
 
 SAMPLE_SCENARIOS: Dict[str, dict] = {
     "default": {
@@ -573,11 +555,15 @@ SAMPLE_SCENARIOS: Dict[str, dict] = {
     },
 }
 
+from data.pacing_scenarios import TAKT_SCENARIOS  # noqa: E402
+
+SAMPLE_SCENARIOS.update(TAKT_SCENARIOS)
+
 
 def _build_dataset_bundle(
     scenario: str,
     gen_config: Optional[GeneratorConfig] = None,
-) -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+) -> Tuple[List[dict], List[dict], List[dict]]:
     if scenario not in SAMPLE_SCENARIOS:
         raise ValueError(f"알 수 없는 시나리오: {scenario}")
     if scenario == "random":
@@ -639,7 +625,7 @@ def generate_sample_data(
             "seed": cfg.seed + period_seed_offset,
         })
 
-    schedule, availability, plan, flow = _build_dataset_bundle(scenario, cfg)
+    discrete, plan, flow = _build_dataset_bundle(scenario, cfg)
     split_rules = build_split_rules(
         flow,
         split_qty=(cfg.split_qty if cfg and scenario == "random" else 3),
@@ -647,7 +633,7 @@ def generate_sample_data(
     abstract_fn = SAMPLE_SCENARIOS.get(scenario, {}).get("abstract_arrange")
     abstract_data = abstract_fn() if callable(abstract_fn) else None
     write_json_bundle(
-        output_dir, schedule, availability, plan, flow, split_rules,
+        output_dir, discrete, plan, flow, split_rules,
         abstract_arrange=abstract_data,
     )
     print(f"[generator] 샘플 생성 ({scenario}) → {output_dir}")

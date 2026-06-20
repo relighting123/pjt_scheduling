@@ -638,6 +638,183 @@
   width: 100%;
   min-height: 200px;
   animation: fadeIn var(--duration-normal) ease;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #f8f9fc;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px rgba(15, 23, 42, 0.06);
+  padding: 0.35rem;
+}
+
+.plot-chart.gantt-chart {
+  min-height: 360px;
+  padding: 0.5rem 0.35rem 0.25rem;
+}
+
+.inference-dataset-card {
+  margin-bottom: 1rem;
+}
+
+.inference-dataset-card h3 {
+  margin-top: 0;
+}
+
+.inference-dataset-select {
+  max-width: 100%;
+  margin-top: 0.35rem;
+}
+
+/* ── Chart panel (hide / pop-out) ─────────────────────────────────────────── */
+
+.chart-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.chart-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+}
+
+.chart-panel-title {
+  flex: 1;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.chart-panel-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-secondary);
+  cursor: grab;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.chart-panel-drag-handle:active {
+  cursor: grabbing;
+}
+
+.chart-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chart-panel-body {
+  padding: 0.65rem 0.85rem 0.85rem;
+}
+
+.chart-panel-body .plot-chart {
+  margin: 0;
+}
+
+.chart-panel-dragging {
+  outline: 2px dashed rgba(79, 110, 247, 0.45);
+  outline-offset: 2px;
+}
+
+.chart-panel-popped .chart-panel-body {
+  display: none;
+}
+
+.chart-panel-popout-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.85rem 1rem;
+}
+
+.chart-panel-hidden {
+  padding: 0;
+  background: var(--surface-muted);
+  border-style: dashed;
+}
+
+.chart-panel-hidden-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.chart-visibility-panel {
+  margin-bottom: 1rem;
+}
+
+.chart-visibility-summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chart-visibility-summary::-webkit-details-marker {
+  display: none;
+}
+
+.chart-visibility-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(79, 110, 247, 0.12);
+  color: var(--accent);
+}
+
+.chart-visibility-body {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.chart-visibility-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.chart-visibility-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.35rem 1rem;
+}
+
+.chart-visibility-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.chart-visibility-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.8rem;
 }
 
 .table-wrap {

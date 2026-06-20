@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import PlotChart from "../components/PlotChart";
 
+import ChartPanel from "../components/ChartPanel";
+
 import ChartSettingsPanel from "../components/ChartSettingsPanel";
+
+import ChartVisibilityPanel from "../components/ChartVisibilityPanel";
+
+import { useChartVisibility, type ChartVisibilityItem } from "../hooks/useChartVisibility";
 
 import ArrangeTable from "../components/ArrangeTable";
 
@@ -62,6 +68,18 @@ interface InferencePageProps {
 
   folderLoading: boolean;
 
+  onInputFolderChange: (folder: string) => void | Promise<void>;
+
+}
+
+
+
+function folderPeriodLabel(folder: string): string {
+
+  const parts = folder.split("/");
+
+  return parts[parts.length - 1] ?? folder;
+
 }
 
 
@@ -92,6 +110,8 @@ export default function InferencePage({
 
   folderLoading,
 
+  onInputFolderChange,
+
 }: InferencePageProps) {
 
   const [result, setResult] = useState<InferenceResult | null>(null);
@@ -120,6 +140,12 @@ export default function InferencePage({
 
   const [selectedFolder, setSelectedFolder] = useState("FAC001/infer");
 
+  const datasetFolders = useMemo(
+    () =>
+      (config?.input_folders?.length ? config.input_folders : config ? [config.input_folder] : []),
+    [config],
+  );
+
   const [ganttTimeFixed, setGanttTimeFixed] = useState(false);
 
   const [ganttTimeStart, setGanttTimeStart] = useState(0);
@@ -130,17 +156,41 @@ export default function InferencePage({
 
   useEffect(() => {
 
-    if (config?.input_folder) {
+    if (!config || datasetFolders.length === 0) return;
 
-      setSelectedFolder(config.input_folder);
+    setSelectedFolder((prev) => {
+
+      if (datasetFolders.includes(prev)) return prev;
+
+      const infer = datasetFolders.find((f) => f.endsWith("/infer"));
+
+      return infer ?? datasetFolders[0];
+
+    });
+
+  }, [config, datasetFolders]);
+
+
+
+  const handleDatasetChange = useCallback(
+
+    async (folder: string) => {
+
+      if (!folder || folder === selectedFolder) return;
+
+      setSelectedFolder(folder);
 
       setResult(null);
 
       setCompareData(null);
 
-    }
+      await onInputFolderChange(folder);
 
-  }, [config?.input_folder]);
+    },
+
+    [onInputFolderChange, selectedFolder],
+
+  );
 
 
 
@@ -392,6 +442,80 @@ export default function InferencePage({
 
 
 
+  const compareChartItems = useMemo((): ChartVisibilityItem[] => {
+
+    const items: ChartVisibilityItem[] = [
+
+      { id: "compare-kpi", title: "KPI 차트" },
+
+      { id: "compare-achievement", title: "달성률 차트" },
+
+      { id: "compare-gantt", title: "알고리즘별 간트 비교" },
+
+    ];
+
+    if (compareEntries.length > 0 && compareData && compareData.plan.length > 0) {
+
+      compareEntries.forEach((e) => {
+
+        items.push({
+
+          id: `compare-prod-${e.algorithm}`,
+
+          title: `누적 생산 – ${e.label}`,
+
+        });
+
+      });
+
+    }
+
+    return items;
+
+  }, [compareEntries, compareData]);
+
+
+
+  const simChartItems = useMemo(
+
+    (): ChartVisibilityItem[] => [
+
+      { id: "sim-gantt", title: "설비(EQP) 배정 현황" },
+
+      { id: "sim-wip", title: "WIP 수량 현황" },
+
+      { id: "sim-achievement", title: "계획 달성 현황" },
+
+      { id: "sim-prod", title: "제품별 누적 생산량" },
+
+      { id: "sim-switch", title: "전환 횟수" },
+
+    ],
+
+    [],
+
+  );
+
+
+
+  const compareCharts = useChartVisibility(
+
+    "inference-compare",
+
+    compareChartItems.map((c) => c.id),
+
+  );
+
+  const simCharts = useChartVisibility(
+
+    "inference-sim",
+
+    simChartItems.map((c) => c.id),
+
+  );
+
+
+
   const tableResult = useMemo(() => {
 
     if (!tableAlgo || !compareData) return null;
@@ -438,12 +562,59 @@ export default function InferencePage({
 
       <h2>Post-Scheduling 추론 및 시각화</h2>
 
-      {summary && config && (
-        <p className="hint dataset-summary page-dataset-meta">
-          데이터셋 <code>{config.input_folder}</code>
-          {" · "}EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정 {summary.oper_count}
-        </p>
-      )}
+      <section className="card inference-dataset-card">
+
+        <h3>추론 데이터셋</h3>
+
+        <p className="hint">추론·비교에 사용할 입력 JSON 경로를 선택합니다.</p>
+
+        <label className="field-label" htmlFor="inference-dataset">
+
+          dataset 경로
+
+        </label>
+
+        <select
+
+          id="inference-dataset"
+
+          className="input-select inference-dataset-select"
+
+          value={selectedFolder}
+
+          onChange={(e) => void handleDatasetChange(e.target.value)}
+
+          disabled={!config || folderLoading || datasetFolders.length === 0}
+
+        >
+
+          {datasetFolders.map((f) => (
+
+            <option key={f} value={f}>
+
+              {f} ({folderPeriodLabel(f)})
+
+            </option>
+
+          ))}
+
+        </select>
+
+        {summary && (
+
+          <p className="hint dataset-summary">
+
+            EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정{" "}
+
+            {summary.oper_count}
+
+            {folderLoading ? " · 불러오는 중…" : ""}
+
+          </p>
+
+        )}
+
+      </section>
 
       <section className="card">
 
@@ -707,6 +878,50 @@ export default function InferencePage({
 
 
 
+          {tab === "schedule" && compareData && compareEntries.length > 0 && (
+
+            <ChartVisibilityPanel
+
+              title="스케줄 비교 차트 표시"
+
+              charts={compareChartItems}
+
+              visibility={compareCharts.visibility}
+
+              onToggle={compareCharts.toggle}
+
+              onShowAll={compareCharts.showAll}
+
+              onHideAll={compareCharts.hideAll}
+
+            />
+
+          )}
+
+
+
+          {tab === "sim" && result?.history.length ? (
+
+            <ChartVisibilityPanel
+
+              title="시뮬레이션 차트 표시"
+
+              charts={simChartItems}
+
+              visibility={simCharts.visibility}
+
+              onToggle={simCharts.toggle}
+
+              onShowAll={simCharts.showAll}
+
+              onHideAll={simCharts.hideAll}
+
+            />
+
+          ) : null}
+
+
+
           <div className="tabs">
 
             <button
@@ -863,47 +1078,87 @@ export default function InferencePage({
 
               <div className="grid-2">
 
-                <section className="card">
+                <ChartPanel
 
-                  <h3>KPI 차트</h3>
+                  id="compare-kpi"
 
-                  <PlotChart {...buildAlgorithmKpiComparison(compareEntries)} />
+                  title="KPI 차트"
 
-                </section>
+                  visible={compareCharts.isVisible("compare-kpi")}
 
-                <section className="card">
+                  onVisibleChange={(v) => compareCharts.setVisible("compare-kpi", v)}
 
-                  <h3>달성률 차트</h3>
+                  renderChart={() => <PlotChart {...buildAlgorithmKpiComparison(compareEntries)} />}
 
-                  <PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} />
+                />
 
-                </section>
+                <ChartPanel
+
+                  id="compare-achievement"
+
+                  title="달성률 차트"
+
+                  visible={compareCharts.isVisible("compare-achievement")}
+
+                  onVisibleChange={(v) => compareCharts.setVisible("compare-achievement", v)}
+
+                  renderChart={() => (
+
+                    <PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} />
+
+                  )}
+
+                />
 
               </div>
 
 
 
-              <section className="card">
+              <ChartPanel
 
-                <h3>알고리즘별 간트 비교</h3>
+                id="compare-gantt"
 
-                <PlotChart {...buildAlgorithmGanttComparison(compareEntries, ganttAxis)} />
+                title="알고리즘별 간트 비교"
 
-              </section>
+                visible={compareCharts.isVisible("compare-gantt")}
+
+                onVisibleChange={(v) => compareCharts.setVisible("compare-gantt", v)}
+
+                renderChart={() => (
+
+                  <PlotChart
+
+                    className="plot-chart gantt-chart"
+
+                    {...buildAlgorithmGanttComparison(compareEntries, ganttAxis)}
+
+                  />
+
+                )}
+
+              />
 
 
 
               {compareEntries.length > 0 && compareData.plan.length > 0 && (
 
-                <section className="card">
+                compareEntries.map((e) => (
 
-                  <h3>제품별 누적 생산량 (알고리즘별)</h3>
+                  <ChartPanel
 
-                  {compareEntries.map((e) => (
+                    key={e.algorithm}
 
-                    <div key={e.algorithm} className="algo-prod-chart">
+                    id={`compare-prod-${e.algorithm}`}
 
-                      <h4>{e.label}</h4>
+                    title={`제품별 누적 생산량 – ${e.label}`}
+
+                    visible={compareCharts.isVisible(`compare-prod-${e.algorithm}`)}
+
+                    onVisibleChange={(v) => compareCharts.setVisible(`compare-prod-${e.algorithm}`, v)}
+
+                    className="algo-prod-chart"
+
+                    renderChart={() => (
 
                       <PlotChart
 
@@ -931,11 +1186,11 @@ export default function InferencePage({
 
                       />
 
-                    </div>
+                    )}
 
-                  ))}
+                  />
 
-                </section>
+                ))
 
               )}
 
@@ -1033,49 +1288,81 @@ export default function InferencePage({
 
                 <div className="card-stagger">
 
-                  <section className="card">
+                  <ChartPanel
 
-                    <h3>설비(EQP) 배정 현황</h3>
+                    id="sim-gantt"
 
-                    <PlotChart
+                    title="설비(EQP) 배정 현황"
 
-                      {...buildStepGantt(
+                    visible={simCharts.isVisible("sim-gantt")}
 
-                        result.history,
+                    onVisibleChange={(v) => simCharts.setVisible("sim-gantt", v)}
 
-                        step,
+                    renderChart={() => (
 
-                        result.prod_keys,
+                      <PlotChart
 
-                        result.oper_ids,
+                        className="plot-chart gantt-chart"
 
-                        ganttAxis,
+                        {...buildStepGantt(
 
-                      )}
+                          result.history,
 
-                    />
+                          step,
 
-                  </section>
+                          result.prod_keys,
+
+                          result.oper_ids,
+
+                          ganttAxis,
+
+                        )}
+
+                      />
+
+                    )}
+
+                  />
 
 
 
                   <div className="grid-2">
 
-                    <section className="card">
+                    <ChartPanel
 
-                      <h3>WIP 수량 현황</h3>
+                      id="sim-wip"
 
-                      {snap && <PlotChart {...buildWipChart(snap, result.plan)} />}
+                      title="WIP 수량 현황"
 
-                    </section>
+                      visible={simCharts.isVisible("sim-wip")}
 
-                    <section className="card">
+                      onVisibleChange={(v) => simCharts.setVisible("sim-wip", v)}
 
-                      <h3>계획 달성 현황</h3>
+                      renderChart={() =>
 
-                      {snap && <PlotChart {...buildAchievementChart(snap, result.plan)} />}
+                        snap ? <PlotChart {...buildWipChart(snap, result.plan)} /> : null
 
-                    </section>
+                      }
+
+                    />
+
+                    <ChartPanel
+
+                      id="sim-achievement"
+
+                      title="계획 달성 현황"
+
+                      visible={simCharts.isVisible("sim-achievement")}
+
+                      onVisibleChange={(v) => simCharts.setVisible("sim-achievement", v)}
+
+                      renderChart={() =>
+
+                        snap ? <PlotChart {...buildAchievementChart(snap, result.plan)} /> : null
+
+                      }
+
+                    />
 
                   </div>
 
@@ -1129,51 +1416,67 @@ export default function InferencePage({
 
 
 
-                  <section className="card">
+                  <ChartPanel
 
-                    <h3>제품별 누적 생산량 (시간 × 수량)</h3>
+                    id="sim-prod"
 
-                    {snap && (
+                    title="제품별 누적 생산량 (시간 × 수량)"
 
-                      <PlotChart
+                    visible={simCharts.isVisible("sim-prod")}
 
-                        {...buildProductProductionCharts(
+                    onVisibleChange={(v) => simCharts.setVisible("sim-prod", v)}
 
-                          snap.schedule,
+                    renderChart={() =>
 
-                          result.plan,
+                      snap ? (
 
-                          result.prod_keys,
+                        <PlotChart
 
-                          ganttAxis.timeEndMinutes,
+                          {...buildProductProductionCharts(
 
-                          {
+                            snap.schedule,
 
-                            title: `제품별 누적 생산량 – 공정별 (스텝 ${snap.step})`,
+                            result.plan,
 
-                            operIds: result.oper_ids,
+                            result.prod_keys,
 
-                            timeAxis: ganttAxis,
+                            ganttAxis.timeEndMinutes,
 
-                          },
+                            {
 
-                        )}
+                              title: `제품별 누적 생산량 – 공정별 (스텝 ${snap.step})`,
 
-                      />
+                              operIds: result.oper_ids,
 
-                    )}
+                              timeAxis: ganttAxis,
 
-                  </section>
+                            },
+
+                          )}
+
+                        />
+
+                      ) : null
+
+                    }
+
+                  />
 
 
 
-                  <section className="card">
+                  <ChartPanel
 
-                    <h3>전환 횟수</h3>
+                    id="sim-switch"
 
-                    {snap && <PlotChart {...buildSwitchMetrics(snap)} />}
+                    title="전환 횟수"
 
-                  </section>
+                    visible={simCharts.isVisible("sim-switch")}
+
+                    onVisibleChange={(v) => simCharts.setVisible("sim-switch", v)}
+
+                    renderChart={() => (snap ? <PlotChart {...buildSwitchMetrics(snap)} /> : null)}
+
+                  />
 
                 </div>
 

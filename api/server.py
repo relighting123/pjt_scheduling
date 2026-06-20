@@ -26,7 +26,7 @@ from data.generator import (
     generator_config_to_dict,
     DEFAULT_GENERATOR_CONFIG,
 )
-from data.preprocessor import preprocess
+from data.preprocessor import preprocess, normalize_raw
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
@@ -68,7 +68,7 @@ def _load_env_data() -> dict:
     global _env_data_cache
     if _env_data_cache is not None:
         return _env_data_cache
-    raw = load_data()
+    raw = normalize_raw(load_data())
     errors = validate_data(raw)
     if errors:
         raise HTTPException(status_code=400, detail={"errors": errors})
@@ -81,7 +81,7 @@ def _load_env_data_for_folder(folder: str) -> dict:
     original = CONFIG.path.input_folder_key
     try:
         set_input_folder(folder)
-        raw = load_data()
+        raw = normalize_raw(load_data())
         errors = validate_data(raw)
         if errors:
             raise HTTPException(

@@ -41,7 +41,7 @@ from data.generator import (
     list_sample_scenarios,
     SAMPLE_SCENARIOS,
 )
-from data.preprocessor import preprocess
+from data.preprocessor import preprocess, normalize_raw
 from agent.rl_agent import SchedulingAgent
 from agent.registry import VALID_ALGORITHMS
 from inference.runner import run_inference, save_result
@@ -131,7 +131,7 @@ def load_env_data_for_folder(folder: str, *, verbose: bool = True) -> dict:
     set_input_folder(folder)
     if verbose:
         print(f"  input: {CONFIG.path.input_dir}")
-    raw = load_data()
+    raw = normalize_raw(load_data())
     errors = validate_data(raw)
     if errors:
         for e in errors:

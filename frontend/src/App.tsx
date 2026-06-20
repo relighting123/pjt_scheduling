@@ -132,8 +132,6 @@ export default function App() {
         mode={mode}
         config={config}
         onModeChange={setMode}
-        onInputFolderChange={handleInputFolderChange}
-        folderLoading={folderLoading}
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((v) => !v)}
       />
@@ -183,6 +181,7 @@ export default function App() {
               config={config}
               summary={summary}
               folderLoading={folderLoading}
+              onInputFolderChange={handleInputFolderChange}
             />
           )}
         </div>

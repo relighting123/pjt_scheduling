@@ -15,10 +15,6 @@ class MinProgressAgent:
         self._lot_by_id: Dict[str, dict] = {
             lot["lot_id"]: lot for lot in env_data["lots"]
         }
-        self._initial_start: Dict[str, int] = {
-            rec["LOT_ID"]: rec["START_TM"]
-            for rec in env_data["initial_schedule"]
-        }
 
     def _plan_row(self, prod: str, oper_id: str) -> Optional[dict]:
         for p in self._plan:

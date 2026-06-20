@@ -2,9 +2,10 @@
 simulation/simulator.py – 이산 사건 시뮬레이션(DES) 엔진
 RL 환경의 내부 시뮬레이터로서 EQP 상태 및 LOT 배정 이력을 관리합니다.
 """
+import copy
 import heapq
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -123,9 +124,7 @@ class SchedulingSimulator:
         self.soft_cutoff:   int = data.get("soft_cutoff_minutes", CONFIG.env.soft_cutoff_minutes)
         self._conversion_minutes: int = data.get("conversion_minutes", CONFIG.env.conversion_minutes)
         self._lot_attrs: Dict[str, dict] = dict(data.get("lot_attrs", {}))
-        self._initial_start: Dict[str, int] = {
-            r["LOT_ID"]: r["START_TM"] for r in data.get("initial_schedule", [])
-        }
+        self._initial_start: Dict[str, int] = {}
 
         self.eqps: Dict[str, Equipment] = {
             eid: Equipment(eqp_id=eid) for eid in data["eqp_ids"]
@@ -161,8 +160,15 @@ class SchedulingSimulator:
             data.get("arrange_actual_table", data.get("arrange_table", []))
         )
         self._eqp_model_map: Dict[str, str] = dict(data.get("eqp_model_map", {}))
-        self._abstract_rows: List[dict] = []
-        self._abstract_assigned: set = set()
+        self._abstract_template: List[dict] = copy.deepcopy(
+            data.get("abstract_inventory", [])
+        )
+        self._wip_pool: Dict[Tuple[str, str], dict] = copy.deepcopy(
+            data.get("abstract_wip_init", {})
+        )
+        self._wip_lot_meta: Dict[str, dict] = copy.deepcopy(
+            data.get("abstract_lot_meta", {})
+        )
         self._in_flight: Dict[str, dict] = {}
         self._inject_deadline: Dict[str, int] = dict(data.get("lot_inject_deadline", {}))
 
@@ -202,10 +208,7 @@ class SchedulingSimulator:
         return [
             eqp_id for eqp_id in self._env_data["eqp_ids"]
             if self.eqps[eqp_id].status == "idle"
-            and (
-                self._get_available_lots(eqp_id)
-                or self._abstract_assignable_on_eqp(eqp_id)
-            )
+            and self._abstract_assignable_on_eqp(eqp_id)
         ]
 
     def _pick_next_idle_eqp(self) -> Optional[str]:
@@ -219,6 +222,27 @@ class SchedulingSimulator:
                 key=lambda e: (self._eqp_min_proc_time(e) or 10**9, e),
             )
         return candidates[0]
+
+    def _next_wip_ready_time(self, after: int) -> Optional[int]:
+        """WIP 풀에서 after 이후 투입 가능해지는 가장 이른 oper_in_time."""
+        candidates: List[int] = []
+        for wip in self._wip_pool.values():
+            if wip["wip_qty"] <= 0:
+                continue
+            for lid in wip["lot_ids"]:
+                t = self._wip_lot_meta.get(lid, {}).get("oper_in_time", 0)
+                if t > after:
+                    candidates.append(t)
+        return min(candidates) if candidates else None
+
+    def _schedule_wait_event(self, eqp_id: str, time: int) -> None:
+        if self._abstract_assignable_on_eqp(eqp_id):
+            return
+        next_ready = self._next_wip_ready_time(time)
+        if next_ready is not None and next_ready <= self.sim_end:
+            heapq.heappush(self._event_q, (next_ready, eqp_id))
+        elif time < self.sim_end:
+            heapq.heappush(self._event_q, (self.sim_end, eqp_id))
 
     def _advance_to_next_decision(self):
         """
@@ -243,12 +267,7 @@ class SchedulingSimulator:
                     eqp.free_at     = time
 
                 self.current_time = time
-                if (
-                    not self._get_available_lots(eqp_id)
-                    and not self._abstract_assignable_on_eqp(eqp_id)
-                    and time < self.sim_end
-                ):
-                    heapq.heappush(self._event_q, (self.sim_end, eqp_id))
+                self._schedule_wait_event(eqp_id, time)
 
             self._current_eqp = self._pick_next_idle_eqp()
             if self._current_eqp:
@@ -258,8 +277,90 @@ class SchedulingSimulator:
         """배정 직후 동일 시각의 다른 idle EQP 결정 포인트 탐색 (시간 전진 없음)"""
         self._current_eqp = self._pick_next_idle_eqp()
 
+    def _wip_key(self, ppk: str, oper_id: str) -> Tuple[str, str]:
+        return (ppk, oper_id)
+
+    def _wip_for(self, ppk: str, oper_id: str) -> Optional[dict]:
+        return self._wip_pool.get(self._wip_key(ppk, oper_id))
+
+    def _eqp_can_process(self, eqp_id: str, ppk: str, oper_id: str) -> bool:
+        """abstract route(MODEL) 또는 discrete eqp_oper_cap 기준 처리 가능."""
+        model = self._eqp_model_map.get(eqp_id, "A")
+        route_map = self._env_data.get("abstract_route_map", {})
+        if (ppk, oper_id, model) in route_map:
+            return True
+        return oper_id in self._env_data.get("eqp_oper_cap", {}).get(eqp_id, [])
+
+    def _abstract_row_for(self, eqp_id: str, ppk: str, oper_id: str) -> Optional[dict]:
+        model = self._eqp_model_map.get(eqp_id, "A")
+        for row in self._abstract_template:
+            if (
+                row["plan_prod_key"] == ppk
+                and row["oper_id"] == oper_id
+                and row["eqp_model"] == model
+            ):
+                return row
+        return None
+
+    def _materialize_abstract_rows(self) -> List[dict]:
+        """템플릿 + WIP 풀 → UI/히스토리용 abstract arrange."""
+        rows = []
+        for tmpl in self._abstract_template:
+            wip = self._wip_for(tmpl["plan_prod_key"], tmpl["oper_id"])
+            item = dict(tmpl)
+            if wip:
+                item["wip_qty"] = wip["wip_qty"]
+                item["wip_qty_init"] = wip.get("wip_qty_init", wip["wip_qty"])
+                item["oper_in_time"] = wip.get("oper_in_time", 0)
+                item["min_inject_time"] = wip.get("min_inject_time", 0)
+            else:
+                item["wip_qty"] = 0
+                item["wip_qty_init"] = 0
+                item["oper_in_time"] = 0
+                item["min_inject_time"] = 0
+            rows.append(item)
+        return rows
+
+    def _inject_wip(
+        self, ppk: str, oper_id: str, lot_id: str, oper_in_time: int, meta: dict,
+    ) -> None:
+        """후속 재공 유입: (PPK,OPER) WIP +1, oper_in_time 갱신."""
+        key = self._wip_key(ppk, oper_id)
+        if key not in self._wip_pool:
+            self._wip_pool[key] = {
+                "wip_qty":         0,
+                "wip_qty_init":    0,
+                "oper_in_time":    0,
+                "min_inject_time": oper_in_time,
+                "lot_ids":         [],
+            }
+        wip = self._wip_pool[key]
+        wip["wip_qty"] += 1
+        wip["lot_ids"].append(lot_id)
+        wip["oper_in_time"] = max(wip.get("oper_in_time", 0), oper_in_time)
+        wip["min_inject_time"] = min(
+            wip.get("min_inject_time", oper_in_time), oper_in_time,
+        )
+        self._wip_lot_meta[lot_id] = {
+            "plan_prod_key": ppk,
+            "oper_id":       oper_id,
+            "seq":           meta.get("seq", 1),
+            "wf_qty":        meta.get("wf_qty", 25),
+            "carrier_id":    meta.get("carrier_id", ""),
+            "oper_in_time":  oper_in_time,
+        }
+
+    def _consume_wip(self, ppk: str, oper_id: str, lot_id: str) -> None:
+        key = self._wip_key(ppk, oper_id)
+        wip = self._wip_pool.get(key)
+        if not wip:
+            return
+        wip["wip_qty"] = max(wip["wip_qty"] - 1, 0)
+        if lot_id in wip["lot_ids"]:
+            wip["lot_ids"].remove(lot_id)
+
     def _on_oper_complete(self, lot_id: str, complete_time: int) -> None:
-        """전 공정 처리 완료(END_TM) → 다음 공정 추상 arrange 유입"""
+        """전 공정 처리 완료(END_TM) → 다음 공정 abstract WIP +1."""
         meta = self._in_flight.pop(lot_id, None)
         if not meta:
             return
@@ -271,82 +372,52 @@ class SchedulingSimulator:
 
         ppk = meta["plan_prod_key"]
         seq = meta["seq"]
-        wf_qty = meta["wf_qty"]
         next_info = self._env_data.get("flow_next", {}).get(ppk, {}).get(seq)
         if not next_info:
             return
 
         next_oper = next_info["next_oper"]
-        next_seq  = next_info["next_seq"]
-        pm = self._env_data.get("plan_meta", {}).get(
-            (ppk, next_oper), {"priority": 1, "d0_plan_qty": 0},
+        self._inject_wip(
+            ppk, next_oper, lot_id, complete_time,
+            {
+                "seq":        next_info["next_seq"],
+                "wf_qty":     meta.get("wf_qty", 25),
+                "carrier_id": meta.get("carrier_id", ""),
+            },
         )
-        proc_map = self._env_data.get("abstract_proc_time", {})
-        route_map = self._env_data.get("abstract_route_map", {})
-        routes = self._env_data.get("abstract_routes_by_ppk_oper", {}).get((ppk, next_oper))
 
-        if routes:
-            model_st_pairs = routes
-        else:
-            models = self._env_data.get("oper_eqp_models", {}).get(next_oper, ["A"])
-            model_st_pairs = [
-                (m, proc_map.get((next_oper, m), 60)) for m in models
-            ]
-
-        for model, default_st in model_st_pairs:
-            proc_time = route_map.get((ppk, next_oper, model), default_st)
-            abs_key = f"{ppk}|{next_oper}|{model}|{complete_time}"
-            unit = {
-                "lot_id":       lot_id,
-                "oper_in_time": complete_time,
-                "from_oper":    meta["oper_id"],
-                "wf_qty":       wf_qty,
-                "carrier_id":   meta.get("carrier_id", ""),
-                "assigned":     False,
-            }
-            existing = next(
-                (r for r in self._abstract_rows if r["abs_key"] == abs_key), None,
-            )
-            if existing and abs_key not in self._abstract_assigned:
-                existing["wip_qty"] += 1
-                existing["wip_qty_init"] += 1
-                existing.setdefault("lot_units", []).append(unit)
-            else:
-                self._abstract_rows.append({
-                    "abs_key":         abs_key,
-                    "plan_prod_key":   ppk,
-                    "eqp_model":       model,
-                    "oper_id":         next_oper,
-                    "seq":             next_seq,
-                    "from_oper":       meta["oper_id"],
-                    "wip_qty":         1,
-                    "wip_qty_init":    1,
-                    "proc_time":       proc_time,
-                    "min_inject_time": complete_time,
-                    "wf_qty":          wf_qty,
-                    "plan_priority":   pm["priority"],
-                    "d0_plan_qty":     pm["d0_plan_qty"],
-                    "lot_units":       [unit],
-                })
-
-    def _find_abstract_unit(self, lot_id: str):
-        """추상 arrange에 대기 중인 실 LOT 단위 조회"""
-        for row in self._abstract_rows:
-            for unit in row.get("lot_units", []):
-                if unit["lot_id"] == lot_id and not unit.get("assigned"):
-                    return row, unit
-        return None, None
+    def _lot_ready(self, lot_id: str, oper_in_time: int) -> bool:
+        return self.current_time >= oper_in_time
 
     def _abstract_assignable_on_eqp(self, eqp_id: str) -> List[dict]:
         model = self._eqp_model_map.get(eqp_id)
         if not model:
             return []
-        return [
-            row for row in self._abstract_rows
-            if row["wip_qty"] > 0
-            and row["eqp_model"] == model
-            and self.current_time >= row["min_inject_time"]
-        ]
+        rows = []
+        for tmpl in self._abstract_template:
+            if tmpl["eqp_model"] != model:
+                continue
+            ppk, oper_id = tmpl["plan_prod_key"], tmpl["oper_id"]
+            wip = self._wip_for(ppk, oper_id)
+            if not wip or wip["wip_qty"] <= 0:
+                continue
+            if not self._eqp_can_process(eqp_id, ppk, oper_id):
+                continue
+            ready = False
+            for lid in wip["lot_ids"]:
+                meta = self._wip_lot_meta.get(lid, {})
+                oper_in_time = meta.get("oper_in_time", 0)
+                if self._lot_ready(lid, oper_in_time):
+                    ready = True
+                    break
+            if not ready:
+                continue
+            row = dict(tmpl)
+            row["wip_qty"] = wip["wip_qty"]
+            row["oper_in_time"] = wip.get("oper_in_time", 0)
+            row["min_inject_time"] = wip.get("min_inject_time", 0)
+            rows.append(row)
+        return rows
 
     def _lot_injectable(self, lot_id: str) -> bool:
         """LOT이 현재 시각에 투입 가능한지 (시뮬 종료 전 + 미배정)"""
@@ -386,26 +457,21 @@ class SchedulingSimulator:
         return rows
 
     def get_abstract_arrange(self) -> List[dict]:
-        """PPK×장비MODEL 추상 유입 재공 (전공정 완료 시 DES로 생성)"""
-        out = []
-        for row in self._abstract_rows:
-            item = dict(row)
-            item["lot_units"] = [dict(u) for u in row.get("lot_units", [])]
-            out.append(item)
-        return out
+        """PPK×OPER×MODEL 템플릿 + (PPK,OPER) WIP 카운터."""
+        return self._materialize_abstract_rows()
 
     def get_wip_waiting(self) -> Dict[str, int]:
-        """(PPK|OPER)별 대기 WIP 웨이퍼 수 – Actual 풀 + 추상 lot_units"""
+        """(PPK|OPER)별 대기 WIP 웨이퍼 수 – abstract WIP 풀 기준."""
         wip: Dict[str, int] = {}
-        for lot in self.lot_pool.values():
-            key = f"{lot.plan_prod_key}|{lot.oper_id}"
-            wip[key] = wip.get(key, 0) + lot.wf_qty
-        for row in self._abstract_rows:
-            for unit in row.get("lot_units", []):
-                if unit.get("assigned"):
-                    continue
-                key = f"{row['plan_prod_key']}|{row['oper_id']}"
-                wip[key] = wip.get(key, 0) + unit.get("wf_qty", row.get("wf_qty", 0))
+        wf_defaults: Dict[str, int] = {}
+        for tmpl in self._abstract_template:
+            wf_defaults[tmpl["plan_prod_key"]] = tmpl.get("wf_qty", 25)
+        for (ppk, oper_id), pool in self._wip_pool.items():
+            if pool["wip_qty"] <= 0:
+                continue
+            wf = wf_defaults.get(ppk, 25)
+            key = f"{ppk}|{oper_id}"
+            wip[key] = wip.get(key, 0) + pool["wip_qty"] * wf
         return wip
 
     def _serialize_wip_waiting(self) -> Dict[str, int]:
@@ -510,10 +576,7 @@ class SchedulingSimulator:
             return None
 
         def sort_key(lot: dict):
-            if lot.get("is_abstract"):
-                start_tm = int(lot.get("oper_in_time", 10**9))
-            else:
-                start_tm = self._initial_start.get(lot["lot_id"], 10**9)
+            start_tm = int(lot.get("oper_in_time", 0))
             seq = self._env_data.get("lots", [])
             seq_val = 0
             for ld in self._env_data.get("lots", []):
@@ -591,7 +654,7 @@ class SchedulingSimulator:
         return [
             eid for eid in self._env_data["eqp_ids"]
             if self.eqps[eid].status == "idle"
-            and (self._get_available_lots(eid) or self._abstract_assignable_on_eqp(eid))
+            and self._abstract_assignable_on_eqp(eid)
         ]
 
     # ── 공개 API ─────────────────────────────────────────────────────────────
@@ -604,60 +667,84 @@ class SchedulingSimulator:
         """
         return self._current_eqp
 
-    def available_lots(self, eqp_id: str) -> List[dict]:
-        """
-        목적: 에이전트 선택을 위한 LOT 상세 정보 리스트 반환 (처리시간은 EQP 조합 기준)
-        Input:  eqp_id="EQP001"
-        Output: [{"lot_id":"LOT001","plan_prod_key":"PPK001","oper_id":"OPER001",
-                  "wf_qty":25,"priority":1,"processing_time":120}, ...]
-                  processing_time은 (LOT, EQP) 조합 기준값
-        """
+    def _lot_candidates_for_eqp(self, eqp_id: str) -> List[dict]:
+        """EQP에 배정 가능한 WIP LOT 후보 (abstract route + WIP 풀)."""
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
-        lots = []
-        for lid in self._get_available_lots(eqp_id):
-            lot = self.lot_pool[lid]
-            pt  = proc_time_matrix.get((lid, eqp_id), lot.processing_time)
-            lots.append({
-                "lot_id":          lot.lot_id,
-                "plan_prod_key":   lot.plan_prod_key,
-                "oper_id":         lot.oper_id,
-                "wf_qty":          lot.wf_qty,
-                "priority":        lot.priority,
-                "processing_time": pt,
-                "parent_lot_id":   lot.parent_lot_id,
-                "lot_cd":          lot.lot_cd,
-                "temp":            lot.temp,
-                "seq":             lot.seq,
-                "is_abstract":     False,
-            })
+        lots: List[dict] = []
         for row in self._abstract_assignable_on_eqp(eqp_id):
-            for unit in row.get("lot_units", []):
-                if unit.get("assigned"):
+            ppk, oper_id = row["plan_prod_key"], row["oper_id"]
+            wip = self._wip_for(ppk, oper_id)
+            if not wip:
+                continue
+            for lid in list(wip["lot_ids"]):
+                lot = self.lot_pool.get(lid)
+                meta = self._wip_lot_meta.get(lid, {})
+                oper_in_time = meta.get("oper_in_time", 0)
+                if not self._lot_ready(lid, oper_in_time):
                     continue
-                lots.append({
-                    "lot_id":          unit["lot_id"],
-                    "plan_prod_key":   row["plan_prod_key"],
-                    "oper_id":         row["oper_id"],
-                    "wf_qty":          unit.get("wf_qty", row["wf_qty"]),
-                    "priority":        row["plan_priority"],
-                    "processing_time": row["proc_time"],
-                    "oper_in_time":    unit["oper_in_time"],
-                    "seq":             row.get("seq", 1),
-                    "is_abstract":     True,
-                    "abs_key":         row["abs_key"],
-                })
-                lot_cd, temp = self._lot_cd_temp(unit["lot_id"])
-                lots[-1]["lot_cd"] = lot_cd
-                lots[-1]["temp"] = temp
+                if lot:
+                    if not self._lot_injectable(lid):
+                        continue
+                    pt = proc_time_matrix.get((lid, eqp_id), row["proc_time"])
+                    lots.append({
+                        "lot_id":          lot.lot_id,
+                        "plan_prod_key":   lot.plan_prod_key,
+                        "oper_id":         lot.oper_id,
+                        "wf_qty":          lot.wf_qty,
+                        "priority":        lot.priority,
+                        "processing_time": pt,
+                        "parent_lot_id":   lot.parent_lot_id,
+                        "lot_cd":          lot.lot_cd or meta.get("lot_cd", ""),
+                        "temp":            lot.temp or meta.get("temp", ""),
+                        "seq":             lot.seq,
+                        "is_abstract":     False,
+                        "oper_in_time":    meta.get("oper_in_time", 0),
+                    })
+                elif meta:
+                    lots.append({
+                        "lot_id":          lid,
+                        "plan_prod_key":   ppk,
+                        "oper_id":         oper_id,
+                        "wf_qty":          meta.get("wf_qty", row["wf_qty"]),
+                        "priority":        row.get("plan_priority", 1),
+                        "processing_time": row["proc_time"],
+                        "oper_in_time":    meta.get("oper_in_time", 0),
+                        "seq":             meta.get("seq", row["seq"]),
+                        "is_abstract":     True,
+                    })
+                    lot_cd, temp = self._lot_cd_temp(lid)
+                    lots[-1]["lot_cd"] = lot_cd
+                    lots[-1]["temp"] = temp
         return lots
 
-    def _assign_abstract_lot(
-        self, eqp_id: str, lot_id: str, row: dict, unit: dict,
-    ) -> float:
-        """추상 유입 재공 배정 – 실 LOT ID 사용, wip_qty 감소"""
-        if row["wip_qty"] <= 0 or unit.get("assigned"):
-            return -1.0
+    def available_lots(self, eqp_id: str) -> List[dict]:
+        """
+        목적: 에이전트 선택을 위한 LOT 상세 정보 리스트 반환.
+        abstract WIP 풀 + MODEL route 기준 (discrete eqp 큐에 없어도 가능).
+        """
+        lots = self._lot_candidates_for_eqp(eqp_id)
+        for item in lots:
+            if not item.get("lot_cd"):
+                lot_cd, temp = self._lot_cd_temp(item["lot_id"])
+                item["lot_cd"] = lot_cd
+                item["temp"] = temp
+        return lots
 
+    def _execute_assignment(
+        self,
+        eqp_id: str,
+        lot_id: str,
+        ppk: str,
+        oper_id: str,
+        seq: int,
+        wf_qty: int,
+        proc_time: int,
+        carrier_id: str,
+        row: dict,
+        oper_in_time: int,
+        is_abstract: bool,
+    ) -> float:
+        """공통 배정: conversion + tool + WIP -1."""
         eqp = self.eqps[eqp_id]
         cfg = self._reward_cfg
         reward = 0.0
@@ -666,8 +753,9 @@ class SchedulingSimulator:
         if not self._tool_tracker.can_assign(lot_cd, eqp_id):
             return -1.0
 
-        oper_id = row["oper_id"]
-        ppk     = row["plan_prod_key"]
+        wip = self._wip_for(ppk, oper_id)
+        if not wip or wip["wip_qty"] <= 0:
+            return -1.0
 
         if eqp.prev_oper == oper_id:
             reward += cfg.w_same_oper
@@ -675,61 +763,53 @@ class SchedulingSimulator:
             eqp.oper_switches += 1
             self.stats["oper_switches"] += 1
 
-        wf_qty    = row["wf_qty"]
-        proc_time = row["proc_time"]
         reward += self._same_prod_reward(eqp, ppk)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty)
         reward += cfg.w_completion * wf_qty / 25.0
 
         start_time, reward = self._apply_conversion_start(eqp, lot_cd, temp, reward)
-        end_time   = start_time + proc_time
+        end_time = start_time + proc_time
         reward += self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
 
-        eqp.status       = "busy"
-        eqp.current_lot  = lot_id
+        eqp.status = "busy"
+        eqp.current_lot = lot_id
         eqp.current_oper = oper_id
         eqp.current_prod = ppk
-        eqp.free_at      = end_time
-        eqp.prev_oper    = oper_id
-        eqp.prev_prod    = ppk
-        eqp.prev_lot_id  = lot_id
-        eqp.prev_lot_cd  = lot_cd
-        eqp.prev_temp    = temp
+        eqp.free_at = end_time
+        eqp.prev_oper = oper_id
+        eqp.prev_prod = ppk
+        eqp.prev_lot_id = lot_id
+        eqp.prev_lot_cd = lot_cd
+        eqp.prev_temp = temp
 
         self._tool_tracker.occupy(lot_cd, eqp_id)
-
         heapq.heappush(self._event_q, (end_time, eqp_id))
-
-        unit["assigned"] = True
-        row["wip_qty"] = max(row["wip_qty"] - 1, 0)
-        if row["wip_qty"] == 0:
-            self._abstract_assigned.add(row["abs_key"])
+        self._consume_wip(ppk, oper_id, lot_id)
 
         self._in_flight[lot_id] = {
             "plan_prod_key": ppk,
             "oper_id":       oper_id,
-            "seq":           row["seq"],
+            "seq":           seq,
             "wf_qty":        wf_qty,
-            "carrier_id":    unit.get("carrier_id", ""),
+            "carrier_id":    carrier_id,
             "end_time":      end_time,
             "lot_cd":        lot_cd,
             "eqp_id":        eqp_id,
         }
 
-        key = (ppk, oper_id)
-        self.stats["completed_qty"][key] = (
-            self.stats["completed_qty"].get(key, 0) + wf_qty
+        self.stats["completed_qty"][(ppk, oper_id)] = (
+            self.stats["completed_qty"].get((ppk, oper_id), 0) + wf_qty
         )
 
         self.schedule.append({
             "EQP_ID":        eqp_id,
             "LOT_ID":        lot_id,
-            "CARRIER_ID":    unit.get("carrier_id", ""),
+            "CARRIER_ID":    carrier_id,
             "PLAN_PROD_KEY": ppk,
             "OPER_ID":       oper_id,
             "ST":            proc_time,
             "EQP_MODEL":     row["eqp_model"],
-            "SEQ":           row["seq"],
+            "SEQ":           seq,
             "START_TM":      start_time,
             "END_TM":        end_time,
             "PROC_TIME":     proc_time,
@@ -737,159 +817,72 @@ class SchedulingSimulator:
             "LOT_CD":        lot_cd,
             "TEMP":          temp,
             "CONVERSION":    start_time > self.current_time,
-            "ABSTRACT":      True,
-            "OPER_IN_TIME":  unit["oper_in_time"],
+            "ABSTRACT":      is_abstract,
+            "OPER_IN_TIME":  oper_in_time,
         })
 
         self._last_assigned = {
-            "kind":            "abstract",
-            "eqp_id":          eqp_id,
-            "lot_id":          lot_id,
-            "plan_prod_key":   ppk,
-            "eqp_model":       row["eqp_model"],
-            "st":              proc_time,
-            "wf_qty":          wf_qty,
-            "lot_cd":          lot_cd,
-            "temp":            temp,
-            "conversion":      start_time > self.current_time,
-            "start_tm":        start_time,
-            "oper_in_time":    unit["oper_in_time"],
-            "abs_key":         row["abs_key"],
+            "kind":          "abstract" if is_abstract else "actual",
+            "eqp_id":        eqp_id,
+            "lot_id":        lot_id,
+            "plan_prod_key": ppk,
+            "eqp_model":     row["eqp_model"],
+            "st":            proc_time,
+            "wf_qty":        wf_qty,
+            "lot_cd":        lot_cd,
+            "temp":          temp,
+            "conversion":    start_time > self.current_time,
+            "start_tm":      start_time,
+            "oper_in_time":  oper_in_time,
+            "abs_key":       row.get("abs_key"),
         }
 
         self._select_same_time_next_eqp()
         return reward
 
     def assign_lot(self, eqp_id: str, lot_id: str) -> float:
-        """
-        목적: 선택된 LOT을 EQP에 배정하고 즉각 보상 반환
-        Input:  eqp_id="EQP001", lot_id="LOT001"
-        Output: reward (float)
-        """
-        eqp = self.eqps[eqp_id]
-        row, unit = self._find_abstract_unit(lot_id)
-        if row is not None:
-            return self._assign_abstract_lot(eqp_id, lot_id, row, unit)
-
+        """LOT 배정 – abstract WIP 풀에서 -1, conversion/tool 적용."""
         lot = self.lot_pool.get(lot_id)
-        if lot is None:
+        meta = self._wip_lot_meta.get(lot_id, {})
+
+        if lot is not None:
+            ppk, oper_id = lot.plan_prod_key, lot.oper_id
+            seq, wf_qty, carrier_id = lot.seq, lot.wf_qty, lot.carrier_id
+            is_abstract = False
+        elif meta:
+            ppk = meta["plan_prod_key"]
+            oper_id = meta["oper_id"]
+            seq = meta.get("seq", 1)
+            wf_qty = meta.get("wf_qty", 25)
+            carrier_id = meta.get("carrier_id", "")
+            is_abstract = True
+        else:
             return -1.0
 
-        cfg = self._reward_cfg
-        reward = 0.0
-
-        lot_cd, temp = lot.lot_cd, lot.temp
-        if not lot_cd:
-            lot_cd, temp = self._lot_cd_temp(lot_id, lot)
-        if not self._tool_tracker.can_assign(lot_cd, eqp_id):
+        row = self._abstract_row_for(eqp_id, ppk, oper_id)
+        if row is None:
             return -1.0
 
-        # 동일 OPER 연속 보너스
-        if eqp.prev_oper == lot.oper_id:
-            reward += cfg.w_same_oper
-        elif eqp.prev_oper is not None:
-            eqp.oper_switches += 1
-            self.stats["oper_switches"] += 1
-
-        reward += self._same_prod_reward(eqp, lot.plan_prod_key)
-        reward += self._pacing_shaping_reward(lot.plan_prod_key, lot.oper_id, lot.wf_qty)
-
-        # LOT 완료 보상
-        reward += cfg.w_completion * lot.wf_qty / 25.0
-
-        # 처리시간: (LOT, EQP) 조합 속성 – 단순 LOT 속성이 아님
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
-        proc_time = proc_time_matrix.get((lot_id, eqp_id), lot.processing_time)
+        if lot is not None:
+            proc_time = proc_time_matrix.get((lot_id, eqp_id), row["proc_time"])
+        else:
+            proc_time = row["proc_time"]
 
-        start_time, reward = self._apply_conversion_start(eqp, lot_cd, temp, reward)
-        end_time   = start_time + proc_time
-        reward += self._plan_hit_reward(lot.plan_prod_key, lot.oper_id, lot.wf_qty, end_time)
-
-        eqp.status       = "busy"
-        eqp.current_lot  = lot_id
-        eqp.current_oper = lot.oper_id
-        eqp.current_prod = lot.plan_prod_key
-        eqp.free_at      = end_time
-        eqp.prev_oper    = lot.oper_id
-        eqp.prev_prod    = lot.plan_prod_key
-        eqp.prev_lot_id  = lot_id
-        eqp.prev_lot_cd  = lot_cd
-        eqp.prev_temp    = temp
-
-        self._tool_tracker.occupy(lot_cd, eqp_id)
-
-        heapq.heappush(self._event_q, (end_time, eqp_id))
-
-        self._in_flight[lot_id] = {
-            "plan_prod_key": lot.plan_prod_key,
-            "oper_id":       lot.oper_id,
-            "seq":           lot.seq,
-            "wf_qty":        lot.wf_qty,
-            "carrier_id":    lot.carrier_id,
-            "end_time":      end_time,
-            "lot_cd":        lot_cd,
-            "eqp_id":        eqp_id,
-        }
-
-        # 선택된 LOT – 모든 EQP 큐에서 제거 (arrange 조합 전체 소멸)
-        for eid in self.eqp_queues:
-            if lot_id in self.eqp_queues[eid]:
-                self.eqp_queues[eid].remove(lot_id)
-        del self.lot_pool[lot_id]
-
-        # 완료 수량: 처리 종료(END_TM)가 아닌 투입(START_TM) 시점에 반영
-        key = (lot.plan_prod_key, lot.oper_id)
-        self.stats["completed_qty"][key] = (
-            self.stats["completed_qty"].get(key, 0) + lot.wf_qty
+        oper_in_time = meta.get("oper_in_time", 0)
+        reward = self._execute_assignment(
+            eqp_id, lot_id, ppk, oper_id, seq, wf_qty, proc_time,
+            carrier_id, row, oper_in_time, is_abstract,
         )
+        if reward < 0:
+            return reward
 
-        eqp_model = self._eqp_model_map.get(eqp_id, "A")
-        for row in self._initial_arrange:
-            if row["lot_id"] == lot_id and row["eqp_id"] == eqp_id:
-                eqp_model = row.get("eqp_model") or eqp_model
-                break
+        if lot is not None:
+            for eid in self.eqp_queues:
+                if lot_id in self.eqp_queues[eid]:
+                    self.eqp_queues[eid].remove(lot_id)
+            del self.lot_pool[lot_id]
 
-        self.schedule.append({
-            "EQP_ID":        eqp_id,
-            "LOT_ID":        lot_id,
-            "CARRIER_ID":    lot.carrier_id,
-            "PLAN_PROD_KEY": lot.plan_prod_key,
-            "OPER_ID":       lot.oper_id,
-            "ST":            proc_time,
-            "EQP_MODEL":     eqp_model,
-            "SEQ":           lot.seq,
-            "START_TM":      start_time,
-            "END_TM":        end_time,
-            "PROC_TIME":     proc_time,
-            "WF_QTY":        lot.wf_qty,
-            "LOT_CD":        lot_cd,
-            "TEMP":          temp,
-            "CONVERSION":    start_time > self.current_time,
-        })
-
-        assign_st = proc_time
-        assign_model = eqp_model
-        for row in self._initial_arrange:
-            if row["lot_id"] == lot_id and row["eqp_id"] == eqp_id:
-                assign_st = row.get("st") or row.get("proc_time") or proc_time
-                assign_model = row.get("eqp_model") or assign_model
-                break
-
-        self._last_assigned = {
-            "kind":            "actual",
-            "eqp_id":        eqp_id,
-            "lot_id":        lot_id,
-            "plan_prod_key": lot.plan_prod_key,
-            "st":            assign_st,
-            "eqp_model":     assign_model,
-            "wf_qty":        lot.wf_qty,
-            "lot_cd":        lot_cd,
-            "temp":          temp,
-            "conversion":    start_time > self.current_time,
-            "start_tm":      start_time,
-        }
-
-        self._select_same_time_next_eqp()
         return reward
 
     def _append_initial_history(self):
@@ -920,8 +913,6 @@ class SchedulingSimulator:
         })
 
     def _has_assignable_work(self) -> bool:
-        if self.get_remaining_arrange_actual():
-            return True
         for eid in self._env_data["eqp_ids"]:
             if self._abstract_assignable_on_eqp(eid):
                 return True

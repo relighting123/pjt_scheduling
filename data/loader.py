@@ -17,7 +17,6 @@ from config import (
 )
 from utils.helpers import (
     validate_records,
-    REQUIRED_SCHEDULE_FIELDS,
     REQUIRED_DISCRETE_ARRANGE_FIELDS,
     REQUIRED_ABSTRACT_ARRANGE_FIELDS,
     REQUIRED_PLAN_FIELDS,
@@ -28,6 +27,7 @@ from utils.helpers import (
     REQUIRED_LOT_ROUTE_FIELDS,
 )
 from data.generator import build_abstract_arrange
+from data.preprocessor import normalize_raw
 
 
 def _read_json_file(path: Path) -> List[dict]:
@@ -66,12 +66,20 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
             f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
         )
 
-    schedule = _read(CONFIG.path.schedule_file)
     discrete_arrange = _read_discrete()
     flow = _read(CONFIG.path.flow_file)
+    schedule = _read_optional(CONFIG.path.schedule_file)
+
+    raw = normalize_raw({
+        "schedule":          schedule,
+        "discrete_arrange":  discrete_arrange,
+        "flow":              flow,
+    })
+    discrete_arrange = raw["discrete_arrange"]
+
     abstract_arrange = _read_optional(CONFIG.path.abstract_arrange_file)
     if not abstract_arrange:
-        abstract_arrange = build_abstract_arrange(discrete_arrange, schedule, flow)
+        abstract_arrange = build_abstract_arrange(discrete_arrange, flow)
 
     return {
         "schedule":          schedule,
@@ -88,7 +96,6 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
 
 def validate_data(raw: Dict[str, List[dict]]) -> List[str]:
     errors = []
-    errors += validate_records(raw["schedule"], REQUIRED_SCHEDULE_FIELDS, "schedule")
     errors += validate_records(
         raw["discrete_arrange"], REQUIRED_DISCRETE_ARRANGE_FIELDS, "discrete_arrange",
     )

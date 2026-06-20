@@ -448,7 +448,7 @@ export default function TestPage({ config, modelExists }: TestPageProps) {
 
               <section className="card">
                 <h3>알고리즘별 간트</h3>
-                <PlotChart {...buildAlgorithmGanttComparison(selectedEntries, ganttAxis)} />
+                <PlotChart className="plot-chart gantt-chart" {...buildAlgorithmGanttComparison(selectedEntries, ganttAxis)} />
               </section>
 
               <section className="card">

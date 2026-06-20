@@ -262,7 +262,6 @@ class PathConfig:
 
 # SQL 파일명 ↔ JSON 파일명 (loader.fetch_from_db)
 SQL_JSON_MAP = {
-    "schedule":         ("schedule.sql",         "schedule.json"),
     "discrete_arrange": ("discrete_arrange.sql", "discrete_arrange.json"),
     "abstract_arrange": ("abstract_arrange.sql", "abstract_arrange.json"),
     "plan":             ("plan.sql",             "plan.json"),
