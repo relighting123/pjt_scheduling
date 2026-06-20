@@ -285,6 +285,7 @@ class EnvConfig:
     max_eqp_count:    int = 10
     max_oper_count:   int = 15
     max_prod_count:   int = 10
+    max_model_count:  int = 4           # bucket = (ppk, model, oper)의 model 축 K
     max_queue_size:   int = 20          # legacy compat
     sim_time_horizon: int = 1440
     hard_horizon_minutes: int = 1440    # 07:00 → 익일 07:00

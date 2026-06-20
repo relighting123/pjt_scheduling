@@ -30,7 +30,7 @@ from simulation.simulator import SchedulingSimulator
 
 def compute_obs_dim() -> int:
 
-    """Global(6) + WIP(O×P) + Plan×2(O×P) + EQP(M×5) + Context(4) + Proc(O×M)"""
+    """Global(6) + Bucket(O×P×K×F) + EQP(M×5) + Context(4)"""
 
     O = CONFIG.env.max_oper_count
 
@@ -38,7 +38,11 @@ def compute_obs_dim() -> int:
 
     M = CONFIG.env.max_eqp_count
 
-    return 6 + O * P * 3 + M * 5 + 4 + O * M
+    K = CONFIG.env.max_model_count
+
+    F = SchedulingSimulator.BUCKET_FEATURES
+
+    return 6 + O * P * K * F + M * 5 + 4
 
 
 
