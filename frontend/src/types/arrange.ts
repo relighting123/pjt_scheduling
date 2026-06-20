@@ -6,6 +6,8 @@ export interface ArrangeRow {
   st: number;
   proc_time?: number;
   eqp_model: string;
+  lot_cd?: string;
+  temp?: string;
   /** 초기 스케줄 START_TM (분) */
   initial_start_tm?: number;
   wf_qty: number;
@@ -42,6 +44,9 @@ export interface AssignedLot {
   lot_id: string;
   plan_prod_key: string;
   eqp_model?: string;
+  lot_cd?: string;
+  temp?: string;
+  conversion?: boolean;
   abs_key?: string;
   /** 소요시간(분) */
   st?: number;

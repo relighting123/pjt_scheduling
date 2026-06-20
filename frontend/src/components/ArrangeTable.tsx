@@ -31,6 +31,8 @@ export default function ArrangeTable({
         {showAssigned && assigned && (
           <span className="arrange-selected">
             {" "}· 선택: {assigned.lot_id} → {assigned.eqp_id}
+            {assigned.lot_cd ? ` · ${assigned.lot_cd}/${assigned.temp ?? ""}` : ""}
+            {assigned.conversion ? " · Conversion" : ""}
             {assigned.eqp_model != null ? ` (MODEL ${assigned.eqp_model}` : " ("}
             {assigned.st != null ? `, ST ${assigned.st}분` : ""}
             {assigned.wf_qty != null ? `, ${assigned.wf_qty}매` : ""}, 투입 {assigned.start_tm}분)
@@ -43,7 +45,7 @@ export default function ArrangeTable({
         <table className="arrange-table" key={step}>
           <thead>
             <tr>
-              {["EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
+              {["EQP_ID", "LOT_ID", "LOT_CD", "TEMP", "PLAN_PROD_KEY", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
                 <th key={h}>{h}</th>
               ))}
             </tr>
@@ -70,6 +72,8 @@ export default function ArrangeTable({
                 >
                   <td>{row.eqp_id}</td>
                   <td>{row.lot_id}</td>
+                  <td>{row.lot_cd ?? "-"}</td>
+                  <td>{row.temp ?? "-"}</td>
                   <td>{row.plan_prod_key}</td>
                   <td>{row.eqp_model}</td>
                   <td className="num">{procTime(row)}</td>

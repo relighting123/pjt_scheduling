@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar";
 import DatasetEmptyPanel, { type CreateSampleOpts } from "./components/DatasetEmptyPanel";
 import DatasetPage from "./pages/DatasetPage";
 import InferencePage from "./pages/InferencePage";
+import TestPage from "./pages/TestPage";
 import TrainPage from "./pages/TrainPage";
 import { api } from "./lib/api";
 import type { AppConfig, AppMode, DataSummary, GeneratorConfig, SampleScenario } from "./types";
@@ -147,12 +148,15 @@ export default function App() {
         </button>
       )}
       <main className="main-content">
-        {loadError && hasData && mode !== "dataset" && (
+        {loadError && hasData && mode !== "dataset" && mode !== "test" && (
           <div className="banner banner-warn">{loadError}</div>
         )}
         <div key={mode} className="page-enter">
           {mode === "dataset" && <DatasetPage {...datasetProps} />}
-          {mode !== "dataset" && !hasData && (
+          {mode === "test" && config && (
+            <TestPage config={config} modelExists={modelExists} />
+          )}
+          {mode !== "dataset" && mode !== "test" && !hasData && (
             <DatasetEmptyPanel
               facId={facId}
               scenario={scenario}

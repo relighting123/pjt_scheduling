@@ -2,10 +2,6 @@
 data/loader.py – JSON 로드 및 Oracle SQL → JSON 변환
 
 SQL 템플릿: external/sql/{name}.sql  →  dataset/.../input/{name}.json
-각 SQL은 :FAC_ID 등 바인드 변수 WHERE 절을 포함합니다.
-
-환경 변수 (Oracle):
-  ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN
 """
 import json
 from pathlib import Path
@@ -22,17 +18,25 @@ from config import (
 from utils.helpers import (
     validate_records,
     REQUIRED_SCHEDULE_FIELDS,
-    REQUIRED_AVAILABILITY_FIELDS,
+    REQUIRED_DISCRETE_ARRANGE_FIELDS,
+    REQUIRED_ABSTRACT_ARRANGE_FIELDS,
     REQUIRED_PLAN_FIELDS,
     REQUIRED_FLOW_FIELDS,
     REQUIRED_SPLIT_FIELDS,
+    REQUIRED_LOT_MASTER_FIELDS,
+    REQUIRED_TOOL_CAPACITY_FIELDS,
+    REQUIRED_LOT_ROUTE_FIELDS,
 )
+from data.generator import build_abstract_arrange
+
+
+def _read_json_file(path: Path) -> List[dict]:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
-    """
-    dataset input 폴더의 JSON 4종 로드
-    """
+    """dataset input 폴더 JSON 로드"""
     d = input_dir or CONFIG.path.input_dir
 
     def _read(filename: str) -> List[dict]:
@@ -42,33 +46,65 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
                 f"입력 파일 없음: {path}\n"
                 f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
             )
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        return _read_json_file(path)
 
     def _read_optional(filename: str) -> List[dict]:
         path = d / filename
         if not path.exists():
             return []
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        return _read_json_file(path)
+
+    def _read_discrete() -> List[dict]:
+        primary = d / CONFIG.path.discrete_arrange_file
+        legacy = d / "availability.json"
+        if primary.exists():
+            return _read_json_file(primary)
+        if legacy.exists():
+            return _read_json_file(legacy)
+        raise FileNotFoundError(
+            f"입력 파일 없음: {primary} (또는 legacy availability.json)\n"
+            f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
+        )
+
+    schedule = _read(CONFIG.path.schedule_file)
+    discrete_arrange = _read_discrete()
+    flow = _read(CONFIG.path.flow_file)
+    abstract_arrange = _read_optional(CONFIG.path.abstract_arrange_file)
+    if not abstract_arrange:
+        abstract_arrange = build_abstract_arrange(discrete_arrange, schedule, flow)
 
     return {
-        "schedule":     _read(CONFIG.path.schedule_file),
-        "availability": _read(CONFIG.path.availability_file),
-        "plan":         _read(CONFIG.path.plan_file),
-        "flow":         _read(CONFIG.path.flow_file),
-        "split":        _read_optional(CONFIG.path.split_file),
+        "schedule":          schedule,
+        "discrete_arrange":  discrete_arrange,
+        "abstract_arrange":  abstract_arrange,
+        "plan":              _read(CONFIG.path.plan_file),
+        "flow":              flow,
+        "split":             _read_optional(CONFIG.path.split_file),
+        "lot_master":        _read_optional(CONFIG.path.lot_master_file),
+        "tool_capacity":     _read_optional(CONFIG.path.tool_capacity_file),
+        "lot_route":         _read_optional(CONFIG.path.lot_route_file),
     }
 
 
 def validate_data(raw: Dict[str, List[dict]]) -> List[str]:
     errors = []
-    errors += validate_records(raw["schedule"],     REQUIRED_SCHEDULE_FIELDS,     "schedule")
-    errors += validate_records(raw["availability"], REQUIRED_AVAILABILITY_FIELDS, "availability")
-    errors += validate_records(raw["plan"],         REQUIRED_PLAN_FIELDS,         "plan")
-    errors += validate_records(raw["flow"],         REQUIRED_FLOW_FIELDS,         "flow")
+    errors += validate_records(raw["schedule"], REQUIRED_SCHEDULE_FIELDS, "schedule")
+    errors += validate_records(
+        raw["discrete_arrange"], REQUIRED_DISCRETE_ARRANGE_FIELDS, "discrete_arrange",
+    )
+    errors += validate_records(
+        raw["abstract_arrange"], REQUIRED_ABSTRACT_ARRANGE_FIELDS, "abstract_arrange",
+    )
+    errors += validate_records(raw["plan"], REQUIRED_PLAN_FIELDS, "plan")
+    errors += validate_records(raw["flow"], REQUIRED_FLOW_FIELDS, "flow")
     if raw.get("split"):
         errors += validate_records(raw["split"], REQUIRED_SPLIT_FIELDS, "split")
+    if raw.get("lot_master"):
+        errors += validate_records(raw["lot_master"], REQUIRED_LOT_MASTER_FIELDS, "lot_master")
+    if raw.get("tool_capacity"):
+        errors += validate_records(raw["tool_capacity"], REQUIRED_TOOL_CAPACITY_FIELDS, "tool_capacity")
+    if raw.get("lot_route"):
+        errors += validate_records(raw["lot_route"], REQUIRED_LOT_ROUTE_FIELDS, "lot_route")
     return errors
 
 
@@ -125,17 +161,7 @@ def fetch_from_db(
     period: Optional[str] = None,
     extra_binds: Optional[Dict[str, Any]] = None,
 ) -> Path:
-    """
-    external/sql/*.sql 실행 → JSON 저장
-
-    Parameters
-    ----------
-    fac_id : 공장 ID (WHERE :FAC_ID)
-    output_dir : 저장 input 경로 (None → dataset 규칙)
-    split : train | test | infer
-    snapshot / period : train|test RULE_TIMEKEY 폴더명 (YYYYMMDDHHmmss)
-    extra_binds : 추가 SQL 바인드
-    """
+    """external/sql/*.sql 실행 → JSON 저장"""
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     per = period or snapshot
     if output_dir is None:
@@ -177,10 +203,7 @@ def fetch_period_range(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
 ) -> List[Path]:
-    """
-    RULE_TIMEKEY(YYYYMMDDHHmmss) 구간별 Oracle SQL → JSON 저장
-    각 기간마다 :RULE_TIMEKEY 바인드를 폴더명과 동일하게 설정합니다.
-    """
+    """RULE_TIMEKEY 구간별 Oracle SQL → JSON 저장"""
     start_key = from_timekey or from_date
     end_key = to_timekey or to_date
     if not start_key or not end_key:

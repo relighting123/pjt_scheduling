@@ -109,6 +109,33 @@ export interface TrainMetrics {
   mean_completion: number;
 }
 
+export interface TrainLogEntry {
+  time: string;
+  level: string;
+  message: string;
+}
+
+export interface TrainSeries {
+  timesteps: number[];
+  ep_rew_mean: number[];
+  eval_timesteps: number[];
+  eval_reward: number[];
+  policy_loss: number[];
+  value_loss: number[];
+  explained_variance: number[];
+}
+
+export interface TrainStatusResponse {
+  status: "idle" | "running" | "completed" | "failed";
+  progress: number;
+  timesteps: number;
+  total_timesteps: number;
+  logs: TrainLogEntry[];
+  series: TrainSeries;
+  metrics: TrainMetrics | null;
+  error: string | null;
+}
+
 export interface AlgorithmCompareError {
   algorithm: AlgorithmId;
   message: string;
@@ -123,6 +150,38 @@ export interface AlgorithmCompareResponse {
   oper_ids: string[];
   eqp_ids: string[];
   sim_end_minutes: number;
+}
+
+export interface TestDatasetInfo {
+  input_folder: string;
+  label: string;
+}
+
+export interface TestBenchmarkDataset {
+  input_folder: string;
+  label: string;
+  error?: string;
+  results: InferenceResult[];
+  errors: AlgorithmCompareError[];
+  plan: PlanRecord[];
+  prod_keys: string[];
+  oper_ids: string[];
+  eqp_ids: string[];
+  sim_end_minutes: number;
+}
+
+export interface TestBenchmarkResponse {
+  fac_id: string;
+  algorithms?: AlgorithmId[];
+  status?: "idle" | "running" | "complete";
+  progress?: { current: number; total: number; label: string };
+  updated_at?: string | null;
+  datasets: TestBenchmarkDataset[];
+}
+
+export interface TestDatasetsResponse {
+  fac_id: string;
+  datasets: TestDatasetInfo[];
 }
 
 export interface SampleScenario {
@@ -151,4 +210,4 @@ export interface GeneratorConfig {
   seed: number | null;
 }
 
-export type AppMode = "train" | "inference" | "dataset";
+export type AppMode = "train" | "test" | "inference" | "dataset";

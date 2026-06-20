@@ -110,7 +110,7 @@ def _schedule_row(
     }
 
 
-def _avail_row(
+def _discrete_row(
     eqp_id: str, lot_id: str, ppk: str, proc_time: int,
     wf_qty: int = 25, eqp_model: str = "A",
 ) -> dict:
@@ -118,6 +118,53 @@ def _avail_row(
         "EQP_ID": eqp_id, "LOT_ID": lot_id, "PLAN_PROD_KEY": ppk,
         "ST": proc_time, "EQP_MODEL": eqp_model, "WF_QTY": wf_qty,
     }
+
+
+def _abstract_row(ppk: str, oper_id: str, eqp_model: str, st: int) -> dict:
+    return {
+        "PLAN_PROD_KEY": ppk,
+        "OPER_ID": oper_id,
+        "EQP_MODEL": eqp_model,
+        "ST": st,
+    }
+
+
+def build_abstract_arrange(
+    discrete_arrange: List[dict],
+    schedule: List[dict],
+    flow: List[dict],
+) -> List[dict]:
+    """discrete_arrange + schedule/flow → PPK×OPER×MODEL feasible routes."""
+    flow_oper: Dict[Tuple[str, int], str] = {}
+    for r in flow:
+        flow_oper[(r["PLAN_PROD_KEY"], int(r["SEQ_ID"]))] = r["OPER_ID"]
+
+    lot_oper: Dict[str, Tuple[str, str]] = {}
+    for r in schedule:
+        ppk = r["PLAN_PROD_KEY"]
+        oper = flow_oper.get((ppk, int(r["SEQ"])))
+        if oper:
+            lot_oper[r["LOT_ID"]] = (ppk, oper)
+
+    route_st: Dict[Tuple[str, str, str], List[int]] = {}
+    for r in discrete_arrange:
+        lot_id = r["LOT_ID"]
+        ppk = r["PLAN_PROD_KEY"]
+        model = str(r.get("EQP_MODEL") or "A")
+        st = int(r.get("ST") or 60)
+        if lot_id in lot_oper:
+            _, oper = lot_oper[lot_id]
+        else:
+            continue
+        route_st.setdefault((ppk, oper, model), []).append(st)
+
+    return [
+        _abstract_row(ppk, oper, model, int(sum(sts) / len(sts)))
+        for (ppk, oper, model), sts in sorted(route_st.items())
+    ]
+
+
+_avail_row = _discrete_row  # legacy alias
 
 
 def _split_row(ppk: str, eqp_model: str, split_qty: int) -> dict:
@@ -142,22 +189,73 @@ def build_split_rules(
     ]
 
 
+def build_lot_master_from_schedule(
+    schedule: List[dict],
+    flow_map: Dict[str, Dict[int, str]],
+) -> List[dict]:
+    rows = []
+    seen = set()
+    for r in schedule:
+        lid = r["LOT_ID"]
+        if lid in seen:
+            continue
+        seen.add(lid)
+        ppk = r["PLAN_PROD_KEY"]
+        rows.append({
+            "LOT_ID": lid,
+            "LOT_CD": f"LC{ppk[-3:]}",
+            "TEMP": "T650" if int(ppk[-3:]) % 2 else "T700",
+        })
+    return rows
+
+
+def build_tool_capacity_from_lots(
+    lot_master: List[dict],
+    models: Tuple[str, ...] = ("A", "B", "C", "D", "E"),
+    max_tool: int = 2,
+) -> List[dict]:
+    lot_cds = sorted({r["LOT_CD"] for r in lot_master})
+    return [
+        {"LOT_CD": lc, "EQP_MODEL": model, "MAX_TOOL": max_tool}
+        for lc in lot_cds
+        for model in models
+    ]
+
+
 def write_json_bundle(
     output_dir: Path,
     schedule: List[dict],
-    availability: List[dict],
+    discrete_arrange: List[dict],
     plan: List[dict],
     flow: List[dict],
     split: Optional[List[dict]] = None,
+    lot_master: Optional[List[dict]] = None,
+    tool_capacity: Optional[List[dict]] = None,
+    abstract_arrange: Optional[List[dict]] = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     split_data = split if split is not None else build_split_rules(flow)
+    abstract_data = abstract_arrange if abstract_arrange is not None else build_abstract_arrange(
+        discrete_arrange, schedule, flow,
+    )
+    flow_map: Dict[str, Dict[int, str]] = {}
+    for r in flow:
+        flow_map.setdefault(r["PLAN_PROD_KEY"], {})[int(r["SEQ_ID"])] = r["OPER_ID"]
+    lot_master_data = lot_master if lot_master is not None else build_lot_master_from_schedule(
+        schedule, flow_map,
+    )
+    tool_capacity_data = tool_capacity if tool_capacity is not None else build_tool_capacity_from_lots(
+        lot_master_data,
+    )
     for filename, data in [
         (CONFIG.path.schedule_file, schedule),
-        (CONFIG.path.availability_file, availability),
+        (CONFIG.path.discrete_arrange_file, discrete_arrange),
+        (CONFIG.path.abstract_arrange_file, abstract_data),
         (CONFIG.path.plan_file, plan),
         (CONFIG.path.flow_file, flow),
         (CONFIG.path.split_file, split_data),
+        (CONFIG.path.lot_master_file, lot_master_data),
+        (CONFIG.path.tool_capacity_file, tool_capacity_data),
     ]:
         with open(output_dir / filename, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)

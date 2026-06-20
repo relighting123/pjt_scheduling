@@ -1,5 +1,5 @@
 import type { Data, Layout } from "plotly.js";
-import type { HistorySnap, InferenceResult, PlanRecord, ScheduleRecord } from "../types";
+import type { HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
 import { buildColorMap, OPER_BORDER_COLORS, PROD_COLORS } from "./colors";
 
 export interface GanttAxisOptions {
@@ -727,4 +727,317 @@ export function buildAlgorithmGanttComparison(
   });
 
   return { data, layout };
+}
+
+export type TestMetricKey =
+  | "makespan"
+  | "idle_total"
+  | "oper_switches"
+  | "prod_switches"
+  | "avg_achievement";
+
+export interface TestMetricDef {
+  key: TestMetricKey;
+  label: string;
+  yTitle: string;
+}
+
+export const TEST_METRICS: TestMetricDef[] = [
+  { key: "makespan", label: "Makespan", yTitle: "분" },
+  { key: "idle_total", label: "Idle 합계", yTitle: "분" },
+  { key: "oper_switches", label: "공정 전환", yTitle: "횟수" },
+  { key: "prod_switches", label: "제품 전환", yTitle: "횟수" },
+  { key: "avg_achievement", label: "평균 달성률", yTitle: "%" },
+];
+
+export interface TestBenchmarkChartRow {
+  input_folder: string;
+  label: string;
+  entries: AlgoCompareEntry[];
+}
+
+function metricValue(result: InferenceResult, key: TestMetricKey): number | null {
+  if (!result.schedule?.length) {
+    return null;
+  }
+  const s = resultScheduleStats(result);
+  switch (key) {
+    case "makespan":
+      return s.makespan;
+    case "idle_total":
+      return s.idle_total;
+    case "oper_switches":
+      return s.oper_switches;
+    case "prod_switches":
+      return s.prod_switches;
+    case "avg_achievement": {
+      const vals = Object.values(s.achievement);
+      return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0;
+    }
+    default:
+      return null;
+  }
+}
+
+export function buildTestMetricChart(
+  metric: TestMetricDef,
+  rows: TestBenchmarkChartRow[],
+  algorithms: string[],
+  algoLabels: Record<string, string>,
+  selectedLabel?: string,
+): { data: Data[]; layout: Partial<Layout> } {
+  if (rows.length < 2) {
+    return buildTestMetricSingleDatasetChart(metric, rows[0], algorithms, algoLabels);
+  }
+  return buildTestMetricLineChart(metric, rows, algorithms, algoLabels, selectedLabel);
+}
+
+function buildTestMetricSingleDatasetChart(
+  metric: TestMetricDef,
+  row: TestBenchmarkChartRow | undefined,
+  algorithms: string[],
+  algoLabels: Record<string, string>,
+): { data: Data[]; layout: Partial<Layout> } {
+  const algoNames = algorithms.map((a) => algoLabels[a] ?? a);
+  const values = algorithms.map((algo) => {
+    const entry = row?.entries.find((e) => e.algorithm === algo);
+    return entry ? metricValue(entry.result, metric.key) : 0;
+  });
+
+  return {
+    data: [{
+      type: "bar" as const,
+      x: algoNames,
+      y: values,
+      marker: { color: algorithms.map((a) => ALGO_CHART_COLORS[a] ?? "#888") },
+      text: values.map((v) => String(v ?? "")),
+      textposition: "outside" as const,
+      hovertemplate: `<b>%{x}</b><br>${metric.label}: %{y}<extra></extra>`,
+      showlegend: false,
+    }],
+    layout: {
+      title: { text: `${metric.label} · ${row?.label ?? ""}`, font: { size: 14 } },
+      xaxis: { title: { text: "알고리즘" } },
+      yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
+      plot_bgcolor: "white",
+      paper_bgcolor: "white",
+      height: 340,
+      margin: { t: 50, b: 60, l: 55, r: 20 },
+    },
+  };
+}
+
+function buildTestMetricLineChart(
+  metric: TestMetricDef,
+  rows: TestBenchmarkChartRow[],
+  algorithms: string[],
+  algoLabels: Record<string, string>,
+  selectedLabel?: string,
+): { data: Data[]; layout: Partial<Layout> } {
+  const categories = rows.map((r) => r.input_folder);
+  const tickText = rows.map((r) => r.label);
+  const activeAlgos = algorithms.filter((algo) =>
+    rows.some((row) => {
+      const entry = row.entries.find((e) => e.algorithm === algo);
+      return entry && metricValue(entry.result, metric.key) != null;
+    }),
+  );
+  const data: Data[] = activeAlgos.map((algo) => ({
+    type: "scatter" as const,
+    mode: "lines+markers" as const,
+    name: algoLabels[algo] ?? algo,
+    x: categories,
+    y: rows.map((row) => {
+      const entry = row.entries.find((e) => e.algorithm === algo);
+      return entry ? metricValue(entry.result, metric.key) : null;
+    }),
+    connectgaps: false,
+    marker: {
+      size: 9,
+      color: ALGO_CHART_COLORS[algo] ?? "#888",
+      line: { width: 1, color: "#fff" },
+    },
+    line: { color: ALGO_CHART_COLORS[algo] ?? "#888", width: 2 },
+    hovertemplate:
+      `<b>%{customdata}</b><br>${algoLabels[algo] ?? algo}: %{y}<extra></extra>`,
+    customdata: tickText,
+  }));
+
+  const selectedIdx = selectedLabel
+    ? rows.findIndex((r) => r.label === selectedLabel || r.input_folder.endsWith(selectedLabel))
+    : -1;
+  const selectedCategory = selectedIdx >= 0 ? categories[selectedIdx] : undefined;
+
+  return {
+    data,
+    layout: {
+      title: { text: metric.label, font: { size: 14 } },
+      xaxis: {
+        title: { text: "데이터셋 (RULE_TIMEKEY)" },
+        tickangle: -35,
+        type: "category",
+        categoryorder: "array",
+        categoryarray: categories,
+        tickvals: categories,
+        ticktext: tickText,
+      },
+      yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
+      plot_bgcolor: "white",
+      paper_bgcolor: "white",
+      legend: { orientation: "h", y: -0.35 },
+      height: 340,
+      margin: { t: 50, b: 90, l: 55, r: 20 },
+      ...(selectedCategory
+        ? {
+            shapes: [{
+              type: "line",
+              xref: "x",
+              yref: "paper",
+              x0: selectedCategory,
+              x1: selectedCategory,
+              y0: 0,
+              y1: 1,
+              line: { color: "rgba(79, 110, 247, 0.45)", width: 2, dash: "dot" },
+            }],
+          }
+        : {}),
+    },
+  };
+}
+
+export function benchmarkRowsFromResponse(
+  datasets: TestBenchmarkDataset[],
+  algoLabels: Record<string, string>,
+): TestBenchmarkChartRow[] {
+  const byFolder = new Map<string, TestBenchmarkChartRow>();
+  for (const d of datasets) {
+    if (!d.results.length) continue;
+    byFolder.set(d.input_folder, {
+      input_folder: d.input_folder,
+      label: d.label,
+      entries: d.results.map((r) => ({
+        algorithm: r.algorithm ?? "rl",
+        label: algoLabels[r.algorithm ?? "rl"] ?? (r.algorithm ?? "rl"),
+        result: r,
+      })),
+    });
+  }
+  return [...byFolder.values()].sort((a, b) => a.input_folder.localeCompare(b.input_folder));
+}
+
+const TRAIN_CHART_BASE: Partial<Layout> = {
+  plot_bgcolor: "white",
+  paper_bgcolor: "white",
+  height: 300,
+  margin: { t: 44, b: 48, l: 55, r: 20 },
+  xaxis: { title: { text: "Timesteps" } },
+};
+
+export function buildTrainRewardChart(
+  series: TrainSeries,
+): { data: Data[]; layout: Partial<Layout> } {
+  const data: Data[] = [];
+  if (series.timesteps.length > 0) {
+    data.push({
+      type: "scatter",
+      mode: "lines",
+      name: "Rollout ep_rew_mean",
+      x: series.timesteps,
+      y: series.ep_rew_mean,
+      line: { color: "#4f6ef7", width: 2 },
+      hovertemplate: "step %{x:,}<br>reward %{y:.2f}<extra></extra>",
+    });
+  }
+  if (series.eval_timesteps.length > 0) {
+    data.push({
+      type: "scatter",
+      mode: "lines+markers",
+      name: "Eval mean reward",
+      x: series.eval_timesteps,
+      y: series.eval_reward,
+      line: { color: "#e67e22", width: 2 },
+      marker: { size: 7 },
+      hovertemplate: "eval @ %{x:,}<br>reward %{y:.2f}<extra></extra>",
+    });
+  }
+  return {
+    data,
+    layout: {
+      ...TRAIN_CHART_BASE,
+      title: { text: "보상 수렴", font: { size: 14 } },
+      yaxis: { title: { text: "Reward" } },
+      showlegend: data.length > 1,
+      legend: { orientation: "h", y: 1.12, x: 0 },
+    },
+  };
+}
+
+export function buildTrainLossChart(
+  series: TrainSeries,
+): { data: Data[]; layout: Partial<Layout> } {
+  const data: Data[] = [];
+  if (series.timesteps.length > 0 && series.policy_loss.length > 0) {
+    data.push({
+      type: "scatter",
+      mode: "lines",
+      name: "Policy loss",
+      x: series.timesteps,
+      y: series.policy_loss,
+      line: { color: "#9b59b6", width: 2 },
+    });
+  }
+  if (series.timesteps.length > 0 && series.value_loss.length > 0) {
+    data.push({
+      type: "scatter",
+      mode: "lines",
+      name: "Value loss",
+      x: series.timesteps,
+      y: series.value_loss,
+      line: { color: "#16a085", width: 2 },
+    });
+  }
+  return {
+    data,
+    layout: {
+      ...TRAIN_CHART_BASE,
+      title: { text: "Loss", font: { size: 14 } },
+      yaxis: { title: { text: "Loss" } },
+      showlegend: data.length > 1,
+      legend: { orientation: "h", y: 1.12, x: 0 },
+    },
+  };
+}
+
+export function buildTrainExplainedVarChart(
+  series: TrainSeries,
+): { data: Data[]; layout: Partial<Layout> } {
+  const data: Data[] = [];
+  if (series.timesteps.length > 0 && series.explained_variance.length > 0) {
+    data.push({
+      type: "scatter",
+      mode: "lines",
+      name: "Explained variance",
+      x: series.timesteps,
+      y: series.explained_variance,
+      line: { color: "#34495e", width: 2 },
+      fill: "tozeroy",
+      fillcolor: "rgba(52, 73, 94, 0.08)",
+    });
+  }
+  return {
+    data,
+    layout: {
+      ...TRAIN_CHART_BASE,
+      title: { text: "Explained variance", font: { size: 14 } },
+      yaxis: { title: { text: "Variance" }, range: [-0.05, 1.05] },
+      showlegend: false,
+    },
+  };
+}
+
+export function hasTrainChartData(series: TrainSeries): boolean {
+  return (
+    series.timesteps.length > 0
+    || series.eval_timesteps.length > 0
+  );
 }

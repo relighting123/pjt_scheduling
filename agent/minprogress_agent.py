@@ -1,15 +1,11 @@
 """
-agent/minprogress_agent.py – 최소 진행률(Min-Progress) 휴리스틱 에이전트
-
-결정 규칙 (매 결정 시점):
-  1. 큐 LOT의 공정(OPER) 기준 PLAN_PRIORITY 최우선 (숫자 낮을수록 우선)
-  2. 동순위 제품 중 차트 마지막 x에서 계획 대비 생산 기울기 최소
-  3. 기울기 동률 시 잔여 계획량(D0 - 투입)이 큰 제품 우선
-  4. 선정 제품 내 LOT: 기할당 parent split 연속 → START_TM → SEQ → LOT_ID
+agent/minprogress_agent.py – 최소 진행률(Min-Progress) 휴리스틱
+(PPK/OPER, EQP) 2단계 액션 반환
 """
 from typing import Dict, List, Optional, Tuple
 
-from agent.split_priority import assigned_split_priority, prev_assigned_lot_id
+import numpy as np
+
 from simulation.simulator import SchedulingSimulator
 
 
@@ -89,38 +85,19 @@ class MinProgressAgent:
             ),
         )
 
-    def _lot_sort_key(
-        self,
-        sim: SchedulingSimulator,
-        eqp_id: Optional[str],
-        lot: dict,
-    ) -> Tuple:
-        lot_id = lot["lot_id"]
-        if lot.get("is_abstract"):
-            start_tm = int(lot.get("oper_in_time", 10**9))
-        else:
-            start_tm = self._initial_start.get(lot_id, 10**9)
-        seq = self._lot_by_id.get(lot_id, {}).get("seq", 999)
-        split_key = assigned_split_priority(
-            prev_assigned_lot_id(sim, eqp_id),
-            lot_id,
-            self._lot_by_id,
+    def _score_assignment(self, sim: SchedulingSimulator, flat: int, ei: int) -> Tuple:
+        ppk, oper_id = sim.ppk_oper_from_flat(flat)
+        return (
+            self._plan_priority(ppk, oper_id),
+            self._normalized_slope(sim, ppk, oper_id),
+            -self._remaining_plan(sim, ppk, oper_id),
+            flat,
+            ei,
         )
-        return (*split_key, start_tm, seq, lot_id)
 
-    def predict(
-        self,
-        sim: SchedulingSimulator,
-        eqp_id: Optional[str],
-        available_lots: List[dict],
-    ) -> int:
-        if not available_lots:
-            return 0
-
-        oper_id = available_lots[0]["oper_id"]
-        target_prod = self._select_product(sim, oper_id, available_lots)
-        matching = [
-            (i, lot) for i, lot in enumerate(available_lots)
-            if lot["plan_prod_key"] == target_prod
-        ]
-        return min(matching, key=lambda x: self._lot_sort_key(sim, eqp_id, x[1]))[0]
+    def predict(self, sim: SchedulingSimulator) -> np.ndarray:
+        feasible = sim.get_feasible_assignments()
+        if not feasible:
+            return np.array([0, 0], dtype=np.int64)
+        flat, ei = min(feasible, key=lambda a: self._score_assignment(sim, a[0], a[1])[:3])
+        return np.array([flat, ei], dtype=np.int64)

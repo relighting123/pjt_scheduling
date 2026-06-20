@@ -52,17 +52,8 @@ export default function Sidebar({
       <hr />
 
       <fieldset className="mode-group">
-        <legend>페이지</legend>
+        <legend>워크플로</legend>
         <div className="mode-pills">
-          <label className={`mode-pill${mode === "dataset" ? " active" : ""}`}>
-            <input
-              type="radio"
-              name="mode"
-              checked={mode === "dataset"}
-              onChange={() => onModeChange("dataset")}
-            />
-            데이터셋
-          </label>
           <label className={`mode-pill${mode === "train" ? " active" : ""}`}>
             <input
               type="radio"
@@ -71,6 +62,15 @@ export default function Sidebar({
               onChange={() => onModeChange("train")}
             />
             학습 (Train)
+          </label>
+          <label className={`mode-pill${mode === "test" ? " active" : ""}`}>
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === "test"}
+              onChange={() => onModeChange("test")}
+            />
+            테스트 (Test)
           </label>
           <label className={`mode-pill${mode === "inference" ? " active" : ""}`}>
             <input
@@ -104,7 +104,25 @@ export default function Sidebar({
             </option>
           ))}
         </select>
-        <p className="sidebar-hint">생성은 데이터셋 페이지에서 진행합니다.</p>
+        <p className="sidebar-hint">
+          {mode === "test"
+            ? "Test 탭은 FAC 하위 test 기간 전체를 벤치마크합니다."
+            : mode === "train"
+              ? "단일 선택 또는 학습 탭에서 기간·복수 스냅샷을 지정할 수 있습니다."
+              : "추론에 사용할 입력 경로입니다."}
+        </p>
+      </div>
+
+      <hr />
+
+      <div className="sidebar-section">
+        <button
+          type="button"
+          className={`btn btn-secondary sidebar-dataset-link${mode === "dataset" ? " active" : ""}`}
+          onClick={() => onModeChange("dataset")}
+        >
+          데이터셋 생성
+        </button>
       </div>
 
       {config && (

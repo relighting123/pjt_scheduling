@@ -188,8 +188,12 @@ def step_launch_ui():
         subprocess.run(["npm", "install"], cwd=str(frontend_dir), check=True, shell=True)
 
     api_proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "api.server:app",
-         "--host", "127.0.0.1", "--port", "8000", "--reload"],
+        [
+            sys.executable, "-m", "uvicorn", "api.server:app",
+            "--host", "127.0.0.1", "--port", "8000", "--reload",
+            "--reload-exclude", "models",
+            "--reload-exclude", "external/dataset",
+        ],
         cwd=str(ROOT),
     )
 

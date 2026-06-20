@@ -216,11 +216,15 @@ class PathConfig:
     model_dir: Path = field(default_factory=lambda: BASE_DIR / "models")
 
     schedule_file:     str = "schedule.json"
-    availability_file: str = "availability.json"
+    discrete_arrange_file: str = "discrete_arrange.json"
+    abstract_arrange_file: str = "abstract_arrange.json"
     incoming_wip_file: str = "incoming_wip.json"
     plan_file:         str = "plan.json"
     flow_file:         str = "flow.json"
     split_file:        str = "split.json"
+    lot_master_file:   str = "lot_master.json"
+    tool_capacity_file: str = "tool_capacity.json"
+    lot_route_file:    str = "lot_route.json"
 
     @property
     def input_folder_key(self) -> str:
@@ -258,11 +262,12 @@ class PathConfig:
 
 # SQL 파일명 ↔ JSON 파일명 (loader.fetch_from_db)
 SQL_JSON_MAP = {
-    "schedule":     ("schedule.sql",     "schedule.json"),
-    "availability": ("availability.sql", "availability.json"),
-    "plan":         ("plan.sql",         "plan.json"),
-    "flow":         ("flow.sql",         "flow.json"),
-    "split":        ("split.sql",        "split.json"),
+    "schedule":         ("schedule.sql",         "schedule.json"),
+    "discrete_arrange": ("discrete_arrange.sql", "discrete_arrange.json"),
+    "abstract_arrange": ("abstract_arrange.sql", "abstract_arrange.json"),
+    "plan":             ("plan.sql",             "plan.json"),
+    "flow":             ("flow.sql",             "flow.json"),
+    "split":            ("split.sql",            "split.json"),
 }
 
 
@@ -280,8 +285,11 @@ class EnvConfig:
     max_eqp_count:    int = 10
     max_oper_count:   int = 15
     max_prod_count:   int = 10
-    max_queue_size:   int = 20
+    max_queue_size:   int = 20          # legacy compat
     sim_time_horizon: int = 1440
+    hard_horizon_minutes: int = 1440    # 07:00 → 익일 07:00
+    soft_cutoff_minutes:  int = 1320    # 익일 05:00
+    conversion_minutes:   int = 60      # LOT_CD/TEMP 변경 시 setup
 
 
 @dataclass
@@ -304,6 +312,8 @@ class RewardConfig:
     w_idle_per_min:    float = -0.5
     w_completion:      float = 1.0
     w_plan_hit:        float = 5.0
+    w_conversion:      float = -30.0    # LOT_CD/TEMP 전환 1회 패널티
+    w_late_finish:     float = -2.0     # soft cutoff(05:00) 이후 END_TM
 
 
 PROD_COLORS = [

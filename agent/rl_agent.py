@@ -1,43 +1,43 @@
 """
-agent/rl_agent.py – StableBaselines3 PPO 에이전트 래퍼
-학습(train), 모델 저장/로드, 예측(predict) 기능을 제공합니다.
+agent/rl_agent.py – StableBaselines3 MaskablePPO 에이전트 래퍼
 """
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Union
 
 import numpy as np
-from stable_baselines3 import PPO
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from config import CONFIG
 from env.scheduling_env import SchedulingEnv
+from agent.train_progress import TrainProgressState, ProgressCallback, EvalProgressCallback
+
+
+def _mask_fn(env: SchedulingEnv) -> np.ndarray:
+    return env.action_masks()
 
 
 class SchedulingAgent:
-    """
-    RL 에이전트 – PPO 기반 (SB3)
+    """RL 에이전트 – MaskablePPO (SB3 Contrib)"""
 
-    사용 예:
-        agent = SchedulingAgent()
-        agent.train(env_data)
-        agent.save("models/scheduling_rl")
-
-        agent2 = SchedulingAgent.load("models/scheduling_rl")
-        action = agent2.predict(obs)
-    """
-
-    def __init__(self, model: Optional[PPO] = None):
-        self.model: Optional[PPO] = model
+    def __init__(self, model: Optional[MaskablePPO] = None):
+        self.model: Optional[MaskablePPO] = model
 
     # ── 학습 ─────────────────────────────────────────────────────────────────
 
-    def train(self, env_data: dict, verbose: int = 1) -> "SchedulingAgent":
+    def train(
+        self,
+        env_data: Union[dict, List[dict]],
+        verbose: int = 1,
+        progress_state: Optional[TrainProgressState] = None,
+    ) -> "SchedulingAgent":
         """
         목적: 주어진 환경 데이터로 PPO 에이전트 학습
         Input:
-            env_data (dict): preprocessor.preprocess() 반환값
+            env_data (dict | list[dict]): preprocess() 결과. list면 기간별 VecEnv
             verbose  (int):  0=조용히, 1=진행상황 출력
         Output:
             self (체이닝 가능)
@@ -46,31 +46,50 @@ class SchedulingAgent:
         model_dir = CONFIG.path.model_dir
         model_dir.mkdir(parents=True, exist_ok=True)
 
-        def make_env():
-            env = SchedulingEnv(env_data)
-            return Monitor(env)
+        datasets: List[dict] = env_data if isinstance(env_data, list) else [env_data]
 
-        train_env = DummyVecEnv([make_env])
-        eval_env  = DummyVecEnv([make_env])
+        def make_env(data: dict):
+            def _init():
+                env = ActionMasker(SchedulingEnv(data), _mask_fn)
+                return Monitor(env)
+            return _init
 
-        callbacks = [
-            EvalCallback(
-                eval_env,
-                best_model_save_path=str(model_dir / "best"),
-                log_path=str(model_dir / "logs"),
-                eval_freq=cfg.eval_freq,
-                deterministic=True,
-                verbose=0,
-            ),
-            CheckpointCallback(
-                save_freq=cfg.eval_freq,
-                save_path=str(model_dir / "checkpoints"),
-                name_prefix=cfg.model_name,
-                verbose=0,
-            ),
-        ]
+        train_env = DummyVecEnv([make_env(d) for d in datasets])
+        eval_env = DummyVecEnv([make_env(datasets[0])])
 
-        self.model = PPO(
+        callbacks = []
+        if progress_state is not None:
+            callbacks.append(ProgressCallback(progress_state))
+            callbacks.append(
+                EvalProgressCallback(
+                    progress_state,
+                    eval_env,
+                    best_model_save_path=str(model_dir / "best"),
+                    log_path=str(model_dir / "logs"),
+                    eval_freq=cfg.eval_freq,
+                    deterministic=True,
+                    verbose=0,
+                )
+            )
+        else:
+            callbacks.extend([
+                EvalCallback(
+                    eval_env,
+                    best_model_save_path=str(model_dir / "best"),
+                    log_path=str(model_dir / "logs"),
+                    eval_freq=cfg.eval_freq,
+                    deterministic=True,
+                    verbose=0,
+                ),
+                CheckpointCallback(
+                    save_freq=cfg.eval_freq,
+                    save_path=str(model_dir / "checkpoints"),
+                    name_prefix=cfg.model_name,
+                    verbose=0,
+                ),
+            ])
+
+        self.model = MaskablePPO(
             "MlpPolicy",
             train_env,
             learning_rate=cfg.learning_rate,
@@ -80,10 +99,17 @@ class SchedulingAgent:
             gamma=cfg.gamma,
             verbose=verbose,
         )
+        if progress_state is not None:
+            if len(datasets) > 1:
+                progress_state.add_log(f"VecEnv {len(datasets)}개 기간 병렬 학습")
+            progress_state.add_log(
+                f"하이퍼파라미터: lr={cfg.learning_rate}, n_steps={cfg.n_steps}, "
+                f"batch={cfg.batch_size}, eval_freq={cfg.eval_freq}"
+            )
         self.model.learn(
             total_timesteps=cfg.total_timesteps,
             callback=callbacks,
-            progress_bar=(verbose > 0),
+            progress_bar=(verbose > 0 and progress_state is None),
         )
         return self
 
@@ -109,7 +135,7 @@ class SchedulingAgent:
         Output: SchedulingAgent 인스턴스
         """
         load_path = path or str(CONFIG.path.model_dir / CONFIG.rl.model_name)
-        model = PPO.load(load_path)
+        model = MaskablePPO.load(load_path)
         print(f"[agent] 모델 로드 ← {load_path}")
         return cls(model=model)
 
@@ -124,60 +150,57 @@ class SchedulingAgent:
 
     # ── 예측 ─────────────────────────────────────────────────────────────────
 
-    def predict(self, obs: np.ndarray, deterministic: bool = True) -> int:
-        """
-        목적: 관측 벡터로부터 행동(LOT 인덱스) 예측
-        Input:
-            obs (np.ndarray): shape=(obs_dim,)
-            deterministic (bool): True=greedy, False=확률적
-        Output:
-            action (int): 0 ~ max_queue_size-1
-        """
+    def predict(
+        self,
+        obs: np.ndarray,
+        deterministic: bool = True,
+        action_masks: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
         if self.model is None:
             raise RuntimeError("모델이 로드되지 않았습니다.")
-        action, _ = self.model.predict(obs, deterministic=deterministic)
-        return int(action)
+        kwargs = {"deterministic": deterministic}
+        if action_masks is not None:
+            kwargs["action_masks"] = action_masks
+        action, _ = self.model.predict(obs, **kwargs)
+        return np.asarray(action, dtype=np.int64)
 
     def evaluate(self, env_data: dict, n_episodes: int = 5) -> dict:
-        """
-        목적: 여러 에피소드를 실행하여 평균 성능 지표 반환
-        Input:
-            env_data   (dict): preprocessor 반환 데이터
-            n_episodes (int):  평가 에피소드 수
-        Output:
-            {
-              "mean_reward":     float,
-              "mean_oper_sw":    float,
-              "mean_prod_sw":    float,
-              "mean_idle":       float,
-              "mean_completion": float,
-            }
-        """
-        rewards, oper_sws, prod_sws, idles, completions = [], [], [], [], []
+        rewards, oper_sws, prod_sws, idles, completions, conversions = [], [], [], [], [], []
+        max_steps = int(env_data.get("sim_end_minutes", 1440)) + 500
 
         for _ in range(n_episodes):
-            env = SchedulingEnv(env_data)
+            env = ActionMasker(
+                SchedulingEnv(env_data, record_history=False),
+                _mask_fn,
+            )
             obs, _ = env.reset()
             done = False
             ep_reward = 0.0
+            steps = 0
 
             while not done:
-                action  = self.predict(obs)
+                mask = env.action_masks()
+                action = self.predict(obs, action_masks=mask)
                 obs, r, terminated, truncated, info = env.step(action)
                 ep_reward += r
                 done = terminated or truncated
+                steps += 1
+                if steps >= max_steps:
+                    break
 
             rewards.append(ep_reward)
             oper_sws.append(info["oper_switches"])
             prod_sws.append(info["prod_switches"])
             idles.append(info["idle_total"])
+            conversions.append(info.get("conversions", 0))
             total_done = sum(info["completed_qty"].values())
             completions.append(total_done)
 
         return {
-            "mean_reward":     float(np.mean(rewards)),
-            "mean_oper_sw":    float(np.mean(oper_sws)),
-            "mean_prod_sw":    float(np.mean(prod_sws)),
-            "mean_idle":       float(np.mean(idles)),
-            "mean_completion": float(np.mean(completions)),
+            "mean_reward":      float(np.mean(rewards)),
+            "mean_oper_sw":     float(np.mean(oper_sws)),
+            "mean_prod_sw":     float(np.mean(prod_sws)),
+            "mean_idle":        float(np.mean(idles)),
+            "mean_completion":  float(np.mean(completions)),
+            "mean_conversions": float(np.mean(conversions)),
         }

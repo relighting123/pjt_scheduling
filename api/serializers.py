@@ -23,11 +23,10 @@ def serialize_history(history: list[dict]) -> list[dict]:
     return out
 
 
-def serialize_inference_result(result: dict) -> dict:
-    return {
+def serialize_inference_result(result: dict, *, include_history: bool = True) -> dict:
+    payload = {
         "schedule": result["schedule"],
         "initial_schedule": result["initial_schedule"],
-        "history": serialize_history(result.get("history", [])),
         "stats": {
             **result["stats"],
             "completed_qty": serialize_completed(result["stats"].get("completed_qty", {})),
@@ -39,6 +38,11 @@ def serialize_inference_result(result: dict) -> dict:
         "sim_end_minutes": result.get("sim_end_minutes", 0),
         "algorithm": result.get("algorithm", "rl"),
     }
+    if include_history:
+        payload["history"] = serialize_history(result.get("history", []))
+    else:
+        payload["history"] = []
+    return payload
 
 
 def serialize_compare_response(payload: dict) -> dict:

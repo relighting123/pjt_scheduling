@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, train_snapshot_now, PERIOD_SPLITS
+from config import CONFIG, set_input_folder, list_input_folders, train_snapshot_now, PERIOD_SPLITS, validate_path_segment, iter_rule_timekeys, parse_input_folder, latest_period
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range
 from data.generator import (
     generate_sample_data,
@@ -31,6 +31,15 @@ from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
 from api.serializers import env_data_summary, serialize_inference_result, serialize_compare_response
+from api.test_benchmark_store import (
+    load_benchmark,
+    save_benchmark,
+    clear_benchmark,
+    init_benchmark,
+    append_dataset,
+    empty_state,
+)
+from api.train_service import train_progress, start_training, is_training
 
 app = FastAPI(title="Post-Scheduling RL API", version="1.0.0")
 
@@ -45,6 +54,7 @@ app.add_middleware(
 # 세션 캐시 – 마지막 추론 결과 (히스토리 포함)
 _last_inference: Optional[dict] = None
 _env_data_cache: Optional[dict] = None
+_benchmark_rl_agent: Optional[SchedulingAgent] = None
 
 
 def _apply_input_folder(folder: Optional[str]) -> None:
@@ -56,12 +66,104 @@ def _apply_input_folder(folder: Optional[str]) -> None:
 
 def _load_env_data() -> dict:
     global _env_data_cache
+    if _env_data_cache is not None:
+        return _env_data_cache
     raw = load_data()
     errors = validate_data(raw)
     if errors:
         raise HTTPException(status_code=400, detail={"errors": errors})
     _env_data_cache = preprocess(raw)
     return _env_data_cache
+
+
+def _load_env_data_for_folder(folder: str) -> dict:
+    """지정 train 스냅샷 1개 로드 (전역 입력 경로는 복원)."""
+    original = CONFIG.path.input_folder_key
+    try:
+        set_input_folder(folder)
+        raw = load_data()
+        errors = validate_data(raw)
+        if errors:
+            raise HTTPException(
+                status_code=400,
+                detail={"errors": errors, "folder": folder},
+            )
+        return preprocess(raw)
+    finally:
+        set_input_folder(original)
+
+
+def _train_folders_for_fac(fac_id: str) -> list[str]:
+    prefix = f"{fac_id}/train/"
+    return sorted(
+        f for f in list_input_folders()
+        if f.startswith(prefix)
+    )
+
+
+def _normalize_input_folder_key(folder: str) -> str:
+    """dataset 경로 키 검증 (FAC001/train/YYYYMMDDHHmmss 형식)."""
+    try:
+        fac_id, split, period = parse_input_folder(folder.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if split in PERIOD_SPLITS:
+        per = period or latest_period(fac_id, split)
+        if not per:
+            raise HTTPException(status_code=404, detail=f"기간 폴더 없음: {folder.strip()}")
+        return f"{fac_id}/{split}/{per}"
+    return f"{fac_id}/{split}"
+
+
+def _resolve_train_folders(req: "TrainRequest") -> list[str]:
+    """학습에 사용할 train 스냅샷 경로 목록."""
+    fac_id = req.fac_id or CONFIG.path.fac_id
+    available = set(list_input_folders())
+
+    if req.input_folders:
+        folders = [
+            _normalize_input_folder_key(f)
+            for f in req.input_folders
+            if f and f.strip()
+        ]
+        if not folders:
+            raise HTTPException(status_code=400, detail="input_folders가 비어 있습니다.")
+        missing = [f for f in folders if f not in available]
+        if missing:
+            raise HTTPException(
+                status_code=404,
+                detail=f"데이터셋 없음: {', '.join(missing)}",
+            )
+        return folders
+
+    if req.from_date and req.to_date:
+        folders = [
+            f"{fac_id}/train/{key}"
+            for key in iter_rule_timekeys(req.from_date, req.to_date)
+            if f"{fac_id}/train/{key}" in available
+        ]
+        if not folders:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"기간 {req.from_date}~{req.to_date}에 해당하는 "
+                    f"train 데이터가 없습니다."
+                ),
+            )
+        return folders
+
+    if req.input_folder:
+        folder = _normalize_input_folder_key(req.input_folder)
+        if folder not in available:
+            raise HTTPException(status_code=404, detail=f"데이터셋 없음: {folder}")
+        return [folder]
+
+    return [CONFIG.path.input_folder_key]
+
+
+def _prepare_train_env_data(req: "TrainRequest") -> tuple[list[dict], list[str]]:
+    folders = _resolve_train_folders(req)
+    return [_load_env_data_for_folder(f) for f in folders], folders
 
 
 # ── 요청 스키마 ───────────────────────────────────────────────────────────────
@@ -71,6 +173,26 @@ class TrainRequest(BaseModel):
     learning_rate: float = Field(default=CONFIG.rl.learning_rate, gt=0)
     w_same_oper: float = Field(default=CONFIG.reward.w_same_oper)
     w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
+    input_folder: Optional[str] = Field(
+        default=None,
+        description="단일 train 스냅샷 (미지정 시 사이드바 현재 선택)",
+    )
+    input_folders: Optional[list[str]] = Field(
+        default=None,
+        description="복수 train 스냅샷 – VecEnv로 병렬 학습",
+    )
+    from_date: Optional[str] = Field(
+        default=None,
+        description="train 기간 시작 RULE_TIMEKEY (YYYYMMDDHHmmss)",
+    )
+    to_date: Optional[str] = Field(
+        default=None,
+        description="train 기간 종료 RULE_TIMEKEY (YYYYMMDDHHmmss)",
+    )
+    fac_id: Optional[str] = Field(
+        default=None,
+        description="from/to 기간 검색용 FAC_ID (기본: 현재 설정)",
+    )
 
 
 class InferenceRequest(BaseModel):
@@ -135,6 +257,29 @@ class CompareRequest(BaseModel):
         default=None,
         description="입력 데이터 폴더명 (external/<name>/)",
     )
+
+
+class TestBenchmarkRequest(BaseModel):
+    algorithms: list[str] = Field(min_length=1, description="비교할 알고리즘 ID 목록")
+    fac_id: Optional[str] = Field(default=None, description="FAC_ID (기본: 현재 설정)")
+    input_folders: Optional[list[str]] = Field(
+        default=None,
+        description="test 데이터셋 경로 목록 (미지정 시 fac_id 하위 test 전체)",
+    )
+
+
+class TestBenchmarkInitRequest(BaseModel):
+    algorithms: list[str] = Field(min_length=1)
+    fac_id: Optional[str] = None
+
+
+class TestBenchmarkRunOneRequest(BaseModel):
+    algorithms: list[str] = Field(min_length=1)
+    input_folder: str = Field(min_length=1)
+    fac_id: Optional[str] = None
+    progress_current: int = Field(ge=0)
+    progress_total: int = Field(ge=1)
+    done: bool = False
 
 
 # ── 엔드포인트 ───────────────────────────────────────────────────────────────
@@ -326,10 +471,36 @@ def model_status():
     return {"exists": agent.model_exists()}
 
 
+@app.post("/api/train/start")
+def train_start(req: TrainRequest):
+    try:
+        env_list, folders = _prepare_train_env_data(req)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    if is_training():
+        raise HTTPException(status_code=409, detail="이미 학습이 진행 중입니다.")
+    params = {
+        "total_timesteps": req.total_timesteps,
+        "learning_rate": req.learning_rate,
+        "w_same_oper": req.w_same_oper,
+        "w_idle_per_min": req.w_idle_per_min,
+        "input_folders": folders,
+    }
+    payload = env_list if len(env_list) > 1 else env_list[0]
+    if not start_training(payload, params):
+        raise HTTPException(status_code=409, detail="학습을 시작할 수 없습니다.")
+    return {"message": "학습 시작", "input_folders": folders}
+
+
+@app.get("/api/train/status")
+def train_status():
+    return train_progress.snapshot()
+
+
 @app.post("/api/train")
 def train(req: TrainRequest):
     try:
-        env_data = _load_env_data()
+        env_list, folders = _prepare_train_env_data(req)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -339,10 +510,11 @@ def train(req: TrainRequest):
     CONFIG.reward.w_idle_per_min = req.w_idle_per_min
 
     agent = SchedulingAgent()
-    agent.train(env_data, verbose=0)
+    payload = env_list if len(env_list) > 1 else env_list[0]
+    agent.train(payload, verbose=0)
     agent.save()
-    metrics = agent.evaluate(env_data, n_episodes=3)
-    return {"message": "학습 완료", "metrics": metrics}
+    metrics = agent.evaluate(env_list[0], n_episodes=3)
+    return {"message": "학습 완료", "metrics": metrics, "input_folders": folders}
 
 
 @app.get("/api/algorithms")
@@ -446,3 +618,206 @@ def get_inference_result():
         "algorithm": saved.get("algorithm", "rl"),
     }
     return serialize_inference_result(result)
+
+
+def _test_folders_for_fac(fac_id: str) -> list[str]:
+    prefix = f"{fac_id}/test/"
+    return sorted(
+        f for f in list_input_folders()
+        if f.startswith(prefix)
+    )
+
+
+def _validate_algorithms(algorithms: list[str]) -> None:
+    for algo in algorithms:
+        try:
+            validate_algorithm(algo)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+
+def _get_benchmark_rl_agent():
+    """test 벤치마크용 PPO 모델 – 세션 동안 1회만 로드"""
+    global _benchmark_rl_agent
+    if _benchmark_rl_agent is not None:
+        return _benchmark_rl_agent
+    probe = SchedulingAgent()
+    if not probe.model_exists():
+        return None
+    _benchmark_rl_agent = SchedulingAgent.load()
+    return _benchmark_rl_agent
+
+
+def _benchmark_single_folder(folder: str, algorithms: list[str]) -> dict:
+    """단일 test 데이터셋에 대해 알고리즘 비교 실행."""
+    label = folder.rsplit("/", 1)[-1]
+    original_folder = CONFIG.path.input_folder_key
+    global _env_data_cache
+    rl_agent = _get_benchmark_rl_agent() if "rl" in algorithms else None
+    try:
+        _apply_input_folder(folder)
+        env_data = _load_env_data()
+        payload = run_inference_compare(
+            env_data,
+            algorithms,
+            rl_agent=rl_agent,
+            record_history=False,
+        )
+        return {
+            "input_folder": folder,
+            "label": label,
+            "results": [serialize_inference_result(r, include_history=False) for r in payload["results"]],
+            "errors": payload.get("errors", []),
+            "plan": payload.get("plan", []),
+            "prod_keys": payload.get("prod_keys", []),
+            "oper_ids": payload.get("oper_ids", []),
+            "eqp_ids": payload.get("eqp_ids", []),
+            "sim_end_minutes": payload.get("sim_end_minutes", 0),
+        }
+    except FileNotFoundError as e:
+        return {
+            "input_folder": folder,
+            "label": label,
+            "error": str(e),
+            "results": [],
+            "errors": [],
+            "plan": [],
+            "prod_keys": [],
+            "oper_ids": [],
+            "eqp_ids": [],
+            "sim_end_minutes": 0,
+        }
+    except HTTPException as e:
+        detail = e.detail
+        msg = detail if isinstance(detail, str) else str(detail)
+        return {
+            "input_folder": folder,
+            "label": label,
+            "error": msg,
+            "results": [],
+            "errors": [],
+            "plan": [],
+            "prod_keys": [],
+            "oper_ids": [],
+            "eqp_ids": [],
+            "sim_end_minutes": 0,
+        }
+    finally:
+        set_input_folder(original_folder)
+        _env_data_cache = None
+
+
+def _benchmark_response(state: dict) -> dict:
+    return {
+        "fac_id": state["fac_id"],
+        "algorithms": state.get("algorithms", []),
+        "status": state.get("status", "idle"),
+        "progress": state.get("progress", {"current": 0, "total": 0, "label": ""}),
+        "updated_at": state.get("updated_at"),
+        "datasets": state.get("datasets", []),
+    }
+
+
+@app.get("/api/test/datasets")
+def list_test_datasets(fac_id: Optional[str] = None):
+    fac = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
+    folders = _test_folders_for_fac(fac)
+    return {
+        "fac_id": fac,
+        "datasets": [
+            {"input_folder": f, "label": f.rsplit("/", 1)[-1]}
+            for f in folders
+        ],
+    }
+
+
+@app.get("/api/test/benchmark/saved")
+def get_saved_test_benchmark(fac_id: Optional[str] = None):
+    fac = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
+    return _benchmark_response(load_benchmark(fac))
+
+
+@app.delete("/api/test/benchmark/saved")
+def delete_saved_test_benchmark(fac_id: Optional[str] = None):
+    fac = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
+    clear_benchmark(fac)
+    return _benchmark_response(empty_state(fac))
+
+
+@app.post("/api/test/benchmark/init")
+def init_test_benchmark(req: TestBenchmarkInitRequest):
+    fac_id = validate_path_segment(req.fac_id or CONFIG.path.fac_id, "FAC_ID")
+    _validate_algorithms(req.algorithms)
+    global _benchmark_rl_agent
+    _benchmark_rl_agent = None
+    folders = _test_folders_for_fac(fac_id)
+    if not folders:
+        raise HTTPException(
+            status_code=404,
+            detail=f"test 데이터셋이 없습니다 (FAC_ID={fac_id}).",
+        )
+    state = init_benchmark(fac_id, req.algorithms, len(folders))
+    return _benchmark_response(state)
+
+
+@app.post("/api/test/benchmark/run-one")
+def run_test_benchmark_one(req: TestBenchmarkRunOneRequest):
+    fac_id = validate_path_segment(req.fac_id or CONFIG.path.fac_id, "FAC_ID")
+    _validate_algorithms(req.algorithms)
+    entry = _benchmark_single_folder(req.input_folder, req.algorithms)
+    state = append_dataset(
+        fac_id,
+        entry,
+        req.progress_current,
+        req.progress_total,
+        entry["label"],
+        req.done,
+    )
+    state["algorithms"] = req.algorithms
+    save_benchmark(state)
+    return _benchmark_response(load_benchmark(fac_id))
+
+
+@app.post("/api/test/benchmark")
+def test_benchmark(req: TestBenchmarkRequest):
+    fac_id = validate_path_segment(req.fac_id or CONFIG.path.fac_id, "FAC_ID")
+    _validate_algorithms(req.algorithms)
+
+    if req.input_folders:
+        folders = req.input_folders
+    else:
+        folders = _test_folders_for_fac(fac_id)
+
+    if not folders:
+        raise HTTPException(
+            status_code=404,
+            detail=f"test 데이터셋이 없습니다 (FAC_ID={fac_id}). 데이터셋 페이지에서 test 기간을 생성하세요.",
+        )
+
+    init_benchmark(fac_id, req.algorithms, len(folders))
+    datasets_out = []
+    total = len(folders)
+
+    for i, folder in enumerate(folders, start=1):
+        entry = _benchmark_single_folder(folder, req.algorithms)
+        datasets_out.append(entry)
+        append_dataset(
+            fac_id,
+            entry,
+            i,
+            total,
+            entry["label"],
+            done=(i >= total),
+        )
+
+    ok_count = sum(1 for d in datasets_out if d["results"])
+    if ok_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "모든 test 데이터셋에서 추론에 실패했습니다.",
+                "datasets": datasets_out,
+            },
+        )
+
+    return _benchmark_response(load_benchmark(fac_id))

@@ -7,11 +7,21 @@ import type {
   InferenceResult,
   SampleScenario,
   GeneratorConfig,
+  TestBenchmarkResponse,
+  TestDatasetsResponse,
   TrainMetrics,
+  TrainStatusResponse,
 } from "../types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new Error(
+      "서버에 연결할 수 없습니다. API(8000)가 실행 중인지 확인하고 python main.py ui 를 재시작하세요.",
+    );
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
@@ -99,12 +109,34 @@ export const api = {
     learning_rate: number;
     w_same_oper: number;
     w_idle_per_min: number;
+    input_folder?: string;
+    input_folders?: string[];
+    from_date?: string;
+    to_date?: string;
+    fac_id?: string;
   }) =>
-    request<{ message: string; metrics: TrainMetrics }>("/api/train", {
+    request<{ message: string; metrics: TrainMetrics; input_folders?: string[] }>("/api/train", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  startTraining: (body: {
+    total_timesteps: number;
+    learning_rate: number;
+    w_same_oper: number;
+    w_idle_per_min: number;
+    input_folder?: string;
+    input_folders?: string[];
+    from_date?: string;
+    to_date?: string;
+    fac_id?: string;
+  }) =>
+    request<{ message: string; input_folders?: string[] }>("/api/train/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  getTrainingStatus: () => request<TrainStatusResponse>("/api/train/status"),
   runInference: (algorithm: AlgorithmId = "rl", input_folder?: string) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
@@ -116,6 +148,48 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ algorithms, ...(input_folder ? { input_folder } : {}) }),
+    }),
+  getTestDatasets: (fac_id?: string) =>
+    request<TestDatasetsResponse>(
+      `/api/test/datasets${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
+    ),
+  getSavedTestBenchmark: (fac_id?: string) =>
+    request<TestBenchmarkResponse>(
+      `/api/test/benchmark/saved${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
+    ),
+  clearSavedTestBenchmark: (fac_id?: string) =>
+    request<TestBenchmarkResponse>(
+      `/api/test/benchmark/saved${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
+      { method: "DELETE" },
+    ),
+  initTestBenchmark: (algorithms: AlgorithmId[], fac_id?: string) =>
+    request<TestBenchmarkResponse>("/api/test/benchmark/init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ algorithms, ...(fac_id ? { fac_id } : {}) }),
+    }),
+  runTestBenchmarkOne: (opts: {
+    algorithms: AlgorithmId[];
+    input_folder: string;
+    fac_id?: string;
+    progress_current: number;
+    progress_total: number;
+    done: boolean;
+  }) =>
+    request<TestBenchmarkResponse>("/api/test/benchmark/run-one", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts),
+    }),
+  runTestBenchmark: (algorithms: AlgorithmId[], opts?: { fac_id?: string; input_folders?: string[] }) =>
+    request<TestBenchmarkResponse>("/api/test/benchmark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        algorithms,
+        ...(opts?.fac_id ? { fac_id: opts.fac_id } : {}),
+        ...(opts?.input_folders ? { input_folders: opts.input_folders } : {}),
+      }),
     }),
   getInferenceResult: () => request<InferenceResult>("/api/inference/result"),
 };

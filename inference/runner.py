@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 from config import CONFIG
-from agent.rl_agent import SchedulingAgent
+from agent.rl_agent import SchedulingAgent, _mask_fn
 from agent.minprogress_agent import MinProgressAgent
 from agent.earliest_st_agent import EarliestSTAgent
 from agent.registry import validate_algorithm, VALID_ALGORITHMS
 from env.scheduling_env import SchedulingEnv
+from sb3_contrib.common.wrappers import ActionMasker
 from utils.helpers import minutes_to_str
 
 
@@ -21,6 +22,7 @@ def run_inference(
     agent: Optional[SchedulingAgent] = None,
     model_path: Optional[str] = None,
     deterministic: bool = True,
+    record_history: bool = True,
 ) -> dict:
     """
     목적: 선택한 알고리즘으로 Post-Scheduling 추론 실행
@@ -51,15 +53,13 @@ def run_inference(
     elif algorithm == "earliest_st":
         heuristic_agent = EarliestSTAgent(env_data)
 
-    env = SchedulingEnv(run_data)
+    env = ActionMasker(SchedulingEnv(run_data, record_history=record_history), _mask_fn)
     obs, _ = env.reset()
     done = False
 
     while not done:
         if heuristic_agent is not None:
-            eqp_id = env.sim.current_idle_eqp()
-            lots = env.sim.available_lots(eqp_id) if eqp_id else []
-            action = heuristic_agent.predict(env.sim, eqp_id, lots)
+            action = heuristic_agent.predict(env.sim)
         else:
             action = agent.predict(obs, deterministic=deterministic)
 
@@ -83,6 +83,7 @@ def run_inference(
             "idle_total":    stats["idle_total"],
             "oper_switches": stats["oper_switches"],
             "prod_switches": stats["prod_switches"],
+            "conversions":   stats.get("conversions", 0),
             "completed_qty": {str(k): v for k, v in stats["completed_qty"].items()},
         },
         "plan":      env_data["plan"],
@@ -137,6 +138,8 @@ def run_inference_compare(
     env_data: dict,
     algorithms: list[str],
     model_path: Optional[str] = None,
+    record_history: bool = False,
+    rl_agent: Optional[SchedulingAgent] = None,
 ) -> dict:
     """
     동일 입력 데이터로 여러 알고리즘 추론 후 비교용 결과 반환
@@ -144,8 +147,8 @@ def run_inference_compare(
     results: list[dict] = []
     errors: list[dict] = []
 
-    rl_agent = None
-    if "rl" in algorithms:
+    rl_loaded = rl_agent
+    if "rl" in algorithms and rl_loaded is None:
         agent = SchedulingAgent()
         if not agent.model_exists():
             errors.append({
@@ -153,17 +156,18 @@ def run_inference_compare(
                 "message": "학습된 모델이 없습니다.",
             })
         else:
-            rl_agent = SchedulingAgent.load(model_path)
+            rl_loaded = SchedulingAgent.load(model_path)
 
     for algo in algorithms:
-        if algo == "rl" and rl_agent is None:
+        if algo == "rl" and rl_loaded is None:
             continue
         try:
             validate_algorithm(algo)
             result = run_inference(
                 env_data,
                 algorithm=algo,
-                agent=rl_agent if algo == "rl" else None,
+                agent=rl_loaded if algo == "rl" else None,
+                record_history=record_history,
             )
             result["prod_keys"] = env_data["prod_keys"]
             result["oper_ids"] = env_data["oper_ids"]
