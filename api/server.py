@@ -15,8 +15,17 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, validate_input_folder, list_input_folders
-from data.loader import load_data, validate_data, generate_sample_data, list_sample_scenarios
+from config import CONFIG, set_input_folder, list_input_folders, train_snapshot_now, PERIOD_SPLITS
+from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range
+from data.generator import (
+    generate_sample_data,
+    generate_sample_period_range,
+    list_sample_scenarios,
+    bootstrap_facility_datasets,
+    generator_config_from_dict,
+    generator_config_to_dict,
+    DEFAULT_GENERATOR_CONFIG,
+)
 from data.preprocessor import preprocess
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
@@ -72,15 +81,45 @@ class InferenceRequest(BaseModel):
     )
 
 
+class GeneratorConfigModel(BaseModel):
+    n_products: int = Field(default=3, ge=1, le=20)
+    n_eqps: int = Field(default=3, ge=1, le=20)
+    n_opers: int = Field(default=2, ge=1, le=10)
+    lots_per_oper: int = Field(default=3, ge=1, le=30)
+    wf_qty: int = Field(default=25, ge=1, le=500)
+    st_min: float = Field(default=60.0, ge=1)
+    st_max: float = Field(default=180.0, ge=1)
+    st_std: float = Field(default=20.0, ge=0)
+    eligibility: float = Field(default=0.7, ge=0, le=1)
+    plan_qty_min: int = Field(default=25, ge=0)
+    plan_qty_max: int = Field(default=150, ge=1)
+    plan_priority: int = Field(default=1, ge=1, le=9)
+    train_period_count: int = Field(default=3, ge=1, le=365)
+    test_period_count: int = Field(default=1, ge=1, le=365)
+    split_qty: int = Field(default=3, ge=1, le=100)
+    seed: Optional[int] = Field(default=None)
+
+
 class SampleRequest(BaseModel):
-    input_folder: Optional[str] = Field(
-        default=None,
-        description="샘플을 생성할 폴더명 (없으면 시나리오 기본 폴더)",
+    fac_id: str = Field(default="FAC001", description="공장 ID")
+    split: str = Field(default="train", description="train | test | infer")
+    scenario: str = Field(default="random", description="default | single_heavy_wip | random")
+    bootstrap: bool = Field(default=False, description="train/test/infer 전체 생성")
+    from_date: Optional[str] = Field(default=None, description="시작 RULE_TIMEKEY (YYYYMMDDHHmmss)")
+    to_date: Optional[str] = Field(default=None, description="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)")
+    generator_config: Optional[GeneratorConfigModel] = Field(default=None)
+    use_period_count: bool = Field(
+        default=False,
+        description="True면 train/test_period_count로 폴더 일괄 생성 (from/to 무시)",
     )
-    scenario: str = Field(
-        default="default",
-        description="default | single_heavy_wip",
-    )
+
+
+class FetchRequest(BaseModel):
+    fac_id: str = Field(default="FAC001")
+    split: str = Field(default="train")
+    snapshot: Optional[str] = Field(default=None, description="단일 RULE_TIMEKEY (YYYYMMDDHHmmss)")
+    from_date: Optional[str] = Field(default=None, description="시작 RULE_TIMEKEY (YYYYMMDDHHmmss)")
+    to_date: Optional[str] = Field(default=None, description="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)")
 
 
 class InputFolderRequest(BaseModel):
@@ -109,9 +148,15 @@ def health():
 def get_config():
     return {
         "model_dir": str(CONFIG.path.model_dir),
-        "input_folder": CONFIG.path.input_folder,
+        "input_folder": CONFIG.path.input_folder_key,
+        "fac_id": CONFIG.path.fac_id,
+        "dataset_split": CONFIG.path.dataset_split,
+        "train_snapshot": CONFIG.path.train_snapshot,
+        "sql_dir": str(CONFIG.path.sql_dir),
         "input_dir": str(CONFIG.path.input_dir),
         "output_dir": str(CONFIG.path.output_dir),
+        "infer_input_dir": str(CONFIG.path.infer_input_dir),
+        "infer_output_dir": str(CONFIG.path.infer_output_dir),
         "input_folders": list_input_folders(),
         "default_timesteps": CONFIG.rl.total_timesteps,
         "default_learning_rate": CONFIG.rl.learning_rate,
@@ -130,7 +175,7 @@ def select_input_folder(req: InputFolderRequest):
     _env_data_cache = None
     return {
         "message": f"입력 폴더가 '{req.input_folder}'(으)로 설정되었습니다.",
-        "input_folder": CONFIG.path.input_folder,
+        "input_folder": CONFIG.path.input_folder_key,
         "input_dir": str(path),
         "output_dir": str(CONFIG.path.output_dir),
     }
@@ -141,23 +186,127 @@ def sample_scenarios():
     return {"scenarios": list_sample_scenarios()}
 
 
+@app.get("/api/sample/generator-config")
+def get_generator_config_defaults():
+    return {"defaults": generator_config_to_dict(DEFAULT_GENERATOR_CONFIG)}
+
+
+def _split_input_path(paths: dict, split: str) -> str:
+    entry = paths[split]
+    if isinstance(entry, list):
+        return entry[-1]["input"]
+    return entry["input"]
+
+
 @app.post("/api/sample")
 def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
-    from data.loader import SAMPLE_SCENARIOS
+    from data.generator import SAMPLE_SCENARIOS
 
     if req.scenario not in SAMPLE_SCENARIOS:
         raise HTTPException(status_code=400, detail=f"알 수 없는 시나리오: {req.scenario}")
 
-    folder = req.input_folder or SAMPLE_SCENARIOS[req.scenario]["default_folder"]
-    set_input_folder(folder)
-    path = generate_sample_data(output_dir=CONFIG.path.input_dir, scenario=req.scenario)
+    try:
+        gen_cfg = generator_config_from_dict(
+            req.generator_config.model_dump() if req.generator_config else None
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    global _env_data_cache
+    _env_data_cache = None
+
+    if req.bootstrap:
+        info = bootstrap_facility_datasets(
+            fac_id=req.fac_id, scenario=req.scenario, gen_config=gen_cfg,
+        )
+        snap = info["train_snapshot"]
+        set_input_folder(f"{req.fac_id}/train/{snap}")
+        path = _split_input_path(info["paths"], "train")
+    elif req.use_period_count:
+        count = (
+            gen_cfg.train_period_count if req.split == "train"
+            else gen_cfg.test_period_count if req.split == "test"
+            else 1
+        )
+        paths = generate_sample_period_range(
+            scenario=req.scenario,
+            fac_id=req.fac_id,
+            split=req.split,
+            gen_config=gen_cfg,
+            period_count=count,
+        )
+        last = paths[-1]
+        if req.split in PERIOD_SPLITS:
+            set_input_folder(f"{req.fac_id}/{req.split}/{last.parent.name}")
+        else:
+            set_input_folder(f"{req.fac_id}/{req.split}")
+        path = last
+    elif req.from_date and req.to_date:
+        paths = generate_sample_period_range(
+            scenario=req.scenario,
+            fac_id=req.fac_id,
+            from_date=req.from_date,
+            to_date=req.to_date,
+            split=req.split,
+            gen_config=gen_cfg,
+        )
+        last = paths[-1]
+        set_input_folder(f"{req.fac_id}/{req.split}/{last.parent.name}")
+        path = last
+    elif req.from_date or req.to_date:
+        raise HTTPException(status_code=400, detail="from_date와 to_date를 함께 지정하세요.")
+    else:
+        path = generate_sample_data(
+            scenario=req.scenario,
+            fac_id=req.fac_id,
+            split=req.split,
+            gen_config=gen_cfg,
+        )
+        if req.split in PERIOD_SPLITS:
+            set_input_folder(f"{req.fac_id}/{req.split}/{path.parent.name}")
+        else:
+            set_input_folder(f"{req.fac_id}/{req.split}")
+
+    return {
+        "message": f"샘플 데이터가 생성되었습니다. ({path})",
+        "scenario": req.scenario,
+        "input_folder": CONFIG.path.input_folder_key,
+        "input_dir": str(path),
+        "generator_config": generator_config_to_dict(gen_cfg),
+    }
+
+
+@app.post("/api/fetch")
+def fetch_dataset(req: FetchRequest):
+    try:
+        if req.from_date and req.to_date:
+            paths = fetch_period_range(
+                fac_id=req.fac_id,
+                from_date=req.from_date,
+                to_date=req.to_date,
+                split=req.split,
+            )
+            path = paths[-1]
+        elif req.from_date or req.to_date:
+            raise ValueError("from_date와 to_date를 함께 지정하세요.")
+        else:
+            snap = req.snapshot or (train_snapshot_now() if req.split == "train" else None)
+            path = fetch_from_db(fac_id=req.fac_id, split=req.split, snapshot=snap)
+    except (ValueError, FileNotFoundError, ImportError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
+
+    if req.split in PERIOD_SPLITS:
+        set_input_folder(f"{req.fac_id}/{req.split}/{path.parent.name}")
+    else:
+        set_input_folder(f"{req.fac_id}/{req.split}")
 
     global _env_data_cache
     _env_data_cache = None
     return {
-        "message": f"샘플 데이터가 생성되었습니다. ({path})",
-        "scenario": req.scenario,
-        "input_folder": CONFIG.path.input_folder,
+        "message": f"DB 데이터가 JSON으로 저장되었습니다. ({path})",
+        "input_folder": CONFIG.path.input_folder_key,
         "input_dir": str(path),
     }
 
@@ -230,7 +379,7 @@ def inference(req: InferenceRequest):
     result["oper_ids"] = env_data["oper_ids"]
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
-    save_result(result)
+    save_result(result, output_dir=CONFIG.path.infer_output_dir)
     _last_inference = result
     return serialize_inference_result(result)
 
@@ -276,7 +425,7 @@ def get_inference_result():
     from pathlib import Path
     import json
 
-    full_path = CONFIG.path.output_dir / "result_full.json"
+    full_path = CONFIG.path.infer_output_dir / "result_full.json"
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="추론 결과가 없습니다.")
 

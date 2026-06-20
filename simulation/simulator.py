@@ -25,6 +25,7 @@ class Lot:
     processing_time: int   # 기본값(원본 배정 EQP 기준) – 실제 사용 시 proc_time_matrix 참조
     priority:        int   = 1
     original_eqp:    str   = ""
+    parent_lot_id:   str   = ""
 
 
 @dataclass
@@ -37,6 +38,7 @@ class Equipment:
     free_at:      int            = 0
     prev_oper:    Optional[str] = None
     prev_prod:    Optional[str] = None
+    prev_lot_id:  Optional[str] = None
     idle_accum:   int            = 0
     oper_switches:int            = 0
     prod_switches:int            = 0
@@ -84,12 +86,18 @@ class SchedulingSimulator:
 
         self.lot_pool: Dict[str, Lot] = {}
         for ld in data["lots"]:
-            self.lot_pool[ld["lot_id"]] = Lot(**{
-                k: ld[k] for k in [
-                    "lot_id", "carrier_id", "plan_prod_key", "oper_id",
-                    "seq", "wf_qty", "processing_time", "priority", "original_eqp"
-                ]
-            })
+            self.lot_pool[ld["lot_id"]] = Lot(
+                lot_id=ld["lot_id"],
+                carrier_id=ld["carrier_id"],
+                plan_prod_key=ld["plan_prod_key"],
+                oper_id=ld["oper_id"],
+                seq=ld["seq"],
+                wf_qty=ld["wf_qty"],
+                processing_time=ld["processing_time"],
+                priority=ld.get("priority", 1),
+                original_eqp=ld.get("original_eqp", ""),
+                parent_lot_id=ld.get("parent_lot_id", ""),
+            )
 
         self.eqp_queues: Dict[str, List[str]] = {
             eid: list(lots)
@@ -360,6 +368,7 @@ class SchedulingSimulator:
                 "wf_qty":          lot.wf_qty,
                 "priority":        lot.priority,
                 "processing_time": pt,
+                "parent_lot_id":   lot.parent_lot_id,
                 "is_abstract":     False,
             })
         for row in self._abstract_assignable_on_eqp(eqp_id):
@@ -425,6 +434,7 @@ class SchedulingSimulator:
         eqp.free_at      = end_time
         eqp.prev_oper    = oper_id
         eqp.prev_prod    = ppk
+        eqp.prev_lot_id  = lot_id
 
         heapq.heappush(self._event_q, (end_time, eqp_id))
 
@@ -536,6 +546,7 @@ class SchedulingSimulator:
         eqp.free_at      = end_time
         eqp.prev_oper    = lot.oper_id
         eqp.prev_prod    = lot.plan_prod_key
+        eqp.prev_lot_id  = lot_id
 
         heapq.heappush(self._event_q, (end_time, eqp_id))
 

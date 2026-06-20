@@ -85,6 +85,31 @@ REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_KEY", "OPER_ID",
 REQUIRED_FLOW_FIELDS         = {"PLAN_PROD_KEY", "SEQ_ID", "OPER_ID"}
 REQUIRED_INCOMING_WIP_FIELDS = {"PLAN_PROD_KEY", "EQP_MODEL", "ARRIVE_TM",
                                  "PROC_TIME", "LOT_QTY", "WF_QTY", "OPER_ID"}
+REQUIRED_SPLIT_FIELDS        = {"PLAN_PROD_KEY", "EQP_MODEL", "SPLIT_QTY"}
+
+
+def split_wf_qty(total: int, split_qty: int) -> List[int]:
+    """
+    wafer 수량을 SPLIT_QTY(장) 단위로 분할.
+    예: 25장, split_qty=3 → [3,3,3,3,3,3,3,2,2]
+    """
+    if total <= 0:
+        return []
+    if split_qty <= 0:
+        return [total]
+    if total <= split_qty:
+        return [total]
+
+    n_full = total // split_qty
+    remainder = total % split_qty
+
+    if remainder == 0:
+        return [split_qty] * n_full
+
+    if remainder == 1 and n_full >= 1:
+        return [split_qty] * (n_full - 1) + [split_qty - 1, split_qty - 1]
+
+    return [split_qty] * n_full + [remainder]
 
 
 def validate_records(records: List[dict], required: set, label: str) -> List[str]:

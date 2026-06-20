@@ -4,7 +4,20 @@ import { buildColorMap, OPER_BORDER_COLORS, PROD_COLORS } from "./colors";
 
 export interface GanttAxisOptions {
   eqpIds: string[];
+  timeStartMinutes?: number;
   timeEndMinutes: number;
+  /** true면 timeStartMinutes~timeEndMinutes 구간으로 X축 고정 */
+  fixedRange?: boolean;
+}
+
+export function resolveGanttTimeRange(axis: GanttAxisOptions): [number, number] {
+  if (axis.fixedRange) {
+    const start = Math.max(0, axis.timeStartMinutes ?? 0);
+    const end = Math.max(start + 1, axis.timeEndMinutes ?? 1);
+    return [start, end];
+  }
+  const end = Math.max(axis.timeEndMinutes ?? 0, 1);
+  return [0, end];
 }
 
 function sortedEqpIds(eqpIds: string[]): string[] {
@@ -96,7 +109,7 @@ function buildGanttLayout(
   axis: GanttAxisOptions,
 ): Partial<Layout> {
   const eqps = sortedEqpIds(axis.eqpIds);
-  const timeEnd = Math.max(axis.timeEndMinutes, 1);
+  const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
 
   return {
     title: { text: title, font: { size: 16 } },
@@ -104,7 +117,8 @@ function buildGanttLayout(
       title: { text: "시뮬레이션 시간 (분)" },
       showgrid: true,
       gridcolor: "#E5E5E5",
-      range: [0, timeEnd],
+      range: [timeStart, timeEnd],
+      ...(axis.fixedRange ? { fixedrange: true } : {}),
     },
     yaxis: {
       categoryorder: "array",
@@ -280,6 +294,8 @@ export interface ProductProductionChartOptions {
   overlaySchedule?: ScheduleRecord[];
   overlayLabel?: string;
   operIds?: string[];
+  /** 간트 X축과 동일한 시간 범위를 쓸 때 전달 */
+  timeAxis?: Pick<GanttAxisOptions, "timeStartMinutes" | "timeEndMinutes" | "fixedRange">;
 }
 
 export function buildProductProductionCharts(
@@ -291,7 +307,12 @@ export function buildProductProductionCharts(
 ): { data: Data[]; layout: Partial<Layout> } {
   const prods = [...prodKeys].sort();
   const n = Math.max(prods.length, 1);
-  const timeEnd = Math.max(timeEndMinutes, 1);
+  const [timeStart, timeEnd] = resolveGanttTimeRange({
+    eqpIds: [],
+    timeStartMinutes: options.timeAxis?.timeStartMinutes,
+    timeEndMinutes: options.timeAxis?.timeEndMinutes ?? timeEndMinutes,
+    fixedRange: options.timeAxis?.fixedRange,
+  });
   const allOpers = options.operIds ?? [...new Set(plan.map((p) => p.oper_id))].sort();
   const operColorMap = buildColorMap(allOpers, OPER_BORDER_COLORS);
   const data: Data[] = [];
@@ -314,9 +335,10 @@ export function buildProductProductionCharts(
 
     (layout as Record<string, unknown>)[xKey] = {
       title: i === n - 1 ? { text: "시뮬레이션 시간 (분)" } : undefined,
-      range: [0, timeEnd],
+      range: [timeStart, timeEnd],
       showgrid: true,
       gridcolor: "#E5E5E5",
+      ...(options.timeAxis?.fixedRange ? { fixedrange: true } : {}),
     };
     (layout as Record<string, unknown>)[yKey] = {
       title: { text: `${prod} 누적 생산 (매)` },
@@ -643,7 +665,7 @@ export function buildAlgorithmGanttComparison(
   }
 
   const eqps = sortedEqpIds(axis.eqpIds);
-  const timeEnd = Math.max(axis.timeEndMinutes, 1);
+  const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
   const n = entries.length;
   const data: Data[] = [];
   const layout: Partial<Layout> = {
@@ -676,7 +698,8 @@ export function buildAlgorithmGanttComparison(
       title: i === n - 1 ? { text: "시뮬레이션 시간 (분)" } : undefined,
       showgrid: true,
       gridcolor: "#E5E5E5",
-      range: [0, timeEnd],
+      range: [timeStart, timeEnd],
+      ...(axis.fixedRange ? { fixedrange: true } : {}),
     };
     (layout as Record<string, unknown>)[yKey] = {
       domain,

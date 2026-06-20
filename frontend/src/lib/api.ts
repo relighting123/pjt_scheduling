@@ -6,6 +6,7 @@ import type {
   DataSummary,
   InferenceResult,
   SampleScenario,
+  GeneratorConfig,
   TrainMetrics,
 } from "../types";
 
@@ -37,11 +38,53 @@ export const api = {
         body: JSON.stringify({ input_folder }),
       },
     ),
-  createSample: (input_folder?: string, scenario: string = "default") =>
-    request<{ message: string; input_folder: string; input_dir: string; scenario: string }>("/api/sample", {
+  createSample: (opts?: {
+    fac_id?: string;
+    split?: string;
+    scenario?: string;
+    bootstrap?: boolean;
+    from_date?: string;
+    to_date?: string;
+    use_period_count?: boolean;
+    generator_config?: Partial<GeneratorConfig>;
+  }) =>
+    request<{
+      message: string;
+      input_folder: string;
+      input_dir: string;
+      scenario: string;
+      generator_config?: GeneratorConfig;
+    }>("/api/sample", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scenario, ...(input_folder ? { input_folder } : {}) }),
+      body: JSON.stringify({
+        scenario: opts?.scenario ?? "random",
+        fac_id: opts?.fac_id ?? "FAC001",
+        split: opts?.split ?? "train",
+        bootstrap: opts?.bootstrap ?? false,
+        use_period_count: opts?.use_period_count ?? false,
+        ...(opts?.from_date ? { from_date: opts.from_date } : {}),
+        ...(opts?.to_date ? { to_date: opts.to_date } : {}),
+        ...(opts?.generator_config ? { generator_config: opts.generator_config } : {}),
+      }),
+    }),
+  fetchDataset: (opts?: {
+    fac_id?: string;
+    split?: string;
+    snapshot?: string;
+    from_date?: string;
+    to_date?: string;
+  }) =>
+    request<{ message: string; input_folder: string; input_dir: string }>("/api/fetch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fac_id: opts?.fac_id ?? "FAC001",
+        split: opts?.split ?? "train",
+        ...(opts?.snapshot ? { snapshot: opts.snapshot } : {}),
+        ...(opts?.from_date ? { from_date: opts.from_date } : {}),
+        ...(opts?.to_date ? { to_date: opts.to_date } : {}),
+      }),
     }),
   getDataSummary: () => request<DataSummary>("/api/data/summary"),
   getModelStatus: () => request<{ exists: boolean }>("/api/model/status"),
@@ -49,6 +92,8 @@ export const api = {
     request<{ algorithms: AlgorithmInfo[] }>("/api/algorithms"),
   getSampleScenarios: () =>
     request<{ scenarios: SampleScenario[] }>("/api/sample/scenarios"),
+  getGeneratorConfigDefaults: () =>
+    request<{ defaults: GeneratorConfig }>("/api/sample/generator-config"),
   train: (body: {
     total_timesteps: number;
     learning_rate: number;

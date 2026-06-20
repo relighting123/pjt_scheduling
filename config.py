@@ -5,101 +5,307 @@ config.py – 전체 프로젝트 설정
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 # ── 기본 경로 ─────────────────────────────────────────────────────────────────
 BASE_DIR     = Path(__file__).parent          # pjt_scheduling/
 EXTERNAL_DIR = BASE_DIR / "external"          # 프로젝트 내 DB 연동 데이터 폴더
+DATASET_DIR  = EXTERNAL_DIR / "dataset"       # external/dataset/{FAC_ID}/...
+SQL_DIR      = EXTERNAL_DIR / "sql"           # external/sql/*.sql → *.json
 
-_INPUT_FOLDER_RE = re.compile(r"^[\w.-]+$")
+DATASET_SPLITS = ("train", "test", "infer")
+PERIOD_SPLITS = ("train", "test")  # infer 제외 – 기간 하위 폴더 없음
+
+# 테이블 RULE_TIMEKEY 형식: YYYYMMDDHHmmss (예: 20260620070000)
+RULE_TIMEKEY_FMT = "%Y%m%d%H%M%S"
+RULE_TIMEKEY_DEFAULT_HMS = "070000"  # 일별 기본 시각 07:00:00
+
+_PATH_SEGMENT_RE = re.compile(r"^[\w.-]+$")
 
 
-def validate_input_folder(name: str) -> str:
-    """external/ 하위 입력 폴더명 검증 (경로 탐색 방지)"""
+def validate_path_segment(name: str, label: str = "경로") -> str:
     name = name.strip().strip("/\\")
-    if not name or not _INPUT_FOLDER_RE.match(name):
+    if not name or not _PATH_SEGMENT_RE.match(name):
         raise ValueError(
-            f"입력 폴더명이 올바르지 않습니다: {name!r} "
+            f"{label}명이 올바르지 않습니다: {name!r} "
             "(영문·숫자·_·.·- 만 사용)"
         )
     return name
 
 
-def list_input_folders() -> list[str]:
-    """external/ 아래 사용 가능한 입력 폴더 목록"""
-    if not EXTERNAL_DIR.exists():
-        return ["input"]
-    found: list[str] = []
-    for path in EXTERNAL_DIR.iterdir():
-        if not path.is_dir() or path.name == "output":
+def rule_timekey_now() -> str:
+    """현재 시각 RULE_TIMEKEY (YYYYMMDDHHmmss)"""
+    return datetime.now().strftime(RULE_TIMEKEY_FMT)
+
+
+def rule_timekey_today(hour: int = 7, minute: int = 0, second: int = 0) -> str:
+    """오늘 지정 시각 RULE_TIMEKEY (기본 07:00:00)"""
+    now = datetime.now()
+    return now.replace(
+        hour=hour, minute=minute, second=second, microsecond=0,
+    ).strftime(RULE_TIMEKEY_FMT)
+
+
+def train_snapshot_now() -> str:
+    """단일 스냅샷 폴더명 (= rule_timekey_now)"""
+    return rule_timekey_now()
+
+
+def period_today() -> str:
+    """일별 기간 폴더명 (= 오늘 07:00:00 RULE_TIMEKEY)"""
+    return rule_timekey_today()
+
+
+def normalize_rule_timekey(value: str) -> str:
+    """
+    RULE_TIMEKEY 정규화 → 14자리 YYYYMMDDHHmmss
+    8자리(YYYYMMDD) → 뒤에 070000 붙임
+    12자리(YYYYMMDDHHmm) → 뒤에 00 붙임
+    """
+    value = value.strip()
+    if len(value) == 14 and value.isdigit():
+        return value
+    if len(value) == 8 and value.isdigit():
+        return value + RULE_TIMEKEY_DEFAULT_HMS
+    if len(value) == 12 and value.isdigit():
+        return value + "00"
+    raise ValueError(
+        f"RULE_TIMEKEY 형식은 YYYYMMDDHHmmss (14자리) 이어야 합니다: {value!r}"
+    )
+
+
+normalize_period = normalize_rule_timekey
+
+
+def iter_rule_timekeys(from_key: str, to_key: str):
+    """RULE_TIMEKEY 구간의 일별 키 생성 (시·분·초는 시작 키 기준 유지)"""
+    start = datetime.strptime(normalize_rule_timekey(from_key), RULE_TIMEKEY_FMT)
+    end = datetime.strptime(normalize_rule_timekey(to_key), RULE_TIMEKEY_FMT)
+    if end < start:
+        raise ValueError(f"종료 RULE_TIMEKEY가 시작보다 앞섭니다: {from_key} ~ {to_key}")
+    h, m, s = start.hour, start.minute, start.second
+    cur = start
+    while cur <= end:
+        yield cur.strftime(RULE_TIMEKEY_FMT)
+        nxt = cur + timedelta(days=1)
+        cur = nxt.replace(hour=h, minute=m, second=s, microsecond=0)
+
+
+iter_periods = iter_rule_timekeys
+
+
+def latest_period(fac_id: str, split: str = "train") -> Optional[str]:
+    """train|test/{period} 중 최신 period 폴더명"""
+    if split not in PERIOD_SPLITS:
+        return None
+    root = DATASET_DIR / validate_path_segment(fac_id, "FAC_ID") / split
+    if not root.is_dir():
+        return None
+    snaps = sorted(
+        p.name for p in root.iterdir()
+        if p.is_dir() and (p / "input").is_dir()
+    )
+    return snaps[-1] if snaps else None
+
+
+def latest_train_snapshot(fac_id: str) -> Optional[str]:
+    return latest_period(fac_id, "train")
+
+
+def resolve_dataset_path(
+    fac_id: str,
+    split: str,
+    period: Optional[str] = None,
+    *,
+    snapshot: Optional[str] = None,
+) -> Tuple[Path, Path]:
+    """
+    dataset 경로 해석 → (input_dir, output_dir)
+    train/test: dataset/{FAC_ID}/{split}/{period}/input|output
+    infer:      dataset/{FAC_ID}/infer/input|output  (기간 하위 폴더 없음)
+    """
+    period = period or snapshot
+    fac_id = validate_path_segment(fac_id, "FAC_ID")
+    split = validate_path_segment(split, "split")
+    if split not in DATASET_SPLITS:
+        raise ValueError(f"split은 {DATASET_SPLITS} 중 하나여야 합니다: {split!r}")
+
+    base = DATASET_DIR / fac_id / split
+    if split in PERIOD_SPLITS:
+        per = period or latest_period(fac_id, split)
+        if not per:
+            per = period_today() if split == "test" else rule_timekey_now()
+        per = validate_path_segment(normalize_rule_timekey(per), "RULE_TIMEKEY")
+        root = base / per
+    else:
+        root = base
+
+    return root / "input", root / "output"
+
+
+def infer_paths(fac_id: str) -> Tuple[Path, Path]:
+    """추론 전용 dataset/{FAC_ID}/infer/input|output"""
+    return resolve_dataset_path(fac_id, "infer")
+
+
+def parse_input_folder(folder: str) -> Tuple[str, str, Optional[str]]:
+    """
+    입력 폴더 키 파싱
+      FAC001/train/20260620070000  → train 기간 (RULE_TIMEKEY)
+      FAC001/test/20260620070000   → test 기간
+      FAC001/infer              → infer (기간 없음)
+    """
+    parts = [validate_path_segment(p, "경로") for p in folder.strip("/\\").split("/")]
+    if len(parts) == 2:
+        fac_id, split = parts
+        if split in PERIOD_SPLITS:
+            per = latest_period(fac_id, split)
+            return fac_id, split, per
+        return fac_id, split, None
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]
+    raise ValueError(
+        f"입력 폴더 형식: FAC_ID/split 또는 FAC_ID/{{train|test}}/period (받은 값: {folder!r})"
+    )
+
+
+def list_input_folders() -> List[str]:
+    """사용 가능한 dataset 입력 경로 키 목록"""
+    found: List[str] = []
+    if not DATASET_DIR.is_dir():
+        return [CONFIG.path.input_folder_key]
+
+    for fac_path in sorted(DATASET_DIR.iterdir()):
+        if not fac_path.is_dir():
             continue
-        if (path / "plan.json").exists() or (path / "schedule.json").exists():
-            found.append(path.name)
-    current = CONFIG.path.input_folder
+        fac_id = fac_path.name
+        for split in DATASET_SPLITS:
+            split_path = fac_path / split
+            if not split_path.is_dir():
+                continue
+            if split in PERIOD_SPLITS:
+                for per_path in sorted(split_path.iterdir()):
+                    if per_path.is_dir() and (per_path / "input").is_dir():
+                        found.append(f"{fac_id}/{split}/{per_path.name}")
+            elif (split_path / "input").is_dir():
+                found.append(f"{fac_id}/{split}")
+
+    current = CONFIG.path.input_folder_key
     if current not in found:
         found.append(current)
     return sorted(set(found))
 
 
-def set_input_folder(name: str) -> Path:
-    """입력 데이터셋 폴더 설정 → external/{name}/"""
-    CONFIG.path.input_folder = validate_input_folder(name)
+def set_input_folder(folder: str) -> Path:
+    """입력 dataset 경로 설정"""
+    fac_id, split, period = parse_input_folder(folder)
+    CONFIG.path.fac_id = fac_id
+    CONFIG.path.dataset_split = split
+    CONFIG.path.train_snapshot = period or ""
     return CONFIG.path.input_dir
 
 
 @dataclass
 class PathConfig:
-    input_folder: str = "input"   # external/{input_folder}/
-    model_dir:    Path = field(default_factory=lambda: BASE_DIR / "models")
+    fac_id: str = "FAC001"
+    dataset_split: str = "train"          # train | test | infer
+    train_snapshot: str = ""              # train 전용; 비어 있으면 최신 스냅샷
+
+    model_dir: Path = field(default_factory=lambda: BASE_DIR / "models")
 
     schedule_file:     str = "schedule.json"
     availability_file: str = "availability.json"
     incoming_wip_file: str = "incoming_wip.json"
     plan_file:         str = "plan.json"
     flow_file:         str = "flow.json"
+    split_file:        str = "split.json"
+
+    @property
+    def input_folder_key(self) -> str:
+        if self.dataset_split in PERIOD_SPLITS:
+            per = self.train_snapshot or latest_period(self.fac_id, self.dataset_split)
+            if not per:
+                per = period_today() if self.dataset_split == "test" else rule_timekey_now()
+            return f"{self.fac_id}/{self.dataset_split}/{per}"
+        return f"{self.fac_id}/{self.dataset_split}"
 
     @property
     def input_dir(self) -> Path:
-        return EXTERNAL_DIR / self.input_folder
+        per = self.train_snapshot or None if self.dataset_split in PERIOD_SPLITS else None
+        inp, _ = resolve_dataset_path(self.fac_id, self.dataset_split, per)
+        return inp
 
     @property
     def output_dir(self) -> Path:
-        return EXTERNAL_DIR / "output" / self.input_folder
+        per = self.train_snapshot or None if self.dataset_split in PERIOD_SPLITS else None
+        _, out = resolve_dataset_path(self.fac_id, self.dataset_split, per)
+        return out
+
+    @property
+    def infer_input_dir(self) -> Path:
+        return infer_paths(self.fac_id)[0]
+
+    @property
+    def infer_output_dir(self) -> Path:
+        return infer_paths(self.fac_id)[1]
+
+    @property
+    def sql_dir(self) -> Path:
+        return SQL_DIR
+
+
+# SQL 파일명 ↔ JSON 파일명 (loader.fetch_from_db)
+SQL_JSON_MAP = {
+    "schedule":     ("schedule.sql",     "schedule.json"),
+    "availability": ("availability.sql", "availability.json"),
+    "plan":         ("plan.sql",         "plan.json"),
+    "flow":         ("flow.sql",         "flow.json"),
+    "split":        ("split.sql",        "split.json"),
+}
+
+
+@dataclass
+class OracleConfig:
+    user: str = field(default_factory=lambda: os.environ.get("ORACLE_USER", ""))
+    password: str = field(default_factory=lambda: os.environ.get("ORACLE_PASSWORD", ""))
+    dsn: str = field(default_factory=lambda: os.environ.get("ORACLE_DSN", ""))
+    # 추가 WHERE 바인드 (JSON 문자열 또는 key=value)
+    extra_binds: dict = field(default_factory=dict)
 
 
 @dataclass
 class EnvConfig:
-    # 관측 공간 정의용 최대값 (학습/추론 환경이 동일 크기를 유지해야 함)
-    max_eqp_count:    int = 10   # EQP 최대 수
-    max_oper_count:   int = 15   # OPER 종류 최대 수
-    max_prod_count:   int = 10   # PLAN_PROD_KEY 종류 최대 수
-    max_queue_size:   int = 20   # 현재 EQP에 배정 가능한 LOT 최대 수
-    sim_time_horizon: int = 1440  # 시뮬레이션 최대 시간(분) – 기본 24h
+    max_eqp_count:    int = 10
+    max_oper_count:   int = 15
+    max_prod_count:   int = 10
+    max_queue_size:   int = 20
+    sim_time_horizon: int = 1440
 
 
 @dataclass
 class RLConfig:
     algorithm:       str   = "PPO"
     learning_rate:   float = 3e-4
-    n_steps:         int   = 2048    # PPO 업데이트 주기 (스텝)
+    n_steps:         int   = 2048
     batch_size:      int   = 64
     n_epochs:        int   = 10
     gamma:           float = 0.99
     total_timesteps: int   = 200_000
     model_name:      str   = "scheduling_rl"
-    eval_freq:       int   = 10_000  # 모델 평가 주기
+    eval_freq:       int   = 10_000
 
 
 @dataclass
 class RewardConfig:
-    w_same_oper:       float = 2.0   # 동일 OPER 연속 진행 보너스
-    w_same_prod:       float = 1.0   # 동일 제품 연속 진행 보너스
-    w_idle_per_min:    float = -0.5  # EQP 분당 Idle 패널티
-    w_completion:      float = 1.0   # LOT 완료 시 WF_QTY 기반 보상
-    w_plan_hit:        float = 5.0   # 계획 달성 시 보너스
+    w_same_oper:       float = 2.0
+    w_same_prod:       float = 1.0
+    w_idle_per_min:    float = -0.5
+    w_completion:      float = 1.0
+    w_plan_hit:        float = 5.0
 
 
-# ── UI 색상 팔레트 ─────────────────────────────────────────────────────────────
 PROD_COLORS = [
     "#4C72B0", "#DD8452", "#55A868", "#C44E52",
     "#8172B3", "#937860", "#DA8BC3", "#CCB974",
@@ -117,12 +323,12 @@ OPER_BORDER_COLORS = [
 @dataclass
 class Config:
     path:   PathConfig   = field(default_factory=PathConfig)
+    oracle: OracleConfig = field(default_factory=OracleConfig)
     env:    EnvConfig    = field(default_factory=EnvConfig)
     rl:     RLConfig     = field(default_factory=RLConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
 
 
-# 싱글톤 인스턴스 – 전 모듈에서 import하여 사용
 CONFIG = Config()
 
 _env_input = os.environ.get("SCHEDULING_INPUT", "").strip()

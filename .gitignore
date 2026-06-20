@@ -8,8 +8,8 @@ venv/
 dist/
 build/
 
-# External data folders (DB-linked JSON, git 제외)
-external/
+# External dataset (JSON 산출물, git 제외) – SQL 템플릿은 추적
+external/dataset/
 
 # Trained models (large binary files – keep only the latest manually)
 models/*.zip

@@ -92,9 +92,9 @@ def run_inference(
 
 def save_result(result: dict, output_dir: Path = None) -> Path:
     """
-    목적: 추론 결과를 external/output/result.json 으로 저장 (DB insert 전 중간 파일)
+    추론 결과를 dataset/{FAC_ID}/infer/output/ 에 저장
     """
-    d = output_dir or CONFIG.path.output_dir
+    d = output_dir or CONFIG.path.infer_output_dir
     d.mkdir(parents=True, exist_ok=True)
 
     output_records = [

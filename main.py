@@ -1,47 +1,123 @@
 """
 main.py – 워크플로우 컨트롤러 (CLI)
-DB조회 → JSON변환 → 학습/추론 → 결과저장 → (DB 적재) 순서를 명령줄로 제어합니다.
 
 사용 예:
-    python main.py sample          # 샘플 데이터 생성
+    python main.py sample          # 샘플 JSON 생성 (dataset/)
+    python main.py fetch           # Oracle SQL → JSON (dataset/)
     python main.py train           # 모델 학습
     python main.py infer           # 추론 및 결과 저장
-    python main.py all             # 샘플생성 + 학습 + 추론 일괄 실행
-    python main.py ui              # React UI + API 서버 실행
+    python main.py ui              # React UI + API 서버
 
-    python main.py train --timesteps 50000   # 타임스텝 지정 학습
+    python main.py -i FAC001/train/202406191430 infer
+    python main.py sample -s single_heavy_wip --fac-id FAC001
 """
 import argparse
 import subprocess
 import sys
 from pathlib import Path
 
-# 프로젝트 루트를 경로에 추가
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, EXTERNAL_DIR
-from data.loader import load_data, validate_data, generate_sample_data, list_sample_scenarios, SAMPLE_SCENARIOS
+from config import CONFIG, set_input_folder, train_snapshot_now, PERIOD_SPLITS
+from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range
+from data.generator import (
+    generate_sample_data,
+    generate_sample_period_range,
+    bootstrap_facility_datasets,
+    list_sample_scenarios,
+    SAMPLE_SCENARIOS,
+)
 from data.preprocessor import preprocess
 from agent.rl_agent import SchedulingAgent
 from agent.registry import VALID_ALGORITHMS
 from inference.runner import run_inference, save_result
 
 
-# ── 개별 워크플로우 단계 ──────────────────────────────────────────────────────
-
-def step_generate_sample(scenario: str = "default", output_dir=None):
-    """[1] 샘플 JSON 데이터 생성"""
+def step_generate_sample(
+    scenario: str = "default",
+    fac_id: str = "FAC001",
+    split: str = "train",
+    bootstrap: bool = False,
+    from_date: str = None,
+    to_date: str = None,
+):
+    """[1] 샘플 JSON 데이터 생성 → external/dataset/{FAC_ID}/..."""
     print("=" * 60)
-    print(f"[STEP 1] 샘플 데이터 생성 (시나리오: {scenario})")
-    path = generate_sample_data(output_dir=output_dir, scenario=scenario)
+    print(f"[STEP 1] 샘플 데이터 생성 (시나리오: {scenario}, FAC: {fac_id})")
+    if bootstrap:
+        info = bootstrap_facility_datasets(fac_id=fac_id, scenario=scenario)
+        snap = info["train_snapshot"]
+        set_input_folder(f"{fac_id}/train/{snap}")
+        train_entry = info["paths"]["train"]
+        train_input = train_entry[-1]["input"] if isinstance(train_entry, list) else train_entry["input"]
+        print(f"  train periods: {info.get('train_periods', [snap])}")
+        print(f"  test periods:  {info.get('test_periods', [info.get('test_period')])}")
+        return Path(train_input)
+    if from_date and to_date:
+        paths = generate_sample_period_range(
+            scenario=scenario,
+            fac_id=fac_id,
+            from_date=from_date,
+            to_date=to_date,
+            split=split,
+        )
+        last = paths[-1]
+        set_input_folder(f"{fac_id}/{split}/{last.parent.name}")
+        return last
+    if from_date or to_date:
+        print("[오류] --from-date 와 --to-date 를 함께 지정하세요.")
+        sys.exit(1)
+    path = generate_sample_data(
+        scenario=scenario,
+        fac_id=fac_id,
+        split=split,
+    )
+    if split in PERIOD_SPLITS:
+        set_input_folder(f"{fac_id}/{split}/{path.parent.name}")
+    else:
+        set_input_folder(f"{fac_id}/{split}")
+    return path
+
+
+def step_fetch_db(
+    fac_id: str = "FAC001",
+    split: str = "train",
+    snapshot: str = None,
+    from_date: str = None,
+    to_date: str = None,
+):
+    """[1b] Oracle SQL → JSON (external/sql → dataset input)"""
+    print("=" * 60)
+    print(f"[STEP 1b] DB 조회 → JSON (FAC: {fac_id}, split: {split})")
+    if from_date and to_date:
+        paths = fetch_period_range(
+            fac_id=fac_id,
+            from_date=from_date,
+            to_date=to_date,
+            split=split,
+        )
+        last = paths[-1]
+        set_input_folder(f"{fac_id}/{split}/{last.parent.name}")
+        print(f"  {len(paths)}개 기간 폴더 생성, 마지막: {last}")
+        return last
+    if from_date or to_date:
+        print("[오류] --from-date 와 --to-date 를 함께 지정하세요.")
+        sys.exit(1)
+    path = fetch_from_db(fac_id=fac_id, split=split, snapshot=snapshot)
+    if split in PERIOD_SPLITS:
+        key = f"{fac_id}/{split}/{path.parent.name}"
+    else:
+        key = f"{fac_id}/{split}"
+    set_input_folder(key)
+    print(f"  입력 경로: {path}")
     return path
 
 
 def step_load() -> dict:
-    """[2] JSON 로드 + 검증 + 전처리"""
     print("=" * 60)
     print("[STEP 2] 데이터 로드 및 전처리")
+    print(f"  input: {CONFIG.path.input_dir}")
     raw = load_data()
     errors = validate_data(raw)
     if errors:
@@ -57,7 +133,6 @@ def step_load() -> dict:
 
 
 def step_train(env_data: dict, timesteps: int = None):
-    """[3] PPO 모델 학습 및 저장"""
     print("=" * 60)
     print("[STEP 3] 모델 학습")
     if timesteps:
@@ -78,11 +153,12 @@ def step_train(env_data: dict, timesteps: int = None):
 
 
 def step_infer(env_data: dict, agent: SchedulingAgent = None, algorithm: str = "rl") -> dict:
-    """[4] 추론 실행 + 결과 저장 (external/output/result.json)"""
     print("=" * 60)
     print(f"[STEP 4] 추론 실행 (알고리즘: {algorithm})")
+    print(f"  입력: {CONFIG.path.input_dir}")
     result = run_inference(env_data, algorithm=algorithm, agent=agent)
-    path = save_result(result)
+    out_dir = CONFIG.path.infer_output_dir
+    path = save_result(result, output_dir=out_dir)
 
     stats = result["stats"]
     print(f"  배정 LOT 수:    {len(result['schedule'])}")
@@ -94,7 +170,6 @@ def step_infer(env_data: dict, agent: SchedulingAgent = None, algorithm: str = "
 
 
 def step_launch_ui():
-    """[5] FastAPI 백엔드 + React 프론트엔드 실행"""
     import os
     import time
     import urllib.error
@@ -118,7 +193,6 @@ def step_launch_ui():
         cwd=str(ROOT),
     )
 
-    # API 준비 대기 (프론트엔드가 먼저 뜨며 /api 호출 실패하는 것 방지)
     health_url = "http://127.0.0.1:8000/api/health"
     for _ in range(30):
         try:
@@ -129,8 +203,7 @@ def step_launch_ui():
             time.sleep(0.5)
     else:
         api_proc.terminate()
-        print("[오류] API 서버가 시작되지 않았습니다. uvicorn 설치 여부를 확인하세요.")
-        print("  pip install -r requirements.txt")
+        print("[오류] API 서버가 시작되지 않았습니다.")
         sys.exit(1)
 
     fe_proc = subprocess.Popen(
@@ -140,7 +213,6 @@ def step_launch_ui():
         env={**os.environ, "BROWSER": "none"},
     )
 
-    # Vite 준비 대기
     time.sleep(2)
     webbrowser.open("http://localhost:5173")
 
@@ -155,8 +227,6 @@ def step_launch_ui():
         api_proc.wait(timeout=5)
 
 
-# ── CLI 파서 ──────────────────────────────────────────────────────────────────
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Post-Scheduling RL 워크플로우",
@@ -164,51 +234,99 @@ def parse_args():
         epilog=__doc__,
     )
     parser.add_argument(
-        "--input", "-i", metavar="FOLDER", default=None,
-        help="입력 데이터 폴더명 (external/<FOLDER>/, 기본: input)",
+        "--input", "-i", metavar="PATH", default=None,
+        help="dataset 경로 키 (예: FAC001/train/20260620070000, FAC001/infer)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sample_p = sub.add_parser("sample", help="샘플 데이터 생성")
+    sample_p = sub.add_parser("sample", help="샘플 JSON 생성 (generator)")
+    sample_p.add_argument("--fac-id", default="FAC001", help="공장 ID")
     sample_p.add_argument(
         "--scenario", "-s",
         choices=sorted(SAMPLE_SCENARIOS),
         default="default",
-        help="샘플 시나리오 (single_heavy_wip: 단일제품 ST½ 재공다량)",
+    )
+    sample_p.add_argument(
+        "--split", choices=("train", "test", "infer"), default="train",
+    )
+    sample_p.add_argument(
+        "--bootstrap", action="store_true",
+        help="train/test/infer 전체 골격 + 샘플 생성",
+    )
+    sample_p.add_argument(
+        "--from-date", "--from-timekey", dest="from_date", metavar="RULE_TIMEKEY",
+        help="시작 RULE_TIMEKEY (YYYYMMDDHHmmss, 8자리면 070000 붙음)",
+    )
+    sample_p.add_argument(
+        "--to-date", "--to-timekey", dest="to_date", metavar="RULE_TIMEKEY",
+        help="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)",
+    )
+
+    fetch_p = sub.add_parser("fetch", help="Oracle SQL → JSON (loader)")
+    fetch_p.add_argument("--fac-id", default="FAC001", help="공장 ID")
+    fetch_p.add_argument(
+        "--split", choices=("train", "test", "infer"), default="train",
+    )
+    fetch_p.add_argument(
+        "--snapshot", default=None,
+        help="단일 RULE_TIMEKEY 폴더명 (YYYYMMDDHHmmss)",
+    )
+    fetch_p.add_argument(
+        "--from-date", "--from-timekey", dest="from_date",
+        metavar="RULE_TIMEKEY", help="시작 RULE_TIMEKEY",
+    )
+    fetch_p.add_argument(
+        "--to-date", "--to-timekey", dest="to_date",
+        metavar="RULE_TIMEKEY", help="종료 RULE_TIMEKEY",
     )
 
     train_p = sub.add_parser("train", help="모델 학습")
-    train_p.add_argument("--timesteps", type=int, default=None,
-                         help="학습 타임스텝 수 (기본: config 값)")
+    train_p.add_argument("--timesteps", type=int, default=None)
 
     infer_p = sub.add_parser("infer", help="추론 실행 및 결과 저장")
     infer_p.add_argument(
         "--algorithm", choices=sorted(VALID_ALGORITHMS), default="rl",
-        help="추론 알고리즘 (기본: rl)",
     )
-    sub.add_parser("all",   help="샘플생성 + 학습 + 추론 일괄 실행")
-    sub.add_parser("ui",    help="React UI + API 서버 실행")
+    sub.add_parser("all", help="샘플생성 + 학습 + 추론 일괄 실행")
+    sub.add_parser("ui", help="React UI + API 서버 실행")
 
     return parser.parse_args()
 
-
-# ── 진입점 ───────────────────────────────────────────────────────────────────
 
 def main():
     args = parse_args()
     if args.input:
         set_input_folder(args.input)
-        print(f"[설정] 입력 폴더: {CONFIG.path.input_dir}")
+        print(f"[설정] 입력: {CONFIG.path.input_dir}")
 
     if args.command == "sample":
-        out = EXTERNAL_DIR / args.input if args.input else None
-        step_generate_sample(scenario=args.scenario, output_dir=out)
+        step_generate_sample(
+            scenario=args.scenario,
+            fac_id=args.fac_id,
+            split=args.split,
+            bootstrap=args.bootstrap,
+            from_date=getattr(args, "from_date", None),
+            to_date=getattr(args, "to_date", None),
+        )
+
+    elif args.command == "fetch":
+        step_fetch_db(
+            fac_id=args.fac_id,
+            split=args.split,
+            snapshot=args.snapshot,
+            from_date=getattr(args, "from_date", None),
+            to_date=getattr(args, "to_date", None),
+        )
 
     elif args.command == "train":
         env_data = step_load()
         step_train(env_data, timesteps=args.timesteps)
 
     elif args.command == "infer":
+        if not args.input:
+            fac = CONFIG.path.fac_id
+            set_input_folder(f"{fac}/infer")
+            print(f"[설정] 추론 입력: {CONFIG.path.infer_input_dir}")
         env_data = step_load()
         algo = args.algorithm
         agent = None
@@ -221,7 +339,8 @@ def main():
         step_infer(env_data, agent=agent, algorithm=algo)
 
     elif args.command == "all":
-        step_generate_sample()
+        fac = getattr(args, "fac_id", "FAC001")
+        step_generate_sample(bootstrap=True, fac_id=fac)
         env_data = step_load()
         agent = step_train(env_data)
         step_infer(env_data, agent=agent)

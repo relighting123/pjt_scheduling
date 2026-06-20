@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import PlotChart from "../components/PlotChart";
 
+import ChartSettingsPanel from "../components/ChartSettingsPanel";
+
 import ArrangeTable from "../components/ArrangeTable";
 
 import AbstractArrangeTable from "../components/AbstractArrangeTable";
@@ -58,8 +60,6 @@ interface InferencePageProps {
 
   summary: DataSummary | null;
 
-  onInputFolderChange: (folder: string) => void;
-
   folderLoading: boolean;
 
 }
@@ -90,8 +90,6 @@ export default function InferencePage({
 
   summary,
 
-  onInputFolderChange,
-
   folderLoading,
 
 }: InferencePageProps) {
@@ -120,19 +118,13 @@ export default function InferencePage({
 
   const [stepBump, setStepBump] = useState(false);
 
-  const [selectedFolder, setSelectedFolder] = useState("input");
+  const [selectedFolder, setSelectedFolder] = useState("FAC001/infer");
 
+  const [ganttTimeFixed, setGanttTimeFixed] = useState(false);
 
+  const [ganttTimeStart, setGanttTimeStart] = useState(0);
 
-  const folders = config?.input_folders?.length
-
-    ? config.input_folders
-
-    : config
-
-      ? [config.input_folder]
-
-      : ["input"];
+  const [ganttTimeEnd, setGanttTimeEnd] = useState(1440);
 
 
 
@@ -141,6 +133,10 @@ export default function InferencePage({
     if (config?.input_folder) {
 
       setSelectedFolder(config.input_folder);
+
+      setResult(null);
+
+      setCompareData(null);
 
     }
 
@@ -195,22 +191,6 @@ export default function InferencePage({
   const needsModel = selectedAlgo?.requires_model ?? algorithm === "rl";
 
   const canRun = !needsModel || modelExists;
-
-
-
-  const handleFolderChange = (folder: string) => {
-
-    if (folder === selectedFolder) return;
-
-    setSelectedFolder(folder);
-
-    setResult(null);
-
-    setCompareData(null);
-
-    onInputFolderChange(folder);
-
-  };
 
 
 
@@ -342,17 +322,43 @@ export default function InferencePage({
 
 
 
+  const dataTimeEnd = useMemo(
+
+    () => result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 0,
+
+    [result, compareData],
+
+  );
+
+
+
+  useEffect(() => {
+
+    if (dataTimeEnd > 0 && !ganttTimeFixed) {
+
+      setGanttTimeEnd(dataTimeEnd);
+
+    }
+
+  }, [dataTimeEnd, ganttTimeFixed]);
+
+
+
   const ganttAxis = useMemo(
 
     () => ({
 
       eqpIds: result?.eqp_ids ?? compareData?.eqp_ids ?? [],
 
-      timeEndMinutes: result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 0,
+      timeStartMinutes: ganttTimeFixed ? ganttTimeStart : 0,
+
+      timeEndMinutes: ganttTimeFixed ? ganttTimeEnd : dataTimeEnd,
+
+      fixedRange: ganttTimeFixed,
 
     }),
 
-    [result, compareData],
+    [result, compareData, ganttTimeFixed, ganttTimeStart, ganttTimeEnd, dataTimeEnd],
 
   );
 
@@ -432,59 +438,12 @@ export default function InferencePage({
 
       <h2>Post-Scheduling 추론 및 시각화</h2>
 
-
-
-      <section className="card">
-
-        <h3>데이터셋 선택</h3>
-
-        <label className="field-label" htmlFor="infer-input-folder">
-
-          입력 폴더
-
-        </label>
-
-        <select
-
-          id="infer-input-folder"
-
-          className="input-select"
-
-          value={selectedFolder}
-
-          onChange={(e) => handleFolderChange(e.target.value)}
-
-          disabled={!config || folderLoading || loading || compareLoading}
-
-        >
-
-          {folders.map((f) => (
-
-            <option key={f} value={f}>
-
-              {f}
-
-            </option>
-
-          ))}
-
-        </select>
-
-        {summary && (
-
-          <p className="hint dataset-summary">
-
-            EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정 {summary.oper_count}
-
-            {config && <> · <code>{config.input_dir}</code></>}
-
-          </p>
-
-        )}
-
-      </section>
-
-
+      {summary && config && (
+        <p className="hint dataset-summary page-dataset-meta">
+          데이터셋 <code>{config.input_folder}</code>
+          {" · "}EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정 {summary.oper_count}
+        </p>
+      )}
 
       <section className="card">
 
@@ -552,7 +511,7 @@ export default function InferencePage({
 
             onClick={runInference}
 
-            disabled={loading || compareLoading || !canRun}
+            disabled={loading || compareLoading || !canRun || folderLoading}
 
           >
 
@@ -620,7 +579,7 @@ export default function InferencePage({
 
             onClick={() => runCompare()}
 
-            disabled={compareLoading || loading || compareAlgos.size === 0}
+            disabled={compareLoading || loading || compareAlgos.size === 0 || folderLoading}
 
           >
 
@@ -636,7 +595,7 @@ export default function InferencePage({
 
             onClick={runCompareAll}
 
-            disabled={compareLoading || loading || availableAlgos.length === 0}
+            disabled={compareLoading || loading || availableAlgos.length === 0 || folderLoading}
 
           >
 
@@ -703,6 +662,48 @@ export default function InferencePage({
             </p>
 
           )}
+
+
+
+          <ChartSettingsPanel
+
+            dataTimeEnd={dataTimeEnd}
+
+            ganttTimeFixed={ganttTimeFixed}
+
+            ganttTimeStart={ganttTimeStart}
+
+            ganttTimeEnd={ganttTimeEnd}
+
+            onGanttFixedChange={(fixed) => {
+
+              setGanttTimeFixed(fixed);
+
+              if (fixed && dataTimeEnd > 0) {
+
+                setGanttTimeStart(0);
+
+                setGanttTimeEnd(dataTimeEnd);
+
+              }
+
+            }}
+
+            onGanttStartChange={setGanttTimeStart}
+
+            onGanttEndChange={setGanttTimeEnd}
+
+            showReplay={tab === "sim" && !!result?.history.length}
+
+            step={step}
+
+            maxStep={maxStep}
+
+            stepBump={stepBump}
+
+            onStepChange={setStep}
+
+          />
 
 
 
@@ -922,6 +923,8 @@ export default function InferencePage({
 
                             operIds: e.result.oper_ids,
 
+                            timeAxis: ganttAxis,
+
                           },
 
                         )}
@@ -1029,38 +1032,6 @@ export default function InferencePage({
               ) : (
 
                 <div className="card-stagger">
-
-                  <div className="step-control">
-
-                    <label className="slider-label">
-
-                      시뮬레이션 스텝
-
-                      <span className={`step-badge${stepBump ? " bump" : ""}`}>
-
-                        {step} / {maxStep}
-
-                      </span>
-
-                      <input
-
-                        type="range"
-
-                        min={0}
-
-                        max={maxStep}
-
-                        value={step}
-
-                        onChange={(e) => setStep(Number(e.target.value))}
-
-                      />
-
-                    </label>
-
-                  </div>
-
-
 
                   <section className="card">
 
@@ -1181,6 +1152,8 @@ export default function InferencePage({
                             title: `제품별 누적 생산량 – 공정별 (스텝 ${snap.step})`,
 
                             operIds: result.oper_ids,
+
+                            timeAxis: ganttAxis,
 
                           },
 
