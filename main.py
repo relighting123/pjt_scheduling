@@ -10,6 +10,9 @@ main.py – 워크플로우 컨트롤러 (CLI)
 
     python main.py -i FAC001/train/202406191430 infer
     python main.py sample -s single_heavy_wip --fac-id FAC001
+    python main.py run -i FAC001/train/20260619070000 --timesteps 5000
+    python main.py run --all --fac-id FAC001 --timesteps 200000
+    python main.py run --all --bootstrap --scenario default --timesteps 200000
 """
 import argparse
 import subprocess
@@ -19,7 +22,17 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, train_snapshot_now, PERIOD_SPLITS
+from typing import List, Optional, Union
+
+from config import (
+    CONFIG,
+    set_input_folder,
+    PERIOD_SPLITS,
+    parse_input_folder,
+    list_input_folders,
+    iter_rule_timekeys,
+    validate_path_segment,
+)
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range
 from data.generator import (
     generate_sample_data,
@@ -114,10 +127,10 @@ def step_fetch_db(
     return path
 
 
-def step_load() -> dict:
-    print("=" * 60)
-    print("[STEP 2] 데이터 로드 및 전처리")
-    print(f"  input: {CONFIG.path.input_dir}")
+def load_env_data_for_folder(folder: str, *, verbose: bool = True) -> dict:
+    set_input_folder(folder)
+    if verbose:
+        print(f"  input: {CONFIG.path.input_dir}")
     raw = load_data()
     errors = validate_data(raw)
     if errors:
@@ -125,16 +138,59 @@ def step_load() -> dict:
             print(f"  [오류] {e}")
         sys.exit(1)
     env_data = preprocess(raw)
-    print(f"  EQP: {len(env_data['eqp_ids'])}대  "
-          f"LOT: {len(env_data['lots'])}개  "
-          f"제품: {len(env_data['prod_keys'])}종  "
-          f"공정: {len(env_data['oper_ids'])}종")
+    if verbose:
+        print(f"  EQP: {len(env_data['eqp_ids'])}대  "
+              f"LOT: {len(env_data['lots'])}개  "
+              f"제품: {len(env_data['prod_keys'])}종  "
+              f"공정: {len(env_data['oper_ids'])}종")
     return env_data
 
 
-def step_train(env_data: dict, timesteps: int = None):
+def step_load() -> dict:
+    print("=" * 60)
+    print("[STEP 2] 데이터 로드 및 전처리")
+    print(f"  input: {CONFIG.path.input_dir}")
+    return load_env_data_for_folder(CONFIG.path.input_folder_key, verbose=True)
+
+
+def step_load_many(folders: List[str]) -> List[dict]:
+    print("=" * 60)
+    print(f"[STEP 2] 데이터 로드 ({len(folders)}개 기간)")
+    datasets = []
+    for folder in folders:
+        print(f"  · {folder}")
+        datasets.append(load_env_data_for_folder(folder, verbose=False))
+    if datasets:
+        d0 = datasets[0]
+        print(f"  (대표) EQP: {len(d0['eqp_ids'])}대  "
+              f"LOT: {len(d0['lots'])}개  "
+              f"제품: {len(d0['prod_keys'])}종  "
+              f"공정: {len(d0['oper_ids'])}종")
+    return datasets
+
+
+def split_folders_for_fac(fac_id: str, split: str) -> List[str]:
+    prefix = f"{validate_path_segment(fac_id, 'FAC_ID')}/{split}/"
+    return sorted(f for f in list_input_folders() if f.startswith(prefix))
+
+
+def filter_folders_by_period(
+    folders: List[str],
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> List[str]:
+    if not from_date or not to_date:
+        return folders
+    keys = set(iter_rule_timekeys(from_date, to_date))
+    return [f for f in folders if f.rsplit("/", 1)[-1] in keys]
+
+
+def step_train(env_data: Union[dict, List[dict]], timesteps: int = None):
     print("=" * 60)
     print("[STEP 3] 모델 학습")
+    datasets = env_data if isinstance(env_data, list) else [env_data]
+    if len(datasets) > 1:
+        print(f"  학습 기간: {len(datasets)}개 (VecEnv)")
     if timesteps:
         CONFIG.rl.total_timesteps = timesteps
     print(f"  Total Timesteps: {CONFIG.rl.total_timesteps:,}")
@@ -143,8 +199,8 @@ def step_train(env_data: dict, timesteps: int = None):
     agent.train(env_data, verbose=1)
     agent.save()
 
-    print("\n  평가 중 (3 에피소드)...")
-    metrics = agent.evaluate(env_data, n_episodes=3)
+    print("\n  평가 중 (3 에피소드, 첫 번째 기간)...")
+    metrics = agent.evaluate(datasets[0], n_episodes=3)
     print(f"  평균 보상:       {metrics['mean_reward']:.2f}")
     print(f"  공정 전환(평균): {metrics['mean_oper_sw']:.1f}")
     print(f"  제품 전환(평균): {metrics['mean_prod_sw']:.1f}")
@@ -152,13 +208,20 @@ def step_train(env_data: dict, timesteps: int = None):
     return agent
 
 
-def step_infer(env_data: dict, agent: SchedulingAgent = None, algorithm: str = "rl") -> dict:
+def step_infer(
+    env_data: dict,
+    agent: SchedulingAgent = None,
+    algorithm: str = "rl",
+    *,
+    output_dir: Path = None,
+    result_name: str = "result",
+) -> dict:
     print("=" * 60)
     print(f"[STEP 4] 추론 실행 (알고리즘: {algorithm})")
     print(f"  입력: {CONFIG.path.input_dir}")
     result = run_inference(env_data, algorithm=algorithm, agent=agent)
-    out_dir = CONFIG.path.infer_output_dir
-    path = save_result(result, output_dir=out_dir)
+    out_dir = output_dir or CONFIG.path.infer_output_dir
+    path = save_result(result, output_dir=out_dir, result_name=result_name)
 
     stats = result["stats"]
     print(f"  배정 LOT 수:    {len(result['schedule'])}")
@@ -167,6 +230,154 @@ def step_infer(env_data: dict, agent: SchedulingAgent = None, algorithm: str = "
     print(f"  Idle 합계:      {stats['idle_total']}분")
     print(f"  결과 파일:      {path}")
     return result
+
+
+def _load_single_train(folder: str) -> dict:
+    print("=" * 60)
+    print("[STEP 2] 데이터 로드 및 전처리")
+    return load_env_data_for_folder(folder, verbose=True)
+
+
+def resolve_test_folder(train_folder: str, test_folder: str | None = None) -> str:
+    """train 폴더 키 → 동일 RULE_TIMEKEY의 test 폴더 (또는 명시 --test)."""
+    if test_folder:
+        return test_folder.strip()
+    fac_id, split, period = parse_input_folder(train_folder.strip())
+    if split != "train":
+        raise ValueError(
+            f"train 폴더 형식이 필요합니다: FAC_ID/train/{{RULE_TIMEKEY}} (받은 값: {train_folder!r})"
+        )
+    if not period:
+        raise ValueError(
+            "test 폴더를 자동 추론하려면 train/{RULE_TIMEKEY} 형식이거나 --test 를 지정하세요."
+        )
+    return f"{fac_id}/test/{period}"
+
+
+def resolve_run_folders(
+    *,
+    fac_id: str = "FAC001",
+    train_folder: Optional[str] = None,
+    test_folder: Optional[str] = None,
+    all_data: bool = False,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> tuple[List[str], List[str]]:
+    if all_data:
+        train_folders = filter_folders_by_period(
+            split_folders_for_fac(fac_id, "train"), from_date, to_date,
+        )
+        test_folders = filter_folders_by_period(
+            split_folders_for_fac(fac_id, "test"), from_date, to_date,
+        )
+        if not train_folders:
+            raise ValueError(
+                f"{fac_id} train 데이터 없음. "
+                f"'python main.py sample --bootstrap --fac-id {fac_id}' 또는 fetch로 생성하세요."
+            )
+        if not test_folders:
+            raise ValueError(
+                f"{fac_id} test 데이터 없음. sample/fetch로 test 기간을 생성하세요."
+            )
+        return train_folders, test_folders
+
+    if not train_folder:
+        raise ValueError("train 폴더는 -i 또는 --all 로 지정하세요.")
+
+    train_key = train_folder.strip()
+    test_key = resolve_test_folder(train_key, test_folder)
+    return [train_key], [test_key]
+
+
+def step_run(
+    train_folder: Optional[str] = None,
+    test_folder: Optional[str] = None,
+    timesteps: int | None = None,
+    *,
+    compare: bool = False,
+    all_data: bool = False,
+    fac_id: str = "FAC001",
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    bootstrap: bool = False,
+    scenario: str = "default",
+):
+    """train 데이터 학습 → test 데이터 추론 (단일 또는 전체 기간)."""
+    fac_id = validate_path_segment(fac_id, "FAC_ID")
+
+    if bootstrap:
+        print("=" * 60)
+        print(f"[RUN] bootstrap 샘플 생성 (scenario={scenario})")
+        bootstrap_facility_datasets(fac_id=fac_id, scenario=scenario)
+
+    train_folders, test_folders = resolve_run_folders(
+        fac_id=fac_id,
+        train_folder=train_folder,
+        test_folder=test_folder,
+        all_data=all_data,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+    print("=" * 60)
+    print("[RUN] train 학습 + test 추론")
+    print(f"  train ({len(train_folders)}): {', '.join(train_folders)}")
+    print(f"  test  ({len(test_folders)}): {', '.join(test_folders)}")
+
+    train_env = (
+        step_load_many(train_folders)
+        if len(train_folders) > 1
+        else _load_single_train(train_folders[0])
+    )
+    agent = step_train(train_env, timesteps=timesteps)
+
+    algorithms = ["rl"]
+    if compare:
+        algorithms.append("minprogress")
+
+    results_by_test: dict = {}
+    for test_key in test_folders:
+        test_input = set_input_folder(test_key)
+        if not test_input.is_dir():
+            print(f"[오류] test 입력 폴더 없음: {test_input}")
+            sys.exit(1)
+        print("=" * 60)
+        print(f"[STEP 2] test 로드: {test_key}")
+        test_env = load_env_data_for_folder(test_key, verbose=True)
+        test_output = CONFIG.path.output_dir
+        test_output.mkdir(parents=True, exist_ok=True)
+        period = test_key.rsplit("/", 1)[-1]
+        folder_results = {}
+        for algo in algorithms:
+            rl_agent = agent if algo == "rl" else None
+            if len(algorithms) == 1 and len(test_folders) == 1:
+                name = "result"
+            elif len(algorithms) == 1:
+                name = f"result_{period}"
+            else:
+                name = f"result_{period}_{algo}"
+            folder_results[algo] = step_infer(
+                test_env,
+                agent=rl_agent,
+                algorithm=algo,
+                output_dir=test_output,
+                result_name=name,
+            )
+        results_by_test[test_key] = folder_results
+
+    print("\n" + "=" * 60)
+    print("[RUN] 완료")
+    print(f"  모델: {CONFIG.path.model_dir / CONFIG.rl.model_name}.zip")
+    for test_key, folder_results in results_by_test.items():
+        print(f"  test {test_key} → {CONFIG.path.output_dir}")
+        for algo, res in folder_results.items():
+            stats = res["stats"]
+            print(
+                f"    [{algo}] LOT {len(res['schedule'])} · "
+                f"oper_sw={stats['oper_switches']} · prod_sw={stats['prod_switches']} · "
+                f"idle={stats['idle_total']}분"
+            )
+    return agent, results_by_test
 
 
 def step_launch_ui():
@@ -237,9 +448,10 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    input_help = "dataset 경로 키 (예: FAC001/train/20260620070000, FAC001/infer)"
     parser.add_argument(
         "--input", "-i", metavar="PATH", default=None,
-        help="dataset 경로 키 (예: FAC001/train/20260620070000, FAC001/infer)",
+        help=input_help + " — train/infer 앞·뒤 모두 가능",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -285,12 +497,72 @@ def parse_args():
     )
 
     train_p = sub.add_parser("train", help="모델 학습")
+    train_p.add_argument(
+        "--input", "-i", metavar="PATH", default=None, help=input_help,
+    )
     train_p.add_argument("--timesteps", type=int, default=None)
 
     infer_p = sub.add_parser("infer", help="추론 실행 및 결과 저장")
     infer_p.add_argument(
+        "--input", "-i", metavar="PATH", default=None, help=input_help,
+    )
+    infer_p.add_argument(
         "--algorithm", choices=sorted(VALID_ALGORITHMS), default="rl",
     )
+
+    run_p = sub.add_parser(
+        "run",
+        help="train 학습 후 test 추론 (한 번에)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "예:\n"
+            "  # 단일 기간\n"
+            "  python main.py run -i FAC001/train/20260619070000 --timesteps 5000\n"
+            "  # FAC 전체 train/test (bootstrap 기본 3 train + 1 test)\n"
+            "  python main.py run --all --bootstrap --timesteps 200000\n"
+            "  # Oracle fetch 후 전체\n"
+            "  python main.py fetch --split train --from-date 20260601 --to-date 20260607\n"
+            "  python main.py fetch --split test --from-date 20260608 --to-date 20260608\n"
+            "  python main.py run --all --timesteps 200000"
+        ),
+    )
+    run_p.add_argument(
+        "--input", "-i", metavar="PATH", default=None,
+        help="단일 train dataset 경로 (--all 과 함께 쓰지 않음)",
+    )
+    run_p.add_argument(
+        "--all", action="store_true",
+        help="FAC의 train 전 기간 VecEnv 학습 + test 전 기간 추론",
+    )
+    run_p.add_argument("--fac-id", default="FAC001", help="--all / bootstrap 용 FAC_ID")
+    run_p.add_argument(
+        "--scenario", "-s",
+        choices=sorted(SAMPLE_SCENARIOS),
+        default="default",
+        help="--bootstrap 시 샘플 시나리오",
+    )
+    run_p.add_argument(
+        "--bootstrap", action="store_true",
+        help="run 전 train/test/infer 샘플 골격 생성 (train 3 + test 1 기간)",
+    )
+    run_p.add_argument(
+        "--from-date", "--from-timekey", dest="from_date", metavar="RULE_TIMEKEY",
+        help="--all 시 train/test 기간 필터 시작",
+    )
+    run_p.add_argument(
+        "--to-date", "--to-timekey", dest="to_date", metavar="RULE_TIMEKEY",
+        help="--all 시 train/test 기간 필터 종료",
+    )
+    run_p.add_argument(
+        "--test", metavar="PATH", default=None,
+        help="test dataset 경로 키 (미지정 시 train과 동일 RULE_TIMEKEY)",
+    )
+    run_p.add_argument("--timesteps", type=int, default=None)
+    run_p.add_argument(
+        "--compare", action="store_true",
+        help="test에서 RL + Min-Progress 둘 다 실행",
+    )
+
     sub.add_parser("all", help="샘플생성 + 학습 + 추론 일괄 실행")
     sub.add_parser("ui", help="React UI + API 서버 실행")
 
@@ -299,7 +571,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    if args.input:
+    if args.command != "run" and getattr(args, "input", None):
         set_input_folder(args.input)
         print(f"[설정] 입력: {CONFIG.path.input_dir}")
 
@@ -341,6 +613,36 @@ def main():
                 sys.exit(1)
             agent = SchedulingAgent.load()
         step_infer(env_data, agent=agent, algorithm=algo)
+
+    elif args.command == "run":
+        if not args.all and not args.input:
+            print("[오류] run 은 -i TRAIN_PATH 또는 --all 중 하나가 필요합니다.")
+            sys.exit(1)
+        if args.all and args.input:
+            print("[오류] --all 과 -i 는 함께 사용할 수 없습니다.")
+            sys.exit(1)
+        if (args.from_date or args.to_date) and not args.all:
+            print("[오류] --from-date/--to-date 는 --all 과 함께 사용하세요.")
+            sys.exit(1)
+        if args.from_date and not args.to_date:
+            print("[오류] --from-date 와 --to-date 를 함께 지정하세요.")
+            sys.exit(1)
+        try:
+            step_run(
+                train_folder=args.input,
+                test_folder=args.test,
+                timesteps=args.timesteps,
+                compare=args.compare,
+                all_data=args.all,
+                fac_id=args.fac_id,
+                from_date=args.from_date,
+                to_date=args.to_date,
+                bootstrap=args.bootstrap,
+                scenario=args.scenario,
+            )
+        except ValueError as e:
+            print(f"[오류] {e}")
+            sys.exit(1)
 
     elif args.command == "all":
         fac = getattr(args, "fac_id", "FAC001")

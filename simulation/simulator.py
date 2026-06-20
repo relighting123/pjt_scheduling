@@ -462,6 +462,49 @@ class SchedulingSimulator:
             reward += cfg.w_late_finish * (end_time - self.soft_cutoff) / 60.0
         return reward
 
+    def _ppk_has_feasible_assignment(self, ppk: str) -> bool:
+        """현재 시점에 해당 PPK로 투입 가능한 (OPER, EQP) 조합이 있는지."""
+        for flat, _ei in self.get_feasible_assignments():
+            candidate_ppk, _oper = self.ppk_oper_from_flat(flat)
+            if candidate_ppk == ppk:
+                return True
+        return False
+
+    def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
+        """같은 PPK는 재공이 남을 때만 보너스; 고갈된 PPK에서 전환 시 소규모 보너스."""
+        cfg = self._reward_cfg
+        if eqp.prev_prod == ppk:
+            if self._ppk_has_feasible_assignment(ppk):
+                return cfg.w_same_prod
+            return 0.0
+        if eqp.prev_prod is not None:
+            eqp.prod_switches += 1
+            self.stats["prod_switches"] += 1
+            if not self._ppk_has_feasible_assignment(eqp.prev_prod):
+                return cfg.w_prod_switch
+        return 0.0
+
+    def _pacing_shaping_reward(
+        self, ppk: str, oper_id: str, wf_qty: int, at_time: Optional[int] = None,
+    ) -> float:
+        """계획 직선(y*=plan×t/T) 대비 누적 편차가 줄어들면 + 보상."""
+        cfg = self._reward_cfg
+        if cfg.w_pacing <= 0:
+            return 0.0
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        if not pm:
+            return 0.0
+        plan_qty = max(pm["d0_plan_qty"], 1)
+        horizon = max(self.soft_cutoff, 1)
+        t = self.current_time if at_time is None else at_time
+        ideal = plan_qty * min(max(t, 0), horizon) / horizon
+        key = (ppk, oper_id)
+        done_before = self.stats["completed_qty"].get(key, 0)
+        done_after = done_before + wf_qty
+        err_before = abs(ideal - done_before)
+        err_after = abs(ideal - done_after)
+        return cfg.w_pacing * (err_before - err_after) / plan_qty
+
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
         if not candidates:
             return None
@@ -632,14 +675,10 @@ class SchedulingSimulator:
             eqp.oper_switches += 1
             self.stats["oper_switches"] += 1
 
-        if eqp.prev_prod == ppk:
-            reward += cfg.w_same_prod
-        elif eqp.prev_prod is not None:
-            eqp.prod_switches += 1
-            self.stats["prod_switches"] += 1
-
         wf_qty    = row["wf_qty"]
         proc_time = row["proc_time"]
+        reward += self._same_prod_reward(eqp, ppk)
+        reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty)
         reward += cfg.w_completion * wf_qty / 25.0
 
         start_time, reward = self._apply_conversion_start(eqp, lot_cd, temp, reward)
@@ -752,12 +791,8 @@ class SchedulingSimulator:
             eqp.oper_switches += 1
             self.stats["oper_switches"] += 1
 
-        # 동일 제품 연속 보너스
-        if eqp.prev_prod == lot.plan_prod_key:
-            reward += cfg.w_same_prod
-        elif eqp.prev_prod is not None:
-            eqp.prod_switches += 1
-            self.stats["prod_switches"] += 1
+        reward += self._same_prod_reward(eqp, lot.plan_prod_key)
+        reward += self._pacing_shaping_reward(lot.plan_prod_key, lot.oper_id, lot.wf_qty)
 
         # LOT 완료 보상
         reward += cfg.w_completion * lot.wf_qty / 25.0

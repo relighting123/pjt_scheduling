@@ -51,24 +51,31 @@ def run_inference(
     if algorithm == "minprogress":
         heuristic_agent = MinProgressAgent(env_data)
     elif algorithm == "earliest_st":
-        heuristic_agent = EarliestSTAgent(env_data)
+        heuristic_agent = EarliestSTAgent()
 
     env = ActionMasker(SchedulingEnv(run_data, record_history=record_history), _mask_fn)
+    sched_env: SchedulingEnv = env.unwrapped
     obs, _ = env.reset()
     done = False
+    max_steps = int(env_data.get("sim_end_minutes", 1440)) + 500
+    steps = 0
 
     while not done:
         if heuristic_agent is not None:
-            action = heuristic_agent.predict(env.sim)
+            action = heuristic_agent.predict(sched_env.sim)
         else:
-            action = agent.predict(obs, deterministic=deterministic)
+            mask = env.action_masks()
+            action = agent.predict(obs, deterministic=deterministic, action_masks=mask)
 
         obs, _, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
+        steps += 1
+        if steps >= max_steps:
+            break
 
-    schedule = env.get_schedule()
-    history = env.get_history()
-    stats = env.sim.stats
+    schedule = sched_env.get_schedule()
+    history = sched_env.get_history()
+    stats = sched_env.sim.stats
     base_time = env_data["sim_base_time"]
 
     for rec in schedule:
@@ -91,9 +98,9 @@ def run_inference(
     }
 
 
-def save_result(result: dict, output_dir: Path = None) -> Path:
+def save_result(result: dict, output_dir: Path = None, result_name: str = "result") -> Path:
     """
-    추론 결과를 dataset/{FAC_ID}/infer/output/ 에 저장
+    추론 결과를 JSON으로 저장 (기본: infer/output/result.json)
     """
     d = output_dir or CONFIG.path.infer_output_dir
     d.mkdir(parents=True, exist_ok=True)
@@ -112,11 +119,11 @@ def save_result(result: dict, output_dir: Path = None) -> Path:
         for r in result["schedule"]
     ]
 
-    out_path = d / "result.json"
+    out_path = d / f"{result_name}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(output_records, f, ensure_ascii=False, indent=2)
 
-    full_path = d / "result_full.json"
+    full_path = d / f"{result_name}_full.json"
     from api.serializers import serialize_history
 
     serializable = {

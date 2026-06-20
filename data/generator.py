@@ -471,6 +471,75 @@ def _build_random_sample(
     return schedule, availability, plan, flow
 
 
+def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+    """
+    Pacing·PPK 전환 검증용 미니 문제.
+
+    - PPK001/PPK002, 2공정(OPER001→OPER002), EQP 2대(EQP001/002)
+    - 계획: 각 PPK×OPER 100매 (soft_cutoff 1320분 → 이상 기울기 ≈ 100/1320 매/분)
+    - PPK001: OPER001 재공 4 LOT (100매) — OPER002는 유입만 가능
+    - PPK002: OPER001 재공 2 LOT (50매) — OPER1 부족 → 전환·앞공정 우선 학습
+    - OPER001만 초기 schedule; OPER002는 abstract 유입 → 계단/공백이 잘 보임
+    """
+    wf_qty = 25
+    proc = 90
+    plan_qty = 100
+    ppk_a, ppk_b = "PPK001", "PPK002"
+
+    flow = [
+        {"PLAN_PROD_KEY": ppk_a, "SEQ_ID": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk_a, "SEQ_ID": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": ppk_b, "SEQ_ID": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk_b, "SEQ_ID": 2, "OPER_ID": "OPER002"},
+    ]
+    plan = [
+        {"PLAN_PROD_KEY": ppk_a, "OPER_ID": "OPER001",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+        {"PLAN_PROD_KEY": ppk_a, "OPER_ID": "OPER002",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_ID": "OPER001",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_ID": "OPER002",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+    ]
+
+    schedule: List[dict] = []
+    discrete: List[dict] = []
+
+    # PPK001 — OPER001 4 LOT (시작 시각 분산 → 한꺼번에 투입 시 OPER002 계단 유발)
+    pacing_starts = (0, 45, 90, 135)
+    for i, st in enumerate(pacing_starts):
+        lot_id = f"LOT{i + 1:03d}"
+        eqp = "EQP001" if i % 2 == 0 else "EQP002"
+        schedule.append(_schedule_row(
+            eqp, lot_id, f"CAR{i + 1:03d}", ppk_a, 1, st, st + proc,
+        ))
+        for eqp_id in ("EQP001", "EQP002"):
+            discrete.append(_discrete_row(eqp_id, lot_id, ppk_a, proc, wf_qty))
+
+    # PPK002 — OPER001 2 LOT만 (50매) → OPER002 계획 100 대비 재공 부족
+    for i, st in enumerate((200, 260)):
+        lot_id = f"LOT{101 + i}"
+        eqp = "EQP001" if i == 0 else "EQP002"
+        schedule.append(_schedule_row(
+            eqp, lot_id, f"CAR{101 + i}", ppk_b, 1, st, st + proc,
+        ))
+        for eqp_id in ("EQP001", "EQP002"):
+            discrete.append(_discrete_row(eqp_id, lot_id, ppk_b, proc, wf_qty))
+
+    return schedule, discrete, plan, flow
+
+
+def build_pacing_steady_abstract_arrange() -> List[dict]:
+    """OPER002 유입 라우트 — 초기 discrete에 OPER2 LOT 없어도 abstract 유입 가능."""
+    st = 90
+    rows = []
+    for ppk in ("PPK001", "PPK002"):
+        for oper in ("OPER001", "OPER002"):
+            rows.append(_abstract_row(ppk, oper, "A", st))
+    return rows
+
+
 SampleBuilder = Callable[[], Tuple[List[dict], List[dict], List[dict], List[dict]]]
 
 SAMPLE_SCENARIOS: Dict[str, dict] = {
@@ -485,6 +554,16 @@ SAMPLE_SCENARIOS: Dict[str, dict] = {
         "description": "PPK001 단일 제품, OPER002 ST 90분·전 설비, OPER002 START 간격 OPER001의 1/2",
         "build": _build_single_heavy_wip_sample,
         "configurable": False,
+    },
+    "pacing_steady": {
+        "name": "Pacing 검증 (2제품)",
+        "description": (
+            "PPK001/002 2공정·계획 100매. PPK002 OPER1 재공 50매 부족. "
+            "누적 생산 점선 대비 기울기·PPK 전환 테스트용."
+        ),
+        "build": _build_pacing_steady_sample,
+        "configurable": False,
+        "abstract_arrange": build_pacing_steady_abstract_arrange,
     },
     "random": {
         "name": "랜덤 (파라미터)",
@@ -565,7 +644,12 @@ def generate_sample_data(
         flow,
         split_qty=(cfg.split_qty if cfg and scenario == "random" else 3),
     )
-    write_json_bundle(output_dir, schedule, availability, plan, flow, split_rules)
+    abstract_fn = SAMPLE_SCENARIOS.get(scenario, {}).get("abstract_arrange")
+    abstract_data = abstract_fn() if callable(abstract_fn) else None
+    write_json_bundle(
+        output_dir, schedule, availability, plan, flow, split_rules,
+        abstract_arrange=abstract_data,
+    )
     print(f"[generator] 샘플 생성 ({scenario}) → {output_dir}")
     return output_dir
 

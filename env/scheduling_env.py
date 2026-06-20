@@ -8,7 +8,7 @@ StableBaselines3 MaskablePPO와 호환됩니다.
 
 """
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 
 
@@ -133,6 +133,24 @@ class SchedulingEnv(gym.Env):
         return obs, {}
 
 
+    def _resolve_action_to_feasible(
+        self, ppk_oper_idx: int, eqp_idx: int, feasible: List[tuple],
+    ) -> Optional[tuple]:
+        """(bucket, eqp) → feasible (flat, ei). 독립 마스크 invalid 조합 보정."""
+        if not feasible:
+            return None
+        flat = int(ppk_oper_idx) % (self._O * self._P)
+        ei = int(eqp_idx) % self._M
+        if (flat, ei) in feasible:
+            return (flat, ei)
+        same_flat = [p for p in feasible if p[0] == flat]
+        if same_flat:
+            return min(same_flat, key=lambda p: (p[1] != ei, p[1]))
+        same_ei = [p for p in feasible if p[1] == ei]
+        if same_ei:
+            return min(same_ei, key=lambda p: (p[0] != flat, p[0]))
+        return feasible[0]
+
 
     def step(self, action: Union[int, np.ndarray, list]) -> Tuple[np.ndarray, float, bool, bool, dict]:
 
@@ -155,14 +173,8 @@ class SchedulingEnv(gym.Env):
 
 
         eqp_ids = self._env_data["eqp_ids"]
-
-        eqp_idx = eqp_idx % max(len(eqp_ids), 1)
-
-        eqp_id = eqp_ids[eqp_idx] if eqp_idx < len(eqp_ids) else eqp_ids[0]
-
-
-
-        ppk, oper_id = self.sim.ppk_oper_from_flat(ppk_oper_idx % (self._O * self._P))
+        feasible = self.sim.get_feasible_assignments()
+        resolved = self._resolve_action_to_feasible(ppk_oper_idx, eqp_idx, feasible)
 
 
 
@@ -175,14 +187,18 @@ class SchedulingEnv(gym.Env):
 
 
         reward = 0.0
-
-        if self.sim.eqps[eqp_id].status == "idle":
-
-            reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
-
-        elif self.sim.get_feasible_assignments():
-
-            reward = -0.5
+        if resolved is not None:
+            flat, ei = resolved
+            eqp_id = eqp_ids[ei] if ei < len(eqp_ids) else eqp_ids[0]
+            ppk, oper_id = self.sim.ppk_oper_from_flat(flat)
+            if self.sim.eqps[eqp_id].status == "idle":
+                reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
+            elif feasible:
+                reward = -0.5
+        elif not self.sim.is_done():
+            if self.sim._has_pending_processing() or self.sim.get_idle_eqps():
+                self.sim._advance_to_next_decision()
+                time_advanced = self.sim.current_time != time_at_step_start
 
 
 

@@ -205,16 +205,103 @@ UI 기능:
 
 ```bash
 pip install -r requirements.txt
+```
 
-python main.py sample          # 샘플 데이터 생성 (external/input/)
-python main.py sample -i case_a   # external/case_a/ 에 생성
-set SCHEDULING_INPUT=case_a   # 환경변수로 기본 입력 폴더 지정 (Windows)
-python main.py train           # PPO 모델 학습
-python main.py infer           # 추론 및 결과 저장
-python main.py all             # 샘플생성 + 학습 + 추론 일괄 실행
-python main.py ui              # React UI + API 서버 실행
+데이터 경로는 `external/dataset/{FAC_ID}/{train|test|infer}/{RULE_TIMEKEY}/input/` 형식입니다.  
+예: `FAC001/train/20260619070000`
 
-python main.py train --timesteps 50000   # 타임스텝 지정 학습
+### 데이터 생성
+
+```bash
+# 단일 train 샘플 (현재 시각 RULE_TIMEKEY)
+python main.py sample --fac-id FAC001 --split train
+
+# pacing 검증용 미니 시나리오
+python main.py sample -s pacing_steady --fac-id FAC001 --split train
+python main.py sample -s pacing_steady --fac-id FAC001 --split test
+
+# train/test/infer 골격 + 샘플 (train 3기간 + test 1기간)
+python main.py sample --bootstrap --fac-id FAC001
+
+# RULE_TIMEKEY 구간 일괄 생성
+python main.py sample -s default --fac-id FAC001 --split train --from-date 20260601 --to-date 20260607
+```
+
+### DB 조회 (Oracle)
+
+```bash
+python main.py fetch --fac-id FAC001 --split train --from-date 20260601 --to-date 20260607
+python main.py fetch --fac-id FAC001 --split test --snapshot 20260608070000
+```
+
+### 학습 / 추론 (개별)
+
+`-i` / `--input`은 서브커맨드 **앞·뒤** 모두 가능합니다.
+
+```bash
+# train 폴더 지정 후 학습
+python main.py train -i FAC001/train/20260619070000 --timesteps 50000
+python main.py -i FAC001/train/20260619070000 train --timesteps 50000
+
+# test 폴더로 RL 추론 (결과: infer/output/ 또는 test/output/)
+python main.py infer -i FAC001/test/20260619070000 --algorithm rl
+python main.py infer -i FAC001/test/20260619070000 --algorithm minprogress
+```
+
+### 한 번에: train 학습 → test 추론 (`run`)
+
+```bash
+# 단일 기간 (빠른 스모크 테스트)
+python main.py run -i FAC001/train/20260619070000 --timesteps 5000
+
+# test 폴더 직접 지정 + 휴리스틱 비교
+python main.py run -i FAC001/train/20260619070000 --test FAC001/test/20260619070000 --compare
+
+# FAC 전체 train/test (기존 dataset 폴더 전부)
+python main.py run --all --fac-id FAC001 --timesteps 200000
+
+# 샘플 생성부터 전체 워크플로우
+python main.py run --all --bootstrap --scenario default --timesteps 200000
+
+# 기간 필터 (train/test RULE_TIMEKEY 구간만)
+python main.py run --all --from-date 20260601 --to-date 20260607 --timesteps 200000
+```
+
+| 명령 | 설명 |
+|------|------|
+| `run -i ...` | 단일 train 학습 → 대응 test 1개 추론 |
+| `run --all` | train **모든 기간** VecEnv 학습 → test **모든 기간** 추론 |
+| `run --bootstrap` | run 전에 train 3 + test 1 샘플 자동 생성 |
+| `run --compare` | test마다 PPO + Min-Progress 실행 |
+| `all` | bootstrap + train + **infer** 추론 (test 평가 아님) |
+
+test 추론 결과는 각 `external/dataset/FAC001/test/{RULE_TIMEKEY}/output/`에 저장됩니다.
+
+### UI
+
+```bash
+python main.py ui
+```
+
+- **학습** — train 기간 단일/구간/복수 선택, PPO 학습
+- **테스트** — test 데이터셋 전체 벤치마크 (RL vs 휴리스틱)
+- **추론** — 단일 폴더 Post-Scheduling 실행·차트 확인
+
+개별 실행:
+
+```bash
+uvicorn api.server:app --reload --port 8000
+cd frontend && npm install && npm run dev
+```
+
+입력 폴더 기본값 변경 (선택):
+
+```bash
+# Windows
+set SCHEDULING_INPUT=FAC001/train/20260619070000
+
+# Linux / macOS
+export SCHEDULING_INPUT=FAC001/train/20260619070000
 ```
 
 ---

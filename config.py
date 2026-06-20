@@ -309,10 +309,12 @@ class RLConfig:
 @dataclass
 class RewardConfig:
     w_same_oper:       float = 2.0
-    w_same_prod:       float = 1.0
+    w_same_prod:       float = 0.5       # 같은 PPK 재공이 남아 있을 때만 (조건부)
+    w_prod_switch:     float = 0.8       # 이전 PPK 재공 고갈 시 전환 보너스
     w_idle_per_min:    float = -0.5
     w_completion:      float = 1.0
     w_plan_hit:        float = 5.0
+    w_pacing:          float = 3.0         # 계획 직선 대비 누적 편차 감소 shaping
     w_conversion:      float = -30.0    # LOT_CD/TEMP 전환 1회 패널티
     w_late_finish:     float = -2.0     # soft cutoff(05:00) 이후 END_TM
 
