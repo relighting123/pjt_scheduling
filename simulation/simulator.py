@@ -520,6 +520,47 @@ class SchedulingSimulator:
             return self._reward_cfg.w_late_finish * (end_time - self.soft_cutoff) / 60.0
         return 0.0
 
+    def _has_plan(self, ppk: str, oper_id: str) -> bool:
+        """(PPK, OPER)에 유효 계획량이 있으면 True."""
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        return bool(pm and pm.get("d0_plan_qty", 0) > 0)
+
+    def _plan_hit_reward(self, ppk: str, oper_id: str, wf_qty: int, end_time: int) -> float:
+        reward = self._late_finish_penalty(end_time)
+        if end_time > self.soft_cutoff or not self._has_plan(ppk, oper_id):
+            return reward
+        cfg = self._reward_cfg
+        if cfg.w_plan_hit <= 0:
+            return reward
+        pm = self._env_data["plan_meta"][(ppk, oper_id)]
+        key = (ppk, oper_id)
+        done_before = self.stats["completed_qty"].get(key, 0)
+        plan_qty = max(pm["d0_plan_qty"], 1)
+        gap_before = max(plan_qty - done_before, 0)
+        done_after = done_before + wf_qty
+        gap_after = max(plan_qty - done_after, 0)
+        reward += cfg.w_plan_hit * (gap_before - gap_after) / plan_qty
+        return reward
+
+    def _pacing_shaping_reward(
+        self, ppk: str, oper_id: str, wf_qty: int, at_time: Optional[int] = None,
+    ) -> float:
+        """계획이 있는 (PPK, OPER)만 직선 페이싱 shaping."""
+        cfg = self._reward_cfg
+        if cfg.w_pacing <= 0 or not self._has_plan(ppk, oper_id):
+            return 0.0
+        pm = self._env_data["plan_meta"][(ppk, oper_id)]
+        plan_qty = max(pm["d0_plan_qty"], 1)
+        horizon = max(self.soft_cutoff, 1)
+        t = self.current_time if at_time is None else at_time
+        ideal = plan_qty * min(max(t, 0), horizon) / horizon
+        key = (ppk, oper_id)
+        done_before = self.stats["completed_qty"].get(key, 0)
+        done_after = done_before + wf_qty
+        err_before = abs(ideal - done_before)
+        err_after = abs(ideal - done_after)
+        return cfg.w_pacing * (err_before - err_after) / plan_qty
+
     def _ppk_has_feasible_assignment(self, ppk: str) -> bool:
         """현재 시점에 해당 PPK로 투입 가능한 (OPER, EQP) 조합이 있는지."""
         for flat, _ei in self.get_feasible_assignments():
@@ -741,11 +782,12 @@ class SchedulingSimulator:
             self.stats["oper_switches"] += 1
 
         reward += self._same_prod_reward(eqp, ppk)
+        reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty)
         reward += cfg.w_completion * wf_qty / 25.0
 
         start_time, reward = self._apply_conversion_start(eqp, lot_cd, temp, reward)
         end_time = start_time + proc_time
-        reward += self._late_finish_penalty(end_time)
+        reward += self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
 
         eqp.status = "busy"
         eqp.current_lot = lot_id
@@ -982,11 +1024,13 @@ class SchedulingSimulator:
         eqp_oper_cap = data.get("eqp_oper_cap", {})
         route_map = data.get("abstract_route_map", {})
         routes_by = data.get("abstract_routes_by_ppk_oper", {})
+        plan_meta = data.get("plan_meta", {})
         n_eqp_per_oper = data.get("n_eqp_per_oper", {})
         flow_prev = data.get("flow_prev", {})
         flow_post = data.get("flow_post", {})
         max_route_st = max(data.get("max_route_st", 1), 1)
         wf_unit = max(data.get("max_wf_qty", 1), 1)
+        completed = self.stats["completed_qty"]
 
         feats = np.zeros((O, P, K, F), dtype=np.float32)
 
@@ -1026,13 +1070,18 @@ class SchedulingSimulator:
             return None
 
         def eff_takt(ppk: str, op: Optional[str]) -> float:
-            """capacity 기반 per-lot 간격(분). 계획량 미참조."""
+            """수요 페이싱(계획 있을 때) + capacity. per-lot 간격(분)."""
             if op is None:
                 return 0.0
             lst = routes_by.get((ppk, op))
             spw = (sum(s for _, s in lst) / len(lst)) if lst else None
             n = max(n_eqp_per_oper.get(op, 0), 1)
             cap_takt = (spw / n) if spw is not None else 0.0
+            pm = plan_meta.get((ppk, op))
+            if pm and pm.get("d0_plan_qty", 0) > 0:
+                q_plan = max(pm["d0_plan_qty"] - completed.get((ppk, op), 0), 1)
+                demand_takt = T_avail / q_plan
+                return max(demand_takt, cap_takt) * wf_unit
             return cap_takt * wf_unit
 
         oper_ids = data["oper_ids"]
@@ -1043,12 +1092,19 @@ class SchedulingSimulator:
                 ppk = prod_keys[pi]
                 is_step = (
                     (ppk, op) in routes_by
+                    or (ppk, op) in plan_meta
                     or (ppk, op) in wip_po
                 )
                 if not is_step:
                     continue
                 wip_q = wip_po.get((ppk, op), 0.0)
                 ppk_total = max(ppk_wip.get(ppk, 0.0), 1.0)
+                urgency = 0.0
+                pm = plan_meta.get((ppk, op))
+                if pm and pm.get("d0_plan_qty", 0) > 0:
+                    plan_qty = max(pm["d0_plan_qty"], 1)
+                    gap = max(plan_qty - completed.get((ppk, op), 0), 0)
+                    urgency = min(gap / T_avail / plan_qty, 1.0)
                 same = 1.0 if ppk == last_ppk else 0.0
                 prev_takt = eff_takt(ppk, flow_prev.get(ppk, {}).get(op)) / max_takt
                 post_takt = eff_takt(ppk, flow_post.get(ppk, {}).get(op)) / max_takt
@@ -1072,7 +1128,7 @@ class SchedulingSimulator:
                     feats[oi, pi, mi, 6] = min(prev_takt, 1.0)
                     feats[oi, pi, mi, 7] = min(post_takt, 1.0)
                     feats[oi, pi, mi, 8] = (st / max_route_st) if st is not None else 0.0
-                    feats[oi, pi, mi, 9] = 0.0
+                    feats[oi, pi, mi, 9] = urgency
         return feats
 
     # ── 관측 벡터 생성 (Global + Bucket + EQP local + Context) ────────────────
@@ -1088,6 +1144,10 @@ class SchedulingSimulator:
         lot_cd_idx = data.get("lot_cd_idx", {})
         temp_idx = data.get("temp_idx", {})
         initial_lot_count = max(len(data["lots"]), 1)
+        total_plan = max(
+            sum(p["d0_plan_qty"] for p in data.get("plan", []) if p.get("d0_plan_qty", 0) > 0),
+            0,
+        )
 
         bucket = self.get_bucket_features().flatten()
 
@@ -1109,7 +1169,10 @@ class SchedulingSimulator:
         )
         group_global[2] = min(len(self.lot_pool) / initial_lot_count, 1.0)
         produced = sum(self.stats["completed_qty"].values())
-        group_global[3] = min(produced / max(self._initial_wip_total, 1), 1.0)
+        if total_plan > 0:
+            group_global[3] = min(produced / total_plan, 1.0)
+        else:
+            group_global[3] = min(produced / max(self._initial_wip_total, 1), 1.0)
         conv_eqps = 0
         for eqp_id, eqp in self.eqps.items():
             rem = max(eqp.free_at - self.current_time, 0)

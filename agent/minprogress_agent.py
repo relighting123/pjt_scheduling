@@ -1,8 +1,8 @@
 """
 agent/minprogress_agent.py – 최소 진행률(Min-Progress) 휴리스틱
-현재 idle EQP 기준 (PPK/OPER) 선택 – WIP·우선순위 참조 (계획량 미참조)
+현재 idle EQP 기준 (PPK/OPER) 선택 – 계획 있으면 계획 기준, 없으면 WIP 기준
 """
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -18,6 +18,10 @@ class MinProgressAgent:
             if p["plan_prod_key"] == prod and p["oper_id"] == oper_id:
                 return p
         return None
+
+    def _has_plan(self, prod: str, oper_id: str) -> bool:
+        row = self._plan_row(prod, oper_id)
+        return bool(row and row.get("d0_plan_qty", 0) > 0)
 
     def _plan_priority(self, prod: str, oper_id: str) -> int:
         row = self._plan_row(prod, oper_id)
@@ -43,11 +47,18 @@ class MinProgressAgent:
     ) -> float:
         t_end = self._chart_max_x(sim)
         cum = self._cumulative_qty_at(sim, prod, oper_id, t_end)
+        row = self._plan_row(prod, oper_id)
+        if row and row.get("d0_plan_qty", 0) > 0:
+            return (cum / max(row["d0_plan_qty"], 1)) / t_end
         return cum / t_end
 
-    def _remaining_wip(
+    def _remaining_work(
         self, sim: SchedulingSimulator, prod: str, oper_id: str,
     ) -> int:
+        row = self._plan_row(prod, oper_id)
+        if row and row.get("d0_plan_qty", 0) > 0:
+            done = sim.stats["completed_qty"].get((prod, oper_id), 0)
+            return max(row["d0_plan_qty"] - done, 0)
         wip = sim._wip_for(prod, oper_id)
         return wip["wip_qty"] if wip else 0
 
@@ -56,7 +67,7 @@ class MinProgressAgent:
         return (
             self._plan_priority(ppk, oper_id),
             self._normalized_slope(sim, ppk, oper_id),
-            -self._remaining_wip(sim, ppk, oper_id),
+            -self._remaining_work(sim, ppk, oper_id),
             flat,
         )
 

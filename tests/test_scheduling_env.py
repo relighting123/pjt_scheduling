@@ -64,6 +64,28 @@ def test_heuristic_episode_completes():
     assert len(env.get_schedule()) > 0
 
 
+def test_pacing_shaping_reward_when_behind_plan():
+    """계획 있는 (PPK, OPER)이 직선보다 뒤처졌을 때 pacing 보상 > 0."""
+    raw = load_data()
+    env_data = preprocess(raw)
+    sim = SchedulingSimulator(env_data, record_history=False)
+    ppk = env_data["prod_keys"][0]
+    oper = env_data["oper_ids"][0]
+    if not sim._has_plan(ppk, oper):
+        return
+    sim.current_time = sim.soft_cutoff // 2
+    plan_qty = env_data["plan_meta"][(ppk, oper)]["d0_plan_qty"]
+    sim.stats["completed_qty"][(ppk, oper)] = 0
+    r = sim._pacing_shaping_reward(ppk, oper, wf_qty=min(25, plan_qty))
+    assert r > 0, f"expected positive pacing reward when behind plan, got {r}"
+
+
+def test_pacing_shaping_skipped_without_plan():
+    """계획 없는 (PPK, OPER)은 pacing 보상 0."""
+    sim = SchedulingSimulator(preprocess(load_data()), record_history=False)
+    assert sim._pacing_shaping_reward("PPK_NO_PLAN", "OPER001", wf_qty=25) == 0.0
+
+
 def test_same_prod_skipped_when_ppk_not_feasible():
     """이전 PPK에 feasible 조합이 없으면 same_prod 보너스 없음."""
     raw = load_data()
@@ -166,6 +188,8 @@ if __name__ == "__main__":
     test_tool_tracker_capacity()
     test_sim_horizon_1440()
     test_heuristic_episode_completes()
+    test_pacing_shaping_reward_when_behind_plan()
+    test_pacing_shaping_skipped_without_plan()
     test_same_prod_skipped_when_ppk_not_feasible()
     test_pacing_steady_scenario_preprocess_and_episode()
     test_step_resolves_invalid_ppk_on_current_eqp()

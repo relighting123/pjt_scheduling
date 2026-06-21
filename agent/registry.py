@@ -13,7 +13,7 @@ ALGORITHMS: list[dict] = [
     {
         "id": "minprogress",
         "name": "Min-Progress (휴리스틱)",
-        "description": "PLAN_PRIORITY + WIP 잔량·처리 기울기 우선 (계획량 미참조)",
+        "description": "PLAN_PRIORITY + 진행 기울기 최소 + 잔여(계획 또는 WIP) 우선",
         "requires_model": False,
     },
     {
