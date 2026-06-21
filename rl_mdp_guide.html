@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>강화학습 MDP 구조 가이드 — 반도체 스케줄링</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --card: #1c2128;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --accent3: #f78166;
+    --accent4: #d2a8ff;
+    --accent5: #ffa657;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --step-1: #1a7f64;
+    --step-2: #0969da;
+    --step-3: #8250df;
+    --step-4: #cf222e;
+    --step-5: #9a6700;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    padding: 0;
+  }
+
+  /* ── HEADER ── */
+  .hero {
+    background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1b2a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 60px 40px 50px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(88,166,255,.12), transparent);
+    pointer-events: none;
+  }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(88,166,255,.12);
+    border: 1px solid rgba(88,166,255,.3);
+    color: var(--accent);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #e6edf3, #58a6ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero p {
+    color: var(--text-dim);
+    font-size: 16px;
+    max-width: 620px;
+    margin: 0 auto 30px;
+  }
+  .hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .stat { text-align: center; }
+  .stat-val {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    display: block;
+  }
+  .stat-label { font-size: 12px; color: var(--text-dim); }
+
+  /* ── NAV ── */
+  .nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(13,17,23,.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    display: flex; gap: 4px; overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-item {
+    padding: 14px 16px;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all .2s;
+    text-decoration: none;
+  }
+  .nav-item:hover { color: var(--text); border-color: var(--border); }
+  .nav-item.active { color: var(--accent); border-color: var(--accent); }
+
+  /* ── MAIN LAYOUT ── */
+  .main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* ── SECTION ── */
+  .section {
+    margin-bottom: 64px;
+    scroll-margin-top: 60px;
+  }
+  .section-header {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .section-title { font-size: 22px; font-weight: 700; }
+  .section-sub { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ── STEP FLOW ── */
+  .step-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+  .step-flow::before {
+    content: '';
+    position: absolute;
+    left: 24px; top: 48px; bottom: 48px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent4), var(--accent3));
+    opacity: .3;
+  }
+  .step-item {
+    display: flex; gap: 24px;
+    position: relative;
+  }
+  .step-num {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700;
+    flex-shrink: 0;
+    position: relative; z-index: 1;
+    border: 2px solid;
+  }
+  .step-body {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    transition: border-color .2s;
+  }
+  .step-body:hover { border-color: var(--accent); }
+  .step-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+  .step-desc { color: var(--text-dim); font-size: 14px; margin-bottom: 14px; }
+  .step-connector {
+    position: absolute;
+    left: 22px; top: 48px;
+    width: 28px; height: 24px;
+    border-left: 2px dashed rgba(88,166,255,.4);
+    pointer-events: none;
+  }
+
+  /* ── GRID ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  @media(max-width:700px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+  .card-accent { border-left: 3px solid; }
+  .card-blue { border-left-color: var(--accent); }
+  .card-green { border-left-color: var(--accent2); }
+  .card-purple { border-left-color: var(--accent4); }
+  .card-orange { border-left-color: var(--accent5); }
+  .card-red { border-left-color: var(--accent3); }
+
+  /* ── CODE ── */
+  .code {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'JetBrains Mono','Cascadia Code','Fira Code',monospace;
+    font-size: 12.5px;
+    overflow-x: auto;
+    line-height: 1.7;
+  }
+  .code .kw { color: #ff7b72; }
+  .code .str { color: #a5d6ff; }
+  .code .num { color: #79c0ff; }
+  .code .cm { color: #8b949e; font-style: italic; }
+  .code .fn { color: #d2a8ff; }
+  .code .cls { color: #ffa657; }
+
+  /* ── TABLE ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(48,54,61,.6);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .td-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  /* ── BADGE ── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-blue { background: rgba(88,166,255,.15); color: var(--accent); }
+  .badge-green { background: rgba(63,185,80,.15); color: var(--accent2); }
+  .badge-purple { background: rgba(210,168,255,.15); color: var(--accent4); }
+  .badge-orange { background: rgba(255,166,87,.15); color: var(--accent5); }
+  .badge-red { background: rgba(247,129,102,.15); color: var(--accent3); }
+  .badge-gray { background: rgba(139,148,158,.15); color: var(--text-dim); }
+
+  /* ── REWARD METER ── */
+  .reward-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .reward-label { font-size: 13px; width: 160px; flex-shrink: 0; }
+  .reward-bar-wrap { flex: 1; background: var(--surface); border-radius: 4px; height: 8px; }
+  .reward-bar {
+    height: 8px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent4));
+  }
+  .reward-val { font-size: 12px; font-family: monospace; color: var(--text-dim); width: 50px; text-align: right; }
+  .reward-bar.neg { background: linear-gradient(90deg, var(--accent3), #cf222e); }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow-diagram {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .flow-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    min-width: 110px;
+    transition: transform .2s, border-color .2s;
+    cursor: default;
+  }
+  .flow-box:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .flow-box-icon { font-size: 24px; display: block; margin-bottom: 6px; }
+  .flow-box-label { font-size: 12px; font-weight: 600; }
+  .flow-box-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+  .flow-arrow {
+    color: var(--text-dim);
+    font-size: 20px;
+    display: flex; align-items: center;
+  }
+
+  /* ── OBSERVATION TABLE ── */
+  .obs-group { margin-bottom: 20px; }
+  .obs-group-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-radius: 8px 8px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+  }
+  .obs-group-table {
+    border: 1px solid var(--border);
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+  }
+
+  /* ── DATASET ── */
+  .json-key { color: var(--accent4); }
+  .json-val { color: var(--accent2); }
+  .json-str { color: var(--accent); }
+  .json-num { color: var(--accent5); }
+  .json-cm { color: var(--text-dim); }
+
+  /* ── PILL LIST ── */
+  .pill-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  /* ── HIGHLIGHT BOX ── */
+  .highlight {
+    background: rgba(88,166,255,.07);
+    border: 1px solid rgba(88,166,255,.25);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+  .highlight .hl-icon { margin-right: 6px; }
+
+  /* ── TRAINING FLOW ── */
+  .train-step {
+    display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px;
+  }
+  .train-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(88,166,255,.15);
+    color: var(--accent);
+    font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 2px;
+  }
+  .train-content { flex: 1; }
+  .train-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .train-desc { font-size: 13px; color: var(--text-dim); }
+
+  /* ── FORMULA ── */
+  .formula {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    text-align: center;
+    margin: 12px 0;
+    color: var(--accent4);
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 30px 40px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge">Reinforcement Learning · MDP · Semiconductor Scheduling</div>
+  <h1>강화학습 MDP 구조 상세 가이드</h1>
+  <p>반도체 공정 스케줄링 에이전트의 마르코프 결정 프로세스 전체 동작 방식을 단계별로 설명합니다.</p>
+  <div class="hero-stats">
+    <div class="stat"><span class="stat-val">6,060</span><span class="stat-label">State Dimension</span></div>
+    <div class="stat"><span class="stat-val">1,500</span><span class="stat-label">Action Space</span></div>
+    <div class="stat"><span class="stat-val">9</span><span class="stat-label">Reward Components</span></div>
+    <div class="stat"><span class="stat-val">1,440 min</span><span class="stat-label">Episode Horizon</span></div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav">
+  <a class="nav-item active" href="#overview">Overview</a>
+  <a class="nav-item" href="#step-flow">Step-by-Step Flow</a>
+  <a class="nav-item" href="#state">State Space</a>
+  <a class="nav-item" href="#action">Action Space</a>
+  <a class="nav-item" href="#reward">Reward Function</a>
+  <a class="nav-item" href="#dataset">Dataset Format</a>
+  <a class="nav-item" href="#training">Training Loop</a>
+  <a class="nav-item" href="#heuristics">Heuristics 비교</a>
+</nav>
+
+<div class="main">
+
+<!-- ═══════════════════════ SECTION 0: OVERVIEW ═══════════════════════ -->
+<section class="section" id="overview">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(88,166,255,.15)">🎯</div>
+    <div>
+      <div class="section-title">MDP 전체 구조 개요</div>
+      <div class="section-sub">Gymnasium 호환 이산 시뮬레이터 기반 반도체 스케줄링</div>
+    </div>
+  </div>
+
+  <!-- MDP flow -->
+  <div class="flow-diagram" style="margin-bottom:24px">
+    <div class="flow-box">
+      <span class="flow-box-icon">🏭</span>
+      <div class="flow-box-label">Environment</div>
+      <div class="flow-box-sub">SchedulingEnv</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--accent)">
+      <span class="flow-box-icon">📊</span>
+      <div class="flow-box-label">State sₜ</div>
+      <div class="flow-box-sub">6,060-dim obs</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--accent4)">
+      <span class="flow-box-icon">🤖</span>
+      <div class="flow-box-label">Agent</div>
+      <div class="flow-box-sub">MaskablePPO</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--accent5)">
+      <span class="flow-box-icon">⚙️</span>
+      <div class="flow-box-label">Action aₜ</div>
+      <div class="flow-box-sub">(PPK×OPER, EQP)</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--accent2)">
+      <span class="flow-box-icon">💰</span>
+      <div class="flow-box-label">Reward rₜ</div>
+      <div class="flow-box-sub">9개 요소 합산</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">
+      <span class="flow-box-icon">📊</span>
+      <div class="flow-box-label">State sₜ₊₁</div>
+      <div class="flow-box-sub">다음 결정 시점</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card card-accent card-blue">
+      <h3>🎮 MDP 구성요소 요약</h3>
+      <table>
+        <tr><td><strong>State Space</strong></td><td class="td-code">Box(0,1, shape=(6060,))</td></tr>
+        <tr><td><strong>Action Space</strong></td><td class="td-code">MultiDiscrete([150, 10])</td></tr>
+        <tr><td><strong>Decision Point</strong></td><td>장비 작업 완료 이벤트 (DES)</td></tr>
+        <tr><td><strong>Episode</strong></td><td>07:00 → 익일 07:00 (1440분)</td></tr>
+        <tr><td><strong>Soft Cutoff</strong></td><td>1320분 (익일 05:00)</td></tr>
+        <tr><td><strong>Termination</strong></td><td>WIP 소진 or 시간 초과</td></tr>
+        <tr><td><strong>Algorithm</strong></td><td class="td-code">MaskablePPO (sb3_contrib)</td></tr>
+      </table>
+    </div>
+    <div class="card card-accent card-green">
+      <h3>🏭 시뮬레이션 도메인</h3>
+      <table>
+        <tr><td><strong>공정</strong></td><td>반도체 Fab 웨이퍼 스케줄링</td></tr>
+        <tr><td><strong>장비 (EQP)</strong></td><td>최대 10대 (실제 데이터 의존)</td></tr>
+        <tr><td><strong>공정 (OPER)</strong></td><td>최대 15종</td></tr>
+        <tr><td><strong>제품 (PROD)</strong></td><td>최대 10종 (PPK 기준)</td></tr>
+        <tr><td><strong>LOT 단위</strong></td><td>WF_QTY 기준 분할 처리</td></tr>
+        <tr><td><strong>Tool 제약</strong></td><td>LOT_CD × EQP_MODEL 용량 제한</td></tr>
+        <tr><td><strong>전환 비용</strong></td><td>LOT_CD/TEMP 변경 시 페널티</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ SECTION 1: STEP-BY-STEP ═══════════════════════ -->
+<section class="section" id="step-flow">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(63,185,80,.15)">🔄</div>
+    <div>
+      <div class="section-title">Step-by-Step 동작 흐름</div>
+      <div class="section-sub">에피소드 시작부터 종료까지 전체 흐름</div>
+    </div>
+  </div>
+
+  <div class="step-flow">
+
+    <!-- STEP 0 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(88,166,255,.1);border-color:var(--accent);color:var(--accent)">0</div>
+      <div class="step-body" style="border-left:3px solid var(--accent)">
+        <div class="step-title">📂 데이터 로드 &amp; 전처리 <span class="badge badge-blue">data/loader.py · preprocessor.py</span></div>
+        <div class="step-desc">외부 JSON 파일 5종을 로드하고 시뮬레이터가 사용할 <code>env_data</code> 딕셔너리로 변환합니다.</div>
+        <div class="grid-3" style="margin-top:12px">
+          <div class="card" style="padding:12px">
+            <div style="font-size:11px;color:var(--text-dim);font-weight:600;margin-bottom:8px">INPUT JSON</div>
+            <div class="pill-list">
+              <span class="pill">discrete_arrange.json</span>
+              <span class="pill">abstract_arrange.json</span>
+              <span class="pill">plan.json</span>
+              <span class="pill">flow.json</span>
+              <span class="pill">tool_capacity.json</span>
+            </div>
+          </div>
+          <div class="card" style="padding:12px">
+            <div style="font-size:11px;color:var(--text-dim);font-weight:600;margin-bottom:8px">PREPROCESS</div>
+            <div class="pill-list">
+              <span class="pill">WIP 재고 초기화</span>
+              <span class="pill">공정 흐름 매핑</span>
+              <span class="pill">처리 시간 행렬</span>
+              <span class="pill">인덱스 인코딩</span>
+            </div>
+          </div>
+          <div class="card" style="padding:12px">
+            <div style="font-size:11px;color:var(--text-dim);font-weight:600;margin-bottom:8px">OUTPUT</div>
+            <div class="pill-list">
+              <span class="pill">env_data dict</span>
+              <span class="pill">abstract_inventory</span>
+              <span class="pill">proc_time_matrix</span>
+              <span class="pill">plan_meta</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 1 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(63,185,80,.1);border-color:var(--accent2);color:var(--accent2)">1</div>
+      <div class="step-body" style="border-left:3px solid var(--accent2)">
+        <div class="step-title">🔁 <code>env.reset()</code> — 에피소드 초기화 <span class="badge badge-green">scheduling_env.py:119</span></div>
+        <div class="step-desc">매 에피소드 시작 시 시뮬레이터를 초기 상태로 리셋하고 첫 번째 관측값을 반환합니다.</div>
+        <div class="code" style="margin-top:12px">
+<span class="cm"># env/scheduling_env.py — reset()</span>
+<span class="kw">def</span> <span class="fn">reset</span>(self, seed=<span class="kw">None</span>, options=<span class="kw">None</span>):
+    self.sim = SchedulingSimulator(self.env_data)   <span class="cm"># 시뮬레이터 생성</span>
+    self.sim.initialize()                            <span class="cm"># 이벤트 큐 초기화, LOT 배치</span>
+    obs = self.sim.get_observation()                 <span class="cm"># 6060-dim 벡터 반환</span>
+    <span class="kw">return</span> obs, {}
+        </div>
+        <div class="highlight"><span class="hl-icon">ℹ️</span> 시뮬레이터 내부: 장비별 첫 이벤트를 heapq에 삽입하고 초기 WIP 재고를 설정합니다.</div>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(210,168,255,.1);border-color:var(--accent4);color:var(--accent4)">2</div>
+      <div class="step-body" style="border-left:3px solid var(--accent4)">
+        <div class="step-title">📊 State 관측 — 6,060차원 벡터 구성 <span class="badge badge-purple">simulator.py:1118</span></div>
+        <div class="step-desc">에이전트가 받는 현재 환경 상태. 모두 [0,1] 범위로 정규화됩니다.</div>
+        <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+          <div class="card" style="padding:14px;border-color:rgba(88,166,255,.4)">
+            <div style="font-size:20px;margin-bottom:6px">🌐</div>
+            <div style="font-size:12px;font-weight:700;color:var(--accent)">Global (6)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:6px">경과 시간 비율<br>Soft cutoff 여유<br>WIP 풀 비율<br>완료율<br>전환장비 비율<br>장비 가동률</div>
+          </div>
+          <div class="card" style="padding:14px;border-color:rgba(210,168,255,.4)">
+            <div style="font-size:20px;margin-bottom:6px">📦</div>
+            <div style="font-size:12px;font-weight:700;color:var(--accent4)">Bucket (6,000)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:6px">600 (OPER×PROD×EQP_MODEL)<br>× 10 features<br>—<br>유효 플래그, WIP 비율<br>종료 시간, 처리량<br>동일 제품 플래그, Takt</div>
+          </div>
+          <div class="card" style="padding:14px;border-color:rgba(63,185,80,.4)">
+            <div style="font-size:20px;margin-bottom:6px">⚙️</div>
+            <div style="font-size:12px;font-weight:700;color:var(--accent2)">EQP Local (50)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:6px">10 장비 × 5 features<br>—<br>Idle/Busy 상태<br>이전 LOT_CD<br>이전 TEMP<br>잔여 작업 시간</div>
+          </div>
+          <div class="card" style="padding:14px;border-color:rgba(255,166,87,.4)">
+            <div style="font-size:20px;margin-bottom:6px">🔗</div>
+            <div style="font-size:12px;font-weight:700;color:var(--accent5)">Context (4)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:6px">마지막 할당 정보<br>—<br>이전 PPK<br>이전 OPER<br>이전 EQP<br>이전 LOT_CD</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(255,166,87,.1);border-color:var(--accent5);color:var(--accent5)">3</div>
+      <div class="step-body" style="border-left:3px solid var(--accent5)">
+        <div class="step-title">🎭 Action Masking — 유효 행동 제한 <span class="badge badge-orange">scheduling_env.py:269</span></div>
+        <div class="step-desc">실제 feasible한 (PPK×OPER, EQP) 조합만 허용하는 바이너리 마스크를 생성합니다. MaskablePPO는 마스킹된 행동의 확률을 0으로 설정합니다.</div>
+        <div class="grid-2" style="margin-top:12px">
+          <div class="code">
+<span class="cm"># 마스킹 조건</span>
+mask_conditions = [
+  eqp.is_idle,              <span class="cm"># 장비가 유휴 상태</span>
+  eqp.can_process(oper),    <span class="cm"># 장비-공정 호환</span>
+  wip[ppk][oper] > <span class="num">0</span>,        <span class="cm"># WIP 재고 존재</span>
+  tool_capacity_ok(lot),    <span class="cm"># Tool 용량 제한 OK</span>
+]
+          </div>
+          <div class="card" style="padding:14px">
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">마스킹 효과</div>
+            <div class="train-step">
+              <div class="train-num">✓</div>
+              <div class="train-content"><div class="train-desc">불가능한 행동 선택 원천 차단</div></div>
+            </div>
+            <div class="train-step">
+              <div class="train-num">✓</div>
+              <div class="train-content"><div class="train-desc">학습 초기 불필요한 페널티 제거</div></div>
+            </div>
+            <div class="train-step">
+              <div class="train-num">✓</div>
+              <div class="train-content"><div class="train-desc">유효 공간만 탐색해 수렴 가속</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(247,129,102,.1);border-color:var(--accent3);color:var(--accent3)">4</div>
+      <div class="step-body" style="border-left:3px solid var(--accent3)">
+        <div class="step-title">🤖 Policy 추론 — 행동 선택 <span class="badge badge-red">agent/rl_agent.py:153</span></div>
+        <div class="step-desc">MaskablePPO의 MlpPolicy가 관측값을 입력받아 (PPK_BUCKET, EQP) 인덱스를 출력합니다.</div>
+        <div class="code" style="margin-top:12px">
+<span class="cm"># agent/rl_agent.py — predict()</span>
+action, _state = self.model.predict(
+    observation,
+    action_masks=env.action_masks(),  <span class="cm"># 유효 행동 마스크 적용</span>
+    deterministic=deterministic
+)
+<span class="cm"># action = [bucket_idx, eqp_idx]</span>
+<span class="cm"># bucket_idx ∈ [0, 149]  → (PPK×OPER) 조합</span>
+<span class="cm"># eqp_idx    ∈ [0,   9]  → 장비 인덱스</span>
+        </div>
+        <div class="highlight" style="margin-top:12px"><span class="hl-icon">💡</span> LOT 선택은 에이전트가 결정하지 않습니다. (PPK, OPER) 버킷 내에서 우선순위 규칙 <code>_auto_select_lot()</code>이 자동으로 선택합니다.</div>
+      </div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(88,166,255,.1);border-color:var(--accent);color:var(--accent)">5</div>
+      <div class="step-body" style="border-left:3px solid var(--accent)">
+        <div class="step-title">⚙️ <code>env.step(action)</code> — 시뮬레이션 진행 <span class="badge badge-blue">scheduling_env.py:155</span></div>
+        <div class="step-desc">선택된 행동을 시뮬레이터에 전달하고, 다음 결정 시점(이벤트)까지 시뮬레이션을 진행합니다.</div>
+        <div class="code" style="margin-top:12px">
+<span class="cm"># env/scheduling_env.py — step()</span>
+<span class="kw">def</span> <span class="fn">step</span>(self, action):
+    bucket_idx, eqp_idx = action
+    ppk, oper = self.decode_bucket(bucket_idx)
+    eqp = self.eqp_ids[eqp_idx]
+
+    <span class="cm"># 1. LOT 자동 선택</span>
+    lot = self.sim._auto_select_lot(ppk, oper, eqp)
+
+    <span class="cm"># 2. 장비-LOT 할당 실행</span>
+    reward = self.sim.assign_ppk_oper(ppk, oper, eqp, lot)
+
+    <span class="cm"># 3. 다음 이벤트까지 시뮬레이션 진행 (DES)</span>
+    self.sim.advance_to_next_event()
+
+    <span class="cm"># 4. 다음 상태 관측</span>
+    obs = self.sim.get_observation()
+    terminated = self.sim.is_done()
+    <span class="kw">return</span> obs, reward, terminated, <span class="kw">False</span>, {}
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 6 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(63,185,80,.1);border-color:var(--accent2);color:var(--accent2)">6</div>
+      <div class="step-body" style="border-left:3px solid var(--accent2)">
+        <div class="step-title">💰 Reward 계산 — 9가지 요소 합산 <span class="badge badge-green">simulator.py:assign_ppk_oper</span></div>
+        <div class="step-desc">할당 직후 9개 보상 요소를 가중합산하여 즉시 보상(rₜ)을 계산합니다.</div>
+
+        <div style="margin-top:16px">
+          <!-- Positive Rewards -->
+          <div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:10px">✅ POSITIVE REWARDS</div>
+          <div class="reward-row"><div class="reward-label">동일 공정 연속 (×2.0)</div><div class="reward-bar-wrap"><div class="reward-bar" style="width:100%"></div></div><div class="reward-val">+2.0</div></div>
+          <div class="reward-row"><div class="reward-label">동일 제품 연속 (×0.5)</div><div class="reward-bar-wrap"><div class="reward-bar" style="width:25%"></div></div><div class="reward-val">+0.5</div></div>
+          <div class="reward-row"><div class="reward-label">제품 전환 보너스 (×0.8)</div><div class="reward-bar-wrap"><div class="reward-bar" style="width:40%"></div></div><div class="reward-val">+0.8</div></div>
+          <div class="reward-row"><div class="reward-label">LOT 완료 (×1.0)</div><div class="reward-bar-wrap"><div class="reward-bar" style="width:50%"></div></div><div class="reward-val">+1.0×n</div></div>
+          <div class="reward-row"><div class="reward-label">Plan Gap 감소 (×5.0)</div><div class="reward-bar-wrap"><div class="reward-bar" style="width:100%"></div></div><div class="reward-val">+5.0</div></div>
+          <div class="reward-row"><div class="reward-label">Pacing Shaping (×3.0)</div><div class="reward-bar-wrap"><div class="reward-bar" style="width:60%"></div></div><div class="reward-val">+3.0</div></div>
+
+          <!-- Negative Rewards -->
+          <div style="font-size:12px;font-weight:600;color:var(--accent3);margin:16px 0 10px">❌ PENALTIES</div>
+          <div class="reward-row"><div class="reward-label">장비 유휴 (×0.5/분)</div><div class="reward-bar-wrap"><div class="reward-bar neg" style="width:25%"></div></div><div class="reward-val">−0.5/분</div></div>
+          <div class="reward-row"><div class="reward-label">LOT 전환 (×30.0)</div><div class="reward-bar-wrap"><div class="reward-bar neg" style="width:100%"></div></div><div class="reward-val">−30.0</div></div>
+          <div class="reward-row"><div class="reward-label">Soft Cutoff 초과 (×2.0)</div><div class="reward-bar-wrap"><div class="reward-bar neg" style="width:40%"></div></div><div class="reward-val">−2.0/회</div></div>
+        </div>
+
+        <div class="formula" style="margin-top:16px">
+          rₜ = w_same_oper·Rsame + w_pacing·Rpace + w_plan_hit·Rplan + w_completion·Rcomp<br>
+             − w_conversion·Nconv − w_idle·Tidle − w_late·Nlate
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 7 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(210,168,255,.1);border-color:var(--accent4);color:var(--accent4)">7</div>
+      <div class="step-body" style="border-left:3px solid var(--accent4)">
+        <div class="step-title">🔁 루프 반복 — 종료 조건 확인 <span class="badge badge-purple">simulator.py:is_done</span></div>
+        <div class="step-desc">Step 2–6을 반복하며 다음 조건 중 하나 충족 시 에피소드 종료합니다.</div>
+        <div class="grid-3" style="margin-top:12px">
+          <div class="card" style="padding:14px;text-align:center;border-color:rgba(247,129,102,.4)">
+            <div style="font-size:28px">⏰</div>
+            <div style="font-size:13px;font-weight:600;margin-top:6px">시간 초과</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:4px">elapsed ≥ 1440분</div>
+          </div>
+          <div class="card" style="padding:14px;text-align:center;border-color:rgba(88,166,255,.4)">
+            <div style="font-size:28px">📭</div>
+            <div style="font-size:13px;font-weight:600;margin-top:6px">WIP 고갈</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:4px">모든 (PPK,OPER) WIP = 0</div>
+          </div>
+          <div class="card" style="padding:14px;text-align:center;border-color:rgba(63,185,80,.4)">
+            <div style="font-size:28px">✅</div>
+            <div style="font-size:13px;font-weight:600;margin-top:6px">계획 달성</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:4px">plan_gap == 0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 8 -->
+    <div class="step-item">
+      <div class="step-num" style="background:rgba(255,166,87,.1);border-color:var(--accent5);color:var(--accent5)">8</div>
+      <div class="step-body" style="border-left:3px solid var(--accent5)">
+        <div class="step-title">📈 PPO 업데이트 — 정책 학습 <span class="badge badge-orange">agent/rl_agent.py:train</span></div>
+        <div class="step-desc">n_steps(2048) 단계마다 수집된 rollout 버퍼로 PPO 정책과 가치 함수를 업데이트합니다.</div>
+        <div class="code" style="margin-top:12px">
+<span class="cm"># PPO 핵심 업데이트 설정</span>
+model = <span class="cls">MaskablePPO</span>(
+    <span class="str">"MlpPolicy"</span>,
+    env,
+    learning_rate = <span class="num">3e-4</span>,
+    n_steps       = <span class="num">2048</span>,   <span class="cm"># 롤아웃 길이</span>
+    batch_size    = <span class="num">64</span>,     <span class="cm"># 미니배치 크기</span>
+    n_epochs      = <span class="num">10</span>,     <span class="cm"># 에포크 수</span>
+    gamma         = <span class="num">0.99</span>,   <span class="cm"># 할인율</span>
+)
+model.learn(total_timesteps=<span class="num">200_000</span>)
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /step-flow -->
+</section>
+
+<!-- ═══════════════════════ SECTION 2: STATE ═══════════════════════ -->
+<section class="section" id="state">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(88,166,255,.15)">📊</div>
+    <div>
+      <div class="section-title">State Space 상세</div>
+      <div class="section-sub">6,060차원 정규화 관측 벡터 — simulator.py:get_observation()</div>
+    </div>
+  </div>
+
+  <div class="obs-group">
+    <div class="obs-group-header">
+      <span class="badge badge-blue">Index 0–5</span>
+      <span style="font-weight:600">글로벌 특징 (6차원)</span>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">전체 환경 상태 요약</span>
+    </div>
+    <div class="obs-group-table">
+      <table>
+        <tr><th>Index</th><th>피처명</th><th>설명</th><th>정규화</th></tr>
+        <tr><td class="td-code">0</td><td>elapsed_time_ratio</td><td>경과 시간 / 1440분</td><td><span class="badge badge-green">÷ 1440</span></td></tr>
+        <tr><td class="td-code">1</td><td>soft_cutoff_remaining</td><td>Soft cutoff까지 남은 시간 비율</td><td><span class="badge badge-green">÷ 1440</span></td></tr>
+        <tr><td class="td-code">2</td><td>lot_pool_ratio</td><td>남은 WIP 총량 / 초기 WIP 총량</td><td><span class="badge badge-green">÷ init</span></td></tr>
+        <tr><td class="td-code">3</td><td>completion_rate</td><td>완료된 LOT 비율</td><td><span class="badge badge-green">[0,1]</span></td></tr>
+        <tr><td class="td-code">4</td><td>conversion_eqp_ratio</td><td>LOT 전환 중인 장비 비율</td><td><span class="badge badge-green">÷ n_eqp</span></td></tr>
+        <tr><td class="td-code">5</td><td>tool_utilization</td><td>가동 중인 장비 비율</td><td><span class="badge badge-green">÷ n_eqp</span></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="obs-group">
+    <div class="obs-group-header">
+      <span class="badge badge-purple">Index 6–6005</span>
+      <span style="font-weight:600">버킷 특징 (6,000차원)</span>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">600 버킷 × 10 features — (OPER×PROD×EQP_MODEL) 조합</span>
+    </div>
+    <div class="obs-group-table">
+      <table>
+        <tr><th>Offset</th><th>피처명</th><th>설명</th></tr>
+        <tr><td class="td-code">+0</td><td>valid_flag</td><td>해당 버킷이 현재 유효한지 (WIP&gt;0 &amp; EQP 호환)</td></tr>
+        <tr><td class="td-code">+1</td><td>global_wip_ratio</td><td>전체 WIP 대비 이 버킷의 WIP 비율</td></tr>
+        <tr><td class="td-code">+2</td><td>prod_wip_ratio</td><td>해당 제품 WIP 대비 이 버킷 WIP 비율</td></tr>
+        <tr><td class="td-code">+3</td><td>min_end_time</td><td>이 버킷 처리 시 가장 빠른 완료 시간 (정규화)</td></tr>
+        <tr><td class="td-code">+4</td><td>throughput</td><td>예상 처리량 (WF_QTY 기준)</td></tr>
+        <tr><td class="td-code">+5</td><td>same_product_flag</td><td>이전 할당과 동일 제품 여부</td></tr>
+        <tr><td class="td-code">+6</td><td>pre_takt</td><td>이전 공정 Takt 시간 (계획 대비)</td></tr>
+        <tr><td class="td-code">+7</td><td>post_takt</td><td>이후 공정 Takt 시간</td></tr>
+        <tr><td class="td-code">+8</td><td>proc_time</td><td>처리 시간 (정규화)</td></tr>
+        <tr><td class="td-code">+9</td><td>urgency</td><td>Pacing 긴급도 (계획 달성률 기반)</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="obs-group">
+    <div class="obs-group-header">
+      <span class="badge badge-green">Index 6006–6055</span>
+      <span style="font-weight:600">EQP 로컬 특징 (50차원)</span>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">10 장비 × 5 features</span>
+    </div>
+    <div class="obs-group-table">
+      <table>
+        <tr><th>Offset</th><th>피처명</th><th>설명</th></tr>
+        <tr><td class="td-code">+0</td><td>is_idle</td><td>장비 유휴 상태 (1=유휴)</td></tr>
+        <tr><td class="td-code">+1</td><td>is_busy</td><td>장비 작업 중 상태</td></tr>
+        <tr><td class="td-code">+2</td><td>prev_lot_cd</td><td>직전 처리 LOT_CD 인코딩</td></tr>
+        <tr><td class="td-code">+3</td><td>prev_temp</td><td>직전 처리 TEMP 인코딩</td></tr>
+        <tr><td class="td-code">+4</td><td>remaining_busy_time</td><td>남은 처리 시간 비율 (÷1440)</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="obs-group">
+    <div class="obs-group-header">
+      <span class="badge badge-orange">Index 6056–6059</span>
+      <span style="font-weight:600">컨텍스트 특징 (4차원)</span>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">마지막 할당 정보</span>
+    </div>
+    <div class="obs-group-table">
+      <table>
+        <tr><th>Index</th><th>피처명</th><th>설명</th></tr>
+        <tr><td class="td-code">6056</td><td>last_ppk</td><td>마지막 할당 PPK (제품 키) 인코딩</td></tr>
+        <tr><td class="td-code">6057</td><td>last_oper</td><td>마지막 할당 OPER 인코딩</td></tr>
+        <tr><td class="td-code">6058</td><td>last_eqp</td><td>마지막 할당 EQP 인코딩</td></tr>
+        <tr><td class="td-code">6059</td><td>last_lot_cd</td><td>마지막 할당 LOT_CD 인코딩</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ SECTION 3: ACTION ═══════════════════════ -->
+<section class="section" id="action">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(255,166,87,.15)">⚙️</div>
+    <div>
+      <div class="section-title">Action Space 상세</div>
+      <div class="section-sub">MultiDiscrete([150, 10]) — scheduling_env.py:101</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:24px">
+    <div class="card card-accent card-orange">
+      <h3>Dimension 0 — PPK_BUCKET (0–149)</h3>
+      <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">공정-제품 조합 버킷 인덱스</p>
+      <div class="formula" style="font-size:12px">
+        bucket_idx = oper_idx × max_prod_count + prod_idx<br>
+        = oper_idx × 10 + prod_idx<br>
+        (max_oper_count=15, max_prod_count=10)
+      </div>
+      <div class="highlight" style="font-size:12px">
+        <strong>예시:</strong> oper_idx=2, prod_idx=3 → bucket_idx = 23<br>
+        디코딩: oper=2, prod=3 → OPER_A, PPK_B 조합
+      </div>
+    </div>
+    <div class="card card-accent card-blue">
+      <h3>Dimension 1 — EQP_IDX (0–9)</h3>
+      <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">처리할 장비 인덱스</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <span class="pill">EQP_0 (idx=0)</span>
+        <span class="pill">EQP_1 (idx=1)</span>
+        <span class="pill">...</span>
+        <span class="pill">EQP_9 (idx=9)</span>
+      </div>
+      <div class="highlight" style="font-size:12px">
+        실제 장비 수가 10개 미만이면, 초과 인덱스는 Action Mask로 자동 차단됩니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:20px">
+    <h3 style="margin-bottom:14px">LOT 자동 선택 규칙 — <code>_auto_select_lot()</code></h3>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px">에이전트가 (PPK, OPER) 버킷을 선택하면, 버킷 내 LOT는 다음 우선순위로 자동 선택됩니다:</p>
+    <div class="grid-3">
+      <div class="card" style="padding:12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-dim);font-weight:600">우선순위 1</div>
+        <div style="font-size:16px;margin:6px 0">📋</div>
+        <div style="font-size:13px;font-weight:600">PLAN_PRIORITY</div>
+        <div style="font-size:11px;color:var(--text-dim)">계획 우선순위 낮은 값 우선</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-dim);font-weight:600">우선순위 2</div>
+        <div style="font-size:16px;margin:6px 0">📉</div>
+        <div style="font-size:13px;font-weight:600">Min Chart Slope</div>
+        <div style="font-size:11px;color:var(--text-dim)">계획 달성 기울기 최소화</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-dim);font-weight:600">우선순위 3</div>
+        <div style="font-size:16px;margin:6px 0">📦</div>
+        <div style="font-size:13px;font-weight:600">Remaining Qty</div>
+        <div style="font-size:11px;color:var(--text-dim)">남은 계획 수량 가장 많은 것</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ SECTION 4: REWARD ═══════════════════════ -->
+<section class="section" id="reward">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(63,185,80,.15)">💰</div>
+    <div>
+      <div class="section-title">Reward Function 상세</div>
+      <div class="section-sub">9개 컴포넌트 가중합산 — config.py:RewardConfig</div>
+    </div>
+  </div>
+
+  <table style="margin-bottom:24px">
+    <tr>
+      <th>컴포넌트</th>
+      <th>가중치</th>
+      <th>발동 조건</th>
+      <th>계산 방식</th>
+      <th>목적</th>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">w_same_oper</span></td>
+      <td class="td-code">+2.0</td>
+      <td>직전 할당과 동일 OPER 연속 시</td>
+      <td>고정값 2.0</td>
+      <td>공정 연속성 → 장비 셋업 감소</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">w_same_prod</span></td>
+      <td class="td-code">+0.5</td>
+      <td>동일 제품, WIP 잔여 있을 때</td>
+      <td>고정값 0.5 (조건부)</td>
+      <td>제품 연속성 → 전환 비용 감소</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">w_prod_switch</span></td>
+      <td class="td-code">+0.8</td>
+      <td>이전 PPK의 WIP 소진 후 전환 시</td>
+      <td>고정값 0.8</td>
+      <td>적시 제품 전환 장려</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">w_completion</span></td>
+      <td class="td-code">+1.0</td>
+      <td>LOT 처리 완료 시마다</td>
+      <td>1.0 × (wf_qty / 25)</td>
+      <td>처리량 증가 장려</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">w_plan_hit</span></td>
+      <td class="td-code">+5.0</td>
+      <td>Plan Gap이 감소할 때마다</td>
+      <td>5.0 × Δgap</td>
+      <td>핵심: 계획 달성 장려</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">w_pacing</span></td>
+      <td class="td-code">+3.0</td>
+      <td>Pacing 편차가 개선될 때</td>
+      <td>3.0 × (Δdeviation↓)</td>
+      <td>균등 생산 속도 유지</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-red">w_idle_per_min</span></td>
+      <td class="td-code">−0.5</td>
+      <td>장비 유휴 시간 발생 시</td>
+      <td>−0.5 × idle_minutes</td>
+      <td>장비 가동률 극대화</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-red">w_conversion</span></td>
+      <td class="td-code">−30.0</td>
+      <td>LOT_CD 또는 TEMP 변경 시</td>
+      <td>−30.0 × n_conversions</td>
+      <td>셋업 변경 억제 (가장 강한 페널티)</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-red">w_late_finish</span></td>
+      <td class="td-code">−2.0</td>
+      <td>Soft Cutoff(05:00) 이후 완료 시</td>
+      <td>−2.0 × n_late</td>
+      <td>야간 초과 작업 억제</td>
+    </tr>
+  </table>
+
+  <div class="card card-accent card-purple" style="padding:20px">
+    <h3>Pacing Shaping 상세 — <code>_pacing_shaping_reward()</code></h3>
+    <p style="font-size:13px;color:var(--text-dim);margin:8px 0 14px">이상적인 선형 생산 속도(Ideal Line)와 실제 누적 생산량의 편차를 최소화하도록 shaped reward를 제공합니다.</p>
+    <div class="code">
+<span class="cm"># 이상적 생산량 = (elapsed / 1440) × total_plan_qty</span>
+ideal = (elapsed_minutes / <span class="num">1440</span>) * total_plan_qty
+actual = cumulative_completed_qty
+deviation_prev = abs(ideal_prev - actual_prev)
+deviation_now  = abs(ideal_now  - actual_now)
+
+<span class="cm"># 편차가 줄어들면 양의 보상, 늘어나면 음의 보상</span>
+pacing_reward = w_pacing * (deviation_prev - deviation_now)
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ SECTION 5: DATASET ═══════════════════════ -->
+<section class="section" id="dataset">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(255,166,87,.15)">📁</div>
+    <div>
+      <div class="section-title">Dataset Format</div>
+      <div class="section-sub">학습·추론에 사용되는 JSON 파일 5종 구조</div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:20px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--text-dim)">
+    <strong style="color:var(--text)">📂 파일 경로 패턴:</strong>
+    <code style="color:var(--accent);margin-left:8px">external/dataset/{FAC_ID}/{split}/{RULE_TIMEKEY}/input/</code>
+    <span style="margin-left:8px">· split ∈ {train, test, infer} · RULE_TIMEKEY = YYYYMMDDHHmmss</span>
+  </div>
+
+  <!-- discrete_arrange -->
+  <div class="obs-group">
+    <div class="obs-group-header" style="background:rgba(88,166,255,.08);border-color:rgba(88,166,255,.3)">
+      <span class="badge badge-blue">1</span>
+      <code style="font-size:14px;font-weight:700">discrete_arrange.json</code>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">실제 LOT-장비 할당 이력 (WIP 초기 상태)</span>
+    </div>
+    <div class="obs-group-table">
+      <div class="code">
+[
+  {
+    <span class="json-key">"EQP_ID"</span>:          <span class="json-str">"EQP_001"</span>,        <span class="json-cm">// 장비 ID</span>
+    <span class="json-key">"LOT_ID"</span>:          <span class="json-str">"LOT_A001"</span>,       <span class="json-cm">// LOT 식별자</span>
+    <span class="json-key">"PLAN_PROD_KEY"</span>:   <span class="json-str">"PROD_K1"</span>,        <span class="json-cm">// 제품 키 (PPK)</span>
+    <span class="json-key">"OPER_ID"</span>:         <span class="json-str">"OPER_01"</span>,         <span class="json-cm">// 공정 ID</span>
+    <span class="json-key">"ST"</span>:             <span class="json-num">45</span>,                 <span class="json-cm">// 처리 시간 (분)</span>
+    <span class="json-key">"EQP_MODEL"</span>:       <span class="json-str">"MODEL_A"</span>,         <span class="json-cm">// 장비 모델</span>
+    <span class="json-key">"WF_QTY"</span>:          <span class="json-num">25</span>,                 <span class="json-cm">// 웨이퍼 수량</span>
+    <span class="json-key">"CARRIER_ID"</span>:      <span class="json-str">"CARRIER_001"</span>      <span class="json-cm">// 캐리어 ID</span>
+  },
+  ...
+]
+      </div>
+    </div>
+  </div>
+
+  <!-- abstract_arrange -->
+  <div class="obs-group">
+    <div class="obs-group-header" style="background:rgba(210,168,255,.08);border-color:rgba(210,168,255,.3)">
+      <span class="badge badge-purple">2</span>
+      <code style="font-size:14px;font-weight:700">abstract_arrange.json</code>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">추상화 WIP 재고 템플릿 (PPK × OPER × EQP_MODEL)</span>
+    </div>
+    <div class="obs-group-table">
+      <div class="code">
+[
+  {
+    <span class="json-key">"PLAN_PROD_KEY"</span>:   <span class="json-str">"PROD_K1"</span>,        <span class="json-cm">// 제품 키</span>
+    <span class="json-key">"OPER_ID"</span>:         <span class="json-str">"OPER_01"</span>,         <span class="json-cm">// 공정 ID</span>
+    <span class="json-key">"EQP_MODEL"</span>:       <span class="json-str">"MODEL_A"</span>,         <span class="json-cm">// 장비 모델</span>
+    <span class="json-key">"ST"</span>:             <span class="json-num">45</span>                  <span class="json-cm">// 표준 처리 시간</span>
+  },
+  ...
+]
+      </div>
+    </div>
+  </div>
+
+  <!-- plan -->
+  <div class="obs-group">
+    <div class="obs-group-header" style="background:rgba(63,185,80,.08);border-color:rgba(63,185,80,.3)">
+      <span class="badge badge-green">3</span>
+      <code style="font-size:14px;font-weight:700">plan.json</code>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">일별 생산 계획 수량 및 우선순위</span>
+    </div>
+    <div class="obs-group-table">
+      <div class="code">
+[
+  {
+    <span class="json-key">"PLAN_PROD_KEY"</span>:   <span class="json-str">"PROD_K1"</span>,
+    <span class="json-key">"OPER_ID"</span>:         <span class="json-str">"OPER_01"</span>,
+    <span class="json-key">"D0_PLAN_QTY"</span>:     <span class="json-num">100</span>,               <span class="json-cm">// 당일 계획 수량</span>
+    <span class="json-key">"D1_PLAN_QTY"</span>:     <span class="json-num">80</span>,                <span class="json-cm">// 익일 계획 수량</span>
+    <span class="json-key">"PLAN_PRIORITY"</span>:   <span class="json-num">1</span>                  <span class="json-cm">// 우선순위 (1=최고)</span>
+  },
+  ...
+]
+      </div>
+    </div>
+  </div>
+
+  <!-- flow -->
+  <div class="obs-group">
+    <div class="obs-group-header" style="background:rgba(255,166,87,.08);border-color:rgba(255,166,87,.3)">
+      <span class="badge badge-orange">4</span>
+      <code style="font-size:14px;font-weight:700">flow.json</code>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">제품별 공정 순서 (라우팅)</span>
+    </div>
+    <div class="obs-group-table">
+      <div class="code">
+[
+  {
+    <span class="json-key">"PLAN_PROD_KEY"</span>:   <span class="json-str">"PROD_K1"</span>,
+    <span class="json-key">"SEQ_ID"</span>:          <span class="json-num">10</span>,                <span class="json-cm">// 공정 순서 번호</span>
+    <span class="json-key">"OPER_ID"</span>:         <span class="json-str">"OPER_01"</span>          <span class="json-cm">// 해당 순서의 공정</span>
+  },
+  ...
+]
+      </div>
+    </div>
+  </div>
+
+  <!-- tool_capacity -->
+  <div class="obs-group">
+    <div class="obs-group-header" style="background:rgba(247,129,102,.08);border-color:rgba(247,129,102,.3)">
+      <span class="badge badge-red">5</span>
+      <code style="font-size:14px;font-weight:700">tool_capacity.json</code>
+      <span style="color:var(--text-dim);font-size:12px;margin-left:auto">LOT 유형별 장비 동시 처리 제한</span>
+    </div>
+    <div class="obs-group-table">
+      <div class="code">
+[
+  {
+    <span class="json-key">"LOT_CD"</span>:          <span class="json-str">"TYPE_A"</span>,         <span class="json-cm">// LOT 코드 유형</span>
+    <span class="json-key">"EQP_MODEL"</span>:       <span class="json-str">"MODEL_A"</span>,         <span class="json-cm">// 장비 모델</span>
+    <span class="json-key">"MAX_TOOL"</span>:         <span class="json-num">2</span>                  <span class="json-cm">// 동시 처리 최대 수</span>
+  },
+  ...
+]
+      </div>
+    </div>
+  </div>
+
+  <!-- env_data output -->
+  <div class="card card-accent card-purple" style="padding:20px;margin-top:20px">
+    <h3>전처리 출력 — <code>env_data</code> 구조 요약</h3>
+    <p style="font-size:13px;color:var(--text-dim);margin:8px 0 14px">preprocessor.py의 <code>preprocess()</code>가 5개 JSON → env_data 딕셔너리로 변환</p>
+    <div class="grid-2">
+      <div class="code" style="font-size:11.5px">
+env_data = {
+  <span class="json-key">"sim_base_time"</span>:      datetime,    <span class="json-cm"># 07:00 기준</span>
+  <span class="json-key">"sim_end_minutes"</span>:    <span class="json-num">1440</span>,       <span class="json-cm"># 에피소드 종료</span>
+  <span class="json-key">"soft_cutoff_minutes"</span>:<span class="json-num">1320</span>,       <span class="json-cm"># 05:00</span>
+  <span class="json-key">"eqp_ids"</span>:            [str],      <span class="json-cm"># 장비 목록</span>
+  <span class="json-key">"oper_ids"</span>:           [str],      <span class="json-cm"># 공정 목록</span>
+  <span class="json-key">"prod_keys"</span>:          [str],      <span class="json-cm"># 제품 목록</span>
+  <span class="json-key">"lots"</span>:               [LotDict],  <span class="json-cm"># LOT 상세</span>
+  <span class="json-key">"plan"</span>:               [PlanDict], <span class="json-cm"># 계획 데이터</span>
+  <span class="json-key">"flow"</span>:               {ppk: [...]},
+  ...
+}
+      </div>
+      <div class="code" style="font-size:11.5px">
+  <span class="json-cm"># 인덱스 매핑</span>
+  <span class="json-key">"oper_idx"</span>:           {str: int},
+  <span class="json-key">"prod_idx"</span>:           {str: int},
+  <span class="json-key">"eqp_idx"</span>:            {str: int},
+  <span class="json-key">"lot_cd_idx"</span>:         {str: int},
+
+  <span class="json-cm"># 처리 데이터</span>
+  <span class="json-key">"proc_time_matrix"</span>:   {(lot,eqp): st},
+  <span class="json-key">"abstract_wip_init"</span>:  {(ppk,oper): dict},
+  <span class="json-key">"eqp_oper_cap"</span>:       {eqp: [opers]},
+  <span class="json-key">"plan_meta"</span>:          {(ppk,oper): dict},
+  <span class="json-key">"tool_capacity"</span>:      {(cd,model): int},
+}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ SECTION 6: TRAINING ═══════════════════════ -->
+<section class="section" id="training">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(63,185,80,.15)">🏋️</div>
+    <div>
+      <div class="section-title">Training Loop</div>
+      <div class="section-sub">MaskablePPO 학습 파이프라인 — agent/rl_agent.py</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:24px">
+    <div>
+      <div class="train-step">
+        <div class="train-num">1</div>
+        <div class="train-content">
+          <div class="train-title">환경 래핑</div>
+          <div class="train-desc"><code>SchedulingEnv</code> → <code>ActionMasker</code> → <code>Monitor</code> → <code>DummyVecEnv</code></div>
+        </div>
+      </div>
+      <div class="train-step">
+        <div class="train-num">2</div>
+        <div class="train-content">
+          <div class="train-title">MaskablePPO 초기화</div>
+          <div class="train-desc">MlpPolicy, lr=3e-4, n_steps=2048, batch=64, epochs=10, γ=0.99</div>
+        </div>
+      </div>
+      <div class="train-step">
+        <div class="train-num">3</div>
+        <div class="train-content">
+          <div class="train-title">콜백 등록</div>
+          <div class="train-desc"><code>EvalCallback</code> (eval_freq=10,000), <code>CheckpointCallback</code> (저장 주기)</div>
+        </div>
+      </div>
+      <div class="train-step">
+        <div class="train-num">4</div>
+        <div class="train-content">
+          <div class="train-title">Rollout 수집</div>
+          <div class="train-desc">n_steps=2048 스텝마다 (s, a, r, s', done) 튜플 버퍼에 수집</div>
+        </div>
+      </div>
+      <div class="train-step">
+        <div class="train-num">5</div>
+        <div class="train-content">
+          <div class="train-title">GAE Advantage 계산</div>
+          <div class="train-desc">Generalized Advantage Estimation으로 Advantage 계산 (γ=0.99, λ=0.95)</div>
+        </div>
+      </div>
+      <div class="train-step">
+        <div class="train-num">6</div>
+        <div class="train-content">
+          <div class="train-title">미니배치 업데이트 × n_epochs</div>
+          <div class="train-desc">Clipped surrogate loss로 Actor-Critic 동시 업데이트</div>
+        </div>
+      </div>
+      <div class="train-step">
+        <div class="train-num">7</div>
+        <div class="train-content">
+          <div class="train-title">모델 저장</div>
+          <div class="train-desc"><code>models/best/best_model.zip</code> · <code>checkpoints/scheduling_rl_{steps}.zip</code></div>
+        </div>
+      </div>
+      <div class="train-step">
+        <div class="train-num">8</div>
+        <div class="train-content">
+          <div class="train-title">반복 (총 200,000 스텝)</div>
+          <div class="train-desc">Step 4–7을 total_timesteps 도달까지 반복</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card card-accent card-blue" style="padding:18px;margin-bottom:16px">
+        <h3>PPO Hyperparameters</h3>
+        <table>
+          <tr><td><strong>learning_rate</strong></td><td class="td-code">3e-4</td></tr>
+          <tr><td><strong>n_steps</strong></td><td class="td-code">2,048</td></tr>
+          <tr><td><strong>batch_size</strong></td><td class="td-code">64</td></tr>
+          <tr><td><strong>n_epochs</strong></td><td class="td-code">10</td></tr>
+          <tr><td><strong>gamma (γ)</strong></td><td class="td-code">0.99</td></tr>
+          <tr><td><strong>total_timesteps</strong></td><td class="td-code">200,000</td></tr>
+          <tr><td><strong>eval_freq</strong></td><td class="td-code">10,000</td></tr>
+        </table>
+      </div>
+      <div class="card card-accent card-green" style="padding:18px">
+        <h3>학습 추적 메트릭 <span style="font-weight:400;color:var(--text-dim)">train_progress.py</span></h3>
+        <div class="pill-list">
+          <span class="pill">timesteps</span>
+          <span class="pill">ep_rew_mean</span>
+          <span class="pill">eval_reward</span>
+          <span class="pill">policy_loss</span>
+          <span class="pill">value_loss</span>
+          <span class="pill">explained_variance</span>
+        </div>
+        <div style="margin-top:14px;font-size:12px;color:var(--text-dim)">
+          Background thread로 실행되어 FastAPI를 통해 실시간 진행상황 스트리밍 가능 (<code>api/train_service.py</code>)
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ SECTION 7: HEURISTICS ═══════════════════════ -->
+<section class="section" id="heuristics">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(247,129,102,.15)">🔀</div>
+    <div>
+      <div class="section-title">RL vs 휴리스틱 비교</div>
+      <div class="section-sub">agent/minprogress_agent.py · agent/earliest_st_agent.py</div>
+    </div>
+  </div>
+
+  <table>
+    <tr>
+      <th>항목</th>
+      <th>MaskablePPO (RL)</th>
+      <th>MinProgress</th>
+      <th>EarliestST</th>
+    </tr>
+    <tr>
+      <td><strong>선택 기준</strong></td>
+      <td>신경망 정책 (학습됨)</td>
+      <td>계획 우선순위 + 최소 기울기</td>
+      <td>최소 처리 시간</td>
+    </tr>
+    <tr>
+      <td><strong>Pacing 고려</strong></td>
+      <td><span class="badge badge-green">✓ Reward로 학습</span></td>
+      <td><span class="badge badge-green">✓ 직접 계산</span></td>
+      <td><span class="badge badge-gray">✗ 미고려</span></td>
+    </tr>
+    <tr>
+      <td><strong>전환 비용 고려</strong></td>
+      <td><span class="badge badge-green">✓ Reward −30</span></td>
+      <td><span class="badge badge-gray">✗ 미고려</span></td>
+      <td><span class="badge badge-gray">✗ 미고려</span></td>
+    </tr>
+    <tr>
+      <td><strong>학습 필요 여부</strong></td>
+      <td><span class="badge badge-orange">학습 필요</span></td>
+      <td><span class="badge badge-blue">즉시 사용</span></td>
+      <td><span class="badge badge-blue">즉시 사용</span></td>
+    </tr>
+    <tr>
+      <td><strong>Action Masking</strong></td>
+      <td><span class="badge badge-green">✓ MaskablePPO</span></td>
+      <td><span class="badge badge-green">✓ 동일 마스크</span></td>
+      <td><span class="badge badge-green">✓ 동일 마스크</span></td>
+    </tr>
+    <tr>
+      <td><strong>장기 최적화</strong></td>
+      <td><span class="badge badge-green">✓ γ=0.99 할인율</span></td>
+      <td><span class="badge badge-gray">그리디 (근시안)</span></td>
+      <td><span class="badge badge-gray">그리디 (근시안)</span></td>
+    </tr>
+  </table>
+</section>
+
+</div><!-- /main -->
+
+<div class="footer">
+  pjt_scheduling · MDP 구조 가이드 · 2026 · MaskablePPO (sb3_contrib) + Gymnasium
+</div>
+
+<script>
+// Nav active state on scroll
+const sections = document.querySelectorAll('.section');
+const navItems = document.querySelectorAll('.nav-item');
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      navItems.forEach(n => n.classList.remove('active'));
+      const id = e.target.id;
+      const nav = document.querySelector(`.nav-item[href="#${id}"]`);
+      if (nav) nav.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
