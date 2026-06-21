@@ -1,0 +1,37 @@
+{
+  "scenario": "conv_2ppk_1oper",
+  "folder": "FAC_CONV/test/20260105070000",
+  "train": {
+    "trained": false
+  },
+  "results": [
+    {
+      "algorithm": "minprogress",
+      "idle_total": 120,
+      "conversions": 2,
+      "oper_switches": 0,
+      "prod_switches": 2,
+      "completed_qty": 90,
+      "n_assignments": 32
+    },
+    {
+      "algorithm": "earliest_st",
+      "idle_total": 60,
+      "conversions": 1,
+      "oper_switches": 0,
+      "prod_switches": 0,
+      "completed_qty": 93,
+      "n_assignments": 33
+    },
+    {
+      "algorithm": "rl",
+      "idle_total": 60,
+      "conversions": 1,
+      "oper_switches": 0,
+      "prod_switches": 0,
+      "completed_qty": 93,
+      "n_assignments": 33
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversion 시나리오 – 스케줄링 데모</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2332;
+    --border: #2d3a4f;
+    --text: #e7ecf3;
+    --muted: #8b9cb3;
+    --accent: #3b82f6;
+    --ppk1: #22c55e;
+    --ppk2: #f59e0b;
+    --conv: #ef4444;
+    --eqp1: #6366f1;
+    --eqp2: #06b6d4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  header {
+    padding: 1.5rem 2rem; border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, #1a2332 0%, #0f1419 100%);
+  }
+  header h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
+  header p { margin: 0; color: var(--muted); font-size: .95rem; }
+  main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+  section { margin-bottom: 2rem; }
+  h2 { font-size: 1.1rem; margin: 0 0 1rem; color: var(--accent); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem 1.25rem;
+  }
+  .scenario-tags { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+  .tag {
+    font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
+    background: #243044; border: 1px solid var(--border);
+  }
+  .controls { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: .45rem .9rem; cursor: pointer; font-size: .9rem;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secondary { background: #334155; }
+  input[type=range] { flex: 1; min-width: 200px; }
+  .step-info { font-size: .95rem; }
+  .step-info strong { color: #fff; }
+  .conv-badge {
+    display: inline-block; background: var(--conv); color: #fff;
+    font-size: .75rem; padding: .1rem .45rem; border-radius: 4px; margin-left: .5rem;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th, td { padding: .5rem .6rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  tr.best td { background: rgba(34, 197, 94, .12); }
+  .gantt-wrap { overflow-x: auto; }
+  .gantt { min-width: 700px; }
+  .gantt-row { display: flex; align-items: center; margin-bottom: .35rem; }
+  .gantt-label { width: 72px; font-size: .8rem; color: var(--muted); flex-shrink: 0; }
+  .gantt-track {
+    flex: 1; height: 28px; position: relative; background: #121a26;
+    border-radius: 4px; border: 1px solid var(--border);
+  }
+  .gantt-bar {
+    position: absolute; top: 3px; height: 22px; border-radius: 3px;
+    font-size: .65rem; color: #fff; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; padding: 0 4px; line-height: 22px;
+    transition: opacity .2s;
+  }
+  .gantt-bar.dim { opacity: .25; }
+  .gantt-bar.conv { outline: 2px dashed var(--conv); }
+  .gantt-bar.highlight { box-shadow: 0 0 0 2px #fff; z-index: 2; }
+  .time-axis {
+    display: flex; justify-content: space-between; font-size: .7rem;
+    color: var(--muted); margin: .25rem 0 1rem 72px;
+  }
+  .flow-step {
+    display: flex; gap: .75rem; align-items: flex-start;
+    padding: .75rem 0; border-bottom: 1px solid var(--border);
+  }
+  .flow-num {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .8rem; font-weight: 700; flex-shrink: 0;
+  }
+  .flow-num.idle { background: #475569; }
+  .issues { font-size: .9rem; }
+  .issues li { margin-bottom: .5rem; }
+  .issues .warn { color: #fbbf24; }
+  .issues .ok { color: #4ade80; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Conversion 시나리오 데모 (conv_2ppk_1oper)</h1>
+  <p>단일 공정 · 2제품 · EQP001 초기 PPK001(LC001/T650) → PPK002 투입 시 conversion 검증</p>
+</header>
+<main>
+  <section>
+    <h2>시나리오 개요</h2>
+    <div class="card">
+      <div id="scenario-desc"></div>
+      <div class="scenario-tags" id="scenario-tags"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>단계별 실행 (Step ↔ Gantt 연동)</h2>
+    <div class="card">
+      <div class="controls">
+        <button id="btn-prev">◀ 이전</button>
+        <button id="btn-play">▶ 재생</button>
+        <button id="btn-next">다음 ▶</button>
+        <input type="range" id="step-slider" min="0" max="0" value="0">
+        <span id="step-label">Step 0</span>
+      </div>
+      <div class="step-info" id="step-detail"></div>
+      <div class="gantt-wrap" style="margin-top:1.25rem">
+        <div class="time-axis" id="time-axis"></div>
+        <div class="gantt" id="gantt"></div>
+      </div>
+      <div id="flow-detail" style="margin-top:1rem"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>알고리즘 성능 비교</h2>
+    <div class="card">
+      <table id="bench-table">
+        <thead>
+          <tr>
+            <th>알고리즘</th><th>Idle(분)</th><th>Conversion</th>
+            <th>제품전환</th><th>완료수량</th><th>배정건수</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p style="color:var(--muted);font-size:.85rem;margin:1rem 0 0" id="bench-note"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>RL vs 휴리스틱 – 문제점 체크</h2>
+    <div class="card issues">
+      <ul id="issues-list"></ul>
+    </div>
+  </section>
+</main>
+<script>
+const DATA = {"algorithm": "minprogress", "scenario_meta": {"eqps": ["EQP001", "EQP002"], "prods": ["PPK001", "PPK002"], "opers": ["OPER001"]}, "sim_end_minutes": 1440, "stats": {"idle_total": 120, "oper_switches": 0, "prod_switches": 2, "conversions": 2, "completed_qty": {"('PPK002', 'OPER001')": 3, "('PPK001', 'OPER001')": 87}}, "schedule": [{"eqp": "EQP001", "lot": "LOT005__S01", "ppk": "PPK002", "oper": "OPER001", "start": 60, "end": 150, "conv": true, "wf": 3, "lot_cd": "LC02", "temp": "T700", "start_str": "2026-01-05 08:00:00", "end_str": "2026-01-05 09:30:00"}, {"eqp": "EQP002", "lot": "LOT001__S01", "ppk": "PPK001", "oper": "OPER001", "start": 0, "end": 90, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 07:00:00", "end_str": "2026-01-05 08:30:00"}, {"eqp": "EQP002", "lot": "LOT001__S02", "ppk": "PPK001", "oper": "OPER001", "start": 90, "end": 180, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 08:30:00", "end_str": "2026-01-05 10:00:00"}, {"eqp": "EQP001", "lot": "LOT001__S03", "ppk": "PPK001", "oper": "OPER001", "start": 210, "end": 300, "conv": true, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 10:30:00", "end_str": "2026-01-05 12:00:00"}, {"eqp": "EQP002", "lot": "LOT001__S04", "ppk": "PPK001", "oper": "OPER001", "start": 180, "end": 270, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 10:00:00", "end_str": "2026-01-05 11:30:00"}, {"eqp": "EQP002", "lot": "LOT001__S05", "ppk": "PPK001", "oper": "OPER001", "start": 270, "end": 360, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 11:30:00", "end_str": "2026-01-05 13:00:00"}, {"eqp": "EQP001", "lot": "LOT001__S06", "ppk": "PPK001", "oper": "OPER001", "start": 300, "end": 390, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 12:00:00", "end_str": "2026-01-05 13:30:00"}, {"eqp": "EQP002", "lot": "LOT001__S07", "ppk": "PPK001", "oper": "OPER001", "start": 360, "end": 450, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 13:00:00", "end_str": "2026-01-05 14:30:00"}, {"eqp": "EQP001", "lot": "LOT001__S08", "ppk": "PPK001", "oper": "OPER001", "start": 390, "end": 480, "conv": false, "wf": 2, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 13:30:00", "end_str": "2026-01-05 15:00:00"}, {"eqp": "EQP002", "lot": "LOT001__S09", "ppk": "PPK001", "oper": "OPER001", "start": 450, "end": 540, "conv": false, "wf": 2, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 14:30:00", "end_str": "2026-01-05 16:00:00"}, {"eqp": "EQP001", "lot": "LOT002__S01", "ppk": "PPK001", "oper": "OPER001", "start": 480, "end": 570, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 15:00:00", "end_str": "2026-01-05 16:30:00"}, {"eqp": "EQP002", "lot": "LOT002__S02", "ppk": "PPK001", "oper": "OPER001", "start": 540, "end": 630, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 16:00:00", "end_str": "2026-01-05 17:30:00"}, {"eqp": "EQP001", "lot": "LOT002__S03", "ppk": "PPK001", "oper": "OPER001", "start": 570, "end": 660, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 16:30:00", "end_str": "2026-01-05 18:00:00"}, {"eqp": "EQP002", "lot": "LOT002__S04", "ppk": "PPK001", "oper": "OPER001", "start": 630, "end": 720, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 17:30:00", "end_str": "2026-01-05 19:00:00"}, {"eqp": "EQP001", "lot": "LOT002__S05", "ppk": "PPK001", "oper": "OPER001", "start": 660, "end": 750, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 18:00:00", "end_str": "2026-01-05 19:30:00"}, {"eqp": "EQP002", "lot": "LOT002__S06", "ppk": "PPK001", "oper": "OPER001", "start": 720, "end": 810, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 19:00:00", "end_str": "2026-01-05 20:30:00"}, {"eqp": "EQP001", "lot": "LOT002__S07", "ppk": "PPK001", "oper": "OPER001", "start": 750, "end": 840, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 19:30:00", "end_str": "2026-01-05 21:00:00"}, {"eqp": "EQP002", "lot": "LOT002__S08", "ppk": "PPK001", "oper": "OPER001", "start": 810, "end": 900, "conv": false, "wf": 2, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 20:30:00", "end_str": "2026-01-05 22:00:00"}, {"eqp": "EQP001", "lot": "LOT002__S09", "ppk": "PPK001", "oper": "OPER001", "start": 840, "end": 930, "conv": false, "wf": 2, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 21:00:00", "end_str": "2026-01-05 22:30:00"}, {"eqp": "EQP002", "lot": "LOT003__S01", "ppk": "PPK001", "oper": "OPER001", "start": 900, "end": 990, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 22:00:00", "end_str": "2026-01-05 23:30:00"}, {"eqp": "EQP001", "lot": "LOT003__S02", "ppk": "PPK001", "oper": "OPER001", "start": 930, "end": 1020, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 22:30:00", "end_str": "2026-01-06 00:00:00"}, {"eqp": "EQP002", "lot": "LOT003__S03", "ppk": "PPK001", "oper": "OPER001", "start": 990, "end": 1080, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-05 23:30:00", "end_str": "2026-01-06 01:00:00"}, {"eqp": "EQP001", "lot": "LOT003__S04", "ppk": "PPK001", "oper": "OPER001", "start": 1020, "end": 1110, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 00:00:00", "end_str": "2026-01-06 01:30:00"}, {"eqp": "EQP002", "lot": "LOT003__S05", "ppk": "PPK001", "oper": "OPER001", "start": 1080, "end": 1170, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 01:00:00", "end_str": "2026-01-06 02:30:00"}, {"eqp": "EQP001", "lot": "LOT003__S06", "ppk": "PPK001", "oper": "OPER001", "start": 1110, "end": 1200, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 01:30:00", "end_str": "2026-01-06 03:00:00"}, {"eqp": "EQP002", "lot": "LOT003__S07", "ppk": "PPK001", "oper": "OPER001", "start": 1170, "end": 1260, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 02:30:00", "end_str": "2026-01-06 04:00:00"}, {"eqp": "EQP001", "lot": "LOT003__S08", "ppk": "PPK001", "oper": "OPER001", "start": 1200, "end": 1290, "conv": false, "wf": 2, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 03:00:00", "end_str": "2026-01-06 04:30:00"}, {"eqp": "EQP002", "lot": "LOT003__S09", "ppk": "PPK001", "oper": "OPER001", "start": 1260, "end": 1350, "conv": false, "wf": 2, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 04:00:00", "end_str": "2026-01-06 05:30:00"}, {"eqp": "EQP001", "lot": "LOT004__S01", "ppk": "PPK001", "oper": "OPER001", "start": 1290, "end": 1380, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 04:30:00", "end_str": "2026-01-06 06:00:00"}, {"eqp": "EQP002", "lot": "LOT004__S02", "ppk": "PPK001", "oper": "OPER001", "start": 1350, "end": 1440, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 05:30:00", "end_str": "2026-01-06 07:00:00"}, {"eqp": "EQP001", "lot": "LOT004__S03", "ppk": "PPK001", "oper": "OPER001", "start": 1380, "end": 1470, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 06:00:00", "end_str": "2026-01-06 07:30:00"}, {"eqp": "EQP002", "lot": "LOT004__S04", "ppk": "PPK001", "oper": "OPER001", "start": 1440, "end": 1530, "conv": false, "wf": 3, "lot_cd": "LC01", "temp": "T650", "start_str": "2026-01-06 07:00:00", "end_str": "2026-01-06 08:30:00"}], "history": [{"step": 0, "time": 0, "idle": 0, "assigned": null, "schedule_len": 0, "eqp_states": {"EQP001": {"status": "idle", "current_lot": null, "current_oper": null, "current_prod": null, "free_at": 0}, "EQP002": {"status": "idle", "current_lot": null, "current_oper": null, "current_prod": null, "free_at": 0}}, "completed": {}}, {"step": 1, "time": 0, "idle": 60, "assigned": {"eqp": "EQP001", "ppk": "PPK002", "oper": "OPER001", "lot": "LOT005__S01", "conv": true, "start": 60, "wf": 3, "lot_cd": "LC02", "temp": "T700"}, "schedule_len": 1, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT005__S01", "current_oper": "OPER001", "current_prod": "PPK002", "free_at": 150}, "EQP002": {"status": "idle", "current_lot": null, "current_oper": null, "current_prod": null, "free_at": 0}}, "completed": {"PPK002|OPER001": 3}}, {"step": 2, "time": 0, "idle": 60, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S01", "conv": false, "start": 0, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 2, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT005__S01", "current_oper": "OPER001", "current_prod": "PPK002", "free_at": 150}, "EQP002": {"status": "busy", "current_lot": "LOT001__S01", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 90}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 3}}, {"step": 3, "time": 90, "idle": 60, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S02", "conv": false, "start": 90, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 3, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT005__S01", "current_oper": "OPER001", "current_prod": "PPK002", "free_at": 150}, "EQP002": {"status": "busy", "current_lot": "LOT001__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 180}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 6}}, {"step": 4, "time": 150, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S03", "conv": true, "start": 210, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 4, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT001__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 300}, "EQP002": {"status": "busy", "current_lot": "LOT001__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 180}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 9}}, {"step": 5, "time": 180, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S04", "conv": false, "start": 180, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 5, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT001__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 300}, "EQP002": {"status": "busy", "current_lot": "LOT001__S04", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 270}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 12}}, {"step": 6, "time": 270, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S05", "conv": false, "start": 270, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 6, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT001__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 300}, "EQP002": {"status": "busy", "current_lot": "LOT001__S05", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 360}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 15}}, {"step": 7, "time": 300, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S06", "conv": false, "start": 300, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 7, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT001__S06", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 390}, "EQP002": {"status": "busy", "current_lot": "LOT001__S05", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 360}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 18}}, {"step": 8, "time": 360, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S07", "conv": false, "start": 360, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 8, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT001__S06", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 390}, "EQP002": {"status": "busy", "current_lot": "LOT001__S07", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 450}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 21}}, {"step": 9, "time": 390, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S08", "conv": false, "start": 390, "wf": 2, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 9, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT001__S08", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 480}, "EQP002": {"status": "busy", "current_lot": "LOT001__S07", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 450}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 23}}, {"step": 10, "time": 450, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT001__S09", "conv": false, "start": 450, "wf": 2, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 10, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT001__S08", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 480}, "EQP002": {"status": "busy", "current_lot": "LOT001__S09", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 540}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 25}}, {"step": 11, "time": 480, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S01", "conv": false, "start": 480, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 11, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S01", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 570}, "EQP002": {"status": "busy", "current_lot": "LOT001__S09", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 540}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 28}}, {"step": 12, "time": 540, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S02", "conv": false, "start": 540, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 12, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S01", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 570}, "EQP002": {"status": "busy", "current_lot": "LOT002__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 630}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 31}}, {"step": 13, "time": 570, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S03", "conv": false, "start": 570, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 13, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 660}, "EQP002": {"status": "busy", "current_lot": "LOT002__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 630}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 34}}, {"step": 14, "time": 630, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S04", "conv": false, "start": 630, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 14, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 660}, "EQP002": {"status": "busy", "current_lot": "LOT002__S04", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 720}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 37}}, {"step": 15, "time": 660, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S05", "conv": false, "start": 660, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 15, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S05", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 750}, "EQP002": {"status": "busy", "current_lot": "LOT002__S04", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 720}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 40}}, {"step": 16, "time": 720, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S06", "conv": false, "start": 720, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 16, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S05", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 750}, "EQP002": {"status": "busy", "current_lot": "LOT002__S06", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 810}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 43}}, {"step": 17, "time": 750, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S07", "conv": false, "start": 750, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 17, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S07", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 840}, "EQP002": {"status": "busy", "current_lot": "LOT002__S06", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 810}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 46}}, {"step": 18, "time": 810, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S08", "conv": false, "start": 810, "wf": 2, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 18, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S07", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 840}, "EQP002": {"status": "busy", "current_lot": "LOT002__S08", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 900}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 48}}, {"step": 19, "time": 840, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT002__S09", "conv": false, "start": 840, "wf": 2, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 19, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S09", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 930}, "EQP002": {"status": "busy", "current_lot": "LOT002__S08", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 900}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 50}}, {"step": 20, "time": 900, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S01", "conv": false, "start": 900, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 20, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT002__S09", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 930}, "EQP002": {"status": "busy", "current_lot": "LOT003__S01", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 990}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 53}}, {"step": 21, "time": 930, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S02", "conv": false, "start": 930, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 21, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1020}, "EQP002": {"status": "busy", "current_lot": "LOT003__S01", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 990}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 56}}, {"step": 22, "time": 990, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S03", "conv": false, "start": 990, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 22, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1020}, "EQP002": {"status": "busy", "current_lot": "LOT003__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1080}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 59}}, {"step": 23, "time": 1020, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S04", "conv": false, "start": 1020, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 23, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S04", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1110}, "EQP002": {"status": "busy", "current_lot": "LOT003__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1080}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 62}}, {"step": 24, "time": 1080, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S05", "conv": false, "start": 1080, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 24, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S04", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1110}, "EQP002": {"status": "busy", "current_lot": "LOT003__S05", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1170}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 65}}, {"step": 25, "time": 1110, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S06", "conv": false, "start": 1110, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 25, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S06", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1200}, "EQP002": {"status": "busy", "current_lot": "LOT003__S05", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1170}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 68}}, {"step": 26, "time": 1170, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S07", "conv": false, "start": 1170, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 26, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S06", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1200}, "EQP002": {"status": "busy", "current_lot": "LOT003__S07", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1260}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 71}}, {"step": 27, "time": 1200, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S08", "conv": false, "start": 1200, "wf": 2, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 27, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S08", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1290}, "EQP002": {"status": "busy", "current_lot": "LOT003__S07", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1260}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 73}}, {"step": 28, "time": 1260, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT003__S09", "conv": false, "start": 1260, "wf": 2, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 28, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT003__S08", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1290}, "EQP002": {"status": "busy", "current_lot": "LOT003__S09", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1350}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 75}}, {"step": 29, "time": 1290, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT004__S01", "conv": false, "start": 1290, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 29, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT004__S01", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1380}, "EQP002": {"status": "busy", "current_lot": "LOT003__S09", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1350}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 78}}, {"step": 30, "time": 1350, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT004__S02", "conv": false, "start": 1350, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 30, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT004__S01", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1380}, "EQP002": {"status": "busy", "current_lot": "LOT004__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1440}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 81}}, {"step": 31, "time": 1380, "idle": 120, "assigned": {"eqp": "EQP001", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT004__S03", "conv": false, "start": 1380, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 31, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT004__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1470}, "EQP002": {"status": "busy", "current_lot": "LOT004__S02", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1440}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 84}}, {"step": 32, "time": 1440, "idle": 120, "assigned": {"eqp": "EQP002", "ppk": "PPK001", "oper": "OPER001", "lot": "LOT004__S04", "conv": false, "start": 1440, "wf": 3, "lot_cd": "LC01", "temp": "T650"}, "schedule_len": 32, "eqp_states": {"EQP001": {"status": "busy", "current_lot": "LOT004__S03", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1470}, "EQP002": {"status": "busy", "current_lot": "LOT004__S04", "current_oper": "OPER001", "current_prod": "PPK001", "free_at": 1530}}, "completed": {"PPK002|OPER001": 3, "PPK001|OPER001": 87}}], "benchmark": {"scenario": "conv_2ppk_1oper", "folder": "FAC_CONV/test/20260105070000", "train": {"trained": false}, "results": [{"algorithm": "minprogress", "idle_total": 120, "conversions": 2, "oper_switches": 0, "prod_switches": 2, "completed_qty": 90, "n_assignments": 32}, {"algorithm": "earliest_st", "idle_total": 60, "conversions": 1, "oper_switches": 0, "prod_switches": 0, "completed_qty": 93, "n_assignments": 33}, {"algorithm": "rl", "idle_total": 60, "conversions": 1, "oper_switches": 0, "prod_switches": 0, "completed_qty": 93, "n_assignments": 33}], "errors": []}};
+
+const PPK_COLORS = { PPK001: "#22c55e", PPK002: "#f59e0b" };
+const EQP_COLORS = { EQP001: "#6366f1", EQP002: "#06b6d4" };
+
+let currentStep = 0;
+let playTimer = null;
+
+function init() {
+  renderScenario();
+  renderBenchmark();
+  renderIssues();
+  const maxStep = DATA.history.length - 1;
+  document.getElementById("step-slider").max = maxStep;
+  showStep(0);
+  bindControls(maxStep);
+}
+
+function renderScenario() {
+  const s = DATA.scenario_meta;
+  document.getElementById("scenario-desc").innerHTML =
+    `<p>EQP <strong>${s.eqps.join(", ")}</strong> · 제품 <strong>${s.prods.join(", ")}</strong> · 공정 <strong>${s.opers.join(", ")}</strong></p>` +
+    `<p>EQP001 초기 상태: <strong>PPK001 / LC001 / T650</strong> (conversion 없이 PPK001 가능, PPK002는 conversion 60분)</p>`;
+  const tags = [
+    `알고리즘: ${DATA.algorithm}`,
+    `총 Step: ${DATA.history.length}`,
+    `스케줄: ${DATA.schedule.length}건`,
+    `Idle: ${DATA.stats.idle_total}분`,
+    `Conversion: ${DATA.stats.conversions}회`,
+  ];
+  document.getElementById("scenario-tags").innerHTML =
+    tags.map(t => `<span class="tag">${t}</span>`).join("");
+}
+
+function showStep(step) {
+  currentStep = step;
+  const h = DATA.history[step];
+  document.getElementById("step-slider").value = step;
+  document.getElementById("step-label").textContent = `Step ${step} / ${DATA.history.length - 1}`;
+  renderStepDetail(h);
+  renderGantt(step);
+  renderFlow(h);
+}
+
+function renderStepDetail(h) {
+  const el = document.getElementById("step-detail");
+  if (!h.assigned) {
+    el.innerHTML = `<p><strong>시뮬 시작 (t=${h.time}분)</strong> — EQP001은 PPK001 상태, 재공 대기 중</p>`;
+    return;
+  }
+  const a = h.assigned;
+  const conv = a.conv ? '<span class="conv-badge">CONVERSION 60min</span>' : "";
+  el.innerHTML =
+    `<p><strong>Step ${h.step}</strong> · 시뮬시각 t=${h.time}분 · 누적 Idle ${h.idle}분</p>` +
+    `<p>현재 EQP <strong>${a.eqp}</strong> → 배정 <strong>${a.ppk}</strong> / ${a.oper} / LOT ${a.lot} ` +
+    `(${a.lot_cd}/${a.temp}, ${a.wf}매) START=${a.start}분 ${conv}</p>`;
+}
+
+function renderGantt(upToStep) {
+  const h = DATA.history[upToStep];
+  const visibleCount = h.schedule_len;
+  const schedule = DATA.schedule.slice(0, visibleCount);
+  const maxEnd = Math.max(DATA.sim_end_minutes, ...DATA.schedule.map(r => r.end), 480);
+  const eqps = DATA.scenario_meta.eqps;
+
+  const axis = document.getElementById("time-axis");
+  const ticks = [0, Math.round(maxEnd/4), Math.round(maxEnd/2), Math.round(maxEnd*3/4), maxEnd];
+  axis.innerHTML = ticks.map(t => `<span>${t}분</span>`).join("");
+
+  const gantt = document.getElementById("gantt");
+  gantt.innerHTML = eqps.map(eqp => {
+    const bars = schedule
+      .map((r, i) => ({ ...r, idx: i }))
+      .filter(r => r.eqp === eqp)
+      .map(r => {
+        const left = (r.start / maxEnd) * 100;
+        const width = Math.max(((r.end - r.start) / maxEnd) * 100, 0.5);
+        const isLast = upToStep > 0 && h.assigned && r.idx === visibleCount - 1;
+        const cls = ["gantt-bar", r.conv ? "conv" : "", isLast ? "highlight" : ""].filter(Boolean).join(" ");
+        const color = PPK_COLORS[r.ppk] || "#64748b";
+        const label = `${r.ppk}${r.conv ? " ⚡" : ""}`;
+        return `<div class="${cls}" style="left:${left}%;width:${width}%;background:${color}" title="${r.lot} ${r.start_str}~${r.end_str}">${label}</div>`;
+      }).join("");
+    return `<div class="gantt-row"><div class="gantt-label">${eqp}</div><div class="gantt-track">${bars}</div></div>`;
+  }).join("");
+}
+
+function renderFlow(h) {
+  const el = document.getElementById("flow-detail");
+  if (!h.assigned) {
+    el.innerHTML = "<p style='color:var(--muted)'>슬라이더를 움직이면 배정·간트가 연동됩니다.</p>";
+    return;
+  }
+  const a = h.assigned;
+  const states = Object.entries(h.eqp_states || {})
+    .map(([id, s]) => `${id}: ${s.status}${s.current_prod ? " ("+s.current_prod+")" : ""} free@${s.free_at}`)
+    .join(" · ");
+  el.innerHTML =
+    `<div class="flow-step"><div class="flow-num">${h.step}</div><div>` +
+    `<div><strong>Action</strong>: (PPK, OPER) = (${a.ppk}, ${a.oper}) · 시스템 EQP=${a.eqp}, LOT 자동선택</div>` +
+    `<div style="color:var(--muted);margin-top:.35rem">EQP 상태: ${states}</div></div></div>`;
+}
+
+function renderBenchmark() {
+  const tbody = document.querySelector("#bench-table tbody");
+  const results = DATA.benchmark.results;
+  const bestIdle = Math.min(...results.map(r => r.idle_total));
+  const bestCompleted = Math.max(...results.map(r => r.completed_qty));
+  tbody.innerHTML = results.map(r => {
+    const isBest = r.idle_total === bestIdle && r.completed_qty === bestCompleted;
+    const name = { minprogress: "MinProgress", earliest_st: "Earliest ST", rl: "RL (PPO)" }[r.algorithm] || r.algorithm;
+    return `<tr class="${isBest ? "best" : ""}"><td>${name}</td><td>${r.idle_total}</td><td>${r.conversions}</td>` +
+      `<td>${r.prod_switches}</td><td>${r.completed_qty}</td><td>${r.n_assignments}</td></tr>`;
+  }).join("");
+  const train = DATA.benchmark.train;
+  document.getElementById("bench-note").textContent = train.trained
+    ? `RL 학습: ${train.timesteps.toLocaleString()} timesteps · eval mean_reward=${train.eval.mean_reward.toFixed(1)}`
+    : "RL 모델 없음 — python3 scripts/build_conv_demo_html.py --train 로 학습 가능";
+}
+
+function renderIssues() {
+  const results = DATA.benchmark.results;
+  const rl = results.find(r => r.algorithm === "rl");
+  const mp = results.find(r => r.algorithm === "minprogress");
+  const est = results.find(r => r.algorithm === "earliest_st");
+  const items = [];
+
+  if (!rl) {
+    items.push({ cls: "warn", text: "학습된 RL 모델 없음 — 벤치마크는 휴리스틱만 포함" });
+  } else if (rl.idle_total <= (est?.idle_total ?? Infinity) && rl.completed_qty >= (mp?.completed_qty ?? 0)) {
+    items.push({ cls: "ok", text: `conv 시나리오: RL이 idle=${rl.idle_total}, conversion=${rl.conversions}로 earliest_st와 동급, minprogress(idle=${mp?.idle_total})보다 우수` });
+  } else {
+    items.push({ cls: "warn", text: "conv 시나리오에서 RL이 휴리스틱 대비 열위 — 학습 budget·보상 설계 재검토 필요" });
+  }
+
+  if (mp && mp.conversions > (rl?.conversions ?? 0)) {
+    items.push({ cls: "warn", text: `MinProgress는 제품 진행률 우선 → EQP001(PPK001 상태)에 PPK002를 먼저 넣어 conversion ${mp.conversions}회 발생 (비효율)` });
+  }
+
+  items.push({ cls: "warn", text: "액션 공간이 (PPK, OPER)만 선택 — EQP·LOT은 규칙 자동. RL은 제품/공정 순서만 학습" });
+  items.push({ cls: "warn", text: "단일 conv 시나리오 50k step 학습은 일반화 부족 — 다양한 train 기간·VecEnv 필요" });
+  items.push({ cls: "warn", text: "obs/action 차원 변경 시 기존 checkpoint 무효 — 재학습 필수" });
+  items.push({ cls: "warn", text: "보상이 idle·전환·plan pacing 혼합 — conversion 비용 신호가 약하면 RL이 휴리스틱과 동일 정책 수렴" });
+
+  document.getElementById("issues-list").innerHTML =
+    items.map(i => `<li class="${i.cls}">${i.text}</li>`).join("");
+}
+
+function bindControls(maxStep) {
+  document.getElementById("btn-prev").onclick = () => showStep(Math.max(0, currentStep - 1));
+  document.getElementById("btn-next").onclick = () => showStep(Math.min(maxStep, currentStep + 1));
+  document.getElementById("step-slider").oninput = e => showStep(+e.target.value);
+  document.getElementById("btn-play").onclick = () => {
+    if (playTimer) { clearInterval(playTimer); playTimer = null; document.getElementById("btn-play").textContent = "▶ 재생"; return; }
+    document.getElementById("btn-play").textContent = "⏸ 정지";
+    playTimer = setInterval(() => {
+      if (currentStep >= maxStep) { clearInterval(playTimer); playTimer = null; document.getElementById("btn-play").textContent = "▶ 재생"; return; }
+      showStep(currentStep + 1);
+    }, 800);
+  };
+}
+
+init();
+</script>
+</body>
+</html>
