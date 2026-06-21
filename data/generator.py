@@ -2,9 +2,9 @@
 data/generator.py – 샘플 JSON 데이터 생성 (Oracle 없이 개발·테스트용)
 
 출력 경로:
-  external/dataset/{FAC_ID}/train/{RULE_TIMEKEY}/input|output
-  external/dataset/{FAC_ID}/test/{RULE_TIMEKEY}/input|output
-  external/dataset/{FAC_ID}/infer/input|output
+  data/dataset/{FAC_ID}/train/{RULE_TIMEKEY}/input|output
+  data/dataset/{FAC_ID}/test/{RULE_TIMEKEY}/input|output
+  data/dataset/{FAC_ID}/infer/input|output
 """
 import json
 import random
@@ -25,6 +25,7 @@ from config import (
     resolve_dataset_path,
     rule_timekey_now,
     rule_timekey_today,
+    set_input_folder,
     validate_path_segment,
 )
 
@@ -91,25 +92,6 @@ def list_period_keys(count: int, start_key: Optional[str] = None) -> List[str]:
     return keys
 
 
-_SAMPLE_BASE = datetime(2024, 1, 15, 8, 0, 0)
-
-
-def _fmt_minutes(minutes: int) -> str:
-    return (_SAMPLE_BASE + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _schedule_row(
-    eqp_id: str, lot_id: str, carrier_id: str, ppk: str, seq: int,
-    start_min: int, end_min: int, eqp_model: str = "A",
-) -> dict:
-    proc = max(end_min - start_min, 1)
-    return {
-        "EQP_ID": eqp_id, "LOT_ID": lot_id, "CARRIER_ID": carrier_id,
-        "PLAN_PROD_KEY": ppk, "EQP_MODEL": eqp_model, "ST": proc, "SEQ": seq,
-        "STARTTM": _fmt_minutes(start_min), "ENDTM": _fmt_minutes(end_min),
-    }
-
-
 def _discrete_row(
     eqp_id: str,
     lot_id: str,
@@ -168,9 +150,6 @@ def build_abstract_arrange(
     ]
 
 
-_avail_row = _discrete_row  # legacy alias
-
-
 def _split_row(ppk: str, eqp_model: str, split_qty: int) -> dict:
     return {
         "PLAN_PROD_KEY": ppk,
@@ -210,13 +189,24 @@ def build_lot_master_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
     return rows
 
 
-def build_lot_master_from_schedule(
-    schedule: List[dict],
-    flow_map: Dict[str, Dict[int, str]],
-) -> List[dict]:
-    """@deprecated schedule 하위 호환"""
-    del flow_map
-    return build_lot_master_from_discrete(schedule)
+def build_batch_info_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
+    """(PPK, OPER)별 LOT_CD/TEMP — conversion 레시피."""
+    pairs: set = set()
+    for r in discrete_arrange:
+        oper_id = r.get("OPER_ID")
+        if not oper_id:
+            continue
+        pairs.add((r["PLAN_PROD_KEY"], oper_id))
+    rows = []
+    for ppk, oper_id in sorted(pairs):
+        suffix = int(ppk[-3:]) if ppk[-3:].isdigit() else sum(ord(c) for c in ppk)
+        rows.append({
+            "PLAN_PROD_KEY": ppk,
+            "OPER_ID": oper_id,
+            "LOT_CD": f"LC{ppk[-3:]}",
+            "TEMP": "T650" if suffix % 2 == 0 else "T700",
+        })
+    return rows
 
 
 def build_tool_capacity_from_lots(
@@ -239,6 +229,7 @@ def write_json_bundle(
     flow: List[dict],
     split: Optional[List[dict]] = None,
     lot_master: Optional[List[dict]] = None,
+    batch_info: Optional[List[dict]] = None,
     tool_capacity: Optional[List[dict]] = None,
     abstract_arrange: Optional[List[dict]] = None,
     eqp_initial_state: Optional[List[dict]] = None,
@@ -251,6 +242,9 @@ def write_json_bundle(
     lot_master_data = lot_master if lot_master is not None else build_lot_master_from_discrete(
         discrete_arrange,
     )
+    batch_info_data = batch_info if batch_info is not None else build_batch_info_from_discrete(
+        discrete_arrange,
+    )
     tool_capacity_data = tool_capacity if tool_capacity is not None else build_tool_capacity_from_lots(
         lot_master_data,
     )
@@ -261,6 +255,7 @@ def write_json_bundle(
         (CONFIG.path.flow_file, flow),
         (CONFIG.path.split_file, split_data),
         (CONFIG.path.lot_master_file, lot_master_data),
+        (CONFIG.path.batch_info_file, batch_info_data),
         (CONFIG.path.tool_capacity_file, tool_capacity_data),
     ]
     if eqp_initial_state is not None:
@@ -559,11 +554,17 @@ SAMPLE_SCENARIOS: Dict[str, dict] = {
     },
 }
 
-from data.pacing_scenarios import TAKT_SCENARIOS  # noqa: E402
-from data.conversion_scenarios import CONV_SCENARIOS  # noqa: E402
+try:
+    from data.pacing_scenarios import TAKT_SCENARIOS  # noqa: E402
+    SAMPLE_SCENARIOS.update(TAKT_SCENARIOS)
+except ImportError:
+    pass
 
-SAMPLE_SCENARIOS.update(TAKT_SCENARIOS)
-SAMPLE_SCENARIOS.update(CONV_SCENARIOS)
+try:
+    from data.conversion_scenarios import CONV_SCENARIOS  # noqa: E402
+    SAMPLE_SCENARIOS.update(CONV_SCENARIOS)
+except ImportError:
+    pass
 
 
 def _build_dataset_bundle(
@@ -744,5 +745,124 @@ def bootstrap_facility_datasets(
         "train_snapshot": train_keys[-1] if train_keys else rule_timekey_now(),
         "test_period": test_keys[-1] if test_keys else rule_timekey_today(),
         "paths": paths,
+        "generator_config": generator_config_to_dict(cfg),
+    }
+
+
+def _last_split_input(paths: dict, split: str) -> Path:
+    entry = paths[split]
+    if isinstance(entry, list):
+        return Path(entry[-1]["input"])
+    return Path(entry["input"])
+
+
+def _apply_sample_input_folder(fac_id: str, split: str, path: Path) -> None:
+    if split in PERIOD_SPLITS:
+        set_input_folder(f"{fac_id}/{split}/{path.parent.name}")
+    else:
+        set_input_folder(f"{fac_id}/{split}")
+
+
+def generate_sample(
+    scenario: str = "default",
+    fac_id: str = "FAC001",
+    split: str = "train",
+    *,
+    bootstrap: bool = False,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    use_period_count: bool = False,
+    gen_config: Optional[GeneratorConfig] = None,
+    update_input_folder: bool = True,
+    verbose: bool = False,
+) -> dict:
+    """
+    샘플 JSON 생성 통합 진입점 (CLI · API 공용).
+
+    Returns:
+        path: 마지막 생성 input 디렉터리
+        bootstrap_info: bootstrap 시 bootstrap_facility_datasets 반환값
+        generator_config: 적용된 GeneratorConfig dict
+    """
+    if scenario not in SAMPLE_SCENARIOS:
+        raise ValueError(
+            f"알 수 없는 시나리오: {scenario}. "
+            f"사용 가능: {', '.join(SAMPLE_SCENARIOS)}"
+        )
+
+    cfg = gen_config or DEFAULT_GENERATOR_CONFIG
+    if verbose:
+        print("=" * 60)
+        print(f"[generator] 샘플 데이터 생성 (시나리오: {scenario}, FAC: {fac_id})")
+
+    if bootstrap:
+        info = bootstrap_facility_datasets(fac_id=fac_id, scenario=scenario, gen_config=cfg)
+        snap = info["train_snapshot"]
+        path = _last_split_input(info["paths"], "train")
+        if update_input_folder:
+            set_input_folder(f"{fac_id}/train/{snap}")
+        if verbose:
+            print(f"  train periods: {info.get('train_periods', [snap])}")
+            print(f"  test periods:  {info.get('test_periods', [info.get('test_period')])}")
+        return {
+            "path": path,
+            "bootstrap_info": info,
+            "generator_config": info.get("generator_config"),
+        }
+
+    if use_period_count:
+        count = (
+            cfg.train_period_count if split == "train"
+            else cfg.test_period_count if split == "test"
+            else 1
+        )
+        paths = generate_sample_period_range(
+            scenario=scenario,
+            fac_id=fac_id,
+            split=split,
+            gen_config=cfg,
+            period_count=count,
+        )
+        path = paths[-1]
+        if update_input_folder:
+            _apply_sample_input_folder(fac_id, split, path)
+        return {
+            "path": path,
+            "bootstrap_info": None,
+            "generator_config": generator_config_to_dict(cfg),
+        }
+
+    if from_date and to_date:
+        paths = generate_sample_period_range(
+            scenario=scenario,
+            fac_id=fac_id,
+            from_date=from_date,
+            to_date=to_date,
+            split=split,
+            gen_config=cfg,
+        )
+        path = paths[-1]
+        if update_input_folder:
+            _apply_sample_input_folder(fac_id, split, path)
+        return {
+            "path": path,
+            "bootstrap_info": None,
+            "generator_config": generator_config_to_dict(cfg),
+        }
+
+    if from_date or to_date:
+        raise ValueError("from_date와 to_date를 함께 지정하세요.")
+
+    path = generate_sample_data(
+        scenario=scenario,
+        fac_id=fac_id,
+        split=split,
+        gen_config=cfg,
+    )
+    if update_input_folder:
+        _apply_sample_input_folder(fac_id, split, path)
+    return {
+        "path": path,
+        "bootstrap_info": None,
         "generator_config": generator_config_to_dict(cfg),
     }

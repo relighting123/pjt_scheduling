@@ -10,23 +10,13 @@ from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from config import CONFIG, set_input_folder, list_input_folders, train_snapshot_now, PERIOD_SPLITS, validate_path_segment, iter_rule_timekeys, parse_input_folder, latest_period
-from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range
-from data.generator import (
-    generate_sample_data,
-    generate_sample_period_range,
-    list_sample_scenarios,
-    bootstrap_facility_datasets,
-    generator_config_from_dict,
-    generator_config_to_dict,
-    DEFAULT_GENERATOR_CONFIG,
-)
-from data.preprocessor import preprocess, normalize_raw
+from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
@@ -68,7 +58,7 @@ def _load_env_data() -> dict:
     global _env_data_cache
     if _env_data_cache is not None:
         return _env_data_cache
-    raw = normalize_raw(load_data())
+    raw = load_data()
     errors = validate_data(raw)
     if errors:
         raise HTTPException(status_code=400, detail={"errors": errors})
@@ -81,7 +71,7 @@ def _load_env_data_for_folder(folder: str) -> dict:
     original = CONFIG.path.input_folder_key
     try:
         set_input_folder(folder)
-        raw = normalize_raw(load_data())
+        raw = load_data()
         errors = validate_data(raw)
         if errors:
             raise HTTPException(
@@ -231,6 +221,13 @@ class GeneratorConfigModel(BaseModel):
     split_qty: int = Field(default=3, ge=1, le=100)
     seed: Optional[int] = Field(default=None)
 
+    @field_validator("seed", mode="before")
+    @classmethod
+    def _coerce_seed(cls, value):
+        if value is None or value == "":
+            return None
+        return value
+
 
 class SampleRequest(BaseModel):
     fac_id: str = Field(default="FAC001", description="공장 ID")
@@ -347,20 +344,8 @@ def get_generator_config_defaults():
     return {"defaults": generator_config_to_dict(DEFAULT_GENERATOR_CONFIG)}
 
 
-def _split_input_path(paths: dict, split: str) -> str:
-    entry = paths[split]
-    if isinstance(entry, list):
-        return entry[-1]["input"]
-    return entry["input"]
-
-
 @app.post("/api/sample")
 def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
-    from data.generator import SAMPLE_SCENARIOS
-
-    if req.scenario not in SAMPLE_SCENARIOS:
-        raise HTTPException(status_code=400, detail=f"알 수 없는 시나리오: {req.scenario}")
-
     try:
         gen_cfg = generator_config_from_dict(
             req.generator_config.model_dump() if req.generator_config else None
@@ -371,64 +356,27 @@ def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
     global _env_data_cache
     _env_data_cache = None
 
-    if req.bootstrap:
-        info = bootstrap_facility_datasets(
-            fac_id=req.fac_id, scenario=req.scenario, gen_config=gen_cfg,
-        )
-        snap = info["train_snapshot"]
-        set_input_folder(f"{req.fac_id}/train/{snap}")
-        path = _split_input_path(info["paths"], "train")
-    elif req.use_period_count:
-        count = (
-            gen_cfg.train_period_count if req.split == "train"
-            else gen_cfg.test_period_count if req.split == "test"
-            else 1
-        )
-        paths = generate_sample_period_range(
+    try:
+        result = generate_sample(
             scenario=req.scenario,
             fac_id=req.fac_id,
             split=req.split,
-            gen_config=gen_cfg,
-            period_count=count,
-        )
-        last = paths[-1]
-        if req.split in PERIOD_SPLITS:
-            set_input_folder(f"{req.fac_id}/{req.split}/{last.parent.name}")
-        else:
-            set_input_folder(f"{req.fac_id}/{req.split}")
-        path = last
-    elif req.from_date and req.to_date:
-        paths = generate_sample_period_range(
-            scenario=req.scenario,
-            fac_id=req.fac_id,
+            bootstrap=req.bootstrap,
             from_date=req.from_date,
             to_date=req.to_date,
-            split=req.split,
+            use_period_count=req.use_period_count,
             gen_config=gen_cfg,
         )
-        last = paths[-1]
-        set_input_folder(f"{req.fac_id}/{req.split}/{last.parent.name}")
-        path = last
-    elif req.from_date or req.to_date:
-        raise HTTPException(status_code=400, detail="from_date와 to_date를 함께 지정하세요.")
-    else:
-        path = generate_sample_data(
-            scenario=req.scenario,
-            fac_id=req.fac_id,
-            split=req.split,
-            gen_config=gen_cfg,
-        )
-        if req.split in PERIOD_SPLITS:
-            set_input_folder(f"{req.fac_id}/{req.split}/{path.parent.name}")
-        else:
-            set_input_folder(f"{req.fac_id}/{req.split}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
+    path = result["path"]
     return {
         "message": f"샘플 데이터가 생성되었습니다. ({path})",
         "scenario": req.scenario,
         "input_folder": CONFIG.path.input_folder_key,
         "input_dir": str(path),
-        "generator_config": generator_config_to_dict(gen_cfg),
+        "generator_config": result["generator_config"],
     }
 
 
@@ -568,7 +516,7 @@ def inference(req: InferenceRequest):
     result["oper_ids"] = env_data["oper_ids"]
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
-    save_result(result, output_dir=CONFIG.path.infer_output_dir)
+    save_result(result, output_dir=CONFIG.path.infer_output_dir, env_data=env_data)
     _last_inference = result
     return serialize_inference_result(result)
 
@@ -624,7 +572,6 @@ def get_inference_result():
     # history는 파일에 없을 수 있음
     result = {
         "schedule": saved.get("schedule", []),
-        "initial_schedule": saved.get("initial_schedule", []),
         "history": saved.get("history", []),
         "stats": saved.get("stats", {}),
         "plan": saved.get("plan", []),

@@ -1,7 +1,8 @@
 """
-data/loader.py – JSON 로드 및 Oracle SQL → JSON 변환
+data/loader/fetch.py – JSON 로드 및 Oracle SQL → JSON 변환 (입력 fetch)
 
-SQL 템플릿: external/sql/{name}.sql  →  dataset/.../input/{name}.json
+SQL 템플릿: external/sql/{name}.sql  →  data/dataset/.../input/{name}.json
+적재(출력)는 data.writer 참고.
 """
 import json
 from pathlib import Path
@@ -24,10 +25,9 @@ from utils.helpers import (
     REQUIRED_SPLIT_FIELDS,
     REQUIRED_LOT_MASTER_FIELDS,
     REQUIRED_TOOL_CAPACITY_FIELDS,
-    REQUIRED_LOT_ROUTE_FIELDS,
+    REQUIRED_BATCH_INFO_FIELDS,
 )
 from data.generator import build_abstract_arrange
-from data.preprocessor import normalize_raw
 
 
 def _read_json_file(path: Path) -> List[dict]:
@@ -55,34 +55,22 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         return _read_json_file(path)
 
     def _read_discrete() -> List[dict]:
-        primary = d / CONFIG.path.discrete_arrange_file
-        legacy = d / "availability.json"
-        if primary.exists():
-            return _read_json_file(primary)
-        if legacy.exists():
-            return _read_json_file(legacy)
-        raise FileNotFoundError(
-            f"입력 파일 없음: {primary} (또는 legacy availability.json)\n"
-            f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
-        )
+        path = d / CONFIG.path.discrete_arrange_file
+        if not path.exists():
+            raise FileNotFoundError(
+                f"입력 파일 없음: {path}\n"
+                f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
+            )
+        return _read_json_file(path)
 
     discrete_arrange = _read_discrete()
     flow = _read(CONFIG.path.flow_file)
-    schedule = _read_optional(CONFIG.path.schedule_file)
-
-    raw = normalize_raw({
-        "schedule":          schedule,
-        "discrete_arrange":  discrete_arrange,
-        "flow":              flow,
-    })
-    discrete_arrange = raw["discrete_arrange"]
 
     abstract_arrange = _read_optional(CONFIG.path.abstract_arrange_file)
     if not abstract_arrange:
         abstract_arrange = build_abstract_arrange(discrete_arrange, flow)
 
     return {
-        "schedule":          schedule,
         "discrete_arrange":  discrete_arrange,
         "abstract_arrange":  abstract_arrange,
         "plan":              _read(CONFIG.path.plan_file),
@@ -91,7 +79,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "lot_master":        _read_optional(CONFIG.path.lot_master_file),
         "tool_capacity":     _read_optional(CONFIG.path.tool_capacity_file),
         "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
-        "lot_route":         _read_optional(CONFIG.path.lot_route_file),
+        "batch_info":        _read_optional(CONFIG.path.batch_info_file),
     }
 
 
@@ -111,8 +99,8 @@ def validate_data(raw: Dict[str, List[dict]]) -> List[str]:
         errors += validate_records(raw["lot_master"], REQUIRED_LOT_MASTER_FIELDS, "lot_master")
     if raw.get("tool_capacity"):
         errors += validate_records(raw["tool_capacity"], REQUIRED_TOOL_CAPACITY_FIELDS, "tool_capacity")
-    if raw.get("lot_route"):
-        errors += validate_records(raw["lot_route"], REQUIRED_LOT_ROUTE_FIELDS, "lot_route")
+    if raw.get("batch_info"):
+        errors += validate_records(raw["batch_info"], REQUIRED_BATCH_INFO_FIELDS, "batch_info")
     return errors
 
 

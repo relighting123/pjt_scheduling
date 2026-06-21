@@ -2,8 +2,7 @@
 import numpy as np
 
 from config import CONFIG
-from data.loader import load_data
-from data.preprocessor import preprocess
+from data.loader import load_data, validate_data, preprocess
 from env.scheduling_env import SchedulingEnv, compute_obs_dim
 from simulation.simulator import SchedulingSimulator, ToolTracker
 
@@ -182,6 +181,30 @@ def test_rl_inference_makes_progress():
     assert result["history"][-1]["time"] > 0 or len(result["schedule"]) >= len(env_data["lots"])
 
 
+def test_move_out_job_start_same_time_no_idle_gap():
+    """process_end 직후 동일 시각 move_out → job_start (idle gap 없음)."""
+    raw = load_data()
+    env_data = preprocess(raw)
+    sim = SchedulingSimulator(env_data, record_history=False)
+    # 첫 배정 후 공정 완료까지 이벤트 큐 전진
+    eqp_id = sim.current_idle_eqp()
+    assert eqp_id
+    feas = sim.get_feasible_ppk_oper(eqp_id)
+    ppk, oper = sim.ppk_oper_from_flat(feas[0])
+    sim.assign_ppk_oper(eqp_id, ppk, oper)
+    end_time = sim.eqps[eqp_id].free_at
+    sim._advance_to_next_decision()
+    from simulation.events import EVENT_JOB_START, EVENT_MOVE_OUT
+
+    kinds = [e["kind"] for e in sim.event_log if e["time"] == end_time]
+    assert EVENT_MOVE_OUT in kinds
+    assert EVENT_JOB_START in kinds
+    move_idx = kinds.index(EVENT_MOVE_OUT)
+    job_idx = kinds.index(EVENT_JOB_START)
+    assert move_idx < job_idx
+    assert sim.current_time == end_time
+
+
 if __name__ == "__main__":
     test_obs_dim_matches_env()
     test_action_masks_shape()
@@ -193,5 +216,6 @@ if __name__ == "__main__":
     test_same_prod_skipped_when_ppk_not_feasible()
     test_pacing_steady_scenario_preprocess_and_episode()
     test_step_resolves_invalid_ppk_on_current_eqp()
+    test_move_out_job_start_same_time_no_idle_gap()
     test_rl_inference_makes_progress()
     print("all tests passed")

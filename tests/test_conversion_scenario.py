@@ -4,8 +4,7 @@ import pytest
 
 from config import CONFIG
 from data.conversion_scenarios import bootstrap_conv_test_suite, build_conv_2ppk_1oper
-from data.loader import normalize_raw, validate_data
-from data.preprocessor import preprocess
+from data.loader import validate_data, preprocess
 from env.scheduling_env import SchedulingEnv, compute_obs_dim
 from inference.runner import run_inference
 from simulation.simulator import SchedulingSimulator
@@ -13,7 +12,7 @@ from simulation.simulator import SchedulingSimulator
 
 def _env_data():
     discrete, plan, flow, lot_master, abstract, eqp_init, tool_cap = build_conv_2ppk_1oper()
-    raw = normalize_raw({
+    raw = {
         "discrete_arrange": discrete,
         "abstract_arrange": abstract,
         "plan": plan,
@@ -22,7 +21,7 @@ def _env_data():
         "lot_master": lot_master,
         "tool_capacity": tool_cap,
         "eqp_initial_state": eqp_init,
-    })
+    }
     assert not validate_data(raw), validate_data(raw)
     return preprocess(raw)
 

@@ -31,6 +31,7 @@ export default function ArrangeTable({
         {showAssigned && assigned && (
           <span className="arrange-selected">
             {" "}· 선택: {assigned.lot_id} → {assigned.eqp_id}
+            {assigned.oper_id ? ` · ${assigned.oper_id}` : ""}
             {assigned.lot_cd ? ` · ${assigned.lot_cd}/${assigned.temp ?? ""}` : ""}
             {assigned.conversion ? " · Conversion" : ""}
             {assigned.eqp_model != null ? ` (MODEL ${assigned.eqp_model}` : " ("}
@@ -45,7 +46,7 @@ export default function ArrangeTable({
         <table className="arrange-table" key={step}>
           <thead>
             <tr>
-              {["EQP_ID", "LOT_ID", "LOT_CD", "TEMP", "PLAN_PROD_KEY", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
+              {["EQP_ID", "LOT_ID", "OPER", "LOT_CD", "TEMP", "PLAN_PROD_KEY", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
                 <th key={h}>{h}</th>
               ))}
             </tr>
@@ -61,7 +62,7 @@ export default function ArrangeTable({
 
               return (
                 <tr
-                  key={`${row.eqp_id}-${row.lot_id}`}
+                  key={`${row.eqp_id}-${row.lot_id}-${row.oper_id ?? ""}`}
                   className={
                     isSelected
                       ? "arrange-row-selected"
@@ -72,6 +73,7 @@ export default function ArrangeTable({
                 >
                   <td>{row.eqp_id}</td>
                   <td>{row.lot_id}</td>
+                  <td>{row.oper_id ?? "-"}</td>
                   <td>{row.lot_cd ?? "-"}</td>
                   <td>{row.temp ?? "-"}</td>
                   <td>{row.plan_prod_key}</td>

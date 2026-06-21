@@ -1,34 +1,9 @@
 """
 utils/helpers.py – 공통 유틸리티
-날짜 파싱, 범주형 인코딩, 색상 맵 등 프로젝트 전반에서 재사용되는 함수 모음.
+범주형 인코딩, 검증 등 프로젝트 전반에서 재사용되는 함수 모음.
 """
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-
-
-# ── 날짜/시간 ──────────────────────────────────────────────────────────────────
-
-def parse_datetime(s: str) -> datetime:
-    """
-    목적: 문자열 날짜를 datetime 객체로 변환
-    Input:  "2024-01-01 08:00:00"
-    Output: datetime(2024, 1, 1, 8, 0, 0)
-    """
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y%m%d%H%M%S"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    raise ValueError(f"날짜 형식을 인식할 수 없습니다: {s}")
-
-
-def datetime_to_minutes(dt: datetime, base: datetime) -> int:
-    """
-    목적: 기준 시각(base)으로부터 dt까지의 경과 분을 반환
-    Input:  dt=datetime(2024,1,1,10,0), base=datetime(2024,1,1,8,0)
-    Output: 120
-    """
-    return int((dt - base).total_seconds() / 60)
+from typing import Dict, List, Optional
 
 
 def minutes_to_str(minutes: int, base: datetime) -> str:
@@ -63,37 +38,19 @@ def encode_normalized(value: Optional[str], index_map: Dict[str, int], total: in
     return index_map[value] / max(total - 1, 1)
 
 
-# ── 색상 ───────────────────────────────────────────────────────────────────────
-
-def build_color_map(keys: List[str], palette: List[str]) -> Dict[str, str]:
-    """
-    목적: 키 리스트에 색상 팔레트를 순환 할당
-    Input:  keys=["PPK001","PPK002"], palette=["#4C72B0","#DD8452",...]
-    Output: {"PPK001": "#4C72B0", "PPK002": "#DD8452"}
-    """
-    unique_keys = sorted(set(keys))
-    return {k: palette[i % len(palette)] for i, k in enumerate(unique_keys)}
-
-
 # ── 검증 ───────────────────────────────────────────────────────────────────────
 
-REQUIRED_SCHEDULE_FIELDS    = {"EQP_ID", "LOT_ID", "CARRIER_ID", "PLAN_PROD_KEY",
-                                "ST", "SEQ", "STARTTM", "ENDTM"}
 REQUIRED_DISCRETE_ARRANGE_FIELDS = {
     "EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "OPER_ID", "ST", "WF_QTY",
 }
 REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_KEY", "OPER_ID", "EQP_MODEL", "ST"}
-# 하위 호환
-REQUIRED_AVAILABILITY_FIELDS = REQUIRED_DISCRETE_ARRANGE_FIELDS
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_KEY", "OPER_ID",
                                  "D0_PLAN_QTY", "D1_PLAN_QTY", "PLAN_PRIORITY"}
 REQUIRED_FLOW_FIELDS         = {"PLAN_PROD_KEY", "SEQ_ID", "OPER_ID"}
-REQUIRED_INCOMING_WIP_FIELDS = {"PLAN_PROD_KEY", "EQP_MODEL", "ARRIVE_TM",
-                                 "PROC_TIME", "LOT_QTY", "WF_QTY", "OPER_ID"}
 REQUIRED_SPLIT_FIELDS        = {"PLAN_PROD_KEY", "EQP_MODEL", "SPLIT_QTY"}
 REQUIRED_LOT_MASTER_FIELDS   = {"LOT_ID", "LOT_CD", "TEMP"}
 REQUIRED_TOOL_CAPACITY_FIELDS = {"LOT_CD", "EQP_MODEL", "MAX_TOOL"}
-REQUIRED_LOT_ROUTE_FIELDS    = {"LOT_CD", "TEMP", "PLAN_PROD_KEY", "OPER_ID"}
+REQUIRED_BATCH_INFO_FIELDS   = {"LOT_CD", "TEMP", "PLAN_PROD_KEY", "OPER_ID"}
 
 
 def split_wf_qty(total: int, split_qty: int) -> List[int]:
@@ -123,8 +80,8 @@ def split_wf_qty(total: int, split_qty: int) -> List[int]:
 def validate_records(records: List[dict], required: set, label: str) -> List[str]:
     """
     목적: 레코드 리스트가 필수 컬럼을 모두 갖추고 있는지 검사
-    Input:  records=[{...}], required={"EQP_ID","LOT_ID",...}, label="schedule"
-    Output: [] (오류 없음) 또는 ["schedule: 필드 누락 – {'STARTTM'}"]
+    Input:  records=[{...}], required={"EQP_ID","LOT_ID",...}, label="discrete_arrange"
+    Output: [] (오류 없음) 또는 ["discrete_arrange: 필드 누락 – {'ST'}"]
     """
     errors = []
     if not records:

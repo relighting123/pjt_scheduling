@@ -38,10 +38,19 @@ class SchedulingEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, env_data: dict, render_mode: Optional[str] = None, record_history: bool = True):
+    def __init__(
+        self,
+        env_data: dict,
+        render_mode: Optional[str] = None,
+        record_history: bool = True,
+        max_episode_steps: Optional[int] = None,
+    ):
         super().__init__()
         self._env_data = env_data
         self._record_history = record_history
+        self._max_episode_steps_override = max_episode_steps
+        self._max_episode_steps = 0
+        self._episode_steps = 0
 
         env_cfg = CONFIG.env
         O = env_cfg.max_oper_count
@@ -65,6 +74,13 @@ class SchedulingEnv(gym.Env):
             self._env_data, CONFIG.reward, record_history=self._record_history,
         )
         self._total_reward = 0.0
+        sim_end = int(self._env_data.get("sim_end_minutes", CONFIG.env.hard_horizon_minutes))
+        self._max_episode_steps = (
+            self._max_episode_steps_override
+            if self._max_episode_steps_override is not None
+            else sim_end + 500
+        )
+        self._episode_steps = 0
         obs = self.sim.get_observation()
         return obs, {}
 
@@ -114,6 +130,12 @@ class SchedulingEnv(gym.Env):
                 reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
             elif feasible:
                 reward = -0.5
+            else:
+                # tool cap 등으로 idle이지만 배정 불가 → 시간 전진
+                self.sim._current_eqp = None
+                if self.sim._has_pending_processing():
+                    self.sim._advance_to_next_decision()
+                    time_advanced = self.sim.current_time != time_at_step_start
         elif not self.sim.is_done():
             if self.sim._has_pending_processing() or self.sim.get_idle_eqps():
                 self.sim._advance_to_next_decision()
@@ -131,9 +153,13 @@ class SchedulingEnv(gym.Env):
             wip_waiting_snapshot=wip_for_history,
         )
         self._total_reward += reward
+        self._episode_steps += 1
 
         terminated = self.sim.is_done()
-        truncated = (self.sim.current_time >= self.sim.sim_end) and not terminated
+        truncated = (not terminated) and (
+            self.sim.current_time >= self.sim.sim_end
+            or self._episode_steps >= self._max_episode_steps
+        )
         obs = self.sim.get_observation()
         info = {
             "total_reward":  self._total_reward,

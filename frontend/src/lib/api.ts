@@ -25,15 +25,34 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
-    const message =
-      typeof detail === "string"
-        ? detail
-        : detail?.errors
-          ? detail.errors.join("\n")
-          : `요청 실패 (${res.status})`;
+    let message: string;
+    if (typeof detail === "string") {
+      message = detail;
+    } else if (Array.isArray(detail)) {
+      message = detail.map((d: { msg?: string; loc?: unknown[] }) => {
+        const loc = Array.isArray(d.loc) ? d.loc.filter((x) => x !== "body").join(".") : "";
+        return loc ? `${loc}: ${d.msg ?? "invalid"}` : (d.msg ?? "invalid");
+      }).join("\n");
+    } else if (detail?.errors) {
+      message = detail.errors.join("\n");
+    } else {
+      message = `요청 실패 (${res.status})`;
+    }
     throw new Error(message);
   }
   return res.json() as Promise<T>;
+}
+
+function sanitizeGeneratorConfig(
+  cfg?: Partial<GeneratorConfig>,
+): Partial<GeneratorConfig> | undefined {
+  if (!cfg) return undefined;
+  const out: Partial<GeneratorConfig> = { ...cfg };
+  const seed = out.seed;
+  if (seed == null || seed === ("" as unknown as number) || Number.isNaN(Number(seed))) {
+    delete out.seed;
+  }
+  return out;
 }
 
 export const api = {
@@ -57,8 +76,11 @@ export const api = {
     to_date?: string;
     use_period_count?: boolean;
     generator_config?: Partial<GeneratorConfig>;
-  }) =>
-    request<{
+  }) => {
+    const scenario = opts?.scenario ?? "random";
+    const generator_config =
+      scenario === "random" ? sanitizeGeneratorConfig(opts?.generator_config) : undefined;
+    return request<{
       message: string;
       input_folder: string;
       input_dir: string;
@@ -68,16 +90,17 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        scenario: opts?.scenario ?? "random",
+        scenario,
         fac_id: opts?.fac_id ?? "FAC001",
         split: opts?.split ?? "train",
         bootstrap: opts?.bootstrap ?? false,
         use_period_count: opts?.use_period_count ?? false,
         ...(opts?.from_date ? { from_date: opts.from_date } : {}),
         ...(opts?.to_date ? { to_date: opts.to_date } : {}),
-        ...(opts?.generator_config ? { generator_config: opts.generator_config } : {}),
+        ...(generator_config ? { generator_config } : {}),
       }),
-    }),
+    });
+  },
   fetchDataset: (opts?: {
     fac_id?: string;
     split?: string;
@@ -195,5 +218,4 @@ export const api = {
         ...(opts?.input_folders ? { input_folders: opts.input_folders } : {}),
       }),
     }),
-  getInferenceResult: () => request<InferenceResult>("/api/inference/result"),
 };

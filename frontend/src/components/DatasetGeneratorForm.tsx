@@ -20,7 +20,7 @@ function numField(
   opts?: { min?: number; max?: number; step?: number },
 ) {
   return (
-    <label className="gen-field">
+    <label className="gen-field page-gen-field">
       <span>{label}</span>
       <input
         type="number"
@@ -153,9 +153,12 @@ export default function DatasetGeneratorForm({
               type="number"
               placeholder="비우면 매번 다름"
               value={genConfig.seed ?? ""}
-              onChange={(e) =>
-                onGenConfigChange({ seed: e.target.value === "" ? null : Number(e.target.value) })
-              }
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                onGenConfigChange({
+                  seed: raw === "" ? null : Number(raw),
+                });
+              }}
             />
           </label>
         </details>

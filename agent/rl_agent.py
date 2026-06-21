@@ -12,7 +12,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from config import CONFIG
-from env.scheduling_env import SchedulingEnv
+from env.scheduling_env import SchedulingEnv, compute_obs_dim
 from agent.train_progress import (
     TrainProgressState,
     ProgressCallback,
@@ -26,6 +26,57 @@ from agent.train_progress import (
 
 def _mask_fn(env: SchedulingEnv) -> np.ndarray:
     return env.action_masks()
+
+
+def _model_obs_dim(model: MaskablePPO) -> int:
+    return int(model.observation_space.shape[0])
+
+
+def _model_zip_candidates(explicit: Optional[str] = None) -> List[Path]:
+    if explicit:
+        p = Path(explicit)
+        return [p.with_suffix(".zip") if p.suffix != ".zip" else p]
+
+    model_dir = CONFIG.path.model_dir
+    name = CONFIG.rl.model_name
+    candidates: List[Path] = [
+        model_dir / f"{name}.zip",
+        model_dir / "best" / "best_model.zip",
+    ]
+    ckpt_dir = model_dir / "checkpoints"
+    if ckpt_dir.is_dir():
+        ckpts = sorted(
+            ckpt_dir.glob(f"{name}_*_steps.zip"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        candidates.extend(ckpts)
+    return candidates
+
+
+def _load_compatible_model(explicit: Optional[str] = None) -> tuple[MaskablePPO, Path]:
+    """현재 env obs 차원과 맞는 모델 로드 (없으면 예외)."""
+    expected = compute_obs_dim()
+    mismatches: List[str] = []
+
+    for candidate in _model_zip_candidates(explicit):
+        if not candidate.exists():
+            continue
+        model = MaskablePPO.load(str(candidate))
+        dim = _model_obs_dim(model)
+        if dim == expected:
+            return model, candidate
+        mismatches.append(f"{candidate.name} (obs_dim={dim})")
+
+    if mismatches:
+        raise ValueError(
+            f"현재 환경 obs_dim={expected} 과 맞는 모델이 없습니다. "
+            f"불일치 파일: {', '.join(mismatches)}. "
+            "python main.py train 으로 재학습하세요."
+        )
+    raise FileNotFoundError(
+        "학습된 모델이 없습니다. python main.py train 을 먼저 실행하세요."
+    )
 
 
 class SchedulingAgent:
@@ -59,7 +110,10 @@ class SchedulingAgent:
 
         def make_env(data: dict):
             def _init():
-                env = ActionMasker(SchedulingEnv(data), _mask_fn)
+                env = ActionMasker(
+                    SchedulingEnv(data, record_history=False),
+                    _mask_fn,
+                )
                 return Monitor(env)
             return _init
 
@@ -168,9 +222,8 @@ class SchedulingAgent:
         Input:  path (str) – 모델 파일 경로 (.zip 포함 또는 미포함)
         Output: SchedulingAgent 인스턴스
         """
-        load_path = path or str(CONFIG.path.model_dir / CONFIG.rl.model_name)
-        model = MaskablePPO.load(load_path)
-        print(f"[agent] 모델 로드 ← {load_path}")
+        model, load_path = _load_compatible_model(path)
+        print(f"[agent] 모델 로드 ← {load_path} (obs_dim={_model_obs_dim(model)})")
         return cls(model=model)
 
     def model_exists(self, path: str = None) -> bool:
@@ -179,8 +232,11 @@ class SchedulingAgent:
         Input:  path (str)
         Output: bool
         """
-        p = Path(path or str(CONFIG.path.model_dir / CONFIG.rl.model_name))
-        return p.with_suffix(".zip").exists() or p.exists()
+        try:
+            _load_compatible_model(path)
+            return True
+        except (FileNotFoundError, ValueError):
+            return False
 
     # ── 예측 ─────────────────────────────────────────────────────────────────
 

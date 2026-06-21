@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PlotChart from "../components/PlotChart";
+import BatchInfoTable from "../components/BatchInfoTable";
 import { api } from "../lib/api";
 import {
   buildTrainExplainedVarChart,
@@ -407,6 +408,7 @@ export default function TrainPage({
               <Metric label="LOT 수" value={String(summary.lot_count)} />
               <Metric label="제품 종류" value={String(summary.prod_count)} />
               <Metric label="공정 종류" value={String(summary.oper_count)} />
+              <Metric label="Batch 레시피" value={String(summary.batch_info_count ?? 0)} />
               <Metric label="시뮬 종료(분)" value={String(summary.sim_end_minutes)} />
             </div>
           ) : (
@@ -415,6 +417,11 @@ export default function TrainPage({
           <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
             데이터 새로고침
           </button>
+          {summary && (summary.batch_info?.length ?? 0) > 0 && (
+            <div className="batch-info-train">
+              <BatchInfoTable rows={summary.batch_info} compact />
+            </div>
+          )}
         </section>
 
         <section className="card">

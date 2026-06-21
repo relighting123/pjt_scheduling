@@ -9,7 +9,7 @@ dist/
 build/
 
 # External dataset (JSON 산출물, git 제외) – SQL 템플릿은 추적
-external/dataset/
+data/dataset/
 
 # Trained models (large binary files – keep only the latest manually)
 models/*.zip
@@ -21,5 +21,6 @@ models/*.zip
 # Logs & temp
 *.log
 logs/
+.env
 frontend/node_modules/
 frontend/dist/

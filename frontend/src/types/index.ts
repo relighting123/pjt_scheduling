@@ -49,6 +49,36 @@ export interface HistorySnap {
   arrange_abstract?: AbstractArrangeRow[];
   assigned?: AssignedLot | null;
   eqp_states?: Record<string, unknown>;
+  events?: SimEvent[];
+}
+
+export type SimEventKind =
+  | "PROCESS_END"
+  | "MOVE_OUT"
+  | "TOOL_RELEASE"
+  | "WIP_INJECT"
+  | "JOB_START"
+  | "CONV_START"
+  | "CONV_END"
+  | "TOOL_OCCUPY"
+  | "JOB_ASSIGNED";
+
+export interface SimEvent {
+  time: number;
+  kind: SimEventKind | string;
+  eqp_id?: string;
+  lot_id?: string;
+  lot_cd?: string;
+  eqp_model?: string;
+  plan_prod_key?: string;
+  oper_id?: string;
+  from_lot_cd?: string;
+  to_lot_cd?: string;
+  from_temp?: string;
+  to_temp?: string;
+  start_tm?: number;
+  end_tm?: number;
+  oper_in_time?: number;
 }
 
 export interface InferenceStats {
@@ -60,8 +90,8 @@ export interface InferenceStats {
 
 export interface InferenceResult {
   schedule: ScheduleRecord[];
-  initial_schedule: ScheduleRecord[];
   history: HistorySnap[];
+  event_log?: SimEvent[];
   stats: InferenceStats;
   plan: PlanRecord[];
   prod_keys: string[];
@@ -71,16 +101,25 @@ export interface InferenceResult {
   algorithm?: AlgorithmId;
 }
 
+export interface BatchInfoRecord {
+  plan_prod_key: string;
+  oper_id: string;
+  lot_cd: string;
+  temp: string;
+}
+
 export interface DataSummary {
   eqp_count: number;
   lot_count: number;
   prod_count: number;
   oper_count: number;
+  batch_info_count: number;
   sim_end_minutes: number;
   sim_base_time: string;
   eqp_ids: string[];
   prod_keys: string[];
   oper_ids: string[];
+  batch_info: BatchInfoRecord[];
 }
 
 export interface AppConfig {
@@ -148,7 +187,6 @@ export interface AlgorithmCompareError {
 export interface AlgorithmCompareResponse {
   results: InferenceResult[];
   errors: AlgorithmCompareError[];
-  initial_schedule: ScheduleRecord[];
   plan: PlanRecord[];
   prod_keys: string[];
   oper_ids: string[];

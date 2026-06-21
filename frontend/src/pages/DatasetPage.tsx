@@ -1,4 +1,5 @@
 import DatasetGeneratorForm from "../components/DatasetGeneratorForm";
+import BatchInfoTable from "../components/BatchInfoTable";
 import type { CreateSampleOpts } from "../components/DatasetEmptyPanel";
 import type { AppConfig, DataSummary, GeneratorConfig, SampleScenario } from "../types";
 
@@ -51,6 +52,7 @@ export default function DatasetPage({
             {summary ? (
               <p className="hint">
                 EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정 {summary.oper_count}
+                {summary.batch_info_count > 0 && <> · batch {summary.batch_info_count}</>}
               </p>
             ) : (
               <p className="hint">선택한 경로에 데이터가 없습니다. 아래에서 생성하세요.</p>
@@ -72,6 +74,16 @@ export default function DatasetPage({
             onCreateSample={onCreateSample}
           />
         </section>
+
+        {summary && (
+          <section className="card">
+            <h3>Batch Info (PPK × OPER → LOT_CD / TEMP)</h3>
+            <p className="hint page-lead">
+              conversion·tool cap 판단에 사용되는 배치 레시피입니다. Oracle fetch 시 <code>batch_info.json</code>으로 내려옵니다.
+            </p>
+            <BatchInfoTable rows={summary.batch_info ?? []} />
+          </section>
+        )}
       </div>
     </div>
   );

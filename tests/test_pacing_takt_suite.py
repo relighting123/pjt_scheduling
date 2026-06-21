@@ -3,8 +3,7 @@ import numpy as np
 import pytest
 
 from config import CONFIG
-from data.loader import validate_data
-from data.preprocessor import normalize_raw, preprocess
+from data.loader import validate_data, preprocess
 from data.pacing_scenarios import TAKT_SCENARIOS, bootstrap_takt_suite
 from env.scheduling_env import SchedulingEnv
 from inference.runner import run_inference
@@ -22,7 +21,6 @@ def _raw_from_builder(scenario_id: str) -> dict:
     else:
         abstract = build_abstract_arrange(discrete, flow)
     return {
-        "schedule": [],
         "discrete_arrange": discrete,
         "abstract_arrange": abstract,
         "plan": plan,
@@ -35,7 +33,7 @@ def _raw_from_builder(scenario_id: str) -> dict:
 
 @pytest.mark.parametrize("scenario_id", list(TAKT_SCENARIOS))
 def test_takt_scenario_preprocess_and_episode(scenario_id: str):
-    raw = normalize_raw(_raw_from_builder(scenario_id))
+    raw = _raw_from_builder(scenario_id)
     assert not validate_data(raw), validate_data(raw)
     env_data = preprocess(raw)
     assert env_data["lots"]
@@ -63,7 +61,7 @@ def test_takt_scenario_preprocess_and_episode(scenario_id: str):
 
 @pytest.mark.parametrize("scenario_id", list(TAKT_SCENARIOS))
 def test_takt_heuristic_pacing_metrics(scenario_id: str):
-    env_data = preprocess(normalize_raw(_raw_from_builder(scenario_id)))
+    env_data = preprocess(_raw_from_builder(scenario_id))
     result = run_inference(env_data, algorithm="minprogress", record_history=False)
     m = pacing_metrics(
         result["schedule"],

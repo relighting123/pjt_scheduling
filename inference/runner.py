@@ -12,6 +12,7 @@ from agent.minprogress_agent import MinProgressAgent
 from agent.earliest_st_agent import EarliestSTAgent
 from agent.registry import validate_algorithm, VALID_ALGORITHMS
 from env.scheduling_env import SchedulingEnv
+from data.writer import write_inference_result
 from sb3_contrib.common.wrappers import ActionMasker
 from utils.helpers import minutes_to_str
 
@@ -34,7 +35,7 @@ def run_inference(
         deterministic (bool): RL 예측 시 greedy 여부
     Output:
         {
-          "schedule", "initial_schedule", "history", "stats", "plan", "algorithm"
+          "schedule", "history", "stats", "plan", "algorithm"
         }
     """
     algorithm = validate_algorithm(algorithm)
@@ -84,8 +85,9 @@ def run_inference(
 
     return {
         "schedule":         schedule,
-        "initial_schedule": env_data["initial_schedule"],
         "history":          history,
+        "event_log":        list(sched_env.sim.event_log),
+        "conversion_plans": list(sched_env.sim.conversion_plans),
         "stats":            {
             "idle_total":    stats["idle_total"],
             "oper_switches": stats["oper_switches"],
@@ -98,38 +100,36 @@ def run_inference(
     }
 
 
-def save_result(result: dict, output_dir: Path = None, result_name: str = "result") -> Path:
+def save_result(
+    result: dict,
+    output_dir: Path = None,
+    result_name: str = "result",
+    env_data: Optional[dict] = None,
+    *,
+    write_sql: bool = True,
+) -> Path:
     """
-    추론 결과를 JSON으로 저장 (기본: infer/output/result.json)
+    추론 결과 저장:
+      - output.json  : RTS 적재 JSON (data.writer)
+      - result_full.json : UI·디버그용 전체 결과
     """
     d = output_dir or CONFIG.path.infer_output_dir
     d.mkdir(parents=True, exist_ok=True)
 
-    output_records = [
-        {
-            "EQP_ID":        r["EQP_ID"],
-            "LOT_ID":        r["LOT_ID"],
-            "CARRIER_ID":    r["CARRIER_ID"],
-            "PLAN_PROD_KEY": r["PLAN_PROD_KEY"],
-            "ST":            r["ST"],
-            "SEQ":           r["SEQ"],
-            "START_TM":      r["START_TM_STR"],
-            "END_TM":        r["END_TM_STR"],
-        }
-        for r in result["schedule"]
-    ]
-
-    out_path = d / f"{result_name}.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(output_records, f, ensure_ascii=False, indent=2)
+    writer_path = None
+    if env_data is not None:
+        writer_path = write_inference_result(
+            result, env_data, output_dir=d, write_sql_files=write_sql,
+        )
 
     full_path = d / f"{result_name}_full.json"
     from api.serializers import serialize_history
 
     serializable = {
         "schedule":         result["schedule"],
-        "initial_schedule": result["initial_schedule"],
         "history":          serialize_history(result.get("history", [])),
+        "event_log":        result.get("event_log", []),
+        "conversion_plans": result.get("conversion_plans", []),
         "stats":            result["stats"],
         "plan":             result["plan"],
         "algorithm":        result.get("algorithm", "rl"),
@@ -137,8 +137,8 @@ def save_result(result: dict, output_dir: Path = None, result_name: str = "resul
     with open(full_path, "w", encoding="utf-8") as f:
         json.dump(serializable, f, ensure_ascii=False, indent=2)
 
-    print(f"[runner] 결과 저장 → {out_path}")
-    return out_path
+    print(f"[runner] 결과 저장 → {full_path}")
+    return writer_path if writer_path is not None else full_path
 
 
 def run_inference_compare(
@@ -187,7 +187,6 @@ def run_inference_compare(
     return {
         "results": results,
         "errors": errors,
-        "initial_schedule": env_data["initial_schedule"],
         "plan": env_data["plan"],
         "prod_keys": env_data["prod_keys"],
         "oper_ids": env_data["oper_ids"],

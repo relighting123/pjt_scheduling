@@ -12,8 +12,20 @@ from typing import List, Optional, Tuple
 # ── 기본 경로 ─────────────────────────────────────────────────────────────────
 BASE_DIR     = Path(__file__).parent          # pjt_scheduling/
 EXTERNAL_DIR = BASE_DIR / "external"          # 프로젝트 내 DB 연동 데이터 폴더
-DATASET_DIR  = EXTERNAL_DIR / "dataset"       # external/dataset/{FAC_ID}/...
+DATA_DIR     = BASE_DIR / "data"
+DATASET_DIR  = DATA_DIR / "dataset"         # data/dataset/{FAC_ID}/...
 SQL_DIR      = EXTERNAL_DIR / "sql"           # external/sql/*.sql → *.json
+
+
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(BASE_DIR / ".env")
+    except ImportError:
+        pass
+
+
+_load_dotenv()
 
 DATASET_SPLITS = ("train", "test", "infer")
 PERIOD_SPLITS = ("train", "test")  # infer 제외 – 기간 하위 폴더 없음
@@ -76,9 +88,6 @@ def normalize_rule_timekey(value: str) -> str:
     )
 
 
-normalize_period = normalize_rule_timekey
-
-
 def iter_rule_timekeys(from_key: str, to_key: str):
     """RULE_TIMEKEY 구간의 일별 키 생성 (시·분·초는 시작 키 기준 유지)"""
     start = datetime.strptime(normalize_rule_timekey(from_key), RULE_TIMEKEY_FMT)
@@ -93,7 +102,100 @@ def iter_rule_timekeys(from_key: str, to_key: str):
         cur = nxt.replace(hour=h, minute=m, second=s, microsecond=0)
 
 
-iter_periods = iter_rule_timekeys
+def resolve_train_period_range(
+    *,
+    prevdays: Optional[int] = None,
+    from_key: Optional[str] = None,
+    to_key: Optional[str] = None,
+) -> Tuple[str, str]:
+    """
+    학습용 RULE_TIMEKEY 구간 해석.
+    --prevdays N: 현재 시각 기준 최근 N일(포함)
+    --from / --to: 명시 구간
+    """
+    if prevdays is not None:
+        if from_key or to_key:
+            raise ValueError("--prevdays 와 --from/--to 는 함께 쓸 수 없습니다.")
+        if prevdays < 1:
+            raise ValueError("--prevdays 는 1 이상이어야 합니다.")
+        end = rule_timekey_today()
+        end_dt = datetime.strptime(end, RULE_TIMEKEY_FMT)
+        start_dt = end_dt - timedelta(days=prevdays - 1)
+        return start_dt.strftime(RULE_TIMEKEY_FMT), end
+
+    if from_key and to_key:
+        return normalize_rule_timekey(from_key), normalize_rule_timekey(to_key)
+    if from_key or to_key:
+        raise ValueError("--from 와 --to 를 함께 지정하세요.")
+    raise ValueError("--prevdays 또는 --from/--to 가 필요합니다.")
+
+
+def resolve_infer_rule_timekey(fac_id: str, rule_timekey: Optional[str] = None) -> str:
+    """추론 SQL 조회용 RULE_TIMEKEY (미지정 시 최신)."""
+    if rule_timekey:
+        return normalize_rule_timekey(rule_timekey)
+    return (
+        latest_period(fac_id, "test")
+        or latest_period(fac_id, "train")
+        or rule_timekey_now()
+    )
+
+
+def list_split_folders(fac_id: str, split: str) -> List[str]:
+    """dataset/{FAC}/{split}/... 입력 폴더 키 목록 (정렬)."""
+    fac_id = validate_path_segment(fac_id, "FAC_ID")
+    prefix = f"{fac_id}/{split}/"
+    if split not in PERIOD_SPLITS:
+        key = f"{fac_id}/{split}"
+        inp = DATASET_DIR / fac_id / split / "input"
+        return [key] if inp.is_dir() else []
+    return sorted(
+        f for f in list_input_folders()
+        if f.startswith(prefix)
+    )
+
+
+def folders_in_period_range(
+    fac_id: str,
+    split: str,
+    from_key: str,
+    to_key: str,
+) -> List[str]:
+    """폴더 RULE_TIMEKEY가 [from_key, to_key] 시각 구간에 들어가면 포함 (이름 exact match 아님)."""
+    start = datetime.strptime(normalize_rule_timekey(from_key), RULE_TIMEKEY_FMT)
+    end = datetime.strptime(normalize_rule_timekey(to_key), RULE_TIMEKEY_FMT)
+    matched: List[str] = []
+    for folder in list_split_folders(fac_id, split):
+        period = folder.rsplit("/", 1)[-1]
+        try:
+            dt = datetime.strptime(normalize_rule_timekey(period), RULE_TIMEKEY_FMT)
+        except ValueError:
+            continue
+        if start <= dt <= end:
+            matched.append(folder)
+    return matched
+
+
+def resolve_train_folders(
+    fac_id: str,
+    from_key: str,
+    to_key: str,
+    *,
+    prevdays: Optional[int] = None,
+    nodb: bool = False,
+) -> List[str]:
+    """
+    학습용 train 폴더 목록.
+    --nodb: dataset 기존 train 폴더 중 최근 prevdays개 (구간 무시)
+    기본: RULE_TIMEKEY 구간과 일치하는 폴더
+    """
+    all_train = list_split_folders(fac_id, "train")
+    if nodb:
+        if not all_train:
+            return []
+        n = prevdays or len(all_train)
+        return all_train[-n:]
+    return folders_in_period_range(fac_id, "train", from_key, to_key)
 
 
 def latest_period(fac_id: str, split: str = "train") -> Optional[str]:
@@ -108,10 +210,6 @@ def latest_period(fac_id: str, split: str = "train") -> Optional[str]:
         if p.is_dir() and (p / "input").is_dir()
     )
     return snaps[-1] if snaps else None
-
-
-def latest_train_snapshot(fac_id: str) -> Optional[str]:
-    return latest_period(fac_id, "train")
 
 
 def resolve_dataset_path(
@@ -215,17 +313,16 @@ class PathConfig:
 
     model_dir: Path = field(default_factory=lambda: BASE_DIR / "models")
 
-    schedule_file:     str = "schedule.json"
     discrete_arrange_file: str = "discrete_arrange.json"
     abstract_arrange_file: str = "abstract_arrange.json"
-    incoming_wip_file: str = "incoming_wip.json"
     plan_file:         str = "plan.json"
     flow_file:         str = "flow.json"
     split_file:        str = "split.json"
     lot_master_file:   str = "lot_master.json"
     tool_capacity_file: str = "tool_capacity.json"
     eqp_initial_state_file: str = "eqp_initial_state.json"
-    lot_route_file:    str = "lot_route.json"
+    batch_info_file:   str = "batch_info.json"
+    output_file:       str = "output.json"
 
     @property
     def input_folder_key(self) -> str:
@@ -268,6 +365,7 @@ SQL_JSON_MAP = {
     "plan":             ("plan.sql",             "plan.json"),
     "flow":             ("flow.sql",             "flow.json"),
     "split":            ("split.sql",            "split.json"),
+    "batch_info":       ("batch_info.sql",       "batch_info.json"),
 }
 
 
@@ -282,12 +380,9 @@ class OracleConfig:
 
 @dataclass
 class EnvConfig:
-    max_eqp_count:    int = 10
-    max_oper_count:   int = 15
-    max_prod_count:   int = 10
-    max_model_count:  int = 4           # bucket = (ppk, model, oper)의 model 축 K
-    max_queue_size:   int = 20          # legacy compat
-    sim_time_horizon: int = 1440
+    max_oper_count:   int = 3          # RL action/obs 고정 축 O
+    max_prod_count:   int = 10          # RL action/obs 고정 축 P
+    max_model_count:  int = 5           # bucket = (ppk, model, oper)의 model 축 K
     hard_horizon_minutes: int = 1440    # 07:00 → 익일 07:00
     soft_cutoff_minutes:  int = 1320    # 익일 05:00
     conversion_minutes:   int = 60      # LOT_CD/TEMP 변경 시 setup
@@ -318,20 +413,6 @@ class RewardConfig:
     w_pacing:          float = 3.0         # 계획 있는 (PPK, OPER)만 적용
     w_conversion:      float = -30.0    # LOT_CD/TEMP 전환 1회 패널티
     w_late_finish:     float = -2.0     # soft cutoff(05:00) 이후 END_TM
-
-
-PROD_COLORS = [
-    "#4C72B0", "#DD8452", "#55A868", "#C44E52",
-    "#8172B3", "#937860", "#DA8BC3", "#CCB974",
-    "#64B5CD", "#76B7B2",
-]
-
-OPER_BORDER_COLORS = [
-    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-    "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
-    "#bcbd22", "#17becf", "#aec7e8", "#ffbb78",
-    "#98df8a", "#ff9896", "#c5b0d5",
-]
 
 
 @dataclass

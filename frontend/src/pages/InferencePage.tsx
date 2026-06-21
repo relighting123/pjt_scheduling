@@ -14,6 +14,10 @@ import ArrangeTable from "../components/ArrangeTable";
 
 import AbstractArrangeTable from "../components/AbstractArrangeTable";
 
+import { EventTimeline, eventsUpToStep } from "../components/EventTimeline";
+
+import BatchInfoTable from "../components/BatchInfoTable";
+
 import { api } from "../lib/api";
 
 import {
@@ -368,6 +372,40 @@ export default function InferencePage({
 
 
 
+  const { timelineEvents, currentStepEventKinds, currentStepEvents } = useMemo(() => {
+
+    if (!result?.history.length) {
+
+      return {
+        timelineEvents: [],
+        currentStepEventKinds: new Set<string>(),
+        currentStepEvents: [],
+      };
+
+    }
+
+    const { cumulative, current } = eventsUpToStep(
+
+      result.event_log,
+
+      result.history,
+
+      step,
+
+    );
+
+    const kinds = new Set(current.map((e) => e.kind));
+
+    return {
+      timelineEvents: cumulative,
+      currentStepEventKinds: kinds,
+      currentStepEvents: current,
+    };
+
+  }, [result, step]);
+
+
+
   const maxStep = result?.history.length ? result.history.length - 1 : 0;
 
 
@@ -607,6 +645,7 @@ export default function InferencePage({
             EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정{" "}
 
             {summary.oper_count}
+            {(summary.batch_info_count ?? 0) > 0 && <> · batch {summary.batch_info_count}</>}
 
             {folderLoading ? " · 불러오는 중…" : ""}
 
@@ -615,6 +654,13 @@ export default function InferencePage({
         )}
 
       </section>
+
+      {summary && (
+        <section className="card">
+          <h3>Batch Info (PPK × OPER → LOT_CD / TEMP)</h3>
+          <BatchInfoTable rows={summary.batch_info ?? []} />
+        </section>
+      )}
 
       <section className="card">
 
@@ -871,6 +917,10 @@ export default function InferencePage({
             maxStep={maxStep}
 
             stepBump={stepBump}
+
+            stepSimTime={snap?.time}
+
+            stepEvents={currentStepEvents}
 
             onStepChange={setStep}
 
@@ -1413,6 +1463,18 @@ export default function InferencePage({
                     )}
 
                   </section>
+
+
+
+                  <EventTimeline
+
+                    events={timelineEvents}
+
+                    highlightKinds={currentStepEventKinds}
+
+                    title={`시뮬레이션 이벤트 (step ${step}, 누적 ${timelineEvents.length}건)`}
+
+                  />
 
 
 

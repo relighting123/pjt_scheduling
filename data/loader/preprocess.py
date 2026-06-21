@@ -1,7 +1,6 @@
 """
-data/preprocessor.py – 원시 JSON 데이터 → RL 환경 입력 변환
-loader.py로 불러온 딕셔너리를 시뮬레이터와 RL 환경이 바로 쓸 수 있는
-구조화된 딕셔너리로 가공합니다.
+data/loader/preprocess.py – 원시 JSON → RL 환경 입력 변환
+fetch.load_data()로 불러온 딕셔너리를 시뮬레이터·RL 환경용 구조로 가공합니다.
 """
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -13,7 +12,7 @@ from utils.helpers import build_index_map, split_wf_qty
 
 
 def _coerce_proc_time(value) -> Optional[int]:
-    """availability/schedule ST가 숫자(소요시간 분)이면 int로 반환"""
+    """discrete_arrange ST가 숫자(소요시간 분)이면 int로 반환"""
     if isinstance(value, (int, float)):
         return int(value)
     if isinstance(value, str) and value.isdigit():
@@ -100,38 +99,6 @@ def _resolve_lot_oper_seq(
     )
 
 
-def _enrich_discrete_oper_ids(
-    discrete_raw: List[dict],
-    sched_raw: List[dict],
-    flow_map: Dict[str, Dict[int, str]],
-    oper_seq_map: Dict[str, Dict[str, int]],
-) -> List[dict]:
-    """구 schedule.json만 있는 데이터셋 하위 호환."""
-    if all(r.get("OPER_ID") for r in discrete_raw):
-        return discrete_raw
-    if not sched_raw:
-        return discrete_raw
-
-    lot_meta: Dict[str, Tuple[str, int, str]] = {}
-    for r in sched_raw:
-        ppk = r["PLAN_PROD_KEY"]
-        seq = int(r["SEQ"])
-        oper_id = flow_map.get(ppk, {}).get(seq, "OPER001")
-        lot_meta[r["LOT_ID"]] = (oper_id, seq, r.get("CARRIER_ID", ""))
-
-    enriched: List[dict] = []
-    for r in discrete_raw:
-        row = dict(r)
-        lid = row["LOT_ID"]
-        if not row.get("OPER_ID") and lid in lot_meta:
-            oper_id, seq, carrier = lot_meta[lid]
-            row["OPER_ID"] = oper_id
-            row.setdefault("SEQ", seq)
-            row.setdefault("CARRIER_ID", carrier)
-        enriched.append(row)
-    return enriched
-
-
 def _default_lot_cd(lot_id: str, plan_prod_key: str) -> str:
     suffix = plan_prod_key.replace("PPK", "") if "PPK" in plan_prod_key else lot_id[-3:]
     return f"LC{suffix.zfill(2)[-2:]}"
@@ -142,10 +109,26 @@ def _default_temp(plan_prod_key: str) -> str:
     return "T650" if n % 2 == 0 else "T700"
 
 
+def _build_batch_info_map(
+    batch_info_raw: List[dict],
+) -> Dict[Tuple[str, str], dict]:
+    """(PPK, OPER) → {lot_cd, temp} — conversion/tool lookup."""
+    out: Dict[Tuple[str, str], dict] = {}
+    for r in batch_info_raw:
+        ppk = r["PLAN_PROD_KEY"]
+        oper_id = r["OPER_ID"]
+        out[(ppk, oper_id)] = {
+            "lot_cd": str(r["LOT_CD"]),
+            "temp":   str(r["TEMP"]),
+        }
+    return out
+
+
 def _build_lot_attributes(
     lot_ids: List[str],
     lot_info: Dict[str, dict],
     lot_master_raw: List[dict],
+    batch_info_map: Dict[Tuple[str, str], dict],
 ) -> Tuple[Dict[str, dict], List[str], List[str]]:
     """LOT_ID → {lot_cd, temp} 및 범주 목록."""
     master = {r["LOT_ID"]: r for r in lot_master_raw}
@@ -158,8 +141,14 @@ def _build_lot_attributes(
             temp = str(master[lid]["TEMP"])
         elif lid in lot_info:
             ppk = lot_info[lid]["plan_prod_key"]
-            lot_cd = _default_lot_cd(lid, ppk)
-            temp = _default_temp(ppk)
+            oper_id = lot_info[lid]["oper_id"]
+            route = batch_info_map.get((ppk, oper_id))
+            if route:
+                lot_cd = route["lot_cd"]
+                temp = route["temp"]
+            else:
+                lot_cd = _default_lot_cd(lid, ppk)
+                temp = _default_temp(ppk)
         else:
             lot_cd = _default_lot_cd(lid, "PPK001")
             temp = "T650"
@@ -169,6 +158,9 @@ def _build_lot_attributes(
         if lid in lot_info:
             lot_info[lid]["lot_cd"] = lot_cd
             lot_info[lid]["temp"] = temp
+    for route in batch_info_map.values():
+        lot_cd_set.add(route["lot_cd"])
+        temp_set.add(route["temp"])
     return attrs, sorted(lot_cd_set), sorted(temp_set)
 
 
@@ -208,7 +200,7 @@ def _build_tool_capacity_map(
 def _apply_wafer_lot_split(
     lot_info: Dict[str, dict],
     eqp_lot_map: Dict[str, List[str]],
-    proc_time_matrix: Dict[Tuple[str, str], int],
+    proc_time_matrix: Dict[Tuple[str, str, str], int],
     discrete_raw: List[dict],
     eqp_model_map: Dict[str, str],
     split_lookup: Dict[Tuple[str, str], int],
@@ -249,12 +241,13 @@ def _apply_wafer_lot_split(
             idx = lots.index(parent_id)
             lots[idx:idx + 1] = child_ids
 
-        for (lid, eid), pt in list(proc_time_matrix.items()):
+        for key, pt in list(proc_time_matrix.items()):
+            lid, eid, oper = key
             if lid != parent_id:
                 continue
-            del proc_time_matrix[(lid, eid)]
+            del proc_time_matrix[key]
             for cid in child_ids:
-                proc_time_matrix[(cid, eid)] = pt
+                proc_time_matrix[(cid, eid, oper)] = pt
 
     expanded_avail: List[dict] = []
     for r in discrete_raw:
@@ -381,19 +374,6 @@ def _rebuild_eqp_oper_cap(
     return cap
 
 
-def normalize_raw(raw: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
-    """schedule 하위 호환: discrete에 OPER_ID 보강."""
-    out = dict(raw)
-    discrete = list(out.get("discrete_arrange") or [])
-    if not discrete:
-        return out
-    flow_map, oper_seq_map = _build_flow_maps(out.get("flow") or [])
-    out["discrete_arrange"] = _enrich_discrete_oper_ids(
-        discrete, out.get("schedule") or [], flow_map, oper_seq_map,
-    )
-    return out
-
-
 def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> dict:
     """
     목적: 원시 입력 4종을 RL 환경·시뮬레이터가 사용하는 공통 데이터 구조로 변환
@@ -416,16 +396,15 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "lots": [LotDict],               # LOT 세부 정보
             "eqp_lot_map": {eqp: [lot_id]}, # EQP별 배정 가능 LOT
             "plan": [PlanDict],              # 계획 데이터
-            "initial_schedule": [],          # 하위 호환 (비교용, 미사용)
             "flow": {prod: [{seq, oper}]},   # 제품별 FLOW 순서
         }
     """
-    sched_raw = raw.get("schedule") or []
     discrete_raw = list(raw["discrete_arrange"])
     plan_raw  = raw["plan"]
     flow_raw  = raw["flow"]
     split_raw = raw.get("split", [])
     lot_master_raw = raw.get("lot_master", [])
+    batch_info_raw = raw.get("batch_info", [])
     tool_capacity_raw = raw.get("tool_capacity", [])
 
     abstract_raw = raw.get("abstract_arrange", [])
@@ -434,9 +413,6 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         abstract_raw = build_abstract_arrange(discrete_raw, flow_raw)
 
     flow_map, oper_seq_map = _build_flow_maps(flow_raw)
-    discrete_raw = _enrich_discrete_oper_ids(
-        discrete_raw, sched_raw, flow_map, oper_seq_map,
-    )
 
     # ── 기준 시각 (RULE_TIMEKEY 07:00) ───────────────────────────────────────
     base_time = _resolve_sim_base_time(period_key)
@@ -516,28 +492,28 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     for ppk in flow_list:
         flow_list[ppk].sort(key=lambda x: x["seq_id"])
 
-    # ── (LOT, EQP) 조합별 처리시간 행렬 ────────────────────────────────────────
-    proc_time_matrix: Dict[Tuple[str, str], int] = {}
+    # ── (LOT, EQP, OPER) 조합별 처리시간 행렬 ───────────────────────────────────
+    proc_time_matrix: Dict[Tuple[str, str, str], int] = {}
     for r in discrete_raw:
         lid = r["LOT_ID"]
         eid = r["EQP_ID"]
+        oper_id = r.get("OPER_ID") or lot_info.get(lid, {}).get("oper_id", "")
         pt = _coerce_proc_time(r.get("ST"))
-        if pt is not None:
-            proc_time_matrix[(lid, eid)] = pt
+        if pt is not None and oper_id:
+            proc_time_matrix[(lid, eid, oper_id)] = pt
 
     eqp_oper_avg: Dict[Tuple[str, str], list] = {}
-    for (lid, eid), pt in proc_time_matrix.items():
-        oper_id = lot_info.get(lid, {}).get("oper_id", "")
+    for (lid, eid, oper_id), pt in proc_time_matrix.items():
         eqp_oper_avg.setdefault((eid, oper_id), []).append(pt)
     eqp_oper_avg_val: Dict[Tuple[str, str], int] = {
         k: int(sum(v) / len(v)) for k, v in eqp_oper_avg.items()
     }
 
-    for (lid, eid), pt in list(proc_time_matrix.items()):
+    for key, pt in list(proc_time_matrix.items()):
         if pt > 0:
             continue
-        oper_id = lot_info.get(lid, {}).get("oper_id", "")
-        proc_time_matrix[(lid, eid)] = eqp_oper_avg_val.get(
+        lid, eid, oper_id = key
+        proc_time_matrix[key] = eqp_oper_avg_val.get(
             (eid, oper_id),
             lot_info.get(lid, {}).get("processing_time", 60),
         )
@@ -595,10 +571,9 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             oper_eqp_models.setdefault(oper_id, [])
             if model not in oper_eqp_models[oper_id]:
                 oper_eqp_models[oper_id].append(model)
-    for (lid, eid), pt in proc_time_matrix.items():
+    for (lid, eid, oper_id), pt in proc_time_matrix.items():
         if lid not in lot_info:
             continue
-        oper_id = lot_info[lid]["oper_id"]
         model = eqp_model_map.get(eid, "A")
         abstract_proc_time.setdefault((oper_id, model), []).append(pt)
     abstract_proc_time_val: Dict[Tuple[str, str], int] = {
@@ -636,9 +611,11 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
 
     eqp_idx = build_index_map(eqp_ids)
 
+    batch_info_map = _build_batch_info_map(batch_info_raw)
+
     lot_ids = sorted(lot_info.keys())
     lot_attrs, lot_cd_ids, temp_ids = _build_lot_attributes(
-        lot_ids, lot_info, lot_master_raw,
+        lot_ids, lot_info, lot_master_raw, batch_info_map,
     )
     lot_cd_idx = build_index_map(lot_cd_ids)
     temp_idx = build_index_map(temp_ids)
@@ -650,7 +627,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     for r in discrete_raw:
         lot_id = r["LOT_ID"]
         eid = r["EQP_ID"]
-        proc_time = proc_time_matrix.get((lot_id, eid), 60)
+        oper_id = r.get("OPER_ID") or lot_info.get(lot_id, {}).get("oper_id", "")
+        proc_time = proc_time_matrix.get((lot_id, eid, oper_id), 60)
         row_model = (
             str(r["EQP_MODEL"]) if r.get("EQP_MODEL")
             else _legacy_st_as_eqp_model(r.get("ST"))
@@ -659,6 +637,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         arrange_actual_table.append({
             "eqp_id":           eid,
             "lot_id":           lot_id,
+            "oper_id":          oper_id,
             "plan_prod_key":    r["PLAN_PROD_KEY"],
             "st":               proc_time,
             "proc_time":        proc_time,
@@ -700,6 +679,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "lot_cd_idx":       lot_cd_idx,
         "temp_idx":         temp_idx,
         "lot_attrs":        lot_attrs,
+        "batch_info_map":   batch_info_map,
         "tool_capacity":    tool_capacity,
         "lots":             list(lot_info.values()),
         "eqp_lot_map":      eqp_lot_map,
@@ -725,10 +705,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "abstract_wip_init":        abstract_wip_init,
         "abstract_lot_meta":        abstract_lot_meta,
         "plan":             plan_list,
-        "initial_schedule": [],
         "flow":             flow_list,
         "arrange_actual_table": arrange_actual_table,
-        "arrange_table":    arrange_actual_table,
         "split_rules":      split_lookup,
         "lot_inject_deadline": {},
         "eqp_initial_state": _normalize_eqp_initial_state(raw.get("eqp_initial_state", [])),
