@@ -90,6 +90,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "split":             _read_optional(CONFIG.path.split_file),
         "lot_master":        _read_optional(CONFIG.path.lot_master_file),
         "tool_capacity":     _read_optional(CONFIG.path.tool_capacity_file),
+        "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
         "lot_route":         _read_optional(CONFIG.path.lot_route_file),
     }
 

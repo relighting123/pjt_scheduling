@@ -224,6 +224,7 @@ class PathConfig:
     split_file:        str = "split.json"
     lot_master_file:   str = "lot_master.json"
     tool_capacity_file: str = "tool_capacity.json"
+    eqp_initial_state_file: str = "eqp_initial_state.json"
     lot_route_file:    str = "lot_route.json"
 
     @property

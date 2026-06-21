@@ -19,13 +19,13 @@ from simulation.simulator import SchedulingSimulator
 
 
 def compute_obs_dim() -> int:
-    """Global(6) + Bucket(O×P×K×F) + current EQP(5) + Context(4)"""
+    """Global(6) + Bucket(O×P×K×F) + current EQP(6) + Context(4)"""
 
     O = CONFIG.env.max_oper_count
     P = CONFIG.env.max_prod_count
     K = CONFIG.env.max_model_count
     F = SchedulingSimulator.BUCKET_FEATURES
-    return 6 + O * P * K * F + 5 + 4
+    return 6 + O * P * K * F + 6 + 4
 
 
 class SchedulingEnv(gym.Env):

@@ -241,6 +241,7 @@ def write_json_bundle(
     lot_master: Optional[List[dict]] = None,
     tool_capacity: Optional[List[dict]] = None,
     abstract_arrange: Optional[List[dict]] = None,
+    eqp_initial_state: Optional[List[dict]] = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     split_data = split if split is not None else build_split_rules(flow)
@@ -253,7 +254,7 @@ def write_json_bundle(
     tool_capacity_data = tool_capacity if tool_capacity is not None else build_tool_capacity_from_lots(
         lot_master_data,
     )
-    for filename, data in [
+    files = [
         (CONFIG.path.discrete_arrange_file, discrete_arrange),
         (CONFIG.path.abstract_arrange_file, abstract_data),
         (CONFIG.path.plan_file, plan),
@@ -261,7 +262,10 @@ def write_json_bundle(
         (CONFIG.path.split_file, split_data),
         (CONFIG.path.lot_master_file, lot_master_data),
         (CONFIG.path.tool_capacity_file, tool_capacity_data),
-    ]:
+    ]
+    if eqp_initial_state is not None:
+        files.append((CONFIG.path.eqp_initial_state_file, eqp_initial_state))
+    for filename, data in files:
         with open(output_dir / filename, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -556,8 +560,10 @@ SAMPLE_SCENARIOS: Dict[str, dict] = {
 }
 
 from data.pacing_scenarios import TAKT_SCENARIOS  # noqa: E402
+from data.conversion_scenarios import CONV_SCENARIOS  # noqa: E402
 
 SAMPLE_SCENARIOS.update(TAKT_SCENARIOS)
+SAMPLE_SCENARIOS.update(CONV_SCENARIOS)
 
 
 def _build_dataset_bundle(
@@ -630,11 +636,22 @@ def generate_sample_data(
         flow,
         split_qty=(cfg.split_qty if cfg and scenario == "random" else 3),
     )
-    abstract_fn = SAMPLE_SCENARIOS.get(scenario, {}).get("abstract_arrange")
+    meta = SAMPLE_SCENARIOS.get(scenario, {})
+    abstract_fn = meta.get("abstract_arrange")
     abstract_data = abstract_fn() if callable(abstract_fn) else None
+    bundle_kwargs: dict = {"abstract_arrange": abstract_data}
+    full_build = meta.get("full_build")
+    if callable(full_build):
+        _d, _p, _f, lot_master, abstract_full, eqp_init, tool_cap = full_build()
+        bundle_kwargs.update({
+            "lot_master": lot_master,
+            "abstract_arrange": abstract_full,
+            "eqp_initial_state": eqp_init,
+            "tool_capacity": tool_cap,
+        })
     write_json_bundle(
         output_dir, discrete, plan, flow, split_rules,
-        abstract_arrange=abstract_data,
+        **bundle_kwargs,
     )
     print(f"[generator] 샘플 생성 ({scenario}) → {output_dir}")
     return output_dir

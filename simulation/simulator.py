@@ -196,10 +196,46 @@ class SchedulingSimulator:
             for pool in self._wip_pool.values()
         )
         self._advance_to_next_decision()
+        self._apply_eqp_initial_state(data.get("eqp_initial_state", []))
         if self._record_history:
             self._append_initial_history()
 
     # ── 결정 포인트 탐색 ─────────────────────────────────────────────────────
+
+    def _apply_eqp_initial_state(self, rows: List[dict]) -> None:
+        """JSON eqp_initial_state → Equipment prev_lot_cd/temp/prod."""
+        for row in rows:
+            eid = row.get("eqp_id")
+            if not eid or eid not in self.eqps:
+                continue
+            eqp = self.eqps[eid]
+            lot_cd = row.get("lot_cd") or None
+            temp = row.get("temp") or None
+            if lot_cd:
+                eqp.prev_lot_cd = lot_cd
+            if temp:
+                eqp.prev_temp = temp
+            if row.get("plan_prod_key"):
+                eqp.prev_prod = row["plan_prod_key"]
+            if row.get("oper_id"):
+                eqp.prev_oper = row["oper_id"]
+
+    def _bucket_lot_cd_temp(self, ppk: str, oper_id: str) -> Tuple[str, str]:
+        """(PPK, OPER) WIP 대표 LOT_CD/TEMP."""
+        wip = self._wip_for(ppk, oper_id)
+        if wip:
+            for lid in wip.get("lot_ids", []):
+                return self._lot_cd_temp(lid)
+        for ld in self._env_data.get("lots", []):
+            if ld.get("plan_prod_key") == ppk and ld.get("oper_id") == oper_id:
+                return ld.get("lot_cd", ""), ld.get("temp", "")
+        return "", ""
+
+    def _would_need_conversion(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
+        eqp = self.eqps.get(eqp_id)
+        if not eqp or eqp.prev_lot_cd is None or not lot_cd:
+            return False
+        return eqp.prev_lot_cd != lot_cd or (eqp.prev_temp or "") != (temp or "")
 
     def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
         """EQP에서 투입 가능한 LOT 중 최소 소요시간(ST)"""
@@ -1004,15 +1040,16 @@ class SchedulingSimulator:
         })
 
     # ── Bucket(=PPK×MODEL×OPER) feature 텐서 ──────────────────────────────────
-    BUCKET_FEATURES = 10
+    BUCKET_FEATURES = 14
 
     def get_bucket_features(self) -> np.ndarray:
         """
         Bucket = (oper, ppk, model) 단위 feature 텐서. shape (O, P, K, F).
         채널: 0 valid, 1 wip/total, 2 wip/ppk, 3 min_end_time,
               4 throughput_ratio, 5 same_ppk, 6 prev_takt, 7 post_takt,
-              8 self_st(per-wafer), 9 plan_urgency.
-        ST = per-wafer 처리시간 → lot 처리시간 = ST × wf_unit.
+              8 self_st(per-wafer), 9 plan_urgency,
+              10 wip_lot_cd, 11 wip_temp,
+              12 needs_conversion(current_eqp), 13 tool_can_assign(current_eqp).
         """
         data = self._env_data
         cfg = CONFIG.env
@@ -1031,6 +1068,11 @@ class SchedulingSimulator:
         max_route_st = max(data.get("max_route_st", 1), 1)
         wf_unit = max(data.get("max_wf_qty", 1), 1)
         completed = self.stats["completed_qty"]
+        lot_cd_idx = data.get("lot_cd_idx", {})
+        temp_idx = data.get("temp_idx", {})
+        n_lc = max(len(lot_cd_idx), 1)
+        n_tp = max(len(temp_idx), 1)
+        current_eqp = self._current_eqp
 
         feats = np.zeros((O, P, K, F), dtype=np.float32)
 
@@ -1129,12 +1171,22 @@ class SchedulingSimulator:
                     feats[oi, pi, mi, 7] = min(post_takt, 1.0)
                     feats[oi, pi, mi, 8] = (st / max_route_st) if st is not None else 0.0
                     feats[oi, pi, mi, 9] = urgency
+                    lc, tp = self._bucket_lot_cd_temp(ppk, op)
+                    feats[oi, pi, mi, 10] = encode_normalized(lc or None, lot_cd_idx, n_lc)
+                    feats[oi, pi, mi, 11] = encode_normalized(tp or None, temp_idx, n_tp)
+                    if current_eqp and current_eqp in eqp_list and lc:
+                        feats[oi, pi, mi, 12] = (
+                            1.0 if self._would_need_conversion(current_eqp, lc, tp) else 0.0
+                        )
+                        feats[oi, pi, mi, 13] = (
+                            1.0 if self._tool_tracker.can_assign(lc, current_eqp) else 0.0
+                        )
         return feats
 
     # ── 관측 벡터 생성 (Global + Bucket + EQP local + Context) ────────────────
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(5) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(6) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P = cfg.max_oper_count, cfg.max_prod_count
@@ -1151,7 +1203,7 @@ class SchedulingSimulator:
 
         bucket = self.get_bucket_features().flatten()
 
-        eqp_local = np.zeros(5, dtype=np.float32)
+        eqp_local = np.zeros(6, dtype=np.float32)
         current_eqp_id = self._current_eqp
         if current_eqp_id and current_eqp_id in self.eqps:
             eqp = self.eqps[current_eqp_id]
@@ -1161,6 +1213,12 @@ class SchedulingSimulator:
             eqp_local[3] = encode_normalized(eqp.prev_temp, temp_idx, max(len(temp_idx), 1))
             rem = max(eqp.free_at - self.current_time, 0)
             eqp_local[4] = min(rem / max(self.sim_end, 1), 1.0)
+            for flat in self.get_feasible_ppk_oper(current_eqp_id):
+                ppk_f, oper_f = self.ppk_oper_from_flat(flat)
+                lc, tp = self._bucket_lot_cd_temp(ppk_f, oper_f)
+                if self._would_need_conversion(current_eqp_id, lc, tp):
+                    eqp_local[5] = 1.0
+                    break
 
         group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)

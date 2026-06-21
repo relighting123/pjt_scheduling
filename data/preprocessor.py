@@ -172,6 +172,23 @@ def _build_lot_attributes(
     return attrs, sorted(lot_cd_set), sorted(temp_set)
 
 
+def _normalize_eqp_initial_state(rows: List[dict]) -> List[dict]:
+    """EQP 초기 LOT_CD/TEMP/PPK 상태 (conversion 시나리오용)."""
+    out: List[dict] = []
+    for r in rows:
+        eid = str(r.get("EQP_ID", "")).strip()
+        if not eid:
+            continue
+        out.append({
+            "eqp_id":        eid,
+            "lot_cd":        str(r.get("LOT_CD", "")).strip(),
+            "temp":          str(r.get("TEMP", "")).strip(),
+            "plan_prod_key": str(r.get("PLAN_PROD_KEY", "")).strip() or None,
+            "oper_id":       str(r.get("OPER_ID", "")).strip() or None,
+        })
+    return out
+
+
 def _build_tool_capacity_map(
     tool_raw: List[dict],
     lot_cds: List[str],
@@ -714,4 +731,5 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "arrange_table":    arrange_actual_table,
         "split_rules":      split_lookup,
         "lot_inject_deadline": {},
+        "eqp_initial_state": _normalize_eqp_initial_state(raw.get("eqp_initial_state", [])),
     }
