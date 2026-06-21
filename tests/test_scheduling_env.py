@@ -22,9 +22,9 @@ def test_action_masks_shape():
     env_data = preprocess(raw)
     env = SchedulingEnv(env_data)
     env.reset()
-    O, P, M = CONFIG.env.max_oper_count, CONFIG.env.max_prod_count, CONFIG.env.max_eqp_count
+    O, P = CONFIG.env.max_oper_count, CONFIG.env.max_prod_count
     mask = env.action_masks()
-    assert mask.shape == (O * P + M,)
+    assert mask.shape == (O * P,)
     assert mask.any()
 
 
@@ -62,23 +62,6 @@ def test_heuristic_episode_completes():
         steps += 1
     assert done
     assert len(env.get_schedule()) > 0
-
-
-def test_pacing_shaping_reward_when_behind_plan():
-    """계획 직선보다 뒤처진 상태에서 투입 시 pacing 보상 > 0."""
-    raw = load_data()
-    env_data = preprocess(raw)
-    sim = SchedulingSimulator(env_data, record_history=False)
-    ppk = env_data["prod_keys"][0]
-    oper = env_data["oper_ids"][0]
-    pm = env_data["plan_meta"].get((ppk, oper))
-    if not pm:
-        return
-    sim.current_time = sim.soft_cutoff // 2
-    plan_qty = pm["d0_plan_qty"]
-    sim.stats["completed_qty"][(ppk, oper)] = 0
-    r = sim._pacing_shaping_reward(ppk, oper, wf_qty=min(25, plan_qty))
-    assert r > 0, f"expected positive pacing reward when behind plan, got {r}"
 
 
 def test_same_prod_skipped_when_ppk_not_feasible():
@@ -140,18 +123,23 @@ def test_pacing_steady_scenario_preprocess_and_episode():
     assert completed.get(("PPK001", "OPER002"), 0) > 0, "PPK001 OPER002 생산이 있어야 함"
 
 
-def test_step_resolves_invalid_ppk_eqp_combo():
-    """bucket·eqp 독립 선택이 invalid여도 feasible 조합으로 할당."""
+def test_step_resolves_invalid_ppk_on_current_eqp():
+    """invalid bucket이어도 현재 EQP feasible 조합으로 할당."""
     raw = load_data()
     env_data = preprocess(raw)
     env = SchedulingEnv(env_data, record_history=False)
     env.reset()
-    feasible = env.sim.get_feasible_assignments()
+    eqp_id = env.sim.current_idle_eqp()
+    if eqp_id is None:
+        return
+    feasible = env.sim.get_feasible_ppk_oper(eqp_id)
     if not feasible:
         return
-    target_flat, _target_ei = feasible[0]
-    wrong_ei = (feasible[-1][1] + 1) % CONFIG.env.max_eqp_count
-    obs, reward, term, trunc, _ = env.step(np.array([target_flat, wrong_ei], dtype=np.int64))
+    target_flat = feasible[0]
+    wrong_flat = (feasible[-1] + 1) % (CONFIG.env.max_oper_count * CONFIG.env.max_prod_count)
+    if wrong_flat in feasible:
+        wrong_flat = (wrong_flat + 1) % (CONFIG.env.max_oper_count * CONFIG.env.max_prod_count)
+    obs, reward, term, trunc, _ = env.step(np.array([wrong_flat], dtype=np.int64))
     assert reward > 0 or env.sim.schedule, "feasible 있을 때 할당이 진행되어야 함"
     assert obs is not None
     assert not (term and trunc)
@@ -178,9 +166,8 @@ if __name__ == "__main__":
     test_tool_tracker_capacity()
     test_sim_horizon_1440()
     test_heuristic_episode_completes()
-    test_pacing_shaping_reward_when_behind_plan()
     test_same_prod_skipped_when_ppk_not_feasible()
     test_pacing_steady_scenario_preprocess_and_episode()
-    test_step_resolves_invalid_ppk_eqp_combo()
+    test_step_resolves_invalid_ppk_on_current_eqp()
     test_rl_inference_makes_progress()
     print("all tests passed")

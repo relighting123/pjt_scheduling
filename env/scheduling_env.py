@@ -10,188 +10,107 @@ StableBaselines3 MaskablePPO와 호환됩니다.
 
 from typing import List, Optional, Tuple, Union
 
-
-
 import numpy as np
-
 import gymnasium as gym
-
 from gymnasium import spaces
 
-
-
 from config import CONFIG
-
 from simulation.simulator import SchedulingSimulator
 
 
-
-
-
 def compute_obs_dim() -> int:
-
-    """Global(6) + Bucket(O×P×K×F) + EQP(M×5) + Context(4)"""
+    """Global(6) + Bucket(O×P×K×F) + current EQP(5) + Context(4)"""
 
     O = CONFIG.env.max_oper_count
-
     P = CONFIG.env.max_prod_count
-
-    M = CONFIG.env.max_eqp_count
-
     K = CONFIG.env.max_model_count
-
     F = SchedulingSimulator.BUCKET_FEATURES
-
-    return 6 + O * P * K * F + M * 5 + 4
-
-
-
+    return 6 + O * P * K * F + 5 + 4
 
 
 class SchedulingEnv(gym.Env):
-
     """
-
     Post-Scheduling 강화학습 환경
 
-
-
-    - 관측: 전역 + PPK/OPER WIP 비율 + 계획 진도 + EQP 상태
-
-    - 행동: MultiDiscrete([O×P, M]) – (PPK/OPER bucket, EQP)
-
-    - LOT 배정: 우선순위 → ST 자동 규칙
-
-    """
-
-
+    - 관측: 전역 + PPK/OPER/MODEL bucket + 현재 idle EQP 상태
+    - 행동: Discrete(O×P) – (PPK/OPER bucket). EQP·LOT은 규칙 자동 배정
+  """
 
     metadata = {"render_modes": []}
 
-
-
     def __init__(self, env_data: dict, render_mode: Optional[str] = None, record_history: bool = True):
-
         super().__init__()
-
         self._env_data = env_data
-
         self._record_history = record_history
 
-
-
         env_cfg = CONFIG.env
-
         O = env_cfg.max_oper_count
-
         P = env_cfg.max_prod_count
 
-        M = env_cfg.max_eqp_count
-
-
-
         obs_dim = compute_obs_dim()
-
         self.observation_space = spaces.Box(
-
             low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32,
-
         )
-
-        self.action_space = spaces.MultiDiscrete([O * P, M])
-
-
+        self.action_space = spaces.Discrete(O * P)
 
         self.sim: Optional[SchedulingSimulator] = None
-
         self.render_mode = render_mode
-
         self._total_reward = 0.0
-
         self._O = O
-
         self._P = P
 
-        self._M = M
-
-
-
     def reset(self, *, seed=None, options=None) -> Tuple[np.ndarray, dict]:
-
         super().reset(seed=seed)
-
         self.sim = SchedulingSimulator(
-
             self._env_data, CONFIG.reward, record_history=self._record_history,
-
         )
-
         self._total_reward = 0.0
-
         obs = self.sim.get_observation()
-
         return obs, {}
 
+    def _ensure_decision_eqp(self) -> Optional[str]:
+        """idle 결정 호기가 없으면 시간 전진 또는 동시 idle 탐색."""
+        if self.sim.current_idle_eqp() is not None:
+            return self.sim.current_idle_eqp()
 
-    def _resolve_action_to_feasible(
-        self, ppk_oper_idx: int, eqp_idx: int, feasible: List[tuple],
-    ) -> Optional[tuple]:
-        """(bucket, eqp) → feasible (flat, ei). 독립 마스크 invalid 조합 보정."""
+        while self.sim.get_idle_eqps() and self.sim.current_idle_eqp() is None:
+            self.sim._select_same_time_next_eqp()
+            if self.sim.current_idle_eqp() is not None:
+                return self.sim.current_idle_eqp()
+
+        if self.sim._has_pending_processing():
+            self.sim._advance_to_next_decision()
+            return self.sim.current_idle_eqp()
+
+        return None
+
+    def _resolve_ppk_oper(self, ppk_oper_idx: int, feasible: List[int]) -> Optional[int]:
+        """invalid bucket → 현재 EQP feasible 중 보정."""
         if not feasible:
             return None
         flat = int(ppk_oper_idx) % (self._O * self._P)
-        ei = int(eqp_idx) % self._M
-        if (flat, ei) in feasible:
-            return (flat, ei)
-        same_flat = [p for p in feasible if p[0] == flat]
-        if same_flat:
-            return min(same_flat, key=lambda p: (p[1] != ei, p[1]))
-        same_ei = [p for p in feasible if p[1] == ei]
-        if same_ei:
-            return min(same_ei, key=lambda p: (p[0] != flat, p[0]))
+        if flat in feasible:
+            return flat
         return feasible[0]
 
-
     def step(self, action: Union[int, np.ndarray, list]) -> Tuple[np.ndarray, float, bool, bool, dict]:
-
         action_arr = np.asarray(action, dtype=np.int64).flatten()
-
         ppk_oper_idx = int(action_arr[0]) if len(action_arr) > 0 else 0
 
-        eqp_idx = int(action_arr[1]) if len(action_arr) > 1 else 0
-
-
-
         time_at_step_start = self.sim.current_time
-
-        while not self.sim.get_idle_eqps() and self.sim._has_pending_processing():
-
-            self.sim._advance_to_next_decision()
-
+        eqp_id = self._ensure_decision_eqp()
         time_advanced = self.sim.current_time != time_at_step_start
 
-
-
-        eqp_ids = self._env_data["eqp_ids"]
-        feasible = self.sim.get_feasible_assignments()
-        resolved = self._resolve_action_to_feasible(ppk_oper_idx, eqp_idx, feasible)
-
-
-
         arrange_actual_before = self.sim.get_remaining_arrange_actual()
-
         arrange_abstract_before = self.sim.get_abstract_arrange()
-
         wip_waiting_before = self.sim.get_wip_waiting()
 
-
-
         reward = 0.0
-        if resolved is not None:
-            flat, ei = resolved
-            eqp_id = eqp_ids[ei] if ei < len(eqp_ids) else eqp_ids[0]
-            ppk, oper_id = self.sim.ppk_oper_from_flat(flat)
-            if self.sim.eqps[eqp_id].status == "idle":
+        if eqp_id is not None:
+            feasible = self.sim.get_feasible_ppk_oper(eqp_id)
+            flat = self._resolve_ppk_oper(ppk_oper_idx, feasible)
+            if flat is not None and self.sim.eqps[eqp_id].status == "idle":
+                ppk, oper_id = self.sim.ppk_oper_from_flat(flat)
                 reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
             elif feasible:
                 reward = -0.5
@@ -200,124 +119,58 @@ class SchedulingEnv(gym.Env):
                 self.sim._advance_to_next_decision()
                 time_advanced = self.sim.current_time != time_at_step_start
 
-
-
         wip_for_history = (
-
             wip_waiting_before
-
             if time_advanced
-
             else self.sim.get_wip_waiting()
-
         )
-
-
 
         self.sim.save_history_step(
-
             arrange_snapshot=arrange_actual_before,
-
             arrange_abstract_snapshot=arrange_abstract_before,
-
             wip_waiting_snapshot=wip_for_history,
-
         )
-
         self._total_reward += reward
 
-
-
         terminated = self.sim.is_done()
-
         truncated = (self.sim.current_time >= self.sim.sim_end) and not terminated
-
         obs = self.sim.get_observation()
-
         info = {
-
             "total_reward":  self._total_reward,
-
             "oper_switches": self.sim.stats["oper_switches"],
-
             "prod_switches": self.sim.stats["prod_switches"],
-
             "conversions":   self.sim.stats.get("conversions", 0),
-
             "idle_total":    self.sim.stats["idle_total"],
-
             "completed_qty": dict(self.sim.stats["completed_qty"]),
-
+            "current_eqp":   eqp_id,
         }
-
         return obs, reward, terminated, truncated, info
 
-
-
     def get_schedule(self) -> list:
-
         return self.sim.schedule if self.sim else []
 
-
-
     def get_history(self) -> list:
-
         return self.sim.history if self.sim else []
 
-
-
     def action_masks(self) -> np.ndarray:
-
-        """
-
-        MaskablePPO용 – [ppk_oper mask (O×P), eqp mask (M)]
-
-        """
-
+        """MaskablePPO용 – 현재 idle EQP에서 feasible한 ppk_oper mask (O×P)."""
         n_ppk = self._O * self._P
-
-        n_eqp = self._M
-
         ppk_mask = np.zeros(n_ppk, dtype=bool)
 
-        eqp_mask = np.zeros(n_eqp, dtype=bool)
-
-
-
         if self.sim is None:
-
             ppk_mask[0] = True
+            return ppk_mask
 
-            eqp_mask[0] = True
+        eqp_id = self.sim.current_idle_eqp()
+        if eqp_id is None:
+            ppk_mask[0] = True
+            return ppk_mask
 
-            return np.concatenate([ppk_mask, eqp_mask])
-
-
-
-        feasible = self.sim.get_feasible_assignments()
-
-        for flat, ei in feasible:
-
+        for flat in self.sim.get_feasible_ppk_oper(eqp_id):
             if 0 <= flat < n_ppk:
-
                 ppk_mask[flat] = True
 
-            if 0 <= ei < n_eqp:
-
-                eqp_mask[ei] = True
-
-
-
         if not ppk_mask.any():
-
             ppk_mask[0] = True
 
-        if not eqp_mask.any():
-
-            eqp_mask[0] = True
-
-
-
-        return np.concatenate([ppk_mask, eqp_mask])
-
-
+        return ppk_mask
