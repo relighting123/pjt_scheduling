@@ -301,6 +301,7 @@ class RLConfig:
     n_epochs:        int   = 10
     gamma:           float = 0.99
     total_timesteps: int   = 200_000
+    default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
     eval_freq:       int   = 10_000
 

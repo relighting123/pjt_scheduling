@@ -96,6 +96,7 @@ export interface AppConfig {
   infer_output_dir?: string;
   input_folders: string[];
   default_timesteps: number;
+  default_n_episodes: number;
   default_learning_rate: number;
   default_w_same_oper: number;
   default_w_idle_per_min: number;
@@ -130,6 +131,9 @@ export interface TrainStatusResponse {
   progress: number;
   timesteps: number;
   total_timesteps: number;
+  episodes: number;
+  total_episodes: number;
+  train_budget_mode: "timesteps" | "episodes";
   logs: TrainLogEntry[];
   series: TrainSeries;
   metrics: TrainMetrics | null;

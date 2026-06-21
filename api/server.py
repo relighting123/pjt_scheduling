@@ -6,7 +6,7 @@ React UI가 호출하는 REST API를 제공합니다.
 """
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -173,6 +173,16 @@ class TrainRequest(BaseModel):
     learning_rate: float = Field(default=CONFIG.rl.learning_rate, gt=0)
     w_same_oper: float = Field(default=CONFIG.reward.w_same_oper)
     w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
+    train_budget_mode: Literal["timesteps", "episodes"] = Field(
+        default="timesteps",
+        description="학습량 기준: timesteps | episodes",
+    )
+    n_episodes: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=100_000,
+        description="train_budget_mode=episodes 일 때 목표 에피소드 수",
+    )
     input_folder: Optional[str] = Field(
         default=None,
         description="단일 train 스냅샷 (미지정 시 사이드바 현재 선택)",
@@ -304,6 +314,7 @@ def get_config():
         "infer_output_dir": str(CONFIG.path.infer_output_dir),
         "input_folders": list_input_folders(),
         "default_timesteps": CONFIG.rl.total_timesteps,
+        "default_n_episodes": CONFIG.rl.default_n_episodes,
         "default_learning_rate": CONFIG.rl.learning_rate,
         "default_w_same_oper": CONFIG.reward.w_same_oper,
         "default_w_idle_per_min": CONFIG.reward.w_idle_per_min,
@@ -484,6 +495,8 @@ def train_start(req: TrainRequest):
         "learning_rate": req.learning_rate,
         "w_same_oper": req.w_same_oper,
         "w_idle_per_min": req.w_idle_per_min,
+        "train_budget_mode": req.train_budget_mode,
+        "n_episodes": req.n_episodes,
         "input_folders": folders,
     }
     payload = env_list if len(env_list) > 1 else env_list[0]
@@ -511,9 +524,13 @@ def train(req: TrainRequest):
 
     agent = SchedulingAgent()
     payload = env_list if len(env_list) > 1 else env_list[0]
-    agent.train(payload, verbose=0)
+    train_kwargs: dict = {"verbose": 0}
+    if req.train_budget_mode == "episodes" and req.n_episodes:
+        train_kwargs["n_episodes"] = req.n_episodes
+    agent.train(payload, **train_kwargs)
     agent.save()
-    metrics = agent.evaluate(env_list[0], n_episodes=3)
+    eval_eps = req.n_episodes if req.train_budget_mode == "episodes" and req.n_episodes else 3
+    metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
     return {"message": "학습 완료", "metrics": metrics, "input_folders": folders}
 
 

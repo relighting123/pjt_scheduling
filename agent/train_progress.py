@@ -6,9 +6,16 @@ import threading
 from copy import deepcopy
 from datetime import datetime, timezone
 from numbers import Real
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
+
+TRAIN_BUDGET_TIMESTEPS = "timesteps"
+TRAIN_BUDGET_EPISODES = "episodes"
+TrainBudgetMode = Literal["timesteps", "episodes"]
+
+# 에피소드 예산 학습 시 상한 (실제 종료는 EpisodeBudgetCallback)
+EPISODE_TRAIN_TIMESTEP_CEILING = 50_000_000
 
 
 def _now_iso() -> str:
@@ -52,6 +59,9 @@ class TrainProgressState:
             self.progress: float = 0.0
             self.timesteps: int = 0
             self.total_timesteps: int = 0
+            self.episodes: int = 0
+            self.total_episodes: int = 0
+            self.train_budget_mode: TrainBudgetMode = TRAIN_BUDGET_TIMESTEPS
             self.logs: list[dict[str, str]] = []
             self.series: dict[str, list] = {
                 "timesteps": [],
@@ -75,14 +85,29 @@ class TrainProgressState:
             if len(self.logs) > 400:
                 self.logs = self.logs[-400:]
 
-    def set_running(self, total_timesteps: int) -> None:
+    def set_running(
+        self,
+        total_timesteps: int = 0,
+        *,
+        total_episodes: int = 0,
+        budget_mode: TrainBudgetMode = TRAIN_BUDGET_TIMESTEPS,
+    ) -> None:
         with self._lock:
             self.status = "running"
             self.progress = 0.0
             self.timesteps = 0
+            self.episodes = 0
+            self.train_budget_mode = budget_mode
             self.total_timesteps = total_timesteps
+            self.total_episodes = total_episodes
             self.metrics = None
             self.error = None
+
+    def update_episode_progress(self, episodes: int, total: int) -> None:
+        with self._lock:
+            self.episodes = episodes
+            self.total_episodes = total
+            self.progress = min(1.0, episodes / max(total, 1))
 
     def set_completed(self, metrics: dict) -> None:
         with self._lock:
@@ -98,13 +123,15 @@ class TrainProgressState:
     def update_progress(self, timesteps: int, total: int) -> None:
         with self._lock:
             self.timesteps = timesteps
+            if self.train_budget_mode != TRAIN_BUDGET_TIMESTEPS:
+                return
             self.total_timesteps = total
             self.progress = min(1.0, timesteps / max(total, 1))
 
     def record_rollout_metrics(self, timestep: int, logger_values: dict[str, float]) -> None:
         with self._lock:
             self.timesteps = timestep
-            if self.total_timesteps:
+            if self.train_budget_mode == TRAIN_BUDGET_TIMESTEPS and self.total_timesteps:
                 self.progress = min(1.0, timestep / self.total_timesteps)
             self.series["timesteps"].append(timestep)
             self.series["ep_rew_mean"].append(
@@ -127,6 +154,9 @@ class TrainProgressState:
                 "progress": _json_float(self.progress),
                 "timesteps": int(self.timesteps),
                 "total_timesteps": int(self.total_timesteps),
+                "episodes": int(self.episodes),
+                "total_episodes": int(self.total_episodes),
+                "train_budget_mode": self.train_budget_mode,
                 "logs": list(self.logs),
                 "series": deepcopy(self.series),
                 "metrics": deepcopy(self.metrics) if self.metrics else None,
@@ -144,6 +174,11 @@ class ProgressCallback(BaseCallback):
         self._last_log_step = 0
 
     def _on_training_start(self) -> None:
+        if self._state.train_budget_mode == TRAIN_BUDGET_EPISODES:
+            self._state.add_log(
+                f"PPO 학습 시작 (목표 에피소드={self._state.total_episodes:,})"
+            )
+            return
         total = self.locals.get("total_timesteps", 0)
         self._state.total_timesteps = int(total)
         self._state.add_log(f"PPO 학습 시작 (total_timesteps={total:,})")
@@ -189,3 +224,23 @@ class EvalProgressCallback(EvalCallback):
                 f"Eval @ {self.num_timesteps:,} · mean_reward={mean_rew:.2f}"
             )
         return continue_training
+
+
+class EpisodeBudgetCallback(BaseCallback):
+    """목표 에피소드 수 도달 시 학습 종료."""
+
+    def __init__(self, state: TrainProgressState, max_episodes: int, verbose: int = 0):
+        super().__init__(verbose)
+        self._state = state
+        self._max_episodes = max_episodes
+        self._episode_count = 0
+
+    def _on_step(self) -> bool:
+        for info in self.locals.get("infos", []):
+            if info and info.get("episode"):
+                self._episode_count += 1
+                self._state.update_episode_progress(self._episode_count, self._max_episodes)
+                if self._episode_count >= self._max_episodes:
+                    self._state.add_log(f"목표 에피소드 {self._max_episodes:,}회 도달 – 학습 종료")
+                    return False
+        return True

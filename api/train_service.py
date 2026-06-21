@@ -6,7 +6,7 @@ from typing import Optional, Union
 
 from config import CONFIG
 from agent.rl_agent import SchedulingAgent
-from agent.train_progress import TrainProgressState
+from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES
 
 train_progress = TrainProgressState()
 _train_lock = threading.Lock()
@@ -18,7 +18,8 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
     try:
         env_list = env_data if isinstance(env_data, list) else [env_data]
         folders: list[str] = params.get("input_folders") or []
-        train_progress.set_running(params["total_timesteps"])
+        budget_mode = params.get("train_budget_mode", "timesteps")
+        n_episodes = params.get("n_episodes")
         train_progress.add_log(f"학습 데이터 {len(folders) or len(env_list)}개 기간")
         for folder in folders[:8]:
             train_progress.add_log(f"  · {folder}")
@@ -32,11 +33,15 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
 
         agent = SchedulingAgent()
         payload = env_list if len(env_list) > 1 else env_list[0]
-        agent.train(payload, verbose=0, progress_state=train_progress)
+        train_kwargs = {"verbose": 0, "progress_state": train_progress}
+        if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
+            train_kwargs["n_episodes"] = int(n_episodes)
+        agent.train(payload, **train_kwargs)
         train_progress.add_log("모델 저장 중…")
         agent.save()
-        train_progress.add_log("학습 후 평가 (1 에피소드)…")
-        metrics = agent.evaluate(env_list[0], n_episodes=1)
+        eval_eps = int(n_episodes) if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes else 1
+        train_progress.add_log(f"학습 후 평가 ({eval_eps} 에피소드)…")
+        metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
         train_progress.set_completed(metrics)
         train_progress.add_log("학습 완료")
     except Exception as exc:

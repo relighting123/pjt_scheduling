@@ -28,6 +28,7 @@ const EMPTY_SERIES: TrainStatusResponse["series"] = {
 };
 
 type DataRangeMode = "current" | "period" | "pick";
+type TrainBudgetMode = "timesteps" | "episodes";
 
 function periodLabel(folder: string): string {
   const parts = folder.split("/");
@@ -49,6 +50,8 @@ export default function TrainPage({
   onRefresh,
 }: TrainPageProps) {
   const [totalTs, setTotalTs] = useState(config.default_timesteps);
+  const [nEpisodes, setNEpisodes] = useState(config.default_n_episodes ?? 100);
+  const [budgetMode, setBudgetMode] = useState<TrainBudgetMode>("timesteps");
   const [lr, setLr] = useState(config.default_learning_rate);
   const [wSameOper, setWSameOper] = useState(config.default_w_same_oper);
   const [wIdle, setWIdle] = useState(config.default_w_idle_per_min);
@@ -89,6 +92,8 @@ export default function TrainPage({
       learning_rate: lr,
       w_same_oper: wSameOper,
       w_idle_per_min: wIdle,
+      train_budget_mode: budgetMode,
+      ...(budgetMode === "episodes" ? { n_episodes: nEpisodes } : {}),
     };
     if (rangeMode === "period" && fromDate && toDate) {
       return { ...base, from_date: fromDate, to_date: toDate, fac_id: config.fac_id };
@@ -186,6 +191,11 @@ export default function TrainPage({
 
   const series = status?.series ?? EMPTY_SERIES;
   const progressPct = Math.round((status?.progress ?? 0) * 100);
+  const liveBudgetMode = status?.train_budget_mode ?? budgetMode;
+  const progressLabel =
+    liveBudgetMode === "episodes"
+      ? `${(status?.episodes ?? 0).toLocaleString()} / ${(status?.total_episodes ?? nEpisodes).toLocaleString()} episodes · ${progressPct}%`
+      : `${(status?.timesteps ?? 0).toLocaleString()} / ${(status?.total_timesteps ?? totalTs).toLocaleString()} steps · ${progressPct}%`;
   const showLive = loading || (status && status.status !== "idle");
   const showCharts = hasTrainChartData(series);
 
@@ -197,17 +207,61 @@ export default function TrainPage({
       <div className="grid-2">
         <section className="card">
           <h3>학습 파라미터</h3>
-          <label>
-            Total Timesteps
-            <input
-              type="number"
-              min={1000}
-              step={10000}
-              value={totalTs}
-              onChange={(e) => setTotalTs(Number(e.target.value))}
-              disabled={loading}
-            />
-          </label>
+          <fieldset className="mode-group train-range-group">
+            <legend>학습량 기준</legend>
+            <div className="mode-pills">
+              <label className={`mode-pill${budgetMode === "timesteps" ? " active" : ""}`}>
+                <input
+                  type="radio"
+                  name="train-budget"
+                  checked={budgetMode === "timesteps"}
+                  onChange={() => setBudgetMode("timesteps")}
+                  disabled={loading}
+                />
+                Timesteps
+              </label>
+              <label className={`mode-pill${budgetMode === "episodes" ? " active" : ""}`}>
+                <input
+                  type="radio"
+                  name="train-budget"
+                  checked={budgetMode === "episodes"}
+                  onChange={() => setBudgetMode("episodes")}
+                  disabled={loading}
+                />
+                Episodes
+              </label>
+            </div>
+          </fieldset>
+          {budgetMode === "timesteps" ? (
+            <label>
+              Total Timesteps
+              <input
+                type="number"
+                min={1000}
+                step={10000}
+                value={totalTs}
+                onChange={(e) => setTotalTs(Number(e.target.value))}
+                disabled={loading}
+              />
+            </label>
+          ) : (
+            <label>
+              목표 에피소드 수
+              <input
+                type="number"
+                min={1}
+                step={10}
+                value={nEpisodes}
+                onChange={(e) => setNEpisodes(Number(e.target.value))}
+                disabled={loading}
+              />
+            </label>
+          )}
+          <p className="hint">
+            {budgetMode === "timesteps"
+              ? "PPO 환경 step 누적 횟수 기준"
+              : "스케줄링 1판(reset~done) 완료 1회 = 에피소드 1회"}
+          </p>
           <label>
             Learning Rate
             <input
@@ -387,9 +441,7 @@ export default function TrainPage({
           <h3>학습 진행</h3>
           <div className="test-progress">
             <div className="test-progress-bar" style={{ width: `${progressPct}%` }} />
-            <span className="test-progress-label">
-              {(status?.timesteps ?? 0).toLocaleString()} / {(status?.total_timesteps ?? totalTs).toLocaleString()} steps · {progressPct}%
-            </span>
+            <span className="test-progress-label">{progressLabel}</span>
           </div>
 
           <div className="train-log-wrap">

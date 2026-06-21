@@ -13,7 +13,15 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 
 from config import CONFIG
 from env.scheduling_env import SchedulingEnv
-from agent.train_progress import TrainProgressState, ProgressCallback, EvalProgressCallback
+from agent.train_progress import (
+    TrainProgressState,
+    ProgressCallback,
+    EvalProgressCallback,
+    EpisodeBudgetCallback,
+    EPISODE_TRAIN_TIMESTEP_CEILING,
+    TRAIN_BUDGET_EPISODES,
+    TRAIN_BUDGET_TIMESTEPS,
+)
 
 
 def _mask_fn(env: SchedulingEnv) -> np.ndarray:
@@ -33,6 +41,7 @@ class SchedulingAgent:
         env_data: Union[dict, List[dict]],
         verbose: int = 1,
         progress_state: Optional[TrainProgressState] = None,
+        n_episodes: Optional[int] = None,
     ) -> "SchedulingAgent":
         """
         목적: 주어진 환경 데이터로 PPO 에이전트 학습
@@ -58,8 +67,25 @@ class SchedulingAgent:
         eval_env = DummyVecEnv([make_env(datasets[0])])
 
         callbacks = []
+        use_episode_budget = n_episodes is not None and n_episodes > 0
+        learn_timesteps = (
+            EPISODE_TRAIN_TIMESTEP_CEILING if use_episode_budget else cfg.total_timesteps
+        )
+
         if progress_state is not None:
+            if use_episode_budget:
+                progress_state.set_running(
+                    total_episodes=n_episodes,
+                    budget_mode=TRAIN_BUDGET_EPISODES,
+                )
+            else:
+                progress_state.set_running(
+                    total_timesteps=cfg.total_timesteps,
+                    budget_mode=TRAIN_BUDGET_TIMESTEPS,
+                )
             callbacks.append(ProgressCallback(progress_state))
+            if use_episode_budget:
+                callbacks.append(EpisodeBudgetCallback(progress_state, n_episodes))
             callbacks.append(
                 EvalProgressCallback(
                     progress_state,
@@ -72,6 +98,9 @@ class SchedulingAgent:
                 )
             )
         else:
+            if use_episode_budget:
+                from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
+                callbacks.append(StopTrainingOnMaxEpisodes(max_episodes=n_episodes))
             callbacks.extend([
                 EvalCallback(
                     eval_env,
@@ -102,12 +131,17 @@ class SchedulingAgent:
         if progress_state is not None:
             if len(datasets) > 1:
                 progress_state.add_log(f"VecEnv {len(datasets)}개 기간 병렬 학습")
+            budget_label = (
+                f"n_episodes={n_episodes:,}"
+                if use_episode_budget
+                else f"total_timesteps={cfg.total_timesteps:,}"
+            )
             progress_state.add_log(
-                f"하이퍼파라미터: lr={cfg.learning_rate}, n_steps={cfg.n_steps}, "
-                f"batch={cfg.batch_size}, eval_freq={cfg.eval_freq}"
+                f"하이퍼파라미터: {budget_label}, lr={cfg.learning_rate}, "
+                f"n_steps={cfg.n_steps}, batch={cfg.batch_size}, eval_freq={cfg.eval_freq}"
             )
         self.model.learn(
-            total_timesteps=cfg.total_timesteps,
+            total_timesteps=learn_timesteps,
             callback=callbacks,
             progress_bar=(verbose > 0 and progress_state is None),
         )

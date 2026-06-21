@@ -109,6 +109,8 @@ export const api = {
     learning_rate: number;
     w_same_oper: number;
     w_idle_per_min: number;
+    train_budget_mode?: "timesteps" | "episodes";
+    n_episodes?: number;
     input_folder?: string;
     input_folders?: string[];
     from_date?: string;
@@ -125,6 +127,8 @@ export const api = {
     learning_rate: number;
     w_same_oper: number;
     w_idle_per_min: number;
+    train_budget_mode?: "timesteps" | "episodes";
+    n_episodes?: number;
     input_folder?: string;
     input_folders?: string[];
     from_date?: string;
