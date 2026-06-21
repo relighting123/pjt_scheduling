@@ -30,7 +30,7 @@ def compute_obs_dim() -> int:
 
 class SchedulingEnv(gym.Env):
     """
-    Post-Scheduling 강화학습 환경
+    Scheduling 강화학습 환경
 
     - 관측: 전역 + PPK/OPER/MODEL bucket + 현재 idle EQP 상태
     - 행동: Discrete(O×P) – (PPK/OPER bucket). EQP·LOT은 규칙 자동 배정

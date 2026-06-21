@@ -1,6 +1,6 @@
 # pjt_scheduling
 
-반도체 **Post-Scheduling** 문제를 강화학습(RL)으로 해결하는 프로젝트입니다.  
+반도체 **Scheduling** 문제를 강화학습(RL)으로 해결하는 프로젝트입니다.  
 `discrete_arrange`·`abstract_arrange`를 입력으로 받아, EQP가 idle이 될 때마다 **(PPK, OPER) + EQP**를 선택하고 LOT은 규칙으로 자동 배정하여 **공정·제품 전환, Idle, LOT_CD/TEMP 전환, 계획 페이싱**을 최적화합니다.
 
 ---

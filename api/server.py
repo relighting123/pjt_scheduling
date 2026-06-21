@@ -31,7 +31,7 @@ from api.test_benchmark_store import (
 )
 from api.train_service import train_progress, start_training, is_training
 
-app = FastAPI(title="Post-Scheduling RL API", version="1.0.0")
+app = FastAPI(title="Scheduling RL API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -573,6 +573,8 @@ def get_inference_result():
     result = {
         "schedule": saved.get("schedule", []),
         "history": saved.get("history", []),
+        "event_log": saved.get("event_log", []),
+        "conversion_plans": saved.get("conversion_plans", []),
         "stats": saved.get("stats", {}),
         "plan": saved.get("plan", []),
         "prod_keys": env_data["prod_keys"],

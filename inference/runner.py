@@ -26,7 +26,7 @@ def run_inference(
     record_history: bool = True,
 ) -> dict:
     """
-    목적: 선택한 알고리즘으로 Post-Scheduling 추론 실행
+    목적: 선택한 알고리즘으로 Scheduling 추론 실행
     Input:
         env_data      (dict): preprocessor.preprocess() 반환값
         algorithm     (str):  "rl" | "minprogress" | "earliest_st"

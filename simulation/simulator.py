@@ -1,6 +1,7 @@
 ﻿"""
-simulation/simulator.py ???댁궛 ?ш굔 ?쒕??덉씠??DES) ?붿쭊
-RL ?섍꼍???대? ?쒕??덉씠?곕줈??EQP ?곹깭 諛?LOT 諛곗젙 ?대젰??愿由ы빀?덈떎.
+simulation/simulator.py – 이산 사건 시뮬레이션(DES) 엔진
+
+RL 환경의 내부 시뮬레이터로, EQP 상태 및 LOT 배정 이력을 관리합니다.
 """
 import copy
 import heapq
@@ -11,23 +12,21 @@ import numpy as np
 
 from config import CONFIG, RewardConfig
 from simulation.events import (
+    EVENT_CONV_ASSIGNED,
     EVENT_CONV_END,
-    EVENT_CONV_START,
     EVENT_JOB_ASSIGNED,
-    EVENT_JOB_START,
+    EVENT_IDLE,
+    EVENT_IDLE_DECISION,
     EVENT_MOVE_OUT,
     EVENT_PRIORITY,
     EVENT_PROCESS_END,
-    EVENT_TOOL_OCCUPY,
-    EVENT_TOOL_RELEASE,
-    EVENT_WIP_INJECT,
 )
 from utils.helpers import encode_normalized
 
 
 @dataclass(order=True)
 class SimEvent:
-    """DES ?대깽??????ぉ ??(time, priority, seq) ?쒖쑝濡?heap ?뺣젹."""
+    """DES 이벤트 큐 항목. (time, priority, seq) 순으로 heap 정렬."""
     time: int
     priority: int
     seq: int
@@ -36,7 +35,7 @@ class SimEvent:
 
 
 class ToolTracker:
-    """LOT_CD 횞 EQP_MODEL ?숈떆 媛怨??곹븳 異붿쟻."""
+    """LOT_CD × EQP_MODEL 동시 가공 상한 추적."""
 
     def __init__(self, capacity: dict, eqp_model_map: dict):
         self._capacity = dict(capacity)
@@ -70,7 +69,7 @@ class ToolTracker:
         return sum(ratios) / max(len(ratios), 1)
 
 
-# ?? ?꾨찓??媛앹껜 ???????????????????????????????????????????????????????????????
+# --- 도메인 객체 ---
 
 @dataclass
 class Lot:
@@ -80,7 +79,7 @@ class Lot:
     oper_id:         str
     seq:             int
     wf_qty:          int
-    processing_time: int   # 湲곕낯媛??먮낯 諛곗젙 EQP 湲곗?) ???ㅼ젣 ?ъ슜 ??proc_time_matrix 李몄“
+    processing_time: int   # 기본값(원본 배정 EQP 기준). 실제 사용 시 proc_time_matrix 참조
     priority:        int   = 1
     original_eqp:    str   = ""
     parent_lot_id:   str   = ""
@@ -107,13 +106,13 @@ class Equipment:
     conversion_count: int       = 0
 
 
-# ?? ?쒕??덉씠??????????????????????????????????????????????????????????????????
+# --- 시뮬레이터 ---
 
 class SchedulingSimulator:
     """
-    ?댁궛 ?ш굔 ?쒕??덉씠????EQP媛 idle???섎뒗 ?쒓컙留덈떎 ?먯씠?꾪듃 寃곗젙???붿껌?⑸땲??
+    이산 사건 시뮬레이터. EQP가 idle이 되는 시점마다 에이전트 결정을 요청합니다.
 
-    ?ъ슜 ?먮쫫:
+    사용 흐름:
         sim = SchedulingSimulator(env_data, config)
         sim.reset()
         while not sim.is_done():
@@ -131,13 +130,13 @@ class SchedulingSimulator:
         self._record_history = record_history
         self.reset()
 
-    # ?? 珥덇린????????????????????????????????????????????????????????????????
+    # --- 초기화 ---
 
     def reset(self):
         """
-        紐⑹쟻: ?쒕??덉씠?곕? 珥덇린 ?곹깭濡??섎룎由?(?먰뵾?뚮뱶 ?쒖옉)
-        Input:  ?놁쓬
-        Output: ?놁쓬 (?대? ?곹깭 珥덇린??
+        목적: 시뮬레이터를 초기 상태로 되돌림 (에피소드 시작)
+        Input:  없음
+        Output: 없음 (내부 상태 초기화)
         """
         data = self._env_data
 
@@ -200,7 +199,7 @@ class SchedulingSimulator:
         self._pending_step_events: List[dict] = []
         self._eqp_pending_assign: Dict[str, dict] = {}
         for eid in data["eqp_ids"]:
-            self._push_event(0, EVENT_JOB_START, eid)
+            self._push_event(0, EVENT_IDLE_DECISION, eid)
 
         self.schedule:   List[dict] = []
         self.conversion_plans: List[dict] = []
@@ -225,7 +224,7 @@ class SchedulingSimulator:
         if self._record_history:
             self._append_initial_history()
 
-    # ?? ?대깽????/ 濡쒓렇 ?????????????????????????????????????????????????????
+    # --- 이벤트 큐 / 로그 ---
 
     def _push_event(self, time: int, kind: str, eqp_id: str = "") -> None:
         priority = EVENT_PRIORITY.get(kind, 5)
@@ -246,7 +245,7 @@ class SchedulingSimulator:
         self._pending_step_events.append(record)
 
     def _pop_event_batch(self) -> List[SimEvent]:
-        """?대깽???먯뿉???숈씪 ?쒓컖 諛곗튂瑜?爰쇰깂."""
+        """이벤트 큐에서 동일 시각 배치를 꺼냄."""
         if not self._event_q:
             return []
         next_time = self._event_q[0].time
@@ -255,10 +254,10 @@ class SchedulingSimulator:
             batch.append(heapq.heappop(self._event_q))
         return batch
 
-    # ?? DES ?대깽???몃뱾??????????????????????????????????????????????????????
+    # --- DES 이벤트 핸들러 ---
 
     def _on_process_end(self, eqp_id: str) -> None:
-        """怨듭젙 ?꾨즺 ??move_out / tool_release / wip_inject (?숈씪 ?쒓컖)."""
+        """공정 완료 시 MOVE_OUT (다음 공정 유입 포함, 동일 시각)."""
         eqp = self.eqps.get(eqp_id)
         if not eqp or eqp.status != "busy":
             return
@@ -268,53 +267,42 @@ class SchedulingSimulator:
         if lot_id:
             meta = self._in_flight.get(lot_id, {})
             lot_cd = meta.get("lot_cd", "")
-            model = self._eqp_model_map.get(eqp_id, "A")
-            if lot_cd:
-                self._tool_tracker.release(lot_cd, eqp_id)
-                self._emit_event(
-                    EVENT_TOOL_RELEASE, eqp_id,
-                    lot_id=lot_id, lot_cd=lot_cd, eqp_model=model,
-                )
             next_wip = self._inject_wip_after_complete(lot_id, self.current_time)
-            self._emit_event(
-                EVENT_MOVE_OUT, eqp_id,
-                lot_id=lot_id,
-                lot_cd=lot_cd,
-                plan_prod_key=meta.get("plan_prod_key", ""),
-                oper_id=meta.get("oper_id", ""),
-            )
+            move_payload: Dict[str, Any] = {
+                "lot_id": lot_id,
+                "lot_cd": lot_cd,
+                "plan_prod_key": meta.get("plan_prod_key", ""),
+                "oper_id": meta.get("oper_id", ""),
+            }
             if next_wip:
-                self._emit_event(EVENT_WIP_INJECT, eqp_id, **next_wip)
+                move_payload["next_oper_id"] = next_wip["oper_id"]
+                move_payload["next_plan_prod_key"] = next_wip["plan_prod_key"]
+                move_payload["next_oper_in_time"] = next_wip.get("oper_in_time")
+            self._emit_event(EVENT_MOVE_OUT, eqp_id, **move_payload)
         eqp.status = "idle"
         eqp.current_lot = None
         eqp.current_oper = None
         eqp.current_prod = None
         eqp.free_at = self.current_time
 
-    def _on_job_start(self, eqp_id: str) -> None:
-        """寃곗젙????RL ?먯씠?꾪듃 PPK/OPER ?좏깮 (move_out 吏곹썑 ?숈씪 ?쒓컖)."""
+    def _on_idle_decision(self, eqp_id: str) -> None:
+        """idle EQP → 에이전트 배정 결정 시점 (event_log: IDLE)."""
         eqp = self.eqps.get(eqp_id)
         if not eqp or eqp.status != "idle":
             return
         if self.get_feasible_ppk_oper(eqp_id):
-            self._emit_event(EVENT_JOB_START, eqp_id)
+            self._emit_event(EVENT_IDLE, eqp_id, eqp_status="idle")
         else:
             self._schedule_wait_event(eqp_id, self.current_time)
 
     def _on_conv_end(self, eqp_id: str) -> None:
-        """Conversion ?꾨즺 ??tool ?먯쑀 + 媛怨??쒖옉 (??湲곕컲)."""
+        """Conversion 완료 후 가공 시작 (conv_end 기반)."""
         pending = self._eqp_pending_assign.pop(eqp_id, None)
         if not pending:
             return
         eqp = self.eqps.get(eqp_id)
         if not eqp or eqp.status != "converting":
             return
-        self._emit_event(
-            EVENT_CONV_END, eqp_id,
-            event_time=self.current_time,
-            from_lot_cd=pending.get("from_lot_cd"),
-            to_lot_cd=pending.get("lot_cd"),
-        )
         eqp.status = "idle"
         self._finalize_assignment(
             eqp_id,
@@ -325,10 +313,10 @@ class SchedulingSimulator:
 
     def _advance_to_next_decision(self) -> None:
         """
-        DES ???꾩쭊:
-          1) process_end ??move_out/tool/wip
-          2) ?숈씪 ?쒓컖 job_start (idle gap ?놁쓬)
-          3) 寃곗젙??諛섑솚 (_current_eqp)
+        DES 시간 전진:
+          1) process_end → move_out/tool/wip
+          2) 동일 시각 idle (idle gap 없음)
+          3) 결정점 반환 (_current_eqp)
         """
         self._current_eqp = None
         while self._event_q:
@@ -336,20 +324,20 @@ class SchedulingSimulator:
             t = batch[0].time
             self.current_time = t
 
-            deferred_job_starts: List[str] = []
+            deferred_idle_decisions: List[str] = []
             for ev in batch:
                 if ev.kind == EVENT_PROCESS_END:
                     self._on_process_end(ev.eqp_id)
-                    deferred_job_starts.append(ev.eqp_id)
-                elif ev.kind == EVENT_JOB_START:
-                    self._on_job_start(ev.eqp_id)
+                    deferred_idle_decisions.append(ev.eqp_id)
+                elif ev.kind == EVENT_IDLE_DECISION:
+                    self._on_idle_decision(ev.eqp_id)
                 elif ev.kind == EVENT_CONV_END:
                     self._on_conv_end(ev.eqp_id)
 
-            for eqp_id in deferred_job_starts:
-                self._on_job_start(eqp_id)
+            for eqp_id in deferred_idle_decisions:
+                self._on_idle_decision(eqp_id)
 
-            for eqp_id in deferred_job_starts:
+            for eqp_id in deferred_idle_decisions:
                 self._schedule_wait_event(eqp_id, t)
 
             if self._current_eqp is None:
@@ -358,10 +346,10 @@ class SchedulingSimulator:
             if self._current_eqp:
                 return
 
-    # ?? 寃곗젙 ?ъ씤???먯깋 ?????????????????????????????????????????????????????
+    # --- 결정 시점 / 내부 헬퍼 ---
 
     def _apply_eqp_initial_state(self, rows: List[dict]) -> None:
-        """JSON eqp_initial_state ??Equipment prev_lot_cd/temp/prod."""
+        """JSON eqp_initial_state → Equipment prev_lot_cd/temp/prod."""
         for row in rows:
             eid = row.get("eqp_id")
             if not eid or eid not in self.eqps:
@@ -371,6 +359,7 @@ class SchedulingSimulator:
             temp = row.get("temp") or None
             if lot_cd:
                 eqp.prev_lot_cd = lot_cd
+                self._tool_tracker.occupy(lot_cd, eid)
             if temp:
                 eqp.prev_temp = temp
             if row.get("plan_prod_key"):
@@ -379,7 +368,7 @@ class SchedulingSimulator:
                 eqp.prev_oper = row["oper_id"]
 
     def _bucket_lot_cd_temp(self, ppk: str, oper_id: str) -> Tuple[str, str]:
-        """(PPK, OPER) WIP ???LOT_CD/TEMP ??batch_info ?곗꽑."""
+        """(PPK, OPER) WIP 풀의 LOT_CD/TEMP. batch_info 우선."""
         route = self._env_data.get("batch_info_map", {}).get((ppk, oper_id))
         if route:
             return route["lot_cd"], route["temp"]
@@ -401,7 +390,7 @@ class SchedulingSimulator:
         return eqp.prev_lot_cd != lot_cd or (eqp.prev_temp or "") != (temp or "")
 
     def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
-        """EQP?먯꽌 ?ъ엯 媛?ν븳 LOT 以?理쒖냼 ?뚯슂?쒓컙(ST)"""
+        """EQP에서 투입 가능한 LOT 중 최소 소요시간(ST)."""
         lots = self.available_lots(eqp_id)
         if not lots:
             return None
@@ -415,7 +404,7 @@ class SchedulingSimulator:
         ]
 
     def _pick_next_idle_eqp(self) -> Optional[str]:
-        """?ㅼ쓬 寃곗젙 EQP ??order: 紐⑸줉 ?쒖꽌, min_st: idle EQP 以?理쒖냼 ST ?곗꽑"""
+        """다음 결정 EQP. order: 목록 순서, min_st: idle EQP 중 최소 ST 우선."""
         candidates = self._idle_eqps_with_work()
         if not candidates:
             return None
@@ -427,7 +416,7 @@ class SchedulingSimulator:
         return candidates[0]
 
     def _next_wip_ready_time(self, after: int) -> Optional[int]:
-        """WIP ??먯꽌 after ?댄썑 ?ъ엯 媛?ν빐吏??媛???대Ⅸ oper_in_time."""
+        """WIP 풀에서 after 이후 투입 가능해지는 가장 이른 oper_in_time."""
         candidates: List[int] = []
         for wip in self._wip_pool.values():
             if wip["wip_qty"] <= 0:
@@ -443,12 +432,12 @@ class SchedulingSimulator:
             return
         next_ready = self._next_wip_ready_time(time)
         if next_ready is not None and next_ready <= self.sim_end:
-            self._push_event(next_ready, EVENT_JOB_START, eqp_id)
+            self._push_event(next_ready, EVENT_IDLE_DECISION, eqp_id)
         elif time < self.sim_end:
-            self._push_event(self.sim_end, EVENT_JOB_START, eqp_id)
+            self._push_event(self.sim_end, EVENT_IDLE_DECISION, eqp_id)
 
     def _select_same_time_next_eqp(self):
-        """諛곗젙 吏곹썑 ?숈씪 ?쒓컖???ㅻⅨ idle EQP 寃곗젙 ?ъ씤???먯깋 (?쒓컙 ?꾩쭊 ?놁쓬)"""
+        """배정 직후 동일 시각에 다른 idle EQP 결정 시점 선점 (시간 전진 없음)."""
         self._current_eqp = self._pick_next_idle_eqp()
 
     def _wip_key(self, ppk: str, oper_id: str) -> Tuple[str, str]:
@@ -458,7 +447,7 @@ class SchedulingSimulator:
         return self._wip_pool.get(self._wip_key(ppk, oper_id))
 
     def _eqp_can_process(self, eqp_id: str, ppk: str, oper_id: str) -> bool:
-        """abstract route(MODEL) ?먮뒗 discrete eqp_oper_cap 湲곗? 泥섎━ 媛??"""
+        """abstract route(MODEL) 또는 discrete eqp_oper_cap 기준 처리 가능."""
         model = self._eqp_model_map.get(eqp_id, "A")
         route_map = self._env_data.get("abstract_route_map", {})
         if (ppk, oper_id, model) in route_map:
@@ -477,7 +466,7 @@ class SchedulingSimulator:
         return None
 
     def _materialize_abstract_rows(self) -> List[dict]:
-        """?쒗뵆由?+ WIP ? ??UI/?덉뒪?좊━??abstract arrange."""
+        """템플릿 + WIP 풀 → UI/히스토리용 abstract arrange."""
         rows = []
         for tmpl in self._abstract_template:
             wip = self._wip_for(tmpl["plan_prod_key"], tmpl["oper_id"])
@@ -498,7 +487,7 @@ class SchedulingSimulator:
     def _inject_wip(
         self, ppk: str, oper_id: str, lot_id: str, oper_in_time: int, meta: dict,
     ) -> None:
-        """?꾩냽 ?ш났 ?좎엯: (PPK,OPER) WIP +1, oper_in_time 媛깆떊."""
+        """후속 재공 유입: (PPK,OPER) WIP +1, oper_in_time 갱신."""
         key = self._wip_key(ppk, oper_id)
         if key not in self._wip_pool:
             self._wip_pool[key] = {
@@ -534,7 +523,7 @@ class SchedulingSimulator:
             wip["lot_ids"].remove(lot_id)
 
     def _inject_wip_after_complete(self, lot_id: str, complete_time: int) -> Optional[dict]:
-        """??怨듭젙 ?꾨즺 ???ㅼ쓬 怨듭젙 WIP +1. move_out ?쒖젏???몄텧."""
+        """한 공정 완료 후 다음 공정 WIP +1. move_out 시점에 호출."""
         meta = self._in_flight.pop(lot_id, None)
         if not meta:
             return None
@@ -595,7 +584,7 @@ class SchedulingSimulator:
         return rows
 
     def _lot_injectable(self, lot_id: str) -> bool:
-        """LOT???꾩옱 ?쒓컖???ъ엯 媛?ν븳吏 (?쒕? 醫낅즺 ??+ 誘몃같??"""
+        """LOT이 현재 시각에 투입 가능한지 (시뮬 종료 전 + 미배정)."""
         if lot_id not in self.lot_pool:
             return False
         return self.current_time <= self.sim_end
@@ -605,7 +594,7 @@ class SchedulingSimulator:
 
     def _get_available_lots(self, eqp_id: str) -> List[str]:
         """
-        紐⑹쟻: EQP??諛곗젙 媛?ν븯硫??ъ엯 湲고븳 ?대궡??LOT 紐⑸줉 諛섑솚
+        목적: EQP에 배정 가능하면 투입 기한 내 LOT 목록 반환
         """
         return [
             lid for lid in self.eqp_queues.get(eqp_id, [])
@@ -614,7 +603,7 @@ class SchedulingSimulator:
 
     def get_remaining_arrange_actual(self) -> List[dict]:
         """
-        紐⑹쟻: ?꾩옱 ?쒖젏 ?ъ엯 媛?ν븳 (EQP, LOT) Actual arrange 議고빀
+        목적: 현재 시점 투입 가능한 (EQP, LOT) Actual arrange 조합
         """
         rows = []
         for row in self._initial_arrange:
@@ -631,11 +620,11 @@ class SchedulingSimulator:
         return rows
 
     def get_abstract_arrange(self) -> List[dict]:
-        """PPK횞OPER횞MODEL ?쒗뵆由?+ (PPK,OPER) WIP 移댁슫??"""
+        """PPK×OPER×MODEL 템플릿 + (PPK,OPER) WIP 카운트."""
         return self._materialize_abstract_rows()
 
     def get_wip_waiting(self) -> Dict[str, int]:
-        """(PPK|OPER)蹂??湲?WIP ?⑥씠??????abstract WIP ? 湲곗?."""
+        """(PPK|OPER)별 대기 WIP 웨이퍼 수. abstract WIP 풀 기준."""
         wip: Dict[str, int] = {}
         wf_defaults: Dict[str, int] = {}
         for tmpl in self._abstract_template:
@@ -687,7 +676,7 @@ class SchedulingSimulator:
         ppk: str = "",
         eqp_model: str = "",
     ) -> tuple:
-        """LOT_CD/TEMP 蹂寃???conversion ?꾩슂 ?щ?쨌?쒖옉 ?쒓컖쨌蹂댁긽."""
+        """LOT_CD/TEMP 변경 시 conversion 필요 여부·시작 시각·보상."""
         start_time = max(self.current_time, eqp.free_at)
         reward = self._accumulate_idle(eqp, reward, start_time)
         needs_conv = (
@@ -699,15 +688,24 @@ class SchedulingSimulator:
             eqp.conversion_count += 1
             self.stats["conversions"] += 1
             conv_end = start_time + self._conversion_minutes
+            from_lot_cd = eqp.prev_lot_cd
+            if from_lot_cd:
+                self._tool_tracker.release(from_lot_cd, eqp.eqp_id)
+            self._tool_tracker.occupy(lot_cd, eqp.eqp_id)
             self._emit_event(
-                EVENT_CONV_START, eqp.eqp_id,
+                EVENT_CONV_ASSIGNED, eqp.eqp_id,
                 event_time=start_time,
-                from_lot_cd=eqp.prev_lot_cd,
+                from_lot_cd=from_lot_cd,
                 from_temp=eqp.prev_temp or "",
                 to_lot_cd=lot_cd,
                 to_temp=temp,
                 oper_id=oper_id,
                 plan_prod_key=ppk,
+                eqp_model=eqp_model,
+                conv_duration_min=self._conversion_minutes,
+                conv_end_tm=conv_end,
+                tool_from_delta=1,
+                tool_to_delta=-1,
             )
             self.conversion_plans.append({
                 "eqp_id":        eqp.eqp_id,
@@ -731,7 +729,7 @@ class SchedulingSimulator:
         return 0.0
 
     def _has_plan(self, ppk: str, oper_id: str) -> bool:
-        """(PPK, OPER)???좏슚 怨꾪쉷?됱씠 ?덉쑝硫?True."""
+        """(PPK, OPER)에 유효 계획량이 있으면 True."""
         pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
         return bool(pm and pm.get("d0_plan_qty", 0) > 0)
 
@@ -755,7 +753,7 @@ class SchedulingSimulator:
     def _pacing_shaping_reward(
         self, ppk: str, oper_id: str, wf_qty: int, at_time: Optional[int] = None,
     ) -> float:
-        """怨꾪쉷???덈뒗 (PPK, OPER)留?吏곸꽑 ?섏씠??shaping."""
+        """계획이 있는 (PPK, OPER)만 페이싱 shaping."""
         cfg = self._reward_cfg
         if cfg.w_pacing <= 0 or not self._has_plan(ppk, oper_id):
             return 0.0
@@ -772,7 +770,7 @@ class SchedulingSimulator:
         return cfg.w_pacing * (err_before - err_after) / plan_qty
 
     def _ppk_has_feasible_assignment(self, ppk: str) -> bool:
-        """?꾩옱 ?쒖젏???대떦 PPK濡??ъ엯 媛?ν븳 (OPER, EQP) 議고빀???덈뒗吏."""
+        """현재 시점에 해당 PPK로 투입 가능한 (OPER, EQP) 조합이 있는지."""
         for flat, _ei in self.get_feasible_assignments():
             candidate_ppk, _oper = self.ppk_oper_from_flat(flat)
             if candidate_ppk == ppk:
@@ -780,7 +778,7 @@ class SchedulingSimulator:
         return False
 
     def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
-        """媛숈? PPK???ш났???⑥쓣 ?뚮쭔 蹂대꼫?? 怨좉컝??PPK?먯꽌 ?꾪솚 ???뚭퇋紐?蹂대꼫??"""
+        """같은 PPK의 재공이 남으면 보너스. 관련 PPK에서 전환 시 페널티 보너스."""
         cfg = self._reward_cfg
         if eqp.prev_prod == ppk:
             if self._ppk_has_feasible_assignment(ppk):
@@ -809,7 +807,7 @@ class SchedulingSimulator:
         return best["lot_id"]
 
     def assign_ppk_oper(self, eqp_id: str, ppk: str, oper_id: str) -> float:
-        """(PPK, OPER) ?좏깮 ??LOT ?먮룞 諛곗젙."""
+        """(PPK, OPER) 선택 후 LOT 자동 배정."""
         lots = [
             l for l in self.available_lots(eqp_id)
             if l["plan_prod_key"] == ppk and l["oper_id"] == oper_id
@@ -846,7 +844,7 @@ class SchedulingSimulator:
         return ppk, oper_id
 
     def get_feasible_ppk_oper(self, eqp_id: str) -> List[int]:
-        """吏??EQP?먯꽌 ?좏슚??ppk_oper_flat_idx 紐⑸줉."""
+        """지정 EQP에서 유효한 ppk_oper_flat_idx 목록."""
         if self.eqps[eqp_id].status != "idle":
             return []
         lots = self.available_lots(eqp_id)
@@ -869,7 +867,7 @@ class SchedulingSimulator:
         return feasible
 
     def get_feasible_assignments(self) -> List[tuple]:
-        """?좏슚 (ppk_oper_flat_idx, eqp_idx) 紐⑸줉 ???섏쐞 ?명솚."""
+        """유효 (ppk_oper_flat_idx, eqp_idx) 목록. 하위 호환."""
         data = self._env_data
         eqp_ids = data["eqp_ids"]
         feasible = []
@@ -885,18 +883,18 @@ class SchedulingSimulator:
             and self.get_feasible_ppk_oper(eid)
         ]
 
-    # ?? 怨듦컻 API ?????????????????????????????????????????????????????????????
+    # --- 공개 API ---
 
     def current_idle_eqp(self) -> Optional[str]:
         """
-        紐⑹쟻: ?꾩옱 寃곗젙 ?湲?以묒씤 idle EQP ID 諛섑솚
-        Input:  ?놁쓬
-        Output: "EQP001" ?먮뒗 None (?쒕??덉씠??醫낅즺)
+        목적: 현재 결정 대기 중인 idle EQP ID 반환
+        Input:  없음
+        Output: "EQP001" 또는 None (시뮬레이션 종료)
         """
         return self._current_eqp
 
     def _lot_candidates_for_eqp(self, eqp_id: str) -> List[dict]:
-        """EQP??諛곗젙 媛?ν븳 WIP LOT ?꾨낫 (abstract route + WIP ?)."""
+        """EQP에 배정 가능한 WIP LOT 후보 (abstract route + WIP 풀)."""
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
         lots: List[dict] = []
         for row in self._abstract_assignable_on_eqp(eqp_id):
@@ -938,8 +936,8 @@ class SchedulingSimulator:
 
     def available_lots(self, eqp_id: str) -> List[dict]:
         """
-        紐⑹쟻: ?먯씠?꾪듃 ?좏깮???꾪븳 LOT ?곸꽭 ?뺣낫 由ъ뒪??諛섑솚.
-        abstract WIP ? + MODEL route 湲곗? (discrete eqp ?먯뿉 ?놁뼱??媛??.
+        목적: 에이전트 선택을 위한 LOT 상세 정보 리스트 반환.
+        abstract WIP 풀 + MODEL route 기준 (discrete eqp 없어도 가능).
         """
         lots = self._lot_candidates_for_eqp(eqp_id)
         for item in lots:
@@ -970,7 +968,7 @@ class SchedulingSimulator:
         start_time: int,
         proc_reward: float,
     ) -> float:
-        """tool ?먯쑀 + 媛怨??ㅼ?以??깅줉 (利됱떆 ?먮뒗 conv_end ??."""
+        """tool 점유 + 가공 스케줄 등록 (즉시 또는 conv_end 후)."""
         eqp = self.eqps[eqp_id]
         lot_id = pending["lot_id"]
         ppk = pending["ppk"]
@@ -999,11 +997,10 @@ class SchedulingSimulator:
         eqp.prev_lot_cd = lot_cd
         eqp.prev_temp = temp
 
-        self._tool_tracker.occupy(lot_cd, eqp_id)
-        self._emit_event(
-            EVENT_TOOL_OCCUPY, eqp_id,
-            lot_id=lot_id, lot_cd=lot_cd, eqp_model=row["eqp_model"],
-        )
+        had_conv = pending.get("had_conversion", False)
+        if not had_conv and eqp.prev_lot_cd is None and lot_cd:
+            # 최초 장착(이후 동일 LOT_CD/TEMP는 conversion 없이 유지)
+            self._tool_tracker.occupy(lot_cd, eqp_id)
         self._push_event(end_time, EVENT_PROCESS_END, eqp_id)
 
         self._in_flight[lot_id] = {
@@ -1021,7 +1018,6 @@ class SchedulingSimulator:
             self.stats["completed_qty"].get((ppk, oper_id), 0) + wf_qty
         )
 
-        had_conv = pending.get("had_conversion", False)
         self.schedule.append({
             "EQP_ID":        eqp_id,
             "LOT_ID":        lot_id,
@@ -1058,15 +1054,6 @@ class SchedulingSimulator:
             "oper_in_time":  oper_in_time,
             "abs_key":       row.get("abs_key"),
         }
-        self._emit_event(
-            EVENT_JOB_ASSIGNED, eqp_id,
-            lot_id=lot_id,
-            lot_cd=lot_cd,
-            plan_prod_key=ppk,
-            oper_id=oper_id,
-            start_tm=start_time,
-            end_tm=end_time,
-        )
         self._select_same_time_next_eqp()
         return reward
 
@@ -1084,7 +1071,7 @@ class SchedulingSimulator:
         oper_in_time: int,
         is_abstract: bool,
     ) -> float:
-        """怨듯넻 諛곗젙: conversion + tool + WIP -1."""
+        """공통 배정: conversion + tool + WIP -1."""
         eqp = self.eqps[eqp_id]
         cfg = self._reward_cfg
         reward = 0.0
@@ -1106,6 +1093,14 @@ class SchedulingSimulator:
         reward += self._same_prod_reward(eqp, ppk)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty)
         reward += cfg.w_completion * wf_qty / 25.0
+
+        self._emit_event(
+            EVENT_JOB_ASSIGNED, eqp_id,
+            lot_id=lot_id,
+            lot_cd=lot_cd,
+            plan_prod_key=ppk,
+            oper_id=oper_id,
+        )
 
         conv_start, conv_end, reward, needs_conv = self._apply_conversion_start(
             eqp, lot_cd, temp, reward,
@@ -1144,7 +1139,7 @@ class SchedulingSimulator:
         )
 
     def assign_lot(self, eqp_id: str, lot_id: str) -> float:
-        """LOT 諛곗젙 ??abstract WIP ??먯꽌 -1, conversion/tool ?곸슜."""
+        """LOT 배정. abstract WIP 풀에서 -1, conversion/tool 적용."""
         lot = self.lot_pool.get(lot_id)
         meta = self._wip_lot_meta.get(lot_id, {})
 
@@ -1187,7 +1182,7 @@ class SchedulingSimulator:
         return reward
 
     def _append_initial_history(self):
-        """?먰뵾?뚮뱶 ?쒖옉 ??arrange ?꾩껜 ?곹깭 ?ㅻ깄??(step 0)"""
+        """에피소드 시작 시 arrange 전체 상태 스냅샷 (step 0)."""
         self.history.append({
             "step":       0,
             "time":       self.current_time,
@@ -1223,7 +1218,8 @@ class SchedulingSimulator:
 
     def is_done(self) -> bool:
         """
-        紐⑹쟻: ?쒕??덉씠??醫낅즺 ??Actual쨌異붿긽 ?ъ엯 媛??議고빀 ?녾퀬 泥섎━ 以묒씤 ?ш났???놁쓣 ??        """
+        목적: 시뮬레이션 종료 — Actual·추상 투입 가능 조합 없고 처리 중인 재공도 없을 때.
+        """
         if self._current_eqp is not None:
             return False
         if self._has_pending_processing():
@@ -1237,9 +1233,10 @@ class SchedulingSimulator:
         wip_waiting_snapshot: Optional[Dict[str, int]] = None,
     ):
         """
-        紐⑹쟻: UI ?④퀎蹂??ъ깮???꾪빐 ?꾩옱 ?쒕??덉씠???곹깭 ?ㅻ깄?????        Input:  arrange_snapshot ??諛곗젙 吏곸쟾 Actual 議고빀
-                arrange_abstract_snapshot ??諛곗젙 吏곸쟾 異붿긽 ?좎엯 ?ш났
-                wip_waiting_snapshot ??諛곗젙 吏곸쟾 ?湲?WIP (END_TM 諛섏쁺 ??
+        목적: UI 단계별 재생을 위해 현재 시뮬레이션 상태 스냅샷 저장.
+        Input:  arrange_snapshot — 배정 직전 Actual 조합
+                arrange_abstract_snapshot — 배정 직전 추상 투입 재공
+                wip_waiting_snapshot — 배정 직전 대기 WIP (END_TM 반영 등)
         """
         self._step_idx += 1
         assigned = self._last_assigned
@@ -1283,13 +1280,13 @@ class SchedulingSimulator:
         })
         self._pending_step_events = []
 
-    # ?? Bucket(=PPK횞MODEL횞OPER) feature ?먯꽌 ??????????????????????????????????
+    # --- Bucket(=PPK×MODEL×OPER) feature ---
     BUCKET_FEATURES = 14
 
     def get_bucket_features(self) -> np.ndarray:
         """
-        Bucket = (oper, ppk, model) ?⑥쐞 feature ?먯꽌. shape (O, P, K, F).
-        梨꾨꼸: 0 valid, 1 wip/total, 2 wip/ppk, 3 min_end_time,
+        Bucket = (oper, ppk, model) 단위 feature 텐서. shape (O, P, K, F).
+        채널: 0 valid, 1 wip/total, 2 wip/ppk, 3 min_end_time,
               4 throughput_ratio, 5 same_ppk, 6 prev_takt, 7 post_takt,
               8 self_st(per-wafer), 9 plan_urgency,
               10 wip_lot_cd, 11 wip_temp,
@@ -1320,13 +1317,13 @@ class SchedulingSimulator:
 
         feats = np.zeros((O, P, K, F), dtype=np.float32)
 
-        # (oper, model) ??泥섎━ 媛??EQP 紐⑸줉 (min_end_time / throughput??
+        # (oper, model) 별 처리 가능 EQP 목록 (min_end_time / throughput용)
         eqps_by_om: Dict[tuple, List[str]] = {}
         for e, model in eqp_model_map.items():
             for op in eqp_oper_cap.get(e, []):
                 eqps_by_om.setdefault((op, model), []).append(e)
 
-        # WIP 吏묎퀎 (ppk, oper)
+        # WIP 집계 (ppk, oper)
         wip_po: Dict[tuple, float] = {}
         ppk_wip: Dict[str, float] = {}
         total_wip = 0.0
@@ -1356,7 +1353,7 @@ class SchedulingSimulator:
             return None
 
         def eff_takt(ppk: str, op: Optional[str]) -> float:
-            """?섏슂 ?섏씠??怨꾪쉷 ?덉쓣 ?? + capacity. per-lot 媛꾧꺽(遺?."""
+            """수요 페이싱 계획 있을 때 + capacity. per-lot 간격(분)."""
             if op is None:
                 return 0.0
             lst = routes_by.get((ppk, op))
@@ -1399,7 +1396,7 @@ class SchedulingSimulator:
                     model = eqp_models[mi]
                     eqp_list = eqps_by_om.get((op, model))
                     if not eqp_list:
-                        continue  # ??model濡?泥섎━ 遺덇? ??invalid ?⑤뵫(0)
+                        continue  # 이 model로 처리 불가 → invalid 패딩(0)
                     st = st_per_wafer(ppk, op, model)
                     min_end = min(self.eqps[e].free_at for e in eqp_list)
                     proc_full = (st * wf_unit) if st is not None else 0.0
@@ -1427,10 +1424,10 @@ class SchedulingSimulator:
                         )
         return feats
 
-    # ?? 愿痢?踰≫꽣 ?앹꽦 (Global + Bucket + EQP local + Context) ????????????????
+    # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
 
     def get_observation(self) -> np.ndarray:
-        """愿痢? Global(6) + Bucket(O횞P횞K횞F) + current EQP(6) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(6) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P = cfg.max_oper_count, cfg.max_prod_count

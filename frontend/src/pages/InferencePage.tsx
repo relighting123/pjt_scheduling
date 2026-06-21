@@ -598,7 +598,7 @@ export default function InferencePage({
 
     <div className="page">
 
-      <h2>Post-Scheduling 추론 및 시각화</h2>
+      <h2>Scheduling 추론 및 시각화</h2>
 
       <section className="card inference-dataset-card">
 
@@ -1365,6 +1365,8 @@ export default function InferencePage({
                           result.oper_ids,
 
                           ganttAxis,
+
+                          result.conversion_plans ?? [],
 
                         )}
 

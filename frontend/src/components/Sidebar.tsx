@@ -19,7 +19,7 @@ export default function Sidebar({
     <aside className={`sidebar${open ? "" : " is-collapsed"}`}>
       <div className="sidebar-header">
         <div>
-          <h1 className="sidebar-title">Post-Scheduling RL</h1>
+          <h1 className="sidebar-title">Scheduling RL</h1>
           <p className="sidebar-subtitle">반도체 설비 스케줄링 최적화</p>
         </div>
         <button

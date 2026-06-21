@@ -53,15 +53,17 @@ export interface HistorySnap {
 }
 
 export type SimEventKind =
-  | "PROCESS_END"
   | "MOVE_OUT"
+  | "IDLE"
+  | "JOB_ASSIGNED"
+  | "CONV_ASSIGNED"
   | "TOOL_RELEASE"
   | "WIP_INJECT"
-  | "JOB_START"
-  | "CONV_START"
-  | "CONV_END"
   | "TOOL_OCCUPY"
-  | "JOB_ASSIGNED";
+  | "PROCESS_END"
+  | "IDLE_DECISION"
+  | "CONV_START"
+  | "CONV_END";
 
 export interface SimEvent {
   time: number;
@@ -72,13 +74,30 @@ export interface SimEvent {
   eqp_model?: string;
   plan_prod_key?: string;
   oper_id?: string;
+  next_oper_id?: string;
+  next_plan_prod_key?: string;
+  next_oper_in_time?: number;
   from_lot_cd?: string;
   to_lot_cd?: string;
   from_temp?: string;
   to_temp?: string;
   start_tm?: number;
   end_tm?: number;
+  conv_duration_min?: number;
+  conv_end_tm?: number;
+  tool_from_delta?: number;
+  tool_to_delta?: number;
   oper_in_time?: number;
+  eqp_status?: string;
+}
+
+export interface ConversionPlan {
+  eqp_id: string;
+  from_lot_cd: string;
+  to_lot_cd: string;
+  conv_start_min: number;
+  conv_end_min: number;
+  conv_time?: number;
 }
 
 export interface InferenceStats {
@@ -92,6 +111,7 @@ export interface InferenceResult {
   schedule: ScheduleRecord[];
   history: HistorySnap[];
   event_log?: SimEvent[];
+  conversion_plans?: ConversionPlan[];
   stats: InferenceStats;
   plan: PlanRecord[];
   prod_keys: string[];

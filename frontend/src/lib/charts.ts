@@ -1,5 +1,5 @@
 import type { Data, Layout } from "plotly.js";
-import type { HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
+import type { ConversionPlan, HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
 import { buildColorMap, OPER_BORDER_COLORS, PROD_COLORS } from "./colors";
 
 export interface GanttAxisOptions {
@@ -134,6 +134,63 @@ function ganttTraces(
   return [...traces, ...legendTraces(prodKeys, operIds, schedule)];
 }
 
+function conversionLegendTrace(hasConversion: boolean): Data {
+  return {
+    type: "bar",
+    orientation: "h",
+    x: [0],
+    y: [""],
+    name: "Conversion",
+    marker: {
+      color: "#f59e0b",
+      opacity: 0.88,
+      line: { color: "#b45309", width: 2 },
+      cornerradius: 6,
+    },
+    showlegend: true,
+    visible: hasConversion ? true : "legendonly",
+  };
+}
+
+function conversionTraces(
+  plans: ConversionPlan[],
+  visibleUntilTime: number,
+): Data[] {
+  return plans
+    .filter((p) => p.conv_start_min < visibleUntilTime)
+    .map((p) => {
+      const end = Math.min(p.conv_end_min, visibleUntilTime);
+      const width = Math.max(end - p.conv_start_min, 0);
+      if (width <= 0) return null;
+      return {
+        type: "bar",
+        orientation: "h",
+        x: [width],
+        y: [p.eqp_id],
+        base: [p.conv_start_min],
+        marker: {
+          color: "#f59e0b",
+          opacity: 0.88,
+          line: { color: "#b45309", width: 2 },
+          cornerradius: 6,
+        },
+        text: `CONV ${p.from_lot_cd}→${p.to_lot_cd}`,
+        textposition: "inside",
+        insidetextanchor: "middle",
+        textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
+        hovertemplate:
+          `<b>Conversion</b><br>` +
+          `EQP: ${p.eqp_id}<br>` +
+          `${p.from_lot_cd} → ${p.to_lot_cd}<br>` +
+          `시작: ${p.conv_start_min}분<br>` +
+          `종료: ${p.conv_end_min}분<br>` +
+          `소요: ${p.conv_end_min - p.conv_start_min}분<extra></extra>`,
+        showlegend: false,
+      } as Data;
+    })
+    .filter((t): t is Data => t !== null);
+}
+
 function buildGanttLayout(
   title: string,
   axis: GanttAxisOptions,
@@ -191,6 +248,7 @@ export function buildStepGantt(
   prodKeys: string[],
   operIds: string[],
   axis: GanttAxisOptions,
+  conversionPlans: ConversionPlan[] = [],
 ): { data: Data[]; layout: Partial<Layout> } {
   if (!history.length) {
     return {
@@ -200,10 +258,16 @@ export function buildStepGantt(
   }
   const snap = history[Math.min(step, history.length - 1)];
   const schedule = snap.schedule;
+  const convBars = conversionTraces(conversionPlans, snap.time + 1);
+  const hasConv = convBars.length > 0;
   return {
-    data: ganttTraces(schedule, prodKeys, operIds, schedule.length - 1),
+    data: [
+      ...ganttTraces(schedule, prodKeys, operIds, schedule.length - 1),
+      ...convBars,
+      conversionLegendTrace(hasConv),
+    ],
     layout: buildGanttLayout(
-      `Post-Scheduling 간트 (스텝 ${snap.step} / 시각 ${snap.time}분)`,
+      `Scheduling 간트 (스텝 ${snap.step} / 시각 ${snap.time}분)`,
       axis,
     ),
   };
@@ -543,10 +607,10 @@ export function buildComparisonKpi(
   return {
     data: [
       { type: "bar", name: "초기 스케줄", x: metrics, y: [initS.makespan, initS.idle_total, initS.oper_switches, initS.prod_switches], marker: { color: "#4C72B0" } },
-      { type: "bar", name: "Post-Scheduling", x: metrics, y: [postS.makespan, postS.idle_total, postS.oper_switches, postS.prod_switches], marker: { color: "#55A868" } },
+      { type: "bar", name: "Scheduling", x: metrics, y: [postS.makespan, postS.idle_total, postS.oper_switches, postS.prod_switches], marker: { color: "#55A868" } },
     ],
     layout: {
-      title: { text: "초기 스케줄 vs Post-Scheduling KPI 비교" },
+      title: { text: "초기 스케줄 vs Scheduling KPI 비교" },
       barmode: "group",
       yaxis: { title: { text: "값" } },
       plot_bgcolor: "white",
@@ -570,7 +634,7 @@ export function buildAchievementComparison(
   return {
     data: [
       { type: "bar", name: "초기 스케줄", x: labels, y: labels.map((l) => initS.achievement[l] ?? 0), marker: { color: "#4C72B0" } },
-      { type: "bar", name: "Post-Scheduling", x: labels, y: labels.map((l) => postS.achievement[l] ?? 0), marker: { color: "#55A868" } },
+      { type: "bar", name: "Scheduling", x: labels, y: labels.map((l) => postS.achievement[l] ?? 0), marker: { color: "#55A868" } },
     ],
     layout: {
       title: { text: "제품/공정별 계획 달성률 비교 (%)" },
@@ -753,6 +817,27 @@ export function buildAlgorithmGanttComparison(
       showlegend: i === 0 && (t as { showlegend?: boolean }).showlegend !== false,
     }));
     data.push(...traces);
+
+    const convPlans = entry.result.conversion_plans ?? [];
+    const maxEnd = Math.max(
+      ...entry.result.schedule.map((r) => r.END_TM),
+      ...convPlans.map((p) => p.conv_end_min),
+      1,
+    );
+    const convTraces = conversionTraces(convPlans, maxEnd + 1).map((t) => ({
+      ...t,
+      xaxis: xName,
+      yaxis: yName,
+      showlegend: false,
+    }));
+    data.push(...convTraces);
+    if (i === 0 && convTraces.length > 0) {
+      data.push({
+        ...conversionLegendTrace(true),
+        xaxis: xName,
+        yaxis: yName,
+      });
+    }
 
     (layout as Record<string, unknown>)[xKey] = {
       domain: [0, 1],

@@ -250,7 +250,7 @@ def cmd_ui():
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Post-Scheduling RL 운영 CLI",
+        description="Scheduling RL 운영 CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )

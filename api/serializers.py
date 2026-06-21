@@ -43,6 +43,7 @@ def serialize_inference_result(result: dict, *, include_history: bool = True) ->
     else:
         payload["history"] = []
         payload["event_log"] = []
+    payload["conversion_plans"] = result.get("conversion_plans", [])
     return payload
 
 

@@ -181,8 +181,8 @@ def test_rl_inference_makes_progress():
     assert result["history"][-1]["time"] > 0 or len(result["schedule"]) >= len(env_data["lots"])
 
 
-def test_move_out_job_start_same_time_no_idle_gap():
-    """process_end 직후 동일 시각 move_out → job_start (idle gap 없음)."""
+def test_move_out_idle_same_time_no_idle_gap():
+    """process_end 직후 동일 시각 move_out → idle (idle gap 없음)."""
     raw = load_data()
     env_data = preprocess(raw)
     sim = SchedulingSimulator(env_data, record_history=False)
@@ -194,14 +194,14 @@ def test_move_out_job_start_same_time_no_idle_gap():
     sim.assign_ppk_oper(eqp_id, ppk, oper)
     end_time = sim.eqps[eqp_id].free_at
     sim._advance_to_next_decision()
-    from simulation.events import EVENT_JOB_START, EVENT_MOVE_OUT
+    from simulation.events import EVENT_IDLE, EVENT_MOVE_OUT
 
     kinds = [e["kind"] for e in sim.event_log if e["time"] == end_time]
     assert EVENT_MOVE_OUT in kinds
-    assert EVENT_JOB_START in kinds
+    assert EVENT_IDLE in kinds
     move_idx = kinds.index(EVENT_MOVE_OUT)
-    job_idx = kinds.index(EVENT_JOB_START)
-    assert move_idx < job_idx
+    idle_idx = kinds.index(EVENT_IDLE)
+    assert move_idx < idle_idx
     assert sim.current_time == end_time
 
 
@@ -216,6 +216,6 @@ if __name__ == "__main__":
     test_same_prod_skipped_when_ppk_not_feasible()
     test_pacing_steady_scenario_preprocess_and_episode()
     test_step_resolves_invalid_ppk_on_current_eqp()
-    test_move_out_job_start_same_time_no_idle_gap()
+    test_move_out_idle_same_time_no_idle_gap()
     test_rl_inference_makes_progress()
     print("all tests passed")
