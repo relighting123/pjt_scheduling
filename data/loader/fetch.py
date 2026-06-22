@@ -5,7 +5,6 @@ SQL 템플릿: external/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 각 SQL 상단 ``-- @db: <alias>`` 로 DB 지정 (.env DB_<ALIAS>_*).
 
 공통 바인드: :FAC_ID, :RULE_TIMEKEY(기간 조회 시)
-discrete_arrange 만 :LOT_CD (선택, NULL이면 전체)
 """
 import json
 from pathlib import Path
@@ -20,7 +19,7 @@ from config import (
     validate_path_segment,
 )
 from data.db_registry import DbRegistry, parse_sql_db_alias
-from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
+from data.loader.sql_binds import merge_fetch_binds
 from utils.helpers import (
     validate_records,
     REQUIRED_DISCRETE_ARRANGE_FIELDS,
@@ -171,7 +170,6 @@ def fetch_from_db(
     snapshot: Optional[str] = None,
     period: Optional[str] = None,
     extra_binds: Optional[Dict[str, Any]] = None,
-    lot_cd: Optional[str] = None,
     db_registry: Optional[DbRegistry] = None,
     *,
     verbose: bool = False,
@@ -203,13 +201,7 @@ def fetch_from_db(
                 sql = _read_sql(sql_path)
                 alias = parse_sql_db_alias(sql, registry.default_alias)
                 out_path = output_dir / json_file
-                binds = merge_fetch_binds(
-                    fac_id,
-                    per,
-                    lot_cd=lot_cd,
-                    include_lot_cd=(sql_file == "discrete_arrange.sql"),
-                    extra_binds=extra_binds,
-                )
+                binds = merge_fetch_binds(fac_id, per, extra_binds=extra_binds)
                 if verbose or dry_run:
                     print(
                         f"[loader] 계획 @{alias} {sql_file} → {out_path} "
@@ -258,7 +250,6 @@ def fetch_period_range(
     to_timekey: Optional[str] = None,
     split: str = "train",
     extra_binds: Optional[Dict[str, Any]] = None,
-    lot_cd: Optional[str] = None,
     *,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
@@ -297,7 +288,6 @@ def fetch_period_range(
                 split=split,
                 period=period,
                 extra_binds=day_binds,
-                lot_cd=lot_cd,
                 db_registry=registry,
                 verbose=verbose,
                 dry_run=dry_run,

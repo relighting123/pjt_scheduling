@@ -249,7 +249,6 @@ class FetchRequest(BaseModel):
     snapshot: Optional[str] = Field(default=None, description="단일 RULE_TIMEKEY (YYYYMMDDHHmmss)")
     from_date: Optional[str] = Field(default=None, description="시작 RULE_TIMEKEY (YYYYMMDDHHmmss)")
     to_date: Optional[str] = Field(default=None, description="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)")
-    lot_cd: Optional[str] = Field(default=None, description="LOT_CD SQL 필터 (미지정 시 전체)")
 
 
 class InputFolderRequest(BaseModel):
@@ -390,7 +389,6 @@ def fetch_dataset(req: FetchRequest):
                 from_date=req.from_date,
                 to_date=req.to_date,
                 split=req.split,
-                lot_cd=req.lot_cd,
             )
             path = paths[-1]
         elif req.from_date or req.to_date:
@@ -401,7 +399,6 @@ def fetch_dataset(req: FetchRequest):
                 fac_id=req.fac_id,
                 split=req.split,
                 snapshot=snap,
-                lot_cd=req.lot_cd,
             )
     except (ValueError, FileNotFoundError, ImportError) as e:
         raise HTTPException(status_code=400, detail=str(e))

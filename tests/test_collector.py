@@ -57,7 +57,6 @@ def test_fetch_dry_run_skips_oracle(tmp_path, monkeypatch):
         fac_id="FAC001",
         split="train",
         period="20260621170000",
-        lot_cd="LC001",
         dry_run=True,
         verbose=True,
     )
@@ -65,7 +64,7 @@ def test_fetch_dry_run_skips_oracle(tmp_path, monkeypatch):
     assert not (out / "plan.json").exists()
 
 
-def test_fetch_dry_run_logs_lot_cd_bind(tmp_path, monkeypatch, capsys):
+def test_fetch_dry_run_logs_sql_plan(tmp_path, monkeypatch, capsys):
     cfg = tmp_path / "databases.yaml"
     cfg.write_text(
         "default: WT_RTS\nWT_RTS:\n  user: u\n  password: p\n  dsn: d\n",
@@ -90,24 +89,23 @@ def test_fetch_dry_run_logs_lot_cd_bind(tmp_path, monkeypatch, capsys):
         fac_id="FAC001",
         split="train",
         period="20260621170000",
-        lot_cd="LC001",
         dry_run=True,
         verbose=True,
     )
     out = capsys.readouterr().out
     assert "discrete_arrange.sql" in out
-    assert "LOT_CD" in out
+    assert "FAC_ID" in out
+    assert "LOT_CD" not in out
 
 
-def test_collector_lotcd_arg():
+def test_collector_facid_arg():
     parser = build_arg_parser()
     args = parser.parse_args([
-        "--once", "--facid", "FAC001", "--lotcd", "LC001",
+        "--once", "--facid", "FAC001",
     ])
-    assert args.lotcd == "LC001"
     assert args.facid == "FAC001"
-    collector = TrainingDataCollector(fac_id=args.facid, lot_cd=args.lotcd)
-    assert collector.lot_cd == "LC001"
+    collector = TrainingDataCollector(fac_id=args.facid)
+    assert collector.fac_id == "FAC001"
 
 
 def test_fetch_error_includes_sql_context(tmp_path, monkeypatch):

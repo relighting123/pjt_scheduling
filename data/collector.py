@@ -6,11 +6,9 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     COLLECTOR_SPLIT=train
     COLLECTOR_INTERVAL_SEC=3600
     COLLECTOR_PREVDAYS=1
-    COLLECTOR_LOT_CD=LC001   # 선택: SQL :LOT_CD 필터 (미설정 시 전체)
 
 사용 예:
     python -m data.collector --facid FAC001 --once
-    python -m data.collector --facid FAC001 --once --lotcd LC001
     python -m data.collector --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v
     python -m data.collector --facid FAC001 --once --debug
@@ -55,7 +53,6 @@ from config import (
 )
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader.fetch import fetch_from_db, fetch_period_range
-from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
 from data.loader.rule_timekey_query import (
     resolve_collect_periods,
     resolve_snapshot_rule_timekey,
@@ -129,7 +126,6 @@ def collect_dataset(
     prevdays: int = 1,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
-    lot_cd: Optional[str] = None,
     options: Optional[CollectorOptions] = None,
 ) -> List[Path]:
     """Oracle SQL → dataset JSON 수집 (collect/train 공용 진입점)."""
@@ -139,7 +135,6 @@ def collect_dataset(
         prevdays=prevdays,
         from_key=from_key,
         to_key=to_key,
-        lot_cd=lot_cd,
     )
     options = options or CollectorOptions()
     if from_key and to_key:
@@ -157,7 +152,6 @@ def ensure_train_folders(
     prevdays: Optional[int] = None,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
-    lot_cd: Optional[str] = None,
     nodb: bool = False,
 ) -> List[str]:
     """
@@ -180,7 +174,6 @@ def ensure_train_folders(
         prevdays=prevdays or 1,
         from_key=from_key,
         to_key=to_key,
-        lot_cd=lot_cd,
     )
     if not paths:
         return []
@@ -201,14 +194,12 @@ class TrainingDataCollector:
         prevdays: int = 1,
         from_key: Optional[str] = None,
         to_key: Optional[str] = None,
-        lot_cd: Optional[str] = None,
     ):
         self.fac_id = validate_path_segment(fac_id, "FAC_ID")
         self.split = validate_path_segment(split, "split")
         self.prevdays = prevdays
         self.from_key = from_key
         self.to_key = to_key
-        self.lot_cd = resolve_lot_cd(lot_cd)
 
     def _resolve_periods(self) -> tuple[List[str], str]:
         periods, source = resolve_collect_periods(
@@ -243,8 +234,6 @@ class TrainingDataCollector:
 
         print("[preflight] === 2) 수집 계획 ===")
         print(f"  fac_id={self.fac_id}  split={self.split}")
-        if self.lot_cd:
-            print(f"  lot_cd={self.lot_cd}")
         print(f"  sql_dir={CONFIG.path.sql_dir}")
 
         fetch_kwargs = self._fetch_kwargs(options)
@@ -259,7 +248,6 @@ class TrainingDataCollector:
                 fac_id=self.fac_id,
                 split=self.split,
                 period=per,
-                lot_cd=self.lot_cd,
                 **fetch_kwargs,
             )
             return []
@@ -277,7 +265,6 @@ class TrainingDataCollector:
             fac_id=self.fac_id,
             split=self.split,
             period=sample,
-            lot_cd=self.lot_cd,
             **fetch_kwargs,
         )
         print("[preflight] 완료 – 문제 없으면 --once 로 실제 수집하세요.")
@@ -310,7 +297,6 @@ class TrainingDataCollector:
             fac_id=self.fac_id,
             split=self.split,
             periods=periods,
-            lot_cd=self.lot_cd,
             **self._fetch_kwargs(options),
         )
 
@@ -332,7 +318,6 @@ class TrainingDataCollector:
             fac_id=self.fac_id,
             split=self.split,
             period=per,
-            lot_cd=self.lot_cd,
             **self._fetch_kwargs(options),
         )
 
@@ -415,11 +400,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--from", dest="from_key", help="시작 RULE_TIMEKEY")
     parser.add_argument("--to", dest="to_key", help="종료 RULE_TIMEKEY")
     parser.add_argument(
-        "--lotcd",
-        default=os.environ.get("COLLECTOR_LOT_CD", "").strip() or None,
-        help="discrete_arrange LOT_CD 필터 (기본: COLLECTOR_LOT_CD, 미지정 시 전체)",
-    )
-    parser.add_argument(
         "--once",
         action="store_true",
         help="1회만 수집 후 종료",
@@ -445,7 +425,6 @@ def run_collector_cli(args: argparse.Namespace) -> int:
         prevdays=args.prevdays,
         from_key=args.from_key,
         to_key=args.to_key,
-        lot_cd=args.lotcd,
     )
     try:
         if args.once or args.interval <= 0:

@@ -1,6 +1,6 @@
 -- @db: Prd
 -- plan.sql → plan.json
--- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (필수), :LOT_CD (선택, 미사용 시 무시 가능)
+-- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (필수)
 SELECT
     p.PLAN_PROD_KEY,
     p.OPER_ID,
