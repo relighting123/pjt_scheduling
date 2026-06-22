@@ -1,5 +1,6 @@
 """ST × wf_qty 실제 소요시간 테스트."""
 from data.generator import build_abstract_arrange
+from data.loader.fetch import validate_data
 from data.loader.preprocess import preprocess
 from utils.helpers import effective_proc_time, split_wf_qty
 
@@ -48,6 +49,8 @@ def test_preprocess_proc_time_after_split():
             },
         ],
     }
+    assert validate_data(raw) == []
+
     env = preprocess(raw)
 
     child_qty = split_wf_qty(25, 3)[0]
