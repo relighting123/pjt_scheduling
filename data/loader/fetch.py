@@ -1,7 +1,7 @@
 """
 data/loader/fetch.py – JSON 로드 및 Oracle SQL → JSON 변환 (입력 fetch)
 
-SQL 템플릿: external/sql/{name}.sql  →  data/dataset/.../input/{name}.json
+SQL 템플릿: data/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 각 SQL 상단 ``-- @db: <alias>`` 로 DB 지정 (.env DB_<ALIAS>_*).
 
 공통 바인드: :FAC_ID, :RULE_TIMEKEY(기간 조회 시)
@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from config import (
     CONFIG,
     SQL_JSON_MAP,
+    SQL_REQUIRED_KEYS,
     iter_rule_timekeys,
     normalize_rule_timekey,
     resolve_dataset_path,
@@ -177,7 +178,7 @@ def fetch_from_db(
     verbose: bool = False,
     dry_run: bool = False,
 ) -> Path:
-    """external/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용)."""
+    """data/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용)."""
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     per = period or snapshot
     if output_dir is None:
@@ -199,6 +200,10 @@ def fetch_from_db(
     try:
         for key, (sql_file, json_file) in SQL_JSON_MAP.items():
             sql_path = sql_dir / sql_file
+            if not sql_path.exists() and key not in SQL_REQUIRED_KEYS:
+                if verbose or dry_run:
+                    print(f"[loader] 선택 SQL 없음 – skip {sql_file}")
+                continue
             try:
                 sql = _read_sql(sql_path)
                 alias = parse_sql_db_alias(sql, registry.default_alias)

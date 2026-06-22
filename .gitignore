@@ -11,8 +11,9 @@ build/
 # External dataset (JSON 산출물, git 제외) – SQL 템플릿은 추적
 data/dataset/
 
-# Oracle 실행용 SQL (환경별 커스텀) – 템플릿은 external/sql.example/ 추적
-external/sql/
+# Oracle 실행용 SQL (환경별 커스텀) – 템플릿은 data/sql.example/ 추적
+data/sql/*
+!data/sql/.gitkeep
 
 # Trained models (large binary files – checkpoints/best 등 하위 경로 포함)
 models/**

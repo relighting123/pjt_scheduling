@@ -31,6 +31,8 @@ pjt_scheduling/
 │   │   ├── fetch.py
 │   │   └── preprocess.py
 │   ├── writer/             # 출력 적재 (추론 → output JSON + SQL)
+│   ├── sql.example/        # Oracle → JSON 쿼리 예시
+│   ├── sql/                # 환경별 실행 SQL (git 제외)
 │   └── generator.py        # 샘플 시나리오·dataset 생성
 │
 ├── inference/
@@ -44,9 +46,6 @@ pjt_scheduling/
 │   ├── src/pages/          # Dataset / Train / Test / Inference
 │   ├── src/components/     # ChartPanel, ArrangeTable, …
 │   └── src/lib/charts.ts   # Plotly 차트 빌더
-│
-├── external/
-│   └── sql/                # Oracle → JSON 쿼리
 │
 ├── tests/
 └── models/                 # 학습 체크포인트 (.zip, git 제외)
@@ -177,6 +176,7 @@ step(action=[ppk_oper_flat, eqp_idx]):
 | `batch_info.json` | **(PPK, OPER) → LOT_CD, TEMP** — conversion/tool (Oracle: `batch_info.sql`) |
 | `lot_master.json` | LOT별 LOT_CD, TEMP (레거시·batch_info 없을 때 보조) |
 | `tool_capacity.json` | `(LOT_CD, EQP_MODEL)` 동시 가공 상한 |
+| `eqp_initial_state.json` | EQP별 초기 LOT_CD/TEMP/직전 PPK·OPER |
 | `split.json` | wafer lot split 규칙 (`EQP_MODEL_CD`, 선택) |
 
 ### Takt pacing 검증 시나리오 (`data/pacing_scenarios.py`)
@@ -258,8 +258,14 @@ python main.py sample -s default --fac-id FAC001 --split train --from-date 20260
 ### DB 조회
 
 ```bash
+mkdir -p data/sql
+cp data/sql.example/*.sql data/sql/
+# data/sql/*.sql 의 -- @db alias, 테이블명, WHERE 조건을 환경에 맞게 수정
 python main.py fetch --fac-id FAC001 --split train --from-date 20260601 --to-date 20260607
 ```
+
+`discrete_arrange`, `abstract_arrange`, `plan`, `flow`, `split`, `batch_info` SQL은 필수입니다.
+`lot_master`, `tool_capacity`, `eqp_initial_state` SQL은 파일이 있으면 함께 수집하고 없으면 건너뜁니다.
 
 ### 학습 / 추론
 

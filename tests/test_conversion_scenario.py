@@ -81,7 +81,7 @@ def test_conversion_performed_when_assigning_ppk002():
     assert any(r.get("CONVERSION") for r in ppk002_on_eqp1)
 
 
-def test_bootstrap_conv_external_dataset():
+def test_bootstrap_conv_dataset():
     info = bootstrap_conv_test_suite()
     from pathlib import Path
     inp = Path(info["input_dir"])
