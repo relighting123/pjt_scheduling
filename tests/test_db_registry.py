@@ -1,4 +1,5 @@
 """DB alias 레지스트리·collector 단위 테스트 (Oracle 연결 없음)."""
+import sys
 import textwrap
 from pathlib import Path
 
@@ -11,8 +12,10 @@ from data.db_registry import (
     default_alias_source,
     diagnose_db_config,
     format_db_config_error,
+    init_oracle_client_if_needed,
     load_db_aliases,
     load_db_aliases_from_yaml,
+    oracle_thick_mode_enabled,
     parse_sql_db_alias,
     resolve_db_credentials,
     resolve_default_db_alias,
@@ -196,6 +199,36 @@ def test_format_db_config_error_lists_aliases():
     msg = format_db_config_error("prd", {"main": {"user": "u", "password": "p", "dsn": "d"}})
     assert "prd" in msg
     assert "main" in msg
+
+
+def test_oracle_thick_mode_flag(monkeypatch):
+    monkeypatch.setenv("ORACLE_THICK_MODE", "1")
+    assert oracle_thick_mode_enabled() is True
+    monkeypatch.setenv("ORACLE_THICK_MODE", "0")
+    assert oracle_thick_mode_enabled() is False
+
+
+def test_init_oracle_client_if_needed_skips_thin(monkeypatch):
+    monkeypatch.delenv("ORACLE_THICK_MODE", raising=False)
+    assert init_oracle_client_if_needed() is False
+
+
+def test_init_oracle_client_if_needed_calls_init(monkeypatch):
+    monkeypatch.setenv("ORACLE_THICK_MODE", "1")
+    monkeypatch.setenv("ORACLE_CLIENT_LIB_DIR", "/opt/instantclient")
+    calls = []
+
+    class FakeOracleDb:
+        @staticmethod
+        def init_oracle_client(**kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setitem(sys.modules, "oracledb", FakeOracleDb)
+    # reset module-level flag
+    import data.db_registry as dr
+    dr._oracle_client_initialized = False
+    assert dr.init_oracle_client_if_needed() is True
+    assert calls == [{"lib_dir": "/opt/instantclient"}]
 
 
 def test_db_registry_unknown_alias_raises():
