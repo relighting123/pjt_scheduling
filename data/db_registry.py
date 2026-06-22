@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from config import BASE_DIR
 
 _DB_HEADER_RE = re.compile(
-    r"^\s*--\s*@db:\s*([A-Za-z][\w.-]*(?:\.[A-Za-z][\w.-]*)*)\s*$",
+    r"^\s*--\s*@db:\s*([A-Za-z][\w.+-]*(?:\.[A-Za-z][\w.+-]*)*)\s*$",
     re.MULTILINE,
 )
 _ALIAS_ENV_RE = re.compile(r"^DB_([A-Z][A-Z0-9_]*)_(USER|PASSWORD|DSN)$")
@@ -234,6 +234,76 @@ def parse_sql_db_alias(sql_text: str, default_alias: str = "main") -> str:
     return _normalize_alias(default_alias)
 
 
+def _resolve_bucket_key(
+    alias: str,
+    buckets: Dict[str, Dict[str, str]],
+) -> Optional[str]:
+    """buckets 에서 alias 키 조회 (대소문자 무시)."""
+    norm = _normalize_alias(alias)
+    if norm in buckets:
+        return norm
+    for key in buckets:
+        if key.lower() == norm.lower():
+            return key
+    return None
+
+
+def resolve_effective_default_alias(
+    buckets: Dict[str, Dict[str, str]],
+    yaml_default: Optional[str] = None,
+    environ: Optional[Dict[str, str]] = None,
+) -> str:
+    """
+    실제 buckets 에 존재하는 default alias 선택.
+
+  SQL 에 ``-- @db:`` 가 없을 때 사용. .env ``DB_DEFAULT_ALIAS=Prd`` 이지만
+    ``config/databases.yaml`` 이 없고 ORACLE_* 만 있으면 ``main`` 으로 fallback.
+    """
+    env = environ if environ is not None else os.environ
+    candidates: List[str] = []
+    if env.get("DB_DEFAULT_ALIAS", "").strip():
+        candidates.append(_normalize_alias(env["DB_DEFAULT_ALIAS"]))
+    if yaml_default:
+        candidates.append(_normalize_alias(yaml_default))
+    candidates.extend(["main", "prd"])
+
+    seen: set = set()
+    for cand in candidates:
+        if cand in seen:
+            continue
+        seen.add(cand)
+        if _resolve_bucket_key(cand, buckets):
+            return _normalize_alias(cand)
+
+    if buckets:
+        return sorted(buckets.keys())[0]
+    return "main"
+
+
+def _alias_lookup_hint(requested: str, buckets: Dict[str, Dict[str, str]]) -> str:
+    """흔한 설정 실수 안내."""
+    norm = _normalize_alias(requested)
+    hints: List[str] = []
+    if norm == "prd" and "main" in buckets:
+        hints.append(
+            "config/databases.yaml 에 Prd 블록이 없습니다. "
+            "ORACLE_* 만 쓰는 경우 DB_DEFAULT_ALIAS=main 또는 "
+            "config/databases.yaml 을 생성하세요."
+        )
+    if norm == "pr":
+        hints.append(
+            "DB_PR_USER 는 alias 'pr' 입니다. Prd 용도면 "
+            "config/databases.yaml 의 Prd: 블록을 쓰거나 DB_PRD_USER 가 아닌 "
+            "YAML 설정을 사용하세요."
+        )
+    if not buckets:
+        hints.append(
+            "DB 설정이 비어 있습니다. config/databases.yaml 을 만들거나 "
+            "ORACLE_USER/PASSWORD/DSN 을 .env 에 설정하세요."
+        )
+    return " ".join(hints)
+
+
 def resolve_db_credentials(
     alias: str,
     buckets: Dict[str, Dict[str, str]],
@@ -242,26 +312,31 @@ def resolve_db_credentials(
     merged = {"user": "", "password": "", "dsn": ""}
     matched_any = False
     for anc in alias_ancestors(key):
-        fields = buckets.get(anc)
-        if not fields:
+        bucket_key = _resolve_bucket_key(anc, buckets)
+        if bucket_key is None:
             continue
+        fields = buckets[bucket_key]
         matched_any = True
         for field in merged:
             if fields.get(field):
                 merged[field] = fields[field]
     if not matched_any:
         known = ", ".join(sorted(buckets)) or "(없음)"
-        raise KeyError(
-            f"DB alias '{key}' 가 설정에 없습니다. "
-            f"등록된 alias: {known}"
-        )
+        hint = _alias_lookup_hint(key, buckets)
+        msg = f"DB alias '{key}' 가 설정에 없습니다. 등록된 alias: {known}"
+        if hint:
+            msg += f" — {hint}"
+        raise KeyError(msg)
     return DbCredentials(alias=key, **merged)
 
 
 def default_db_alias(
     yaml_default: Optional[str] = None,
     environ: Optional[Dict[str, str]] = None,
+    buckets: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> str:
+    if buckets is not None:
+        return resolve_effective_default_alias(buckets, yaml_default, environ)
     env = environ if environ is not None else os.environ
     if env.get("DB_DEFAULT_ALIAS", "").strip():
         return _normalize_alias(env["DB_DEFAULT_ALIAS"])
@@ -286,7 +361,8 @@ class DbRegistry:
 
         self._buckets = buckets
         self._default_alias = _normalize_alias(
-            default_alias or default_db_alias(yaml_def),
+            default_alias
+            or resolve_effective_default_alias(buckets, yaml_def),
         )
         self._connections: Dict[str, object] = {}
 

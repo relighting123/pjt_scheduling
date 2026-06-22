@@ -9,9 +9,11 @@ from data.db_registry import (
     DbRegistry,
     default_db_alias,
     load_db_aliases,
+    load_db_aliases_from_env,
     load_db_aliases_from_yaml,
     parse_sql_db_alias,
     resolve_db_credentials,
+    resolve_effective_default_alias,
 )
 
 
@@ -89,8 +91,18 @@ def test_default_alias_priority(tmp_path, monkeypatch):
     cfg = tmp_path / "databases.yaml"
     cfg.write_text("default: Dev\nDev:\n  user: u\n  password: p\n  dsn: d\n", encoding="utf-8")
     monkeypatch.setenv("DB_DEFAULT_ALIAS", "Prd")
-    _, yaml_def = load_db_aliases_from_yaml(cfg)
-    assert default_db_alias(yaml_def) == "prd"
+    buckets, yaml_def = load_db_aliases_from_yaml(cfg)
+    assert resolve_effective_default_alias(buckets, yaml_def) == "dev"
+
+
+def test_default_alias_falls_back_to_main_without_yaml():
+    buckets = load_db_aliases_from_env({
+        "ORACLE_USER": "u",
+        "ORACLE_PASSWORD": "p",
+        "ORACLE_DSN": "d",
+        "DB_DEFAULT_ALIAS": "Prd",
+    })
+    assert resolve_effective_default_alias(buckets) == "main"
 
 
 def test_oracle_legacy_maps_to_main():
