@@ -10,7 +10,7 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
 
 사용 예:
     python -m data.collector --facid FAC001 --once
-    python -m data.collector --facid FAC001 --once --lot-cd LC001
+    python -m data.collector --facid FAC001 --once --lotcd LC001
     python -m data.collector --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v
     python -m data.collector --facid FAC001 --once --debug
@@ -332,9 +332,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--from", dest="from_key", help="시작 RULE_TIMEKEY")
     parser.add_argument("--to", dest="to_key", help="종료 RULE_TIMEKEY")
     parser.add_argument(
-        "--lot-cd",
+        "--lotcd",
         default=os.environ.get("COLLECTOR_LOT_CD", "").strip() or None,
-        help="LOT_CD 필터 (기본: COLLECTOR_LOT_CD, 미지정 시 SQL 전체)",
+        help="discrete_arrange LOT_CD 필터 (기본: COLLECTOR_LOT_CD, 미지정 시 전체)",
     )
     parser.add_argument(
         "--once",
@@ -362,7 +362,7 @@ def run_collector_cli(args: argparse.Namespace) -> int:
         prevdays=args.prevdays,
         from_key=args.from_key,
         to_key=args.to_key,
-        lot_cd=args.lot_cd,
+        lot_cd=args.lotcd,
     )
     try:
         if args.once or args.interval <= 0:

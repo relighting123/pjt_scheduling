@@ -24,15 +24,25 @@ def test_resolve_lot_cd_empty_is_none(monkeypatch):
     assert resolve_lot_cd() is None
 
 
-def test_merge_fetch_binds_includes_lot_cd():
-    binds = merge_fetch_binds("FAC001", "20260621170000", lot_cd="LC001")
+def test_merge_fetch_binds_includes_lot_cd_only_when_requested():
+    binds = merge_fetch_binds(
+        "FAC001", "20260621170000", lot_cd="LC001", include_lot_cd=True,
+    )
     assert binds["FAC_ID"] == "FAC001"
     assert binds["RULE_TIMEKEY"] == "20260621170000"
     assert binds["LOT_CD"] == "LC001"
+
+    base = merge_fetch_binds("FAC001", "20260621170000", lot_cd="LC001")
+    assert "LOT_CD" not in base
+
+
+def test_merge_fetch_binds_omits_lot_cd_by_default():
+    binds = merge_fetch_binds("FAC001", "20260621170000")
+    assert "LOT_CD" not in binds
 
 
 def test_merge_fetch_binds_null_lot_cd_when_unset(monkeypatch):
     monkeypatch.delenv("SQL_LOT_CD", raising=False)
     monkeypatch.delenv("COLLECTOR_LOT_CD", raising=False)
-    binds = merge_fetch_binds("FAC001", "20260621170000")
+    binds = merge_fetch_binds("FAC001", "20260621170000", include_lot_cd=True)
     assert binds["LOT_CD"] is None
