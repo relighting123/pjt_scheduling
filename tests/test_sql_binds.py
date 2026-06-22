@@ -1,15 +1,56 @@
-"""SQL fetch 바인드 테스트."""
+"""SQL fetch 바인드 (LOT_CD) 테스트."""
 
-from data.loader.sql_binds import merge_fetch_binds
+from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
 
 
-def test_merge_fetch_binds_fac_and_period():
-    binds = merge_fetch_binds("FAC001", "20260621170000")
-    assert binds["FAC_ID"] == "FAC001"
-    assert binds["RULE_TIMEKEY"] == "20260621170000"
+def test_resolve_lot_cd_cli_overrides_env(monkeypatch):
+    monkeypatch.setenv("SQL_LOT_CD", "LC_ENV")
+    monkeypatch.setenv("COLLECTOR_LOT_CD", "LC_COLL")
+    assert resolve_lot_cd("LC_CLI") == "LC_CLI"
+
+
+def test_resolve_lot_cd_env_priority(monkeypatch):
+    monkeypatch.delenv("SQL_LOT_CD", raising=False)
+    monkeypatch.setenv("COLLECTOR_LOT_CD", "LC_COLL")
+    assert resolve_lot_cd() == "LC_COLL"
+    monkeypatch.setenv("SQL_LOT_CD", "LC_SQL")
+    assert resolve_lot_cd() == "LC_SQL"
+
+
+def test_resolve_lot_cd_empty_is_none(monkeypatch):
+    monkeypatch.delenv("SQL_LOT_CD", raising=False)
+    monkeypatch.delenv("COLLECTOR_LOT_CD", raising=False)
+    assert resolve_lot_cd("") is None
+    assert resolve_lot_cd() is None
+
+
+def test_merge_fetch_binds_discrete_arrange_excludes_lot_cd():
+    """discrete_arrange 는 include_lot_cd=False 로 호출."""
+    binds = merge_fetch_binds(
+        "FAC001", "20260621170000", lot_cd="LC001", include_lot_cd=False,
+    )
     assert "LOT_CD" not in binds
 
 
-def test_merge_fetch_binds_period_optional():
-    binds = merge_fetch_binds("FAC001")
-    assert binds == {"FAC_ID": "FAC001"}
+def test_merge_fetch_binds_includes_lot_cd_only_when_requested():
+    binds = merge_fetch_binds(
+        "FAC001", "20260621170000", lot_cd="LC001", include_lot_cd=True,
+    )
+    assert binds["FAC_ID"] == "FAC001"
+    assert binds["RULE_TIMEKEY"] == "20260621170000"
+    assert binds["LOT_CD"] == "LC001"
+
+    base = merge_fetch_binds("FAC001", "20260621170000", lot_cd="LC001")
+    assert "LOT_CD" not in base
+
+
+def test_merge_fetch_binds_omits_lot_cd_by_default():
+    binds = merge_fetch_binds("FAC001", "20260621170000")
+    assert "LOT_CD" not in binds
+
+
+def test_merge_fetch_binds_null_lot_cd_when_unset(monkeypatch):
+    monkeypatch.delenv("SQL_LOT_CD", raising=False)
+    monkeypatch.delenv("COLLECTOR_LOT_CD", raising=False)
+    binds = merge_fetch_binds("FAC001", "20260621170000", include_lot_cd=True)
+    assert binds["LOT_CD"] is None
