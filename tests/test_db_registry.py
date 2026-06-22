@@ -4,8 +4,10 @@ from pathlib import Path
 from data.collector import TrainingDataCollector, build_arg_parser
 from data.db_registry import (
     DbRegistry,
+    alias_to_env_prefix,
     load_db_aliases_from_env,
     parse_sql_db_alias,
+    resolve_db_credentials,
 )
 
 
@@ -33,8 +35,36 @@ def test_load_db_aliases_from_env():
     }
     aliases = load_db_aliases_from_env(env)
     assert set(aliases) == {"main", "plan"}
-    assert aliases["main"].user == "u1"
-    assert aliases["plan"].dsn == "d2"
+    assert resolve_db_credentials("main", aliases).user == "u1"
+    assert resolve_db_credentials("plan", aliases).dsn == "d2"
+
+
+def test_hierarchical_alias_env_and_sql():
+    env = {
+        "DB_FAB__MES_USER": "mes_user",
+        "DB_FAB__MES_PASSWORD": "mes_pw",
+        "DB_FAB__MES_DSN": "mes-dsn",
+        "DB_FAB__MES__PLAN_DSN": "plan-dsn",
+    }
+    buckets = load_db_aliases_from_env(env)
+    assert set(buckets) == {"fab.mes", "fab.mes.plan"}
+
+    mes = resolve_db_credentials("fab.mes", buckets)
+    assert mes.user == "mes_user"
+    assert mes.dsn == "mes-dsn"
+
+    plan = resolve_db_credentials("fab.mes.plan", buckets)
+    assert plan.user == "mes_user"
+    assert plan.password == "mes_pw"
+    assert plan.dsn == "plan-dsn"
+
+    sql = "-- @db: fab.mes.plan\nSELECT 1"
+    assert parse_sql_db_alias(sql) == "fab.mes.plan"
+
+
+def test_alias_to_env_prefix():
+    assert alias_to_env_prefix("fab.mes") == "FAB__MES"
+    assert alias_to_env_prefix("main") == "MAIN"
 
 
 def test_oracle_legacy_maps_to_main():
@@ -43,13 +73,15 @@ def test_oracle_legacy_maps_to_main():
         "ORACLE_PASSWORD": "secret",
         "ORACLE_DSN": "host:1521/xe",
     }
-    aliases = load_db_aliases_from_env(env)
-    assert aliases["main"].user == "legacy"
+    buckets = load_db_aliases_from_env(env)
+    assert resolve_db_credentials("main", buckets).user == "legacy"
 
 
 def test_db_registry_unknown_alias_raises():
     registry = DbRegistry(
-        aliases=load_db_aliases_from_env({"DB_MAIN_USER": "u", "DB_MAIN_PASSWORD": "p", "DB_MAIN_DSN": "d"}),
+        alias_buckets=load_db_aliases_from_env({
+            "DB_MAIN_USER": "u", "DB_MAIN_PASSWORD": "p", "DB_MAIN_DSN": "d",
+        }),
     )
     try:
         registry.get_credentials("missing")
