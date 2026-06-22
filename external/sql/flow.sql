@@ -1,4 +1,4 @@
--- @db: main
+-- @db: Prd
 -- flow.sql → flow.json
 -- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (기간, YYYYMMDDHHmmss)
 SELECT

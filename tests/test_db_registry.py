@@ -1,87 +1,114 @@
 """DB alias 레지스트리·collector 단위 테스트 (Oracle 연결 없음)."""
+import textwrap
 from pathlib import Path
+
+import yaml
 
 from data.collector import TrainingDataCollector, build_arg_parser
 from data.db_registry import (
     DbRegistry,
-    alias_to_env_prefix,
-    load_db_aliases_from_env,
+    default_db_alias,
+    load_db_aliases,
+    load_db_aliases_from_yaml,
     parse_sql_db_alias,
     resolve_db_credentials,
 )
 
 
 def test_parse_sql_db_alias_from_header():
-    sql = """-- @db: plan
+    sql = """-- @db: Prd
 -- plan.sql
 SELECT 1 FROM dual
 """
-    assert parse_sql_db_alias(sql) == "plan"
+    assert parse_sql_db_alias(sql) == "prd"
+
+
+def test_parse_sql_db_alias_hierarchical():
+    sql = "-- @db: Prd.Plan\nSELECT 1"
+    assert parse_sql_db_alias(sql) == "prd.plan"
 
 
 def test_parse_sql_db_alias_default():
     sql = "-- plan.sql\nSELECT 1 FROM dual"
-    assert parse_sql_db_alias(sql, "main") == "main"
+    assert parse_sql_db_alias(sql, "Prd") == "prd"
 
 
-def test_load_db_aliases_from_env():
-    env = {
-        "DB_MAIN_USER": "u1",
-        "DB_MAIN_PASSWORD": "p1",
-        "DB_MAIN_DSN": "d1",
-        "DB_PLAN_USER": "u2",
-        "DB_PLAN_PASSWORD": "p2",
-        "DB_PLAN_DSN": "d2",
-    }
-    aliases = load_db_aliases_from_env(env)
-    assert set(aliases) == {"main", "plan"}
-    assert resolve_db_credentials("main", aliases).user == "u1"
-    assert resolve_db_credentials("plan", aliases).dsn == "d2"
+def test_yaml_hierarchical_prd_dev(tmp_path):
+    cfg = tmp_path / "databases.yaml"
+    cfg.write_text(
+        textwrap.dedent("""
+        default: Prd
+
+        Prd:
+          User: prd_user
+          Pw: prd_pw
+          Dsn: prd-dsn
+
+        Dev:
+          user: dev_user
+          password: dev_pw
+          dsn: dev-dsn
+        """),
+        encoding="utf-8",
+    )
+    buckets, yaml_default = load_db_aliases_from_yaml(cfg)
+    assert yaml_default == "prd"
+    assert set(buckets) == {"prd", "dev"}
+
+    prd = resolve_db_credentials("Prd", buckets)
+    assert prd.user == "prd_user"
+    assert prd.password == "prd_pw"
+    assert prd.dsn == "prd-dsn"
+
+    dev = resolve_db_credentials("dev", buckets)
+    assert dev.user == "dev_user"
 
 
-def test_hierarchical_alias_env_and_sql():
-    env = {
-        "DB_FAB__MES_USER": "mes_user",
-        "DB_FAB__MES_PASSWORD": "mes_pw",
-        "DB_FAB__MES_DSN": "mes-dsn",
-        "DB_FAB__MES__PLAN_DSN": "plan-dsn",
-    }
-    buckets = load_db_aliases_from_env(env)
-    assert set(buckets) == {"fab.mes", "fab.mes.plan"}
-
-    mes = resolve_db_credentials("fab.mes", buckets)
-    assert mes.user == "mes_user"
-    assert mes.dsn == "mes-dsn"
-
-    plan = resolve_db_credentials("fab.mes.plan", buckets)
-    assert plan.user == "mes_user"
-    assert plan.password == "mes_pw"
+def test_yaml_nested_inheritance(tmp_path):
+    cfg = tmp_path / "databases.yaml"
+    cfg.write_text(
+        yaml.dump({
+            "default": "Prd",
+            "Prd": {
+                "user": "base_u",
+                "password": "base_p",
+                "dsn": "base-dsn",
+                "Plan": {"dsn": "plan-dsn"},
+            },
+        }),
+        encoding="utf-8",
+    )
+    buckets, _ = load_db_aliases_from_yaml(cfg)
+    plan = resolve_db_credentials("Prd.Plan", buckets)
+    assert plan.user == "base_u"
+    assert plan.password == "base_p"
     assert plan.dsn == "plan-dsn"
 
-    sql = "-- @db: fab.mes.plan\nSELECT 1"
-    assert parse_sql_db_alias(sql) == "fab.mes.plan"
 
-
-def test_alias_to_env_prefix():
-    assert alias_to_env_prefix("fab.mes") == "FAB__MES"
-    assert alias_to_env_prefix("main") == "MAIN"
+def test_default_alias_priority(tmp_path, monkeypatch):
+    cfg = tmp_path / "databases.yaml"
+    cfg.write_text("default: Dev\nDev:\n  user: u\n  password: p\n  dsn: d\n", encoding="utf-8")
+    monkeypatch.setenv("DB_DEFAULT_ALIAS", "Prd")
+    _, yaml_def = load_db_aliases_from_yaml(cfg)
+    assert default_db_alias(yaml_def) == "prd"
 
 
 def test_oracle_legacy_maps_to_main():
-    env = {
-        "ORACLE_USER": "legacy",
-        "ORACLE_PASSWORD": "secret",
-        "ORACLE_DSN": "host:1521/xe",
-    }
-    buckets = load_db_aliases_from_env(env)
+    buckets, _ = load_db_aliases(
+        yaml_path=Path("/nonexistent/databases.yaml"),
+        environ={
+            "ORACLE_USER": "legacy",
+            "ORACLE_PASSWORD": "secret",
+            "ORACLE_DSN": "host:1521/xe",
+        },
+    )
     assert resolve_db_credentials("main", buckets).user == "legacy"
 
 
 def test_db_registry_unknown_alias_raises():
     registry = DbRegistry(
-        alias_buckets=load_db_aliases_from_env({
-            "DB_MAIN_USER": "u", "DB_MAIN_PASSWORD": "p", "DB_MAIN_DSN": "d",
-        }),
+        alias_buckets={"main": {"user": "u", "password": "p", "dsn": "d"}},
+        default_alias="main",
     )
     try:
         registry.get_credentials("missing")

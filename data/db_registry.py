@@ -1,25 +1,31 @@
 """
-data/db_registry.py – SQL 쿼리별 DB alias 및 .env 접속 정보 관리
+data/db_registry.py – SQL 쿼리별 DB alias 및 계층 DB 설정
 
-SQL 파일 상단 주석 (점으로 계층):
-    -- @db: main
-    -- @db: fab.mes
-    -- @db: fab.mes.plan
+설정 파일 (권장): ``config/databases.yaml``
+```yaml
+default: Prd
 
-.env – alias는 ``__``(이중 밑줄)로 계층 구분:
-    DB_DEFAULT_ALIAS=fab.mes
-    DB_FAB__MES_USER=...
-    DB_FAB__MES_PASSWORD=...
-    DB_FAB__MES_DSN=hostname:1521/ORCL
+Prd:
+  user: ...
+  password: ...
+  dsn: ...
 
-    # 하위 alias는 상위 필드를 상속 (DSN만 덮어쓰기 등)
-    DB_FAB__MES__PLAN_DSN=plan-host:1521/ORCL
-    → @db: fab.mes.plan 은 user/password 를 fab.mes 에서 상속
+Dev:
+  user: ...
+  password: ...
+  dsn: ...
+  Mes:          # → alias ``dev.mes``
+    user: ...
+    password: ...
+```
 
-단일 alias (기존): DB_MAIN_USER → ``main``
-평면 alias (단일 _): DB_FAB_MES_USER → ``fab_mes``
+SQL: ``-- @db: Prd`` / ``-- @db: Dev.Mes``
 
-하위 호환: ORACLE_USER / ORACLE_PASSWORD / ORACLE_DSN → alias ``main``
+.env:
+    DB_CONFIG=config/databases.yaml
+    DB_DEFAULT_ALIAS=Prd
+
+하위 호환: ORACLE_USER/PASSWORD/DSN → alias ``main``
 """
 from __future__ import annotations
 
@@ -27,13 +33,29 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from config import BASE_DIR
 
 _DB_HEADER_RE = re.compile(
-    r"^\s*--\s*@db:\s*([A-Za-z][\w-]*(?:\.[A-Za-z][\w-]*)*)\s*$",
+    r"^\s*--\s*@db:\s*([A-Za-z][\w.-]*(?:\.[A-Za-z][\w.-]*)*)\s*$",
     re.MULTILINE,
 )
 _ALIAS_ENV_RE = re.compile(r"^DB_([A-Z][A-Z0-9_]*)_(USER|PASSWORD|DSN)$")
+_META_KEYS = frozenset({"default", "_default"})
+_FIELD_ALIASES = {
+    "user": "user",
+    "userid": "user",
+    "username": "user",
+    "pw": "password",
+    "pwd": "password",
+    "password": "password",
+    "pass": "password",
+    "dsn": "dsn",
+    "connect": "dsn",
+    "connection": "dsn",
+    "host": "dsn",
+}
 
 
 @dataclass(frozen=True)
@@ -53,7 +75,7 @@ class DbCredentials:
         if not self.user or not self.password or not self.dsn:
             raise ValueError(
                 f"DB alias '{self.alias}' 접속 정보가 없습니다. "
-                f"상위 alias 상속 후에도 USER/PASSWORD/DSN 이 부족합니다."
+                f"상위 alias 상속 후에도 user/password/dsn 이 부족합니다."
             )
         return oracledb.connect(
             user=self.user, password=self.password, dsn=self.dsn,
@@ -61,47 +83,103 @@ class DbCredentials:
 
 
 def _normalize_alias(name: str) -> str:
-    parts = [p.strip().lower().replace("-", "_") for p in name.strip().split(".")]
+    parts = [
+        p.strip().lower().replace("-", "_")
+        for p in name.strip().replace("/", ".").split(".")
+    ]
     parts = [p for p in parts if p]
     if not parts:
         raise ValueError(f"DB alias 가 비어 있습니다: {name!r}")
     return ".".join(parts)
 
 
-def alias_to_env_prefix(alias: str) -> str:
-    """``fab.mes`` → ``FAB__MES`` (환경 변수 키 세그먼트)."""
-    norm = _normalize_alias(alias)
-    return "__".join(part.upper() for part in norm.split("."))
+def _normalize_field(key: str) -> Optional[str]:
+    return _FIELD_ALIASES.get(key.strip().lower().replace("-", "_"))
 
 
-def env_key_to_alias(env_segment: str) -> str:
-    """``FAB__MES`` → ``fab.mes``, ``FAB_MES`` → ``fab_mes``, ``MAIN`` → ``main``."""
-    if "__" in env_segment:
-        parts = [p.lower().replace("-", "_") for p in env_segment.split("__")]
-        return ".".join(p for p in parts if p)
-    return env_segment.lower().replace("-", "_")
+def _is_credential_leaf(node: dict) -> bool:
+    return any(_normalize_field(k) for k in node)
 
 
-def alias_ancestors(alias: str) -> List[str]:
-    """``fab.mes.plan`` → [``fab``, ``fab.mes``, ``fab.mes.plan``]"""
-    norm = _normalize_alias(alias)
-    parts = norm.split(".")
-    return [".".join(parts[: i + 1]) for i in range(len(parts))]
+def _walk_yaml_node(
+    node: dict,
+    prefix: List[str],
+    buckets: Dict[str, Dict[str, str]],
+) -> None:
+    """YAML 트리 → alias별 credential 필드 (경로 = alias)."""
+    direct: Dict[str, str] = {}
+    children: Dict[str, dict] = {}
+
+    for key, value in node.items():
+        if key in _META_KEYS:
+            continue
+        field = _normalize_field(key)
+        if field and not isinstance(value, dict):
+            direct[field] = str(value).strip()
+            continue
+        if isinstance(value, dict):
+            children[key] = value
+
+    if direct:
+        alias = _normalize_alias(".".join(prefix)) if prefix else "root"
+        bucket = buckets.setdefault(alias, {})
+        for field, val in direct.items():
+            if val:
+                bucket[field] = val
+
+    for child_name, child_node in children.items():
+        if not isinstance(child_node, dict):
+            continue
+        _walk_yaml_node(child_node, prefix + [child_name], buckets)
 
 
-def parse_sql_db_alias(sql_text: str, default_alias: str = "main") -> str:
-    """SQL 본문 상단 ``-- @db: <alias>`` 주석 파싱."""
-    head = "\n".join(sql_text.splitlines()[:20])
-    match = _DB_HEADER_RE.search(head)
-    if match:
-        return _normalize_alias(match.group(1))
-    return _normalize_alias(default_alias)
+def default_db_config_path() -> Path:
+    raw = os.environ.get("DB_CONFIG", "config/databases.yaml").strip()
+    path = Path(raw)
+    if not path.is_absolute():
+        path = BASE_DIR / path
+    return path
+
+
+def load_db_aliases_from_yaml(
+    path: Optional[Path] = None,
+) -> Tuple[Dict[str, Dict[str, str]], Optional[str]]:
+    """YAML 계층 설정 → alias buckets + default alias."""
+    cfg_path = path or default_db_config_path()
+    if not cfg_path.exists():
+        return {}, None
+
+    try:
+        import yaml
+    except ImportError as e:
+        raise ImportError(
+            "PyYAML 패키지가 필요합니다. pip install pyyaml"
+        ) from e
+
+    with open(cfg_path, encoding="utf-8") as f:
+        raw: Any = yaml.safe_load(f)
+
+    if not isinstance(raw, dict):
+        raise ValueError(f"DB 설정 YAML 최상위는 mapping 이어야 합니다: {cfg_path}")
+
+    yaml_default = raw.get("default") or raw.get("_default")
+    buckets: Dict[str, Dict[str, str]] = {}
+
+    for key, value in raw.items():
+        if key in _META_KEYS:
+            continue
+        if isinstance(value, dict):
+            _walk_yaml_node(value, [str(key)], buckets)
+
+    return buckets, (
+        _normalize_alias(str(yaml_default)) if yaml_default else None
+    )
 
 
 def load_db_aliases_from_env(
     environ: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, str]]:
-    """환경 변수에서 alias별 raw 필드 로드 (상속 전)."""
+    """평면 .env DB_* / ORACLE_* (하위 호환)."""
     env = environ if environ is not None else os.environ
     buckets: Dict[str, Dict[str, str]] = {}
 
@@ -109,7 +187,13 @@ def load_db_aliases_from_env(
         m = _ALIAS_ENV_RE.match(key)
         if not m:
             continue
-        alias = env_key_to_alias(m.group(1))
+        segment = m.group(1)
+        if "__" in segment:
+            alias = ".".join(
+                p.lower().replace("-", "_") for p in segment.split("__")
+            )
+        else:
+            alias = segment.lower().replace("-", "_")
         field = m.group(2).lower()
         buckets.setdefault(alias, {})[field] = value.strip()
 
@@ -125,11 +209,39 @@ def load_db_aliases_from_env(
     return buckets
 
 
+def load_db_aliases(
+    yaml_path: Optional[Path] = None,
+    environ: Optional[Dict[str, str]] = None,
+) -> Tuple[Dict[str, Dict[str, str]], Optional[str]]:
+    """YAML 우선, .env 평면 설정으로 보완·병합."""
+    yaml_buckets, yaml_default = load_db_aliases_from_yaml(yaml_path)
+    env_buckets = load_db_aliases_from_env(environ)
+
+    merged: Dict[str, Dict[str, str]] = {}
+    for alias, fields in {**env_buckets, **yaml_buckets}.items():
+        merged.setdefault(alias, {}).update(fields)
+
+    return merged, yaml_default
+
+
+def alias_ancestors(alias: str) -> List[str]:
+    norm = _normalize_alias(alias)
+    parts = norm.split(".")
+    return [".".join(parts[: i + 1]) for i in range(len(parts))]
+
+
+def parse_sql_db_alias(sql_text: str, default_alias: str = "main") -> str:
+    head = "\n".join(sql_text.splitlines()[:20])
+    match = _DB_HEADER_RE.search(head)
+    if match:
+        return _normalize_alias(match.group(1))
+    return _normalize_alias(default_alias)
+
+
 def resolve_db_credentials(
     alias: str,
     buckets: Dict[str, Dict[str, str]],
 ) -> DbCredentials:
-    """계층 alias – 상위 → 하위 순으로 필드 병합."""
     key = _normalize_alias(alias)
     merged = {"user": "", "password": "", "dsn": ""}
     matched_any = False
@@ -144,15 +256,22 @@ def resolve_db_credentials(
     if not matched_any:
         known = ", ".join(sorted(buckets)) or "(없음)"
         raise KeyError(
-            f"DB alias '{key}' 가 .env에 정의되지 않았습니다. "
+            f"DB alias '{key}' 가 설정에 없습니다. "
             f"등록된 alias: {known}"
         )
     return DbCredentials(alias=key, **merged)
 
 
-def default_db_alias(environ: Optional[Dict[str, str]] = None) -> str:
+def default_db_alias(
+    yaml_default: Optional[str] = None,
+    environ: Optional[Dict[str, str]] = None,
+) -> str:
     env = environ if environ is not None else os.environ
-    return _normalize_alias(env.get("DB_DEFAULT_ALIAS", "main"))
+    if env.get("DB_DEFAULT_ALIAS", "").strip():
+        return _normalize_alias(env["DB_DEFAULT_ALIAS"])
+    if yaml_default:
+        return _normalize_alias(yaml_default)
+    return "main"
 
 
 class DbRegistry:
@@ -162,12 +281,16 @@ class DbRegistry:
         self,
         alias_buckets: Optional[Dict[str, Dict[str, str]]] = None,
         default_alias: Optional[str] = None,
+        yaml_path: Optional[Path] = None,
     ):
-        self._buckets = (
-            alias_buckets if alias_buckets is not None else load_db_aliases_from_env()
-        )
+        if alias_buckets is None:
+            buckets, yaml_def = load_db_aliases(yaml_path=yaml_path)
+        else:
+            buckets, yaml_def = alias_buckets, None
+
+        self._buckets = buckets
         self._default_alias = _normalize_alias(
-            default_alias or default_db_alias(),
+            default_alias or default_db_alias(yaml_def),
         )
         self._connections: Dict[str, object] = {}
 
@@ -208,7 +331,6 @@ class DbRegistry:
 
 
 def read_sql_with_alias(sql_path: Path) -> Tuple[str, str]:
-    """SQL 파일 읽기 + alias 반환."""
     text = sql_path.read_text(encoding="utf-8").strip()
     if not text:
         raise ValueError(f"SQL 파일이 비어 있습니다: {sql_path}")

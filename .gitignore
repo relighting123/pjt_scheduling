@@ -23,5 +23,6 @@ models/**
 *.log
 logs/
 .env
+config/databases.yaml
 frontend/node_modules/
 frontend/dist/

@@ -359,7 +359,7 @@ class PathConfig:
 
 
 # SQL 파일명 ↔ JSON 파일명 (loader.fetch_from_db)
-# 각 SQL 첫 줄: -- @db: <alias>  (.env DB_<ALIAS>_USER/PASSWORD/DSN, 계층은 __)
+# 각 SQL 첫 줄: -- @db: Prd / Dev / Prd.Plan  (config/databases.yaml 계층)
 SQL_JSON_MAP = {
     "discrete_arrange": ("discrete_arrange.sql", "discrete_arrange.json"),
     "abstract_arrange": ("abstract_arrange.sql", "abstract_arrange.json"),
