@@ -2,6 +2,8 @@
 data/loader/fetch.py – JSON 로드 및 Oracle SQL → JSON 변환 (입력 fetch)
 
 SQL 템플릿: external/sql/{name}.sql  →  data/dataset/.../input/{name}.json
+각 SQL 상단 ``-- @db: <alias>`` 로 DB 지정 (.env DB_<ALIAS>_*).
+
 적재(출력)는 data.writer 참고.
 """
 import json
@@ -16,6 +18,7 @@ from config import (
     resolve_dataset_path,
     validate_path_segment,
 )
+from data.db_registry import DbRegistry, parse_sql_db_alias
 from utils.helpers import (
     validate_records,
     REQUIRED_DISCRETE_ARRANGE_FIELDS,
@@ -133,20 +136,9 @@ def _execute_query(conn, sql: str, binds: dict) -> List[dict]:
 
 
 def _oracle_connect():
-    try:
-        import oracledb
-    except ImportError as e:
-        raise ImportError(
-            "oracledb 패키지가 필요합니다. pip install oracledb"
-        ) from e
-
-    cfg = CONFIG.oracle
-    if not cfg.user or not cfg.password or not cfg.dsn:
-        raise ValueError(
-            "Oracle 접속 정보가 없습니다. "
-            "환경 변수 ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN 을 설정하세요."
-        )
-    return oracledb.connect(user=cfg.user, password=cfg.password, dsn=cfg.dsn)
+    """하위 호환 – default alias 단일 연결."""
+    from data.db_registry import DbRegistry
+    return DbRegistry().connect()
 
 
 def fetch_from_db(
@@ -156,8 +148,9 @@ def fetch_from_db(
     snapshot: Optional[str] = None,
     period: Optional[str] = None,
     extra_binds: Optional[Dict[str, Any]] = None,
+    db_registry: Optional[DbRegistry] = None,
 ) -> Path:
-    """external/sql/*.sql 실행 → JSON 저장"""
+    """external/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용)."""
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     per = period or snapshot
     if output_dir is None:
@@ -173,18 +166,24 @@ def fetch_from_db(
     if CONFIG.oracle.extra_binds:
         binds.update(CONFIG.oracle.extra_binds)
 
-    conn = _oracle_connect()
+    own_registry = db_registry is None
+    registry = db_registry or DbRegistry()
     try:
         for key, (sql_file, json_file) in SQL_JSON_MAP.items():
             sql_path = sql_dir / sql_file
             sql = _read_sql(sql_path)
+            alias = parse_sql_db_alias(sql, registry.default_alias)
+            conn = registry.connect(alias)
             rows = _execute_query(conn, sql, binds)
             out_path = output_dir / json_file
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
-            print(f"[loader] {sql_file} → {out_path} ({len(rows)} rows)")
+            print(
+                f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows)",
+            )
     finally:
-        conn.close()
+        if own_registry:
+            registry.close_all()
 
     return output_dir
 
@@ -206,14 +205,16 @@ def fetch_period_range(
         raise ValueError("from_timekey와 to_timekey(또는 from_date/to_date)를 지정하세요.")
 
     paths: List[Path] = []
-    for period in iter_rule_timekeys(start_key, end_key):
-        day_binds = {"RULE_TIMEKEY": period, **(extra_binds or {})}
-        path = fetch_from_db(
-            fac_id=fac_id,
-            split=split,
-            period=period,
-            extra_binds=day_binds,
-        )
-        paths.append(path)
+    with DbRegistry() as registry:
+        for period in iter_rule_timekeys(start_key, end_key):
+            day_binds = {"RULE_TIMEKEY": period, **(extra_binds or {})}
+            path = fetch_from_db(
+                fac_id=fac_id,
+                split=split,
+                period=period,
+                extra_binds=day_binds,
+                db_registry=registry,
+            )
+            paths.append(path)
     print(f"[loader] {split} RULE_TIMEKEY {start_key}~{end_key} → {len(paths)}개 폴더 생성")
     return paths

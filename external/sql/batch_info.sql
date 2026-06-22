@@ -1,3 +1,4 @@
+-- @db: main
 -- batch_info.sql → batch_info.json
 -- (PPK, OPER)별 conversion용 LOT_CD / TEMP 레시피
 -- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (기간, YYYYMMDDHHmmss)
