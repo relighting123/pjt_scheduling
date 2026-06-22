@@ -40,6 +40,7 @@ from config import (
 from data.collector import TrainingDataCollector, add_debug_arguments, run_collector_cli
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader import fetch_period_range, fetch_from_db, load_data, validate_data, preprocess
+from data.loader.sql_binds import resolve_lot_cd
 from agent.rl_agent import SchedulingAgent
 from inference.runner import run_inference, save_result
 from validation.runner import run_validation
@@ -95,6 +96,7 @@ def cmd_train(
     to_key: str = None,
     *,
     nodb: bool = False,
+    lot_cd: str = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     start_key, end_key = resolve_train_period_range(
@@ -103,12 +105,16 @@ def cmd_train(
 
     print("=" * 60)
     print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}")
+    lcd = resolve_lot_cd(lot_cd)
+    if lcd:
+        print(f"[train] LOT_CD={lcd}")
     if nodb:
         print("[train] --nodb: 기존 JSON 사용 (Oracle 조회 생략)")
     else:
         print("[train] Oracle SQL → JSON (train)")
         fetch_period_range(
             fac_id=fac_id, from_date=start_key, to_date=end_key, split="train",
+            lot_cd=lcd,
         )
 
     train_folders = resolve_train_folders(
@@ -163,17 +169,20 @@ def cmd_validate(fac_id: str, *, nodb: bool = False):
     print(f"\n[validate] 완료 ({len(payload['results'])}개 test)")
 
 
-def cmd_inference(fac_id: str, rule_timekey: str = None, *, nodb: bool = False):
+def cmd_inference(fac_id: str, rule_timekey: str = None, *, nodb: bool = False, lot_cd: str = None):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
 
     print("=" * 60)
     print(f"[inference] FAC={fac_id}  RULE_TIMEKEY={rtk}")
+    lcd = resolve_lot_cd(lot_cd)
+    if lcd:
+        print(f"[inference] LOT_CD={lcd}")
     if nodb:
         print("[inference] --nodb: 기존 JSON 사용 (Oracle 조회 생략)")
     else:
         print("[inference] Oracle SQL → JSON (infer)")
-        fetch_from_db(fac_id=fac_id, split="infer", period=rtk)
+        fetch_from_db(fac_id=fac_id, split="infer", period=rtk, lot_cd=lcd)
     set_input_folder(f"{fac_id}/infer")
 
     agent = SchedulingAgent()
@@ -264,6 +273,7 @@ def cmd_collect(
     once: bool = False,
     snapshot: bool = False,
     period: str = None,
+    lot_cd: str = None,
     verbose: bool = False,
     dry_run: bool = False,
     debug: bool = False,
@@ -279,6 +289,7 @@ def cmd_collect(
         once=once,
         snapshot=snapshot,
         period=period,
+        lot_cd=lot_cd,
         verbose=verbose,
         dry_run=dry_run,
         debug=debug,
@@ -316,6 +327,12 @@ def parse_args():
         help="Oracle 조회 생략, dataset 기존 JSON 사용",
     )
 
+    train_p.add_argument(
+        "--lot-cd",
+        default=None,
+        help="LOT_CD SQL 필터 (기본: SQL_LOT_CD / COLLECTOR_LOT_CD)",
+    )
+
     val_p = sub.add_parser("validate", help="test 데이터 전체 검증")
     val_p.add_argument("--facid", required=True, help="공장 ID")
     val_p.add_argument(
@@ -328,6 +345,11 @@ def parse_args():
     inf_p.add_argument(
         "--ruletimekey", default=None,
         help="추론 RULE_TIMEKEY (미지정 시 최신)",
+    )
+    inf_p.add_argument(
+        "--lot-cd",
+        default=None,
+        help="LOT_CD SQL 필터 (기본: SQL_LOT_CD / COLLECTOR_LOT_CD)",
     )
     inf_p.add_argument(
         "--nodb", action="store_true",
@@ -355,6 +377,11 @@ def parse_args():
     collect_p.add_argument("--once", action="store_true")
     collect_p.add_argument("--snapshot", action="store_true")
     collect_p.add_argument("--period", help="--snapshot 시 RULE_TIMEKEY")
+    collect_p.add_argument(
+        "--lot-cd",
+        default=None,
+        help="LOT_CD SQL 필터 (기본: COLLECTOR_LOT_CD / SQL_LOT_CD)",
+    )
     add_debug_arguments(collect_p)
 
     return parser.parse_args()
@@ -376,6 +403,7 @@ def main():
                 from_key=args.from_key,
                 to_key=args.to_key,
                 nodb=args.nodb,
+                lot_cd=args.lot_cd,
             )
 
         elif args.command == "validate":
@@ -386,6 +414,7 @@ def main():
                 fac_id=args.facid,
                 rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
+                lot_cd=args.lot_cd,
             )
 
         elif args.command == "collect":
@@ -399,6 +428,7 @@ def main():
                 once=args.once,
                 snapshot=args.snapshot,
                 period=args.period,
+                lot_cd=args.lot_cd,
                 verbose=args.verbose,
                 dry_run=args.dry_run,
                 debug=args.debug,
