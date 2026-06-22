@@ -55,11 +55,55 @@ def test_fetch_dry_run_skips_oracle(tmp_path, monkeypatch):
         fac_id="FAC001",
         split="train",
         period="20260621170000",
+        lot_cd="LC001",
         dry_run=True,
         verbose=True,
     )
     assert "20260621170000" in str(out)
     assert not (out / "plan.json").exists()
+
+
+def test_fetch_dry_run_logs_lot_cd_bind(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "databases.yaml"
+    cfg.write_text(
+        "default: WT_RTS\nWT_RTS:\n  user: u\n  password: p\n  dsn: d\n",
+        encoding="utf-8",
+    )
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    for name in (
+        "discrete_arrange.sql",
+        "abstract_arrange.sql",
+        "plan.sql",
+        "flow.sql",
+        "split.sql",
+        "batch_info.sql",
+    ):
+        (sql_dir / name).write_text("@db:WT_RTS\nSELECT 1 FROM dual", encoding="utf-8")
+
+    monkeypatch.setenv("DB_CONFIG", str(cfg))
+    monkeypatch.setattr("config.SQL_DIR", sql_dir)
+
+    fetch_from_db(
+        fac_id="FAC001",
+        split="train",
+        period="20260621170000",
+        lot_cd="LC001",
+        dry_run=True,
+        verbose=True,
+    )
+    out = capsys.readouterr().out
+    assert "LOT_CD" in out
+
+
+def test_collector_lot_cd_arg():
+    parser = build_arg_parser()
+    args = parser.parse_args([
+        "--once", "--fac-id", "FAC001", "--lot-cd", "LC001",
+    ])
+    assert args.lot_cd == "LC001"
+    collector = TrainingDataCollector(fac_id=args.fac_id, lot_cd=args.lot_cd)
+    assert collector.lot_cd == "LC001"
 
 
 def test_fetch_error_includes_sql_context(tmp_path, monkeypatch):

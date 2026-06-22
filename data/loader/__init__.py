@@ -12,6 +12,7 @@ from data.loader.fetch import (
     fetch_period_range,
 )
 from data.loader.preprocess import preprocess
+from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
 from data.loader.rule_timekey_query import (
     fetch_latest_rule_timekey,
     fetch_recent_rule_timekeys,
@@ -26,6 +27,8 @@ __all__ = [
     "fetch_from_db",
     "fetch_period_range",
     "preprocess",
+    "merge_fetch_binds",
+    "resolve_lot_cd",
     "fetch_latest_rule_timekey",
     "fetch_recent_rule_timekeys",
     "fetch_rule_timekey_list",

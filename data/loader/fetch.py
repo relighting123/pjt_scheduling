@@ -4,7 +4,7 @@ data/loader/fetch.py – JSON 로드 및 Oracle SQL → JSON 변환 (입력 fetc
 SQL 템플릿: external/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 각 SQL 상단 ``-- @db: <alias>`` 로 DB 지정 (.env DB_<ALIAS>_*).
 
-적재(출력)는 data.writer 참고.
+공통 바인드: :FAC_ID, :RULE_TIMEKEY(기간 조회 시), :LOT_CD(선택, NULL이면 전체)
 """
 import json
 from pathlib import Path
@@ -19,6 +19,7 @@ from config import (
     validate_path_segment,
 )
 from data.db_registry import DbRegistry, parse_sql_db_alias
+from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
 from utils.helpers import (
     validate_records,
     REQUIRED_DISCRETE_ARRANGE_FIELDS,
@@ -169,6 +170,7 @@ def fetch_from_db(
     snapshot: Optional[str] = None,
     period: Optional[str] = None,
     extra_binds: Optional[Dict[str, Any]] = None,
+    lot_cd: Optional[str] = None,
     db_registry: Optional[DbRegistry] = None,
     *,
     verbose: bool = False,
@@ -183,13 +185,12 @@ def fetch_from_db(
         output_dir.mkdir(parents=True, exist_ok=True)
 
     sql_dir = CONFIG.path.sql_dir
-    binds: Dict[str, Any] = {"FAC_ID": fac_id}
-    if per:
-        binds["RULE_TIMEKEY"] = normalize_rule_timekey(per)
-    if extra_binds:
-        binds.update(extra_binds)
-    if CONFIG.oracle.extra_binds:
-        binds.update(CONFIG.oracle.extra_binds)
+    binds = merge_fetch_binds(
+        fac_id,
+        per,
+        lot_cd=lot_cd,
+        extra_binds=extra_binds,
+    )
 
     own_registry = db_registry is None
     registry = db_registry or DbRegistry()
@@ -255,6 +256,7 @@ def fetch_period_range(
     to_timekey: Optional[str] = None,
     split: str = "train",
     extra_binds: Optional[Dict[str, Any]] = None,
+    lot_cd: Optional[str] = None,
     *,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
@@ -293,6 +295,7 @@ def fetch_period_range(
                 split=split,
                 period=period,
                 extra_binds=day_binds,
+                lot_cd=lot_cd,
                 db_registry=registry,
                 verbose=verbose,
                 dry_run=dry_run,

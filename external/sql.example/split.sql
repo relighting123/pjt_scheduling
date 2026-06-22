@@ -1,6 +1,6 @@
 -- @db: Prd
 -- split.sql → split.json
--- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (기간, YYYYMMDDHHmmss)
+-- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (필수), :LOT_CD (선택, 미사용 시 무시 가능)
 -- PPK × OPER × EQP_MODEL 별 1회 투입 wafer split 크기 (장)
 SELECT
     s.PLAN_PROD_KEY,
