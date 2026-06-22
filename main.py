@@ -10,6 +10,7 @@ main.py - 운영 CLI
     python main.py train --facid FAC001 --prevdays 3 --nodb
     python main.py collect --fac-id FAC001 --prevdays 1 --once
     python -m data.collector --fac-id FAC001 --interval 3600
+    python main.py db-check
     python main.py ui
 """
 import argparse
@@ -36,6 +37,7 @@ from config import (
     list_split_folders,
 )
 from data.collector import TrainingDataCollector
+from data.db_registry import diagnose_db_config
 from data.loader import fetch_period_range, fetch_from_db, load_data, validate_data, preprocess
 from agent.rl_agent import SchedulingAgent
 from inference.runner import run_inference, save_result
@@ -320,6 +322,8 @@ def parse_args():
         help="Oracle 조회 생략, dataset 기존 JSON 사용",
     )
 
+    sub.add_parser("db-check", help="DB alias 설정 진단 (databases.yaml / .env)")
+
     sub.add_parser("ui", help="React UI + API 서버 실행")
 
     collect_p = sub.add_parser(
@@ -384,9 +388,26 @@ def main():
                 period=args.period,
             )
 
+        elif args.command == "db-check":
+            report = diagnose_db_config()
+            print(f"config: {report['config_path']} ({'OK' if report['config_exists'] else 'MISSING'})")
+            print(f"default alias: {report['default_alias']}")
+            print(f"known aliases: {', '.join(report['known_aliases']) or '(없음)'}")
+            for alias, fields in report["buckets"].items():
+                print(f"  [{alias}] user={fields.get('user', '')} dsn={fields.get('dsn', '')}")
+            if report["issues"]:
+                print("issues:")
+                for issue in report["issues"]:
+                    print(f"  - {issue}")
+                sys.exit(1)
+            print("status: OK")
+
         elif args.command == "ui":
             cmd_ui()
 
+    except KeyError as e:
+        print(f"[오류] {e}")
+        sys.exit(1)
     except ValueError as e:
         print(f"[오류] {e}")
         sys.exit(1)
