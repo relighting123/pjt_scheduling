@@ -16,7 +16,8 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     python -m data.collector --facid FAC001 --once --debug
     python main.py collect --facid FAC001 --prevdays 3 --once
 
-RULE_TIMEKEY (DB 메타 SQL, external/sql/rule_timekey_*.sql):
+RULE_TIMEKEY (DB 메타 SQL 필수, external/sql/rule_timekey_*.sql):
+    수집 폴더명 = DB 에서 조회한 실제 RULE_TIMEKEY (로컬 시각 생성 없음)
     rule_timekey_latest.sql  – 최신 1건 (--snapshot 기본값)
     rule_timekey_recent.sql  – 최근 N개 (--prevdays)
     rule_timekey_list.sql    – FROM~TO 구간 (--from/--to)
@@ -132,6 +133,7 @@ class TrainingDataCollector:
             prevdays=self.prevdays,
             from_key=self.from_key,
             to_key=self.to_key,
+            require_db=True,
         )
         if not periods:
             raise ValueError("수집할 RULE_TIMEKEY 가 없습니다.")
@@ -164,7 +166,9 @@ class TrainingDataCollector:
 
         fetch_kwargs = self._fetch_kwargs(options)
         if snapshot_only:
-            per, source = resolve_snapshot_rule_timekey(self.fac_id, period)
+            per, source = resolve_snapshot_rule_timekey(
+                self.fac_id, period, require_db=True,
+            )
             out_dir, _ = resolve_dataset_path(self.fac_id, self.split, per)
             print(f"  mode=snapshot  period={per} ({source})")
             print(f"  output_dir={out_dir}")
@@ -209,6 +213,7 @@ class TrainingDataCollector:
                 self.fac_id,
                 from_key=from_key,
                 to_key=to_key,
+                require_db=True,
             )
         else:
             periods, source = self._resolve_periods()
@@ -233,7 +238,9 @@ class TrainingDataCollector:
         options: Optional[CollectorOptions] = None,
     ) -> Path:
         options = options or CollectorOptions()
-        per, source = resolve_snapshot_rule_timekey(self.fac_id, period)
+        per, source = resolve_snapshot_rule_timekey(
+            self.fac_id, period, require_db=True,
+        )
         print(f"[collector] {self.fac_id}/{self.split}/{per} 단일 스냅샷 ({source})")
         if options.verbose:
             out_dir, _ = resolve_dataset_path(self.fac_id, self.split, per)

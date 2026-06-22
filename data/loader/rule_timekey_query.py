@@ -173,6 +173,15 @@ def fetch_recent_rule_timekeys(
     return keys if keys is not None else []
 
 
+def _db_rule_timekey_error(fac_id: str, detail: str) -> ValueError:
+    return ValueError(
+        f"DB RULE_TIMEKEY 조회 실패 ({detail}).\n"
+        f"  fac_id={fac_id}\n"
+        f"  external/sql/rule_timekey_*.sql 을 배치하고 DB 연결을 확인하세요.\n"
+        f"  (RULE_TIMEKEY_FROM_DB=0 이면 collector 폴더명은 DB 키를 쓸 수 없습니다.)",
+    )
+
+
 def resolve_collect_periods(
     fac_id: str,
     *,
@@ -180,12 +189,15 @@ def resolve_collect_periods(
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
     db_registry: Optional[DbRegistry] = None,
+    require_db: bool = False,
 ) -> tuple[List[str], str]:
     """
     collector 수집 대상 RULE_TIMEKEY 목록.
 
+    require_db=True 이면 DB 메타 SQL 결과만 사용 (로컬 일별 키 생성 없음).
+
     Returns:
-        (periods, source)  source: ``db`` | ``local``
+        (periods, source)  source: ``db`` | ``local`` | ``cli``
     """
     fac_id = validate_path_segment(fac_id, "FAC_ID")
 
@@ -194,7 +206,16 @@ def resolve_collect_periods(
             fac_id, from_key, to_key, db_registry=db_registry,
         )
         if db_keys is not None:
+            if not db_keys:
+                if require_db:
+                    raise _db_rule_timekey_error(
+                        fac_id,
+                        f"구간 {from_key}~{to_key} 에 해당하는 RULE_TIMEKEY 없음",
+                    )
+                return [], "db"
             return db_keys, "db"
+        if require_db:
+            raise _db_rule_timekey_error(fac_id, "rule_timekey_list.sql 미설정 또는 비활성")
         return list(iter_rule_timekeys(from_key, to_key)), "local"
 
     if from_key or to_key:
@@ -204,7 +225,17 @@ def resolve_collect_periods(
         fac_id, prevdays, db_registry=db_registry,
     )
     if db_keys is not None:
+        if not db_keys:
+            if require_db:
+                raise _db_rule_timekey_error(
+                    fac_id,
+                    f"최근 {prevdays}개 RULE_TIMEKEY 없음",
+                )
+            return [], "db"
         return db_keys, "db"
+
+    if require_db:
+        raise _db_rule_timekey_error(fac_id, "rule_timekey_recent.sql 미설정 또는 비활성")
 
     start, end = resolve_train_period_range(prevdays=prevdays)
     return list(iter_rule_timekeys(start, end)), "local"
@@ -215,6 +246,7 @@ def resolve_snapshot_rule_timekey(
     period: Optional[str] = None,
     *,
     db_registry: Optional[DbRegistry] = None,
+    require_db: bool = False,
 ) -> tuple[str, str]:
     """스냅샷 1건 RULE_TIMEKEY (period 미지정 시 DB 최신 → 현재 시각)."""
     if period:
@@ -223,4 +255,8 @@ def resolve_snapshot_rule_timekey(
     db_key = fetch_latest_rule_timekey(fac_id, db_registry=db_registry)
     if db_key:
         return db_key, "db"
+
+    if require_db:
+        raise _db_rule_timekey_error(fac_id, "rule_timekey_latest.sql 미설정 또는 비활성")
+
     return rule_timekey_now(), "local"

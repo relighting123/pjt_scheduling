@@ -156,6 +156,10 @@ def test_collector_preflight_runs_without_db(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setenv("DB_CONFIG", str(cfg))
     monkeypatch.setattr("config.SQL_DIR", sql_dir)
+    monkeypatch.setattr(
+        "data.collector.resolve_collect_periods",
+        lambda *args, **kwargs: (["20260621170000"], "db"),
+    )
 
     collector = TrainingDataCollector(fac_id="FAC001", prevdays=1)
     collector.collect_once(
