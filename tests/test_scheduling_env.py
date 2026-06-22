@@ -4,7 +4,7 @@ import numpy as np
 from config import CONFIG
 from data.loader import load_data, validate_data, preprocess
 from env.scheduling_env import SchedulingEnv, compute_obs_dim
-from simulation.simulator import SchedulingSimulator, ToolTracker
+from simulation.simulator import SchedulingSimulator, ToolTracker, Equipment
 
 
 def test_obs_dim_matches_env():
@@ -205,6 +205,58 @@ def test_move_out_idle_same_time_no_idle_gap():
     assert sim.current_time == end_time
 
 
+def test_auto_select_lot_prefers_initial_and_discrete():
+    sim = SchedulingSimulator.__new__(SchedulingSimulator)
+
+    candidates = [
+        {
+            "lot_id": "INJ001",
+            "priority": 1,
+            "oper_in_time": 0,
+            "seq": 10,
+            "is_abstract": False,
+            "is_initial_wip": False,
+        },
+        {
+            "lot_id": "INIT001",
+            "priority": 1,
+            "oper_in_time": 0,
+            "seq": 1,
+            "is_abstract": True,
+            "is_initial_wip": True,
+        },
+        {
+            "lot_id": "INIT002",
+            "priority": 1,
+            "oper_in_time": 0,
+            "seq": 2,
+            "is_abstract": False,
+            "is_initial_wip": True,
+        },
+    ]
+    assert sim._auto_select_lot("EQP001", candidates) == "INIT002"
+
+
+def test_tool_cap_only_on_tool_swap():
+    cap = {("LC02", "A"): 1}
+    tracker = ToolTracker(cap, {"EQP001": "A", "EQP002": "A"})
+    tracker.occupy("LC02", "EQP002")
+
+    sim = SchedulingSimulator.__new__(SchedulingSimulator)
+    sim.eqps = {
+        "EQP001": Equipment(eqp_id="EQP001"),
+        "EQP002": Equipment(eqp_id="EQP002"),
+    }
+    sim._tool_tracker = tracker
+    sim.eqps["EQP001"].prev_lot_cd = "LC01"
+    sim.eqps["EQP001"].prev_temp = "T650"
+
+    assert not sim._needs_tool_swap("EQP001", "LC01", "T650")
+    assert sim._needs_tool_swap("EQP001", "LC02", "T650")
+    assert not sim._tool_cap_blocks("EQP001", "LC01", "T650")
+    assert sim._tool_cap_blocks("EQP001", "LC02", "T650")
+
+
 if __name__ == "__main__":
     test_obs_dim_matches_env()
     test_action_masks_shape()
@@ -217,5 +269,7 @@ if __name__ == "__main__":
     test_pacing_steady_scenario_preprocess_and_episode()
     test_step_resolves_invalid_ppk_on_current_eqp()
     test_move_out_idle_same_time_no_idle_gap()
+    test_auto_select_lot_prefers_initial_and_discrete()
+    test_tool_cap_only_on_tool_swap()
     test_rl_inference_makes_progress()
     print("all tests passed")
