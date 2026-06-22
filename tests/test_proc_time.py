@@ -1,4 +1,5 @@
 """ST × wf_qty 실제 소요시간 테스트."""
+from data.generator import build_abstract_arrange
 from data.loader.preprocess import preprocess
 from utils.helpers import effective_proc_time, split_wf_qty
 
@@ -24,7 +25,7 @@ def test_preprocess_proc_time_after_split():
     raw = {
         "discrete_arrange": discrete,
         "abstract_arrange": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL": "A", "ST": 10},
+            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
         ],
         "plan": [
             {
@@ -36,13 +37,13 @@ def test_preprocess_proc_time_after_split():
             },
         ],
         "flow": [
-            {"PLAN_PROD_KEY": "PPK001", "SEQ_ID": 1, "OPER_ID": "OPER001"},
+            {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
         ],
         "split": [
             {
                 "PLAN_PROD_KEY": "PPK001",
                 "OPER_ID": "OPER001",
-                "EQP_MODEL": "A",
+                "EQP_MODEL_CD": "A",
                 "SPLIT_QTY": 3,
             },
         ],
@@ -64,3 +65,27 @@ def test_preprocess_proc_time_after_split():
     assert row["st"] == 10
     assert row["proc_time"] == effective_proc_time(10, child_qty)
     assert env["max_proc_time"] >= row["proc_time"]
+
+
+def test_build_abstract_arrange_uses_eqp_model_cd():
+    """abstract_arrange 자동 생성은 입력 스키마에 맞춰 EQP_MODEL_CD를 사용."""
+    rows = build_abstract_arrange([
+        {
+            "EQP_ID": "EQP001",
+            "LOT_ID": "LOT001",
+            "PLAN_PROD_KEY": "PPK001",
+            "OPER_ID": "OPER001",
+            "ST": 10,
+            "EQP_MODEL": "A",
+            "WF_QTY": 25,
+        },
+    ])
+
+    assert rows == [
+        {
+            "PLAN_PROD_KEY": "PPK001",
+            "OPER_ID": "OPER001",
+            "EQP_MODEL_CD": "A",
+            "ST": 10,
+        },
+    ]

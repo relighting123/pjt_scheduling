@@ -72,11 +72,11 @@ pjt_scheduling/
 | 레이어 | 단위 | 역할 |
 |--------|------|------|
 | **discrete_arrange** | `(EQP_ID, LOT_ID, OPER_ID)` | Actual feasible 조합, LOT 현재 공정, `proc_time_matrix`, `eqp_oper_cap` |
-| **abstract_arrange** | `(PPK, OPER, EQP_MODEL, ST)` | route·평균 ST **템플릿** (전처리 시 inventory 생성) |
+| **abstract_arrange** | `(PPK, OPER, EQP_MODEL_CD, ST)` | route·평균 ST **템플릿** (전처리 시 inventory 생성) |
 | **WIP 풀** (런타임) | `(PPK, OPER)` | LOT 수 `+1`/`-1`, `oper_in_time` — 전공정 완료·배정 시 갱신 |
 
 - **LOT_CD / TEMP**: `batch_info.json` **(PPK, OPER)별** 권장. 없으면 `lot_master.json`(LOT별) 또는 PPK 추정. EQP 직전 값과 다르면 **전환 60분** + tool `(LOT_CD, EQP_MODEL)` cap 검사.
-- **EQP_MODEL**: 장비 **군**(1:N). 여러 `EQP_ID`가 동일 MODEL을 공유. abstract route·tool은 MODEL 단위, 배정·conversion은 EQP_ID 단위.
+- **EQP_MODEL**: 장비 **군**(1:N). 여러 `EQP_ID`가 동일 MODEL을 공유. abstract route/split 입력은 `EQP_MODEL_CD`, tool은 `EQP_MODEL` 단위, 배정·conversion은 EQP_ID 단위.
 
 ### 결정 흐름 (한 step)
 
@@ -171,13 +171,13 @@ step(action=[ppk_oper_flat, eqp_idx]):
 | 파일 | 설명 |
 |------|------|
 | `discrete_arrange.json` | `(EQP, LOT)` Actual + **OPER_ID**(현재 공정), WF_QTY, ST, EQP_MODEL |
-| `abstract_arrange.json` | `(PPK, OPER, EQP_MODEL, ST)` route (없으면 discrete에서 집계 생성) |
+| `abstract_arrange.json` | `(PPK, OPER, EQP_MODEL_CD, ST)` route (없으면 discrete에서 집계 생성) |
 | `plan.json` | (PPK, OPER) 계획량·우선순위 |
-| `flow.json` | PPK별 공정 순서 |
+| `flow.json` | PPK별 공정 순서 (`OPER_SEQ`) |
 | `batch_info.json` | **(PPK, OPER) → LOT_CD, TEMP** — conversion/tool (Oracle: `batch_info.sql`) |
 | `lot_master.json` | LOT별 LOT_CD, TEMP (레거시·batch_info 없을 때 보조) |
 | `tool_capacity.json` | `(LOT_CD, EQP_MODEL)` 동시 가공 상한 |
-| `split.json` | wafer lot split 규칙 (선택) |
+| `split.json` | wafer lot split 규칙 (`EQP_MODEL_CD`, 선택) |
 
 ### Takt pacing 검증 시나리오 (`data/pacing_scenarios.py`)
 

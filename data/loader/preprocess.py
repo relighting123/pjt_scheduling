@@ -34,7 +34,7 @@ def _build_split_lookup(split_raw: List[dict]) -> Dict[Tuple[str, str, str], int
     for r in split_raw:
         ppk = r["PLAN_PROD_KEY"]
         oper = str(r.get("OPER_ID", "*")).strip().upper() or "*"
-        model = str(r.get("EQP_MODEL", "*")).strip().upper() or "*"
+        model = str(r.get("EQP_MODEL_CD", "*")).strip().upper() or "*"
         lookup[(ppk, oper, model)] = int(r["SPLIT_QTY"])
     return lookup
 
@@ -80,7 +80,7 @@ def _build_flow_maps(
     oper_seq_map: Dict[str, Dict[str, int]] = {}
     for r in flow_raw:
         ppk = r["PLAN_PROD_KEY"]
-        seq = int(r["SEQ_ID"])
+        seq = int(r["OPER_SEQ"])
         oper_id = r["OPER_ID"]
         flow_map.setdefault(ppk, {})[seq] = oper_id
         oper_seq_map.setdefault(ppk, {})[oper_id] = seq
@@ -283,7 +283,7 @@ def _build_abstract_route_maps(
     for r in abstract_raw:
         ppk = r["PLAN_PROD_KEY"]
         oper_id = r["OPER_ID"]
-        model = str(r.get("EQP_MODEL") or "A")
+        model = str(r.get("EQP_MODEL_CD") or "A")
         st = _coerce_proc_time(r.get("ST")) or 60
         route_map[(ppk, oper_id, model)] = st
         by_ppk_oper.setdefault((ppk, oper_id), []).append((model, st))
@@ -317,7 +317,7 @@ def _build_abstract_inventory(
     for r in abstract_raw:
         ppk = r["PLAN_PROD_KEY"]
         oper_id = r["OPER_ID"]
-        model = str(r.get("EQP_MODEL") or "A")
+        model = str(r.get("EQP_MODEL_CD") or "A")
         abs_key = f"{ppk}|{oper_id}|{model}"
         if abs_key in seen:
             continue
@@ -389,9 +389,9 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     Input:
         raw = {
             "discrete_arrange": [{EQP_ID, LOT_ID, PLAN_PROD_KEY, OPER_ID, ST, EQP_MODEL, WF_QTY, ...}, ...],
-            "abstract_arrange": [{PLAN_PROD_KEY, OPER_ID, EQP_MODEL, ST}, ...],
+            "abstract_arrange": [{PLAN_PROD_KEY, OPER_ID, EQP_MODEL_CD, ST}, ...],
             "plan":         [{PLAN_PROD_KEY, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY, PLAN_PRIORITY}, ...],
-            "flow":         [{PLAN_PROD_KEY, SEQ_ID, OPER_ID}, ...]
+            "flow":         [{PLAN_PROD_KEY, OPER_SEQ, OPER_ID}, ...]
         }
     Output:
         {
@@ -497,7 +497,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     for r in flow_raw:
         ppk = r["PLAN_PROD_KEY"]
         flow_list.setdefault(ppk, [])
-        flow_list[ppk].append({"seq_id": int(r["SEQ_ID"]), "oper_id": r["OPER_ID"]})
+        flow_list[ppk].append({"seq_id": int(r["OPER_SEQ"]), "oper_id": r["OPER_ID"]})
     for ppk in flow_list:
         flow_list[ppk].sort(key=lambda x: x["seq_id"])
 

@@ -123,7 +123,7 @@ def _abstract_row(ppk: str, oper_id: str, eqp_model: str, st: int) -> dict:
     return {
         "PLAN_PROD_KEY": ppk,
         "OPER_ID": oper_id,
-        "EQP_MODEL": eqp_model,
+        "EQP_MODEL_CD": eqp_model,
         "ST": st,
     }
 
@@ -154,7 +154,7 @@ def _split_row(ppk: str, oper_id: str, eqp_model: str, split_qty: int) -> dict:
     return {
         "PLAN_PROD_KEY": ppk,
         "OPER_ID": oper_id,
-        "EQP_MODEL": eqp_model,
+        "EQP_MODEL_CD": eqp_model,
         "SPLIT_QTY": split_qty,
     }
 
@@ -164,7 +164,7 @@ def build_split_rules(
     split_qty: int = 3,
     models: Tuple[str, ...] = ("A", "B", "C", "D", "E"),
 ) -> List[dict]:
-    """flow의 PPK × OPER × EQP MODEL 별 SPLIT_QTY 규칙 생성"""
+    """flow의 PPK × OPER × EQP MODEL CD 별 SPLIT_QTY 규칙 생성"""
     ppk_opers = sorted({(r["PLAN_PROD_KEY"], r["OPER_ID"]) for r in flow})
     return [
         _split_row(ppk, oper_id, model, split_qty)
@@ -309,12 +309,12 @@ def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict]]:
          "D0_PLAN_QTY": 25, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
     ]
     flow = [
-        {"PLAN_PROD_KEY": "PPK001", "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK001", "SEQ_ID": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": "PPK002", "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK002", "SEQ_ID": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": "PPK003", "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK003", "SEQ_ID": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": "PPK002", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": "PPK002", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": "PPK003", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": "PPK003", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
     return discrete, plan, flow
 
@@ -357,8 +357,8 @@ def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]
          "D0_PLAN_QTY": total, "D1_PLAN_QTY": total + 50, "PLAN_PRIORITY": 1},
     ]
     flow = [
-        {"PLAN_PROD_KEY": ppk, "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": ppk, "SEQ_ID": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": ppk, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
     return discrete, plan, flow
 
@@ -409,7 +409,7 @@ def _build_random_sample(
         for seq in range(1, cfg.n_opers + 1):
             flow.append({
                 "PLAN_PROD_KEY": ppk,
-                "SEQ_ID": seq,
+                "OPER_SEQ": seq,
                 "OPER_ID": opers[seq - 1],
             })
 
@@ -475,10 +475,10 @@ def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict]]:
     ppk_a, ppk_b = "PPK001", "PPK002"
 
     flow = [
-        {"PLAN_PROD_KEY": ppk_a, "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": ppk_a, "SEQ_ID": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": ppk_b, "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": ppk_b, "SEQ_ID": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": ppk_a, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk_a, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
     plan = [
         {"PLAN_PROD_KEY": ppk_a, "OPER_ID": "OPER001",
