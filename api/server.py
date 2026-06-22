@@ -15,8 +15,9 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, train_snapshot_now, PERIOD_SPLITS, validate_path_segment, iter_rule_timekeys, parse_input_folder, latest_period
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
+from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
@@ -127,16 +128,18 @@ def _resolve_train_folders(req: "TrainRequest") -> list[str]:
         return folders
 
     if req.from_date and req.to_date:
-        folders = [
-            f"{fac_id}/train/{key}"
-            for key in iter_rule_timekeys(req.from_date, req.to_date)
-            if f"{fac_id}/train/{key}" in available
-        ]
+        periods, _ = resolve_collect_periods(
+            fac_id,
+            from_key=req.from_date,
+            to_key=req.to_date,
+            require_db=True,
+        )
+        folders = train_folders_for_periods(fac_id, periods)
         if not folders:
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"기간 {req.from_date}~{req.to_date}에 해당하는 "
+                    f"기간 {req.from_date}~{req.to_date} (DB RULE_TIMEKEY)에 해당하는 "
                     f"train 데이터가 없습니다."
                 ),
             )
@@ -388,10 +391,15 @@ def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
 def fetch_dataset(req: FetchRequest):
     try:
         if req.from_date and req.to_date:
+            periods, _ = resolve_collect_periods(
+                req.fac_id,
+                from_key=req.from_date,
+                to_key=req.to_date,
+                require_db=(req.split == "train"),
+            )
             paths = fetch_period_range(
                 fac_id=req.fac_id,
-                from_date=req.from_date,
-                to_date=req.to_date,
+                periods=periods,
                 split=req.split,
                 lot_cd=req.lot_cd,
             )
@@ -399,7 +407,12 @@ def fetch_dataset(req: FetchRequest):
         elif req.from_date or req.to_date:
             raise ValueError("from_date와 to_date를 함께 지정하세요.")
         else:
-            snap = req.snapshot or (train_snapshot_now() if req.split == "train" else None)
+            require_db = req.split == "train" and not req.snapshot
+            snap, _ = resolve_snapshot_rule_timekey(
+                req.fac_id,
+                req.snapshot,
+                require_db=require_db,
+            )
             path = fetch_from_db(
                 fac_id=req.fac_id,
                 split=req.split,

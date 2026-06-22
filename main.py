@@ -43,6 +43,7 @@ from data.collector import (
 )
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader import fetch_from_db, load_data, validate_data, preprocess
+from data.loader.rule_timekey_query import resolve_collect_periods
 from data.loader.sql_binds import resolve_lot_cd
 from agent.rl_agent import SchedulingAgent
 from inference.runner import run_inference, save_result
@@ -102,12 +103,26 @@ def cmd_train(
     lot_cd: str = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
-    start_key, end_key = resolve_train_period_range(
-        prevdays=prevdays, from_key=from_key, to_key=to_key,
-    )
+    if nodb:
+        start_key, end_key = resolve_train_period_range(
+            prevdays=prevdays, from_key=from_key, to_key=to_key,
+        )
+        range_source = "local"
+    else:
+        periods, range_source = resolve_collect_periods(
+            fac_id,
+            prevdays=prevdays or 1,
+            from_key=from_key,
+            to_key=to_key,
+            require_db=True,
+        )
+        start_key, end_key = periods[0], periods[-1]
 
     print("=" * 60)
-    print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}")
+    print(
+        f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}"
+        f" ({range_source})",
+    )
     if nodb:
         print("[train] --nodb: 기존 JSON만 사용 (자동 수집 없음)")
 

@@ -51,6 +51,7 @@ from config import (
     resolve_dataset_path,
     resolve_train_folders,
     resolve_train_period_range,
+    train_folders_for_periods,
     validate_path_segment,
 )
 from data.db_registry import diagnose_db_config, print_db_config_report
@@ -162,16 +163,38 @@ def ensure_train_folders(
 ) -> List[str]:
     """
     train 학습용 폴더 목록 확보.
-    로컬 dataset 이 없고 nodb=False 이면 TrainingDataCollector 로 DB 수집.
+    RULE_TIMEKEY 는 DB 메타 SQL 기준 (로컬 시각 생성 없음, --nodb 시 기존 폴더만).
     """
-    start_key, end_key = resolve_train_period_range(
-        prevdays=prevdays, from_key=from_key, to_key=to_key,
+    if nodb:
+        if from_key and to_key:
+            start_key, end_key = resolve_train_period_range(
+                from_key=from_key, to_key=to_key,
+            )
+            return resolve_train_folders(fac_id, start_key, end_key)
+        periods, _ = resolve_collect_periods(
+            fac_id,
+            prevdays=prevdays or 1,
+            from_key=from_key,
+            to_key=to_key,
+            require_db=False,
+        )
+        if periods:
+            return train_folders_for_periods(fac_id, periods)
+        start_key, end_key = resolve_train_period_range(prevdays=prevdays or 1)
+        return resolve_train_folders(fac_id, start_key, end_key)
+
+    periods, _ = resolve_collect_periods(
+        fac_id,
+        prevdays=prevdays or 1,
+        from_key=from_key,
+        to_key=to_key,
+        require_db=True,
     )
-    folders = resolve_train_folders(fac_id, start_key, end_key, prevdays=prevdays)
+    folders = train_folders_for_periods(fac_id, periods)
+    if folders and len(folders) == len(periods):
+        return folders
     if folders:
         return folders
-    if nodb:
-        return []
 
     print("[train] train 데이터 없음 → collector 수집")
     paths = collect_dataset(
@@ -185,7 +208,7 @@ def ensure_train_folders(
     if not paths:
         return []
 
-    folders_after = resolve_train_folders(fac_id, start_key, end_key, prevdays=prevdays)
+    folders_after = train_folders_for_periods(fac_id, periods)
     if folders_after:
         return folders_after
     return paths_to_folder_keys(fac_id, "train", paths)
@@ -431,7 +454,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--period",
-        help="--snapshot 시 사용할 RULE_TIMEKEY (미지정 시 DB 최신 → 현재 시각)",
+        help="--snapshot 시 사용할 RULE_TIMEKEY (미지정 시 DB 최신)",
     )
     add_debug_arguments(parser)
     return parser

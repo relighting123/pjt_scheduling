@@ -152,11 +152,31 @@ def test_fetch_error_includes_sql_context(tmp_path, monkeypatch):
     assert "period=20260621170000" in msg
 
 
+def test_ensure_train_folders_uses_db_period_keys(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.DATASET_DIR", tmp_path)
+    fac_root = tmp_path / "FAC001" / "train" / "20260621170000" / "input"
+    fac_root.mkdir(parents=True)
+    (fac_root / "discrete_arrange.json").write_text("[]", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "data.collector.resolve_collect_periods",
+        lambda *args, **kwargs: (["20260621170000"], "db"),
+    )
+
+    folders = ensure_train_folders("FAC001", prevdays=3)
+    assert folders == ["FAC001/train/20260621170000"]
+
+
 def test_ensure_train_folders_uses_existing(tmp_path, monkeypatch):
     monkeypatch.setattr("config.DATASET_DIR", tmp_path)
     fac_root = tmp_path / "FAC001" / "train" / "20260621170000" / "input"
     fac_root.mkdir(parents=True)
     (fac_root / "discrete_arrange.json").write_text("[]", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "data.collector.resolve_collect_periods",
+        lambda *args, **kwargs: (["20260621170000"], "db"),
+    )
 
     folders = ensure_train_folders(
         "FAC001",
@@ -169,7 +189,11 @@ def test_ensure_train_folders_uses_existing(tmp_path, monkeypatch):
 
 def test_ensure_train_folders_collects_when_missing(monkeypatch):
     monkeypatch.setattr(
-        "data.collector.resolve_train_folders",
+        "data.collector.resolve_collect_periods",
+        lambda *args, **kwargs: (["20260621170000"], "db"),
+    )
+    monkeypatch.setattr(
+        "data.collector.train_folders_for_periods",
         lambda *args, **kwargs: [],
     )
     with patch("data.collector.collect_dataset") as collect:
@@ -183,10 +207,11 @@ def test_ensure_train_folders_collects_when_missing(monkeypatch):
     assert folders == ["FAC001/train/20260621170000"]
 
 
-def test_ensure_train_folders_nodb_returns_empty(monkeypatch):
+def test_ensure_train_folders_nodb_returns_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.DATASET_DIR", tmp_path)
     monkeypatch.setattr(
-        "data.collector.resolve_train_folders",
-        lambda *args, **kwargs: [],
+        "data.collector.resolve_collect_periods",
+        lambda *args, **kwargs: (["20260621170000"], "db"),
     )
     assert ensure_train_folders("FAC001", prevdays=1, nodb=True) == []
 

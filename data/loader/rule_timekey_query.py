@@ -248,7 +248,7 @@ def resolve_snapshot_rule_timekey(
     db_registry: Optional[DbRegistry] = None,
     require_db: bool = False,
 ) -> tuple[str, str]:
-    """스냅샷 1건 RULE_TIMEKEY (period 미지정 시 DB 최신 → 현재 시각)."""
+    """스냅샷 1건 RULE_TIMEKEY (period 미지정 시 DB 최신, require_db 시 로컬 fallback 없음)."""
     if period:
         return normalize_rule_timekey(period), "cli"
 

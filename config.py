@@ -199,6 +199,19 @@ def resolve_train_folders(
     return folders_in_period_range(fac_id, "train", from_key, to_key)
 
 
+def train_folders_for_periods(fac_id: str, periods: List[str]) -> List[str]:
+    """DB 등에서 확정된 RULE_TIMEKEY 목록에 해당하는 train 폴더 키."""
+    fac_id = validate_path_segment(fac_id, "FAC_ID")
+    available = set(list_split_folders(fac_id, "train"))
+    folders: List[str] = []
+    for period in periods:
+        key = normalize_rule_timekey(period)
+        folder = f"{fac_id}/train/{key}"
+        if folder in available:
+            folders.append(folder)
+    return folders
+
+
 def latest_period(fac_id: str, split: str = "train") -> Optional[str]:
     """train|test/{period} 중 최신 period 폴더명"""
     if split not in PERIOD_SPLITS:
