@@ -19,7 +19,7 @@ Dev:
     password: ...
 ```
 
-SQL: ``-- @db: Prd`` / ``-- @db: Dev.Mes``
+SQL: ``-- @db: Prd`` / ``@db:WT_RTS`` / ``-- @db: Dev.Mes`` (``@db`` 대소문자 무관)
 
 .env:
     DB_CONFIG=config/databases.yaml
@@ -38,8 +38,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from config import BASE_DIR
 
 _DB_HEADER_RE = re.compile(
-    r"^\s*--\s*@db:\s*([A-Za-z][\w.-]*(?:\.[A-Za-z][\w.-]*)*)\s*$",
-    re.MULTILINE,
+    r"^\s*(?:--\s*)?@db\s*:\s*"
+    r"([A-Za-z][\w.-]*(?:\.[A-Za-z][\w.-]*)*)"
+    r"(?:\s*--.*)?\s*$",
+    re.IGNORECASE | re.MULTILINE,
 )
 _ALIAS_ENV_RE = re.compile(r"^DB_([A-Z][A-Z0-9_]*)_(USER|PASSWORD|DSN)$")
 _META_KEYS = frozenset({"default", "_default"})
@@ -309,13 +311,17 @@ def diagnose_db_config(
     example_path = BASE_DIR / "config" / "databases.yaml.example"
     env = environ if environ is not None else os.environ
     buckets, yaml_default = load_db_aliases(yaml_path=yaml_path, environ=environ)
-    default_alias = default_db_alias(yaml_default, environ)
+    default_alias, default_warn = resolve_default_db_alias(
+        buckets, yaml_default, environ,
+    )
     alias_source = default_alias_source(yaml_default, environ)
     dotenv_values = _read_dotenv_file()
     sql_aliases = scan_sql_db_aliases()
 
     issues: List[str] = []
     notes: List[str] = []
+    if default_warn:
+        notes.append(default_warn)
     if not cfg_path.exists():
         issues.append(f"YAML 파일 없음: {cfg_path}")
         if example_path.exists():
@@ -483,6 +489,13 @@ def resolve_db_credentials(
     return DbCredentials(alias=key, **merged)
 
 
+def _alias_resolvable(alias: str, buckets: Dict[str, Dict[str, str]]) -> bool:
+    norm = _normalize_alias(alias)
+    return norm in buckets or any(
+        anc in buckets for anc in alias_ancestors(norm)
+    )
+
+
 def default_db_alias(
     yaml_default: Optional[str] = None,
     environ: Optional[Dict[str, str]] = None,
@@ -493,6 +506,29 @@ def default_db_alias(
     if yaml_default:
         return _normalize_alias(yaml_default)
     return "main"
+
+
+def resolve_default_db_alias(
+    buckets: Dict[str, Dict[str, str]],
+    yaml_default: Optional[str] = None,
+    environ: Optional[Dict[str, str]] = None,
+) -> Tuple[str, Optional[str]]:
+    """default alias 결정. .env 값이 buckets 에 없으면 yaml default 로 대체."""
+    env = environ if environ is not None else os.environ
+    preferred = default_db_alias(yaml_default, environ)
+    if _alias_resolvable(preferred, buckets):
+        return preferred, None
+
+    env_raw = env.get("DB_DEFAULT_ALIAS", "").strip()
+    if env_raw and yaml_default:
+        yaml_norm = _normalize_alias(yaml_default)
+        if _alias_resolvable(yaml_norm, buckets):
+            return yaml_norm, (
+                f".env DB_DEFAULT_ALIAS={env_raw!r} 가 databases.yaml 에 없습니다. "
+                f"yaml default '{yaml_norm}' 를 사용합니다."
+            )
+
+    return preferred, None
 
 
 class DbRegistry:
@@ -510,9 +546,13 @@ class DbRegistry:
             buckets, yaml_def = alias_buckets, None
 
         self._buckets = buckets
-        self._default_alias = _normalize_alias(
-            default_alias or default_db_alias(yaml_def),
-        )
+        if default_alias is not None:
+            self._default_alias = _normalize_alias(default_alias)
+            self._default_warn = None
+        else:
+            resolved, warn = resolve_default_db_alias(buckets, yaml_def)
+            self._default_alias = resolved
+            self._default_warn = warn
         if self._default_alias not in buckets and not any(
             anc in buckets for anc in alias_ancestors(self._default_alias)
         ):

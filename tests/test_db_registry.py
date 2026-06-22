@@ -15,8 +15,50 @@ from data.db_registry import (
     load_db_aliases_from_yaml,
     parse_sql_db_alias,
     resolve_db_credentials,
+    resolve_default_db_alias,
     scan_sql_db_aliases,
 )
+
+
+def test_parse_sql_db_alias_without_sql_comment():
+    sql = "@db:WT_RTS\nSELECT 1 FROM dual"
+    assert parse_sql_db_alias(sql) == "wt_rts"
+
+
+def test_parse_sql_db_alias_case_insensitive():
+    sql = "-- @DB: WT_RTS\nSELECT 1"
+    assert parse_sql_db_alias(sql) == "wt_rts"
+
+
+def test_parse_sql_db_alias_trailing_comment():
+    sql = "-- @db: WT_RTS -- production\nSELECT 1"
+    assert parse_sql_db_alias(sql) == "wt_rts"
+
+
+def test_resolve_default_falls_back_to_yaml_when_env_prd_missing(tmp_path, monkeypatch):
+    cfg = tmp_path / "databases.yaml"
+    cfg.write_text(
+        "default: WT_RTS\nWT_RTS:\n  user: u\n  password: p\n  dsn: d\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DB_CONFIG", str(cfg))
+    monkeypatch.setenv("DB_DEFAULT_ALIAS", "Prd")
+    buckets, yaml_def = load_db_aliases_from_yaml(cfg)
+    alias, warn = resolve_default_db_alias(buckets, yaml_def)
+    assert alias == "wt_rts"
+    assert warn and "Prd" in warn
+
+
+def test_db_registry_wt_rts_with_stale_env_prd(tmp_path, monkeypatch):
+    cfg = tmp_path / "databases.yaml"
+    cfg.write_text(
+        "default: WT_RTS\nWT_RTS:\n  user: u\n  password: p\n  dsn: d\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DB_CONFIG", str(cfg))
+    monkeypatch.setenv("DB_DEFAULT_ALIAS", "Prd")
+    reg = DbRegistry(yaml_path=cfg)
+    assert reg.default_alias == "wt_rts"
 
 
 def test_parse_sql_db_alias_from_header():
