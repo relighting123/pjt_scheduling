@@ -33,7 +33,7 @@ def test_resolve_split_qty_by_oper():
 
 def test_sql_example_split_has_oper_id():
     from pathlib import Path
-    text = (Path(__file__).resolve().parent.parent / "external/sql.example/split.sql").read_text()
+    text = (Path(__file__).resolve().parent.parent / "data/sql.example/split.sql").read_text()
     assert "OPER_ID" in text
     assert "PLAN_PROD_KEY" in text
     assert "EQP_MODEL_CD" in text

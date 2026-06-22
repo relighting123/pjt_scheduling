@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from config import SQL_EXAMPLE_DIR, SQL_JSON_MAP
 from data.collector import TrainingDataCollector, build_arg_parser
 from data.db_registry import (
     DbRegistry,
@@ -212,10 +213,15 @@ def test_db_registry_unknown_alias_raises():
 
 
 def test_sql_files_declare_db_alias():
-    sql_dir = Path(__file__).resolve().parent.parent / "external" / "sql.example"
-    for path in sql_dir.glob("*.sql"):
+    for path in SQL_EXAMPLE_DIR.glob("*.sql"):
         text = path.read_text(encoding="utf-8")
         assert "@db:" in text.splitlines()[0], f"{path.name} 에 -- @db: 헤더 필요"
+
+
+def test_sql_examples_cover_fetch_inputs():
+    example_files = {path.name for path in SQL_EXAMPLE_DIR.glob("*.sql")}
+    mapped_files = {sql_file for sql_file, _json_file in SQL_JSON_MAP.values()}
+    assert mapped_files <= example_files
 
 
 def test_collector_arg_parser_defaults():

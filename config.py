@@ -11,11 +11,10 @@ from typing import List, Optional, Tuple
 
 # ── 기본 경로 ─────────────────────────────────────────────────────────────────
 BASE_DIR     = Path(__file__).parent          # pjt_scheduling/
-EXTERNAL_DIR = BASE_DIR / "external"          # 프로젝트 내 DB 연동 데이터 폴더
 DATA_DIR     = BASE_DIR / "data"
 DATASET_DIR  = DATA_DIR / "dataset"         # data/dataset/{FAC_ID}/...
-SQL_DIR      = EXTERNAL_DIR / "sql"           # external/sql/*.sql → *.json
-SQL_EXAMPLE_DIR = EXTERNAL_DIR / "sql.example"  # Oracle 쿼리 템플릿 (참고용)
+SQL_DIR      = DATA_DIR / "sql"              # data/sql/*.sql → *.json
+SQL_EXAMPLE_DIR = DATA_DIR / "sql.example"   # Oracle 쿼리 템플릿 (참고용)
 
 
 def _load_dotenv() -> None:
@@ -375,7 +374,7 @@ class PathConfig:
 # SQL 파일명 ↔ JSON 파일명 (loader.fetch_from_db)
 # 각 SQL 첫 줄: -- @db: Prd / Dev / Prd.Plan  (config/databases.yaml 계층)
 # 메타 SQL (JSON 변환 없음): rule_timekey_latest.sql, rule_timekey_list.sql, rule_timekey_recent.sql
-SQL_JSON_MAP = {
+REQUIRED_SQL_JSON_MAP = {
     "discrete_arrange": ("discrete_arrange.sql", "discrete_arrange.json"),
     "abstract_arrange": ("abstract_arrange.sql", "abstract_arrange.json"),
     "plan":             ("plan.sql",             "plan.json"),
@@ -383,6 +382,13 @@ SQL_JSON_MAP = {
     "split":            ("split.sql",            "split.json"),
     "batch_info":       ("batch_info.sql",       "batch_info.json"),
 }
+OPTIONAL_SQL_JSON_MAP = {
+    "lot_master":        ("lot_master.sql",        "lot_master.json"),
+    "tool_capacity":     ("tool_capacity.sql",     "tool_capacity.json"),
+    "eqp_initial_state": ("eqp_initial_state.sql", "eqp_initial_state.json"),
+}
+SQL_JSON_MAP = {**REQUIRED_SQL_JSON_MAP, **OPTIONAL_SQL_JSON_MAP}
+SQL_REQUIRED_KEYS = frozenset(REQUIRED_SQL_JSON_MAP)
 
 
 @dataclass

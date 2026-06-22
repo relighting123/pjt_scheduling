@@ -202,7 +202,7 @@ class InferenceRequest(BaseModel):
     algorithm: str = Field(default="rl", description="rl | minprogress | earliest_st")
     input_folder: Optional[str] = Field(
         default=None,
-        description="입력 데이터 폴더명 (external/<name>/)",
+        description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
     )
 
 
@@ -269,7 +269,7 @@ class CompareRequest(BaseModel):
     )
     input_folder: Optional[str] = Field(
         default=None,
-        description="입력 데이터 폴더명 (external/<name>/)",
+        description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
     )
 
 

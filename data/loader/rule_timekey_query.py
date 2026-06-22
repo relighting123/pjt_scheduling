@@ -1,13 +1,13 @@
 """
 data/loader/rule_timekey_query.py – DB 에서 RULE_TIMEKEY 목록/최신값 조회
 
-메타 SQL (external/sql/, SQL_JSON_MAP 제외):
+메타 SQL (data/sql/, SQL_JSON_MAP 제외):
     rule_timekey_latest.sql  – 최신 1건
     rule_timekey_list.sql    – FROM~TO 구간 목록
     rule_timekey_recent.sql  – 최근 N개
 
 활성화:
-    external/sql/rule_timekey_*.sql 파일이 있으면 자동 사용
+    data/sql/rule_timekey_*.sql 파일이 있으면 자동 사용
     RULE_TIMEKEY_FROM_DB=1|0 으로 강제 on/off
 """
 from __future__ import annotations
@@ -177,7 +177,7 @@ def _db_rule_timekey_error(fac_id: str, detail: str) -> ValueError:
     return ValueError(
         f"DB RULE_TIMEKEY 조회 실패 ({detail}).\n"
         f"  fac_id={fac_id}\n"
-        f"  external/sql/rule_timekey_*.sql 을 배치하고 DB 연결을 확인하세요.\n"
+        f"  data/sql/rule_timekey_*.sql 을 배치하고 DB 연결을 확인하세요.\n"
         f"  (RULE_TIMEKEY_FROM_DB=0 이면 collector 폴더명은 DB 키를 쓸 수 없습니다.)",
     )
 

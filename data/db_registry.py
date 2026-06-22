@@ -360,7 +360,7 @@ def diagnose_db_config(
     if not SQL_DIR.exists():
         issues.append(
             f"SQL 폴더 없음: {SQL_DIR} "
-            "(실행: cp -r external/sql.example external/sql)"
+            "(실행: mkdir -p data/sql && cp data/sql.example/*.sql data/sql/)"
         )
     elif not sql_aliases:
         issues.append(f"SQL 폴더에 *.sql 없음: {SQL_DIR}")

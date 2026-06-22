@@ -16,12 +16,12 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     python -m data.collector --facid FAC001 --once --debug
     python main.py collect --facid FAC001 --prevdays 3 --once
 
-RULE_TIMEKEY (DB 메타 SQL 필수, external/sql/rule_timekey_*.sql):
+RULE_TIMEKEY (DB 메타 SQL 필수, data/sql/rule_timekey_*.sql):
     수집 폴더명 = DB 에서 조회한 실제 RULE_TIMEKEY (로컬 시각 생성 없음)
     rule_timekey_latest.sql  – 최신 1건 (--snapshot 기본값)
     rule_timekey_recent.sql  – 최근 N개 (--prevdays)
     rule_timekey_list.sql    – FROM~TO 구간 (--from/--to)
-    cp external/sql.example/rule_timekey_*.sql external/sql/
+    cp data/sql.example/rule_timekey_*.sql data/sql/
 
 디버그 순서 (오류 시):
     1. python main.py db-check
