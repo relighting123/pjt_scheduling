@@ -5,12 +5,11 @@ main.py - 운영 CLI
     python main.py train --facid FAC001 --prevdays 3
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
     python main.py validate --facid FAC001
-    python main.py inference --facid FAC001
-    python main.py inference --facid FAC001 --ruletimekey 20260621170000
-    python main.py train --facid FAC001 --prevdays 3 --nodb
-    python main.py collect --fac-id FAC001 --prevdays 1 --once
-    python main.py collect --fac-id FAC001 --once --preflight
-    python -m data.collector --fac-id FAC001 --once --dry-run -v --debug
+    python main.py infer --facid FAC001
+    python main.py infer --facid FAC001 --ruletimekey 20260621170000
+    python main.py collect --facid FAC001 --prevdays 1 --once
+    python main.py collect --facid FAC001 --once --preflight
+    python -m data.collector --facid FAC001 --once --dry-run -v --debug
     python main.py db-check
     python main.py ui
 """
@@ -39,7 +38,7 @@ from config import (
 )
 from data.collector import TrainingDataCollector, add_debug_arguments, run_collector_cli
 from data.db_registry import diagnose_db_config, print_db_config_report
-from data.loader import fetch_period_range, fetch_from_db, load_data, validate_data, preprocess
+from data.loader import fetch_from_db, load_data, validate_data, preprocess
 from data.loader.sql_binds import resolve_lot_cd
 from agent.rl_agent import SchedulingAgent
 from inference.runner import run_inference, save_result
@@ -94,9 +93,6 @@ def cmd_train(
     prevdays: int = None,
     from_key: str = None,
     to_key: str = None,
-    *,
-    nodb: bool = False,
-    lot_cd: str = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     start_key, end_key = resolve_train_period_range(
@@ -105,35 +101,23 @@ def cmd_train(
 
     print("=" * 60)
     print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}")
-    lcd = resolve_lot_cd(lot_cd)
-    if lcd:
-        print(f"[train] LOT_CD={lcd}")
-    if nodb:
-        print("[train] --nodb: 기존 JSON 사용 (Oracle 조회 생략)")
-    else:
-        print("[train] Oracle SQL → JSON (train)")
-        fetch_period_range(
-            fac_id=fac_id, from_date=start_key, to_date=end_key, split="train",
-            lot_cd=lcd,
-        )
 
     train_folders = resolve_train_folders(
-        fac_id, start_key, end_key, prevdays=prevdays, nodb=nodb,
+        fac_id, start_key, end_key, prevdays=prevdays,
     )
     if not train_folders:
         available = list_split_folders(fac_id, "train")
         print("[오류] 학습용 train 폴더가 없습니다.")
-        if not nodb:
-            print(f"  요청 구간: {start_key} ~ {end_key}")
+        print(f"  요청 구간: {start_key} ~ {end_key}")
         if available:
             print(f"  사용 가능한 train 폴더: {', '.join(available)}")
         else:
-            print("  UI에서 bootstrap 하거나 Oracle fetch 후 다시 시도하세요.")
+            print("  먼저 collect 로 train 데이터를 수집하세요.")
         sys.exit(1)
-    if nodb:
-        print(f"[train] --nodb: train 폴더 {len(train_folders)}개 사용")
-        for f in train_folders:
-            print(f"  · {f}")
+
+    print(f"[train] train 폴더 {len(train_folders)}개 사용")
+    for f in train_folders:
+        print(f"  · {f}")
 
     print("=" * 60)
     print("[train] 데이터 로드 및 전처리")
@@ -153,7 +137,7 @@ def cmd_train(
 
     print("=" * 60)
     print("[train] validation (test 전체)")
-    run_validation(fac_id, agent=agent, refresh_sql=not nodb)
+    run_validation(fac_id, agent=agent, refresh_sql=True)
 
 
 def cmd_validate(fac_id: str, *, nodb: bool = False):
@@ -280,7 +264,7 @@ def cmd_collect(
     preflight: bool = False,
 ):
     args = argparse.Namespace(
-        fac_id=fac_id,
+        facid=fac_id,
         split=split,
         interval=interval,
         prevdays=prevdays,
@@ -308,7 +292,7 @@ def parse_args():
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    train_p = sub.add_parser("train", help="SQL 조회 → 학습 → validation")
+    train_p = sub.add_parser("train", help="dataset train JSON 로드 → 학습 → validation")
     train_p.add_argument("--facid", required=True, help="공장 ID")
     train_p.add_argument(
         "--prevdays", type=int, default=None,
@@ -322,17 +306,6 @@ def parse_args():
         "--to", dest="to_key", metavar="RULE_TIMEKEY", default=None,
         help="학습 종료 RULE_TIMEKEY",
     )
-    train_p.add_argument(
-        "--nodb", action="store_true",
-        help="Oracle 조회 생략, dataset 기존 JSON 사용",
-    )
-
-    train_p.add_argument(
-        "--lot-cd",
-        default=None,
-        help="LOT_CD SQL 필터 (기본: SQL_LOT_CD / COLLECTOR_LOT_CD)",
-    )
-
     val_p = sub.add_parser("validate", help="test 데이터 전체 검증")
     val_p.add_argument("--facid", required=True, help="공장 ID")
     val_p.add_argument(
@@ -363,7 +336,7 @@ def parse_args():
     collect_p = sub.add_parser(
         "collect", help="주기적 학습 데이터 수집 (SQL @db alias → JSON)",
     )
-    collect_p.add_argument("--fac-id", dest="fac_id", required=True, help="공장 ID")
+    collect_p.add_argument("--facid", required=True, help="공장 ID")
     collect_p.add_argument(
         "--split", default="train", choices=("train", "test", "infer"),
     )
@@ -402,8 +375,6 @@ def main():
                 prevdays=args.prevdays,
                 from_key=args.from_key,
                 to_key=args.to_key,
-                nodb=args.nodb,
-                lot_cd=args.lot_cd,
             )
 
         elif args.command == "validate":
@@ -419,7 +390,7 @@ def main():
 
         elif args.command == "collect":
             cmd_collect(
-                fac_id=args.fac_id,
+                fac_id=args.facid,
                 split=args.split,
                 interval=args.interval,
                 prevdays=args.prevdays,

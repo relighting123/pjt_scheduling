@@ -93,6 +93,13 @@ def test_resolve_collect_periods_db_recent(monkeypatch, tmp_path):
     assert periods == ["20260620070000", "20260621070000"]
 
 
+def test_resolve_collect_periods_require_db_raises(monkeypatch, tmp_path):
+    monkeypatch.setenv("RULE_TIMEKEY_FROM_DB", "0")
+    monkeypatch.setattr("config.SQL_DIR", tmp_path / "empty")
+    with pytest.raises(ValueError, match="DB RULE_TIMEKEY"):
+        rtq.resolve_collect_periods("FAC001", prevdays=1, require_db=True)
+
+
 def test_resolve_collect_periods_local_fallback(monkeypatch, tmp_path):
     monkeypatch.setenv("RULE_TIMEKEY_FROM_DB", "0")
     monkeypatch.setattr("config.SQL_DIR", tmp_path / "empty")

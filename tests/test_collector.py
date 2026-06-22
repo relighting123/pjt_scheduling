@@ -16,7 +16,7 @@ from data.loader.fetch import fetch_from_db
 def test_collector_debug_args():
     parser = build_arg_parser()
     args = parser.parse_args([
-        "--once", "--fac-id", "FAC001", "--preflight", "-v", "--debug",
+        "--once", "--facid", "FAC001", "--preflight", "-v", "--debug",
     ])
     opts = collector_options_from_args(args)
     assert opts.preflight is True
@@ -99,10 +99,11 @@ def test_fetch_dry_run_logs_lot_cd_bind(tmp_path, monkeypatch, capsys):
 def test_collector_lot_cd_arg():
     parser = build_arg_parser()
     args = parser.parse_args([
-        "--once", "--fac-id", "FAC001", "--lot-cd", "LC001",
+        "--once", "--facid", "FAC001", "--lot-cd", "LC001",
     ])
     assert args.lot_cd == "LC001"
-    collector = TrainingDataCollector(fac_id=args.fac_id, lot_cd=args.lot_cd)
+    assert args.facid == "FAC001"
+    collector = TrainingDataCollector(fac_id=args.facid, lot_cd=args.lot_cd)
     assert collector.lot_cd == "LC001"
 
 
@@ -155,6 +156,10 @@ def test_collector_preflight_runs_without_db(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setenv("DB_CONFIG", str(cfg))
     monkeypatch.setattr("config.SQL_DIR", sql_dir)
+    monkeypatch.setattr(
+        "data.collector.resolve_collect_periods",
+        lambda *args, **kwargs: (["20260621170000"], "db"),
+    )
 
     collector = TrainingDataCollector(fac_id="FAC001", prevdays=1)
     collector.collect_once(

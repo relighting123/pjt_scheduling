@@ -2,6 +2,7 @@
 import textwrap
 from pathlib import Path
 
+import pytest
 import yaml
 
 from data.collector import TrainingDataCollector, build_arg_parser
@@ -219,14 +220,14 @@ def test_sql_files_declare_db_alias():
 
 def test_collector_arg_parser_defaults():
     parser = build_arg_parser()
-    args = parser.parse_args(["--once", "--fac-id", "FAC001"])
+    args = parser.parse_args(["--once", "--facid", "FAC001"])
     assert args.once is True
-    assert args.fac_id == "FAC001"
+    assert args.facid == "FAC001"
 
 
-def test_collector_resolve_range_prevdays():
+def test_collector_resolve_range_prevdays_requires_db(monkeypatch, tmp_path):
+    monkeypatch.setenv("RULE_TIMEKEY_FROM_DB", "0")
+    monkeypatch.setattr("config.SQL_DIR", tmp_path / "empty")
     c = TrainingDataCollector(fac_id="FAC001", prevdays=1)
-    periods, source = c._resolve_periods()
-    assert source == "local"
-    assert len(periods) == 1
-    assert len(periods[0]) == 14
+    with pytest.raises(ValueError, match="DB RULE_TIMEKEY"):
+        c._resolve_periods()
