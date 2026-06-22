@@ -48,6 +48,7 @@ if str(ROOT) not in sys.path:
 from config import (
     CONFIG,
     list_split_folders,
+    normalize_rule_timekey,
     resolve_dataset_path,
     resolve_train_folders,
     resolve_train_period_range,
@@ -130,6 +131,7 @@ def collect_dataset(
     prevdays: int = 1,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
+    period: Optional[str] = None,
     lot_cd: Optional[str] = None,
     options: Optional[CollectorOptions] = None,
 ) -> List[Path]:
@@ -143,6 +145,8 @@ def collect_dataset(
         lot_cd=lot_cd,
     )
     options = options or CollectorOptions()
+    if period:
+        return [collector.collect_snapshot(period=period, options=options)]
     if from_key and to_key:
         return collector.collect_period_range(
             from_key=from_key,
@@ -158,13 +162,34 @@ def ensure_train_folders(
     prevdays: Optional[int] = None,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
+    period: Optional[str] = None,
     lot_cd: Optional[str] = None,
     nodb: bool = False,
 ) -> List[str]:
     """
     train 학습용 폴더 목록 확보.
     RULE_TIMEKEY 는 DB 메타 SQL 기준 (로컬 시각 생성 없음, --nodb 시 기존 폴더만).
+    period 지정 시 해당 RULE_TIMEKEY 1건만 사용.
     """
+    if period:
+        periods = [normalize_rule_timekey(period)]
+        folders = train_folders_for_periods(fac_id, periods)
+        if folders or nodb:
+            return folders
+        print("[train] train 데이터 없음 → collector 수집")
+        paths = collect_dataset(
+            fac_id,
+            split="train",
+            period=period,
+            lot_cd=lot_cd,
+        )
+        if not paths:
+            return []
+        folders_after = train_folders_for_periods(fac_id, periods)
+        if folders_after:
+            return folders_after
+        return paths_to_folder_keys(fac_id, "train", paths)
+
     if nodb:
         if from_key and to_key:
             start_key, end_key = resolve_train_period_range(

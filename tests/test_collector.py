@@ -152,6 +152,37 @@ def test_fetch_error_includes_sql_context(tmp_path, monkeypatch):
     assert "period=20260621170000" in msg
 
 
+def test_ensure_train_folders_single_period(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.DATASET_DIR", tmp_path)
+    fac_root = tmp_path / "FAC001" / "train" / "20260621170000" / "input"
+    fac_root.mkdir(parents=True)
+    (fac_root / "discrete_arrange.json").write_text("[]", encoding="utf-8")
+
+    folders = ensure_train_folders(
+        "FAC001",
+        period="20260621170000",
+        nodb=True,
+    )
+    assert folders == ["FAC001/train/20260621170000"]
+
+
+def test_ensure_train_folders_single_period_collects_when_missing(monkeypatch):
+    monkeypatch.setattr(
+        "data.collector.train_folders_for_periods",
+        lambda *args, **kwargs: [],
+    )
+    with patch("data.collector.collect_dataset") as collect:
+        collect.return_value = [Path("/tmp/FAC001/train/20260621170000/input")]
+        folders = ensure_train_folders(
+            "FAC001",
+            period="20260621170000",
+        )
+    collect.assert_called_once()
+    call_kwargs = collect.call_args.kwargs
+    assert call_kwargs["period"] == "20260621170000"
+    assert folders == ["FAC001/train/20260621170000"]
+
+
 def test_ensure_train_folders_uses_db_period_keys(tmp_path, monkeypatch):
     monkeypatch.setattr("config.DATASET_DIR", tmp_path)
     fac_root = tmp_path / "FAC001" / "train" / "20260621170000" / "input"

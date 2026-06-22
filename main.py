@@ -3,6 +3,7 @@ main.py - 운영 CLI
 
 사용 예:
     python main.py train --facid FAC001 --prevdays 3
+    python main.py train --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --prevdays 3 --nodb
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
     python main.py validate --facid FAC001
@@ -32,6 +33,7 @@ from config import (
     CONFIG,
     set_input_folder,
     validate_path_segment,
+    normalize_rule_timekey,
     resolve_train_period_range,
     resolve_infer_rule_timekey,
     list_split_folders,
@@ -98,12 +100,17 @@ def cmd_train(
     prevdays: int = None,
     from_key: str = None,
     to_key: str = None,
+    rule_timekey: str = None,
     *,
     nodb: bool = False,
     lot_cd: str = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
-    if nodb:
+    if rule_timekey:
+        key = normalize_rule_timekey(rule_timekey)
+        start_key = end_key = key
+        range_source = "cli"
+    elif nodb:
         start_key, end_key = resolve_train_period_range(
             prevdays=prevdays, from_key=from_key, to_key=to_key,
         )
@@ -131,6 +138,7 @@ def cmd_train(
         prevdays=prevdays,
         from_key=from_key,
         to_key=to_key,
+        period=rule_timekey,
         lot_cd=lot_cd,
         nodb=nodb,
     )
@@ -336,6 +344,10 @@ def parse_args():
         help="학습 종료 RULE_TIMEKEY",
     )
     train_p.add_argument(
+        "--ruletimekey", default=None,
+        help="단일 RULE_TIMEKEY 학습 (미지정 시 --prevdays 또는 --from/--to 필요)",
+    )
+    train_p.add_argument(
         "--nodb", action="store_true",
         help="자동 수집·validation DB 조회 생략, dataset 기존 JSON만 사용",
     )
@@ -402,8 +414,17 @@ def main():
     args = parse_args()
     try:
         if args.command == "train":
-            if args.prevdays is None and not (args.from_key and args.to_key):
-                print("[오류] --prevdays 또는 --from/--to 가 필요합니다.")
+            if args.ruletimekey and (
+                args.prevdays is not None or args.from_key or args.to_key
+            ):
+                print("[오류] --ruletimekey 는 --prevdays, --from/--to 와 함께 쓸 수 없습니다.")
+                sys.exit(1)
+            if (
+                args.ruletimekey is None
+                and args.prevdays is None
+                and not (args.from_key and args.to_key)
+            ):
+                print("[오류] --ruletimekey, --prevdays 또는 --from/--to 가 필요합니다.")
                 sys.exit(1)
             if args.prevdays is not None and (args.from_key or args.to_key):
                 print("[오류] --prevdays 와 --from/--to 는 함께 쓸 수 없습니다.")
@@ -413,6 +434,7 @@ def main():
                 prevdays=args.prevdays,
                 from_key=args.from_key,
                 to_key=args.to_key,
+                rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
             )
