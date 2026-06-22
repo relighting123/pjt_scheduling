@@ -188,6 +188,7 @@ class SchedulingSimulator:
         self._wip_lot_meta: Dict[str, dict] = copy.deepcopy(
             data.get("abstract_lot_meta", {})
         )
+        self._initial_lot_ids: set = set(data.get("abstract_lot_meta", {}))
         self._in_flight: Dict[str, dict] = {}
         self._inject_deadline: Dict[str, int] = dict(data.get("lot_inject_deadline", {}))
 
@@ -388,6 +389,20 @@ class SchedulingSimulator:
         if not eqp or eqp.prev_lot_cd is None or not lot_cd:
             return False
         return eqp.prev_lot_cd != lot_cd or (eqp.prev_temp or "") != (temp or "")
+
+    def _needs_tool_swap(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
+        """EQP에 장착된 Pcode/Temp와 배정 대상이 다를 때만 tool 반환·장착."""
+        eqp = self.eqps.get(eqp_id)
+        if eqp is None or not lot_cd:
+            return False
+        if eqp.prev_lot_cd is None:
+            return True
+        return eqp.prev_lot_cd != lot_cd or (eqp.prev_temp or "") != (temp or "")
+
+    def _tool_cap_blocks(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
+        if not self._needs_tool_swap(eqp_id, lot_cd, temp):
+            return False
+        return not self._tool_tracker.can_assign(lot_cd, eqp_id)
 
     def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
         """EQP에서 투입 가능한 LOT 중 최소 소요시간(ST)."""
@@ -797,6 +812,8 @@ class SchedulingSimulator:
 
         def sort_key(lot: dict):
             return (
+                not lot.get("is_initial_wip", False),
+                int(lot.get("is_abstract", True)),
                 lot.get("priority", 99),
                 int(lot.get("oper_in_time", 0)),
                 -int(lot.get("seq", 0)),
@@ -815,10 +832,10 @@ class SchedulingSimulator:
         lot_id = self._auto_select_lot(eqp_id, lots)
         if lot_id is None:
             return -1.0
-        lot_cd, _ = self._lot_cd_temp(
+        lot_cd, temp = self._lot_cd_temp(
             lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
         )
-        if not self._tool_tracker.can_assign(lot_cd, eqp_id):
+        if self._tool_cap_blocks(eqp_id, lot_cd, temp):
             return -1.0
         return self.assign_lot(eqp_id, lot_id)
 
@@ -858,10 +875,10 @@ class SchedulingSimulator:
             ])
             if lot_id is None:
                 continue
-            lot_cd, _ = self._lot_cd_temp(
+            lot_cd, temp = self._lot_cd_temp(
                 lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
             )
-            if not self._tool_tracker.can_assign(lot_cd, eqp_id):
+            if self._tool_cap_blocks(eqp_id, lot_cd, temp):
                 continue
             feasible.append(self.ppk_oper_flat_index(oper_id, ppk))
         return feasible
@@ -930,6 +947,7 @@ class SchedulingSimulator:
                     "temp":            temp,
                     "seq":             meta.get("seq", lot.seq if lot else row["seq"]),
                     "is_abstract":     not has_discrete,
+                    "is_initial_wip":  lid in self._initial_lot_ids,
                     "oper_in_time":    oper_in_time,
                 })
         return lots
@@ -986,6 +1004,9 @@ class SchedulingSimulator:
         end_time = start_time + proc_time
         reward = proc_reward + self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
 
+        from_lot_cd = eqp.prev_lot_cd
+        from_temp = eqp.prev_temp
+
         eqp.status = "busy"
         eqp.current_lot = lot_id
         eqp.current_oper = oper_id
@@ -998,8 +1019,7 @@ class SchedulingSimulator:
         eqp.prev_temp = temp
 
         had_conv = pending.get("had_conversion", False)
-        if not had_conv and eqp.prev_lot_cd is None and lot_cd:
-            # 최초 장착(이후 동일 LOT_CD/TEMP는 conversion 없이 유지)
+        if not had_conv and from_lot_cd is None and lot_cd:
             self._tool_tracker.occupy(lot_cd, eqp_id)
         self._push_event(end_time, EVENT_PROCESS_END, eqp_id)
 
@@ -1077,7 +1097,7 @@ class SchedulingSimulator:
         reward = 0.0
 
         lot_cd, temp = self._lot_cd_temp(lot_id, ppk=ppk, oper_id=oper_id)
-        if not self._tool_tracker.can_assign(lot_cd, eqp_id):
+        if self._tool_cap_blocks(eqp_id, lot_cd, temp):
             return -1.0
 
         wip = self._wip_for(ppk, oper_id)
@@ -1420,7 +1440,8 @@ class SchedulingSimulator:
                             1.0 if self._would_need_conversion(current_eqp, lc, tp) else 0.0
                         )
                         feats[oi, pi, mi, 13] = (
-                            1.0 if self._tool_tracker.can_assign(lc, current_eqp) else 0.0
+                            1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
+                            or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
                         )
         return feats
 
