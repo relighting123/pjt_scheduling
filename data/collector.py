@@ -45,7 +45,14 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, resolve_dataset_path, validate_path_segment
+from config import (
+    CONFIG,
+    list_split_folders,
+    resolve_dataset_path,
+    resolve_train_folders,
+    resolve_train_period_range,
+    validate_path_segment,
+)
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader.fetch import fetch_from_db, fetch_period_range
 from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
@@ -106,6 +113,82 @@ def collector_options_from_args(args: argparse.Namespace) -> CollectorOptions:
         debug=getattr(args, "debug", False),
         preflight=getattr(args, "preflight", False),
     )
+
+
+def paths_to_folder_keys(fac_id: str, split: str, paths: List[Path]) -> List[str]:
+    """수집 output 경로 → dataset 폴더 키 (FAC/split/RULE_TIMEKEY)."""
+    fac = validate_path_segment(fac_id, "FAC_ID")
+    sp = validate_path_segment(split, "split")
+    return [f"{fac}/{sp}/{path.parent.name}" for path in paths]
+
+
+def collect_dataset(
+    fac_id: str,
+    *,
+    split: str = "train",
+    prevdays: int = 1,
+    from_key: Optional[str] = None,
+    to_key: Optional[str] = None,
+    lot_cd: Optional[str] = None,
+    options: Optional[CollectorOptions] = None,
+) -> List[Path]:
+    """Oracle SQL → dataset JSON 수집 (collect/train 공용 진입점)."""
+    collector = TrainingDataCollector(
+        fac_id=fac_id,
+        split=split,
+        prevdays=prevdays,
+        from_key=from_key,
+        to_key=to_key,
+        lot_cd=lot_cd,
+    )
+    options = options or CollectorOptions()
+    if from_key and to_key:
+        return collector.collect_period_range(
+            from_key=from_key,
+            to_key=to_key,
+            options=options,
+        )
+    return collector.collect_period_range(options=options)
+
+
+def ensure_train_folders(
+    fac_id: str,
+    *,
+    prevdays: Optional[int] = None,
+    from_key: Optional[str] = None,
+    to_key: Optional[str] = None,
+    lot_cd: Optional[str] = None,
+    nodb: bool = False,
+) -> List[str]:
+    """
+    train 학습용 폴더 목록 확보.
+    로컬 dataset 이 없고 nodb=False 이면 TrainingDataCollector 로 DB 수집.
+    """
+    start_key, end_key = resolve_train_period_range(
+        prevdays=prevdays, from_key=from_key, to_key=to_key,
+    )
+    folders = resolve_train_folders(fac_id, start_key, end_key, prevdays=prevdays)
+    if folders:
+        return folders
+    if nodb:
+        return []
+
+    print("[train] train 데이터 없음 → collector 수집")
+    paths = collect_dataset(
+        fac_id,
+        split="train",
+        prevdays=prevdays or 1,
+        from_key=from_key,
+        to_key=to_key,
+        lot_cd=lot_cd,
+    )
+    if not paths:
+        return []
+
+    folders_after = resolve_train_folders(fac_id, start_key, end_key, prevdays=prevdays)
+    if folders_after:
+        return folders_after
+    return paths_to_folder_keys(fac_id, "train", paths)
 
 
 class TrainingDataCollector:
