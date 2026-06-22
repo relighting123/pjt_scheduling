@@ -19,7 +19,7 @@ def _write_meta_sql(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (sql_dir / "rule_timekey_recent.sql").write_text(
-        "@db:WT_RTS\nSELECT :FAC_ID AS RULE_TIMEKEY FROM dual",
+        "@db:WT_RTS\nSELECT :FROM_RULE_TIMEKEY AS RULE_TIMEKEY FROM dual",
         encoding="utf-8",
     )
     return sql_dir
@@ -78,19 +78,50 @@ def test_resolve_collect_periods_db_recent(monkeypatch, tmp_path):
     sql_dir = _write_meta_sql(tmp_path)
     monkeypatch.setenv("RULE_TIMEKEY_FROM_DB", "1")
     monkeypatch.setattr("config.SQL_DIR", sql_dir)
+    monkeypatch.setattr(rtq, "rule_timekey_now", lambda: "20260622153000")
 
     def fake_execute(sql_filename, binds, db_registry=None):
         if sql_filename == "rule_timekey_recent.sql":
+            assert binds == {
+                "FAC_ID": "FAC001",
+                "FROM_RULE_TIMEKEY": "20260620153000",
+                "TO_RULE_TIMEKEY": "20260622153000",
+            }
             return [
                 {"RULE_TIMEKEY": "20260621070000"},
-                {"RULE_TIMEKEY": "20260620070000"},
+                {"RULE_TIMEKEY": "20260620170000"},
             ]
         return []
 
     monkeypatch.setattr(rtq, "execute_meta_sql", fake_execute)
     periods, source = rtq.resolve_collect_periods("FAC001", prevdays=2)
     assert source == "db"
-    assert periods == ["20260620070000", "20260621070000"]
+    assert periods == ["20260620170000", "20260621070000"]
+
+
+def test_fetch_recent_rule_timekeys_uses_current_time_range(monkeypatch, tmp_path):
+    sql_dir = _write_meta_sql(tmp_path)
+    monkeypatch.setenv("RULE_TIMEKEY_FROM_DB", "1")
+    monkeypatch.setattr("config.SQL_DIR", sql_dir)
+    monkeypatch.setattr(rtq, "rule_timekey_now", lambda: "20260622153000")
+
+    seen = {}
+
+    def fake_execute(sql_filename, binds, db_registry=None):
+        seen["sql_filename"] = sql_filename
+        seen["binds"] = binds
+        return [{"RULE_TIMEKEY": "20260621170000"}]
+
+    monkeypatch.setattr(rtq, "execute_meta_sql", fake_execute)
+    assert rtq.fetch_recent_rule_timekeys("FAC001", prevdays=3) == ["20260621170000"]
+    assert seen == {
+        "sql_filename": "rule_timekey_recent.sql",
+        "binds": {
+            "FAC_ID": "FAC001",
+            "FROM_RULE_TIMEKEY": "20260619153000",
+            "TO_RULE_TIMEKEY": "20260622153000",
+        },
+    }
 
 
 def test_resolve_collect_periods_require_db_raises(monkeypatch, tmp_path):
