@@ -53,6 +53,11 @@ REQUIRED_TOOL_CAPACITY_FIELDS = {"LOT_CD", "EQP_MODEL", "MAX_TOOL"}
 REQUIRED_BATCH_INFO_FIELDS   = {"LOT_CD", "TEMP", "PLAN_PROD_KEY", "OPER_ID"}
 
 
+def effective_proc_time(st_per_wafer: int, wf_qty: int) -> int:
+    """장당 ST(분/장) × split 이후 wf_qty → LOT 실제 가공 소요시간(분)."""
+    return max(int(st_per_wafer), 0) * max(int(wf_qty), 0)
+
+
 def split_wf_qty(total: int, split_qty: int) -> List[int]:
     """
     wafer 수량을 SPLIT_QTY(장) 단위로 분할.

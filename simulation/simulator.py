@@ -21,7 +21,7 @@ from simulation.events import (
     EVENT_PRIORITY,
     EVENT_PROCESS_END,
 )
-from utils.helpers import encode_normalized
+from utils.helpers import effective_proc_time, encode_normalized
 
 
 @dataclass(order=True)
@@ -79,7 +79,7 @@ class Lot:
     oper_id:         str
     seq:             int
     wf_qty:          int
-    processing_time: int   # 기본값(원본 배정 EQP 기준). 실제 사용 시 proc_time_matrix 참조
+    processing_time: int   # 장당 ST(분/장). 실제 소요는 proc_time_matrix × wf_qty
     priority:        int   = 1
     original_eqp:    str   = ""
     parent_lot_id:   str   = ""
@@ -928,7 +928,11 @@ class SchedulingSimulator:
                 if not self._lot_ready(lid, oper_in_time):
                     continue
                 has_discrete = self._has_discrete_combo(eqp_id, lid, oper_id)
-                pt = proc_time_matrix.get((lid, eqp_id, oper_id), row["proc_time"])
+                wf_qty = meta.get("wf_qty", lot.wf_qty if lot else row["wf_qty"])
+                st_per_wafer = proc_time_matrix.get(
+                    (lid, eqp_id, oper_id), row["proc_time"],
+                )
+                pt = effective_proc_time(st_per_wafer, wf_qty)
                 lot_cd, temp = self._lot_cd_temp(
                     lid, lot, ppk=ppk, oper_id=oper_id,
                 )
@@ -936,12 +940,13 @@ class SchedulingSimulator:
                     "lot_id":          lid,
                     "plan_prod_key":   meta.get("plan_prod_key", lot.plan_prod_key if lot else ppk),
                     "oper_id":         meta.get("oper_id", lot.oper_id if lot else oper_id),
-                    "wf_qty":          meta.get("wf_qty", lot.wf_qty if lot else row["wf_qty"]),
+                    "wf_qty":          wf_qty,
                     "priority":        (
                         lot.priority if lot
                         else meta.get("priority", row.get("plan_priority", 1))
                     ),
                     "processing_time": pt,
+                    "st_per_wafer":    st_per_wafer,
                     "parent_lot_id":   lot.parent_lot_id if lot else meta.get("parent_lot_id", ""),
                     "lot_cd":          lot_cd,
                     "temp":            temp,
@@ -994,6 +999,7 @@ class SchedulingSimulator:
         seq = pending["seq"]
         wf_qty = pending["wf_qty"]
         proc_time = pending["proc_time"]
+        st_per_wafer = pending.get("st_per_wafer", proc_time)
         carrier_id = pending["carrier_id"]
         row = pending["row"]
         oper_in_time = pending["oper_in_time"]
@@ -1044,7 +1050,7 @@ class SchedulingSimulator:
             "CARRIER_ID":    carrier_id,
             "PLAN_PROD_KEY": ppk,
             "OPER_ID":       oper_id,
-            "ST":            proc_time,
+            "ST":            st_per_wafer,
             "EQP_MODEL":     row["eqp_model"],
             "SEQ":           seq,
             "START_TM":      start_time,
@@ -1065,7 +1071,7 @@ class SchedulingSimulator:
             "oper_id":       oper_id,
             "plan_prod_key": ppk,
             "eqp_model":     row["eqp_model"],
-            "st":            proc_time,
+            "st":            st_per_wafer,
             "wf_qty":        wf_qty,
             "lot_cd":        lot_cd,
             "temp":          temp,
@@ -1085,7 +1091,7 @@ class SchedulingSimulator:
         oper_id: str,
         seq: int,
         wf_qty: int,
-        proc_time: int,
+        st_per_wafer: int,
         carrier_id: str,
         row: dict,
         oper_in_time: int,
@@ -1095,6 +1101,7 @@ class SchedulingSimulator:
         eqp = self.eqps[eqp_id]
         cfg = self._reward_cfg
         reward = 0.0
+        proc_time = effective_proc_time(st_per_wafer, wf_qty)
 
         lot_cd, temp = self._lot_cd_temp(lot_id, ppk=ppk, oper_id=oper_id)
         if self._tool_cap_blocks(eqp_id, lot_cd, temp):
@@ -1134,6 +1141,7 @@ class SchedulingSimulator:
             "oper_id": oper_id,
             "seq": seq,
             "wf_qty": wf_qty,
+            "st_per_wafer": st_per_wafer,
             "proc_time": proc_time,
             "carrier_id": carrier_id,
             "row": row,
@@ -1183,11 +1191,11 @@ class SchedulingSimulator:
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
         has_discrete = self._has_discrete_combo(eqp_id, lot_id, oper_id)
         is_abstract = not has_discrete
-        proc_time = proc_time_matrix.get((lot_id, eqp_id, oper_id), row["proc_time"])
+        st_per_wafer = proc_time_matrix.get((lot_id, eqp_id, oper_id), row["proc_time"])
 
         oper_in_time = meta.get("oper_in_time", 0)
         reward = self._execute_assignment(
-            eqp_id, lot_id, ppk, oper_id, seq, wf_qty, proc_time,
+            eqp_id, lot_id, ppk, oper_id, seq, wf_qty, st_per_wafer,
             carrier_id, row, oper_in_time, is_abstract,
         )
         if reward < 0:

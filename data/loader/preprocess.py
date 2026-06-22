@@ -8,11 +8,11 @@ from typing import Dict, List, Optional, Tuple
 from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
-from utils.helpers import build_index_map, split_wf_qty
+from utils.helpers import build_index_map, effective_proc_time, split_wf_qty
 
 
 def _coerce_proc_time(value) -> Optional[int]:
-    """discrete_arrange ST가 숫자(소요시간 분)이면 int로 반환"""
+    """discrete_arrange ST가 숫자(장당 소요시간 분/장)이면 int로 반환"""
     if isinstance(value, (int, float)):
         return int(value)
     if isinstance(value, str) and value.isdigit():
@@ -468,7 +468,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
                 priority = int(p.get("PLAN_PRIORITY", 1))
                 break
 
-        proc_time = _coerce_proc_time(r.get("ST")) or 60
+        st_per_wafer = _coerce_proc_time(r.get("ST")) or 60
         lot_info[lot_id] = {
             "lot_id":          lot_id,
             "carrier_id":      r.get("CARRIER_ID", f"CAR{lot_id[-3:]}"),
@@ -476,7 +476,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "oper_id":         oper_id,
             "seq":             seq,
             "wf_qty":          wf_qty,
-            "processing_time": proc_time,
+            "processing_time": st_per_wafer,
             "priority":        priority,
             "original_eqp":    r["EQP_ID"],
         }
@@ -541,8 +541,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # ── EQP 인덱스 맵 (Group E 관측 행렬 열 인덱싱용) ─────────────────────────
     eqp_idx = {eid: i for i, eid in enumerate(eqp_ids)}
 
-    # 집계 정규화 스케일 팩터
-    max_proc_time = max((v for v in proc_time_matrix.values()), default=1)
+    # 집계 정규화 스케일 팩터 (split 이후 LOT별 실제 소요시간 기준)
+    max_proc_time = 1
 
     # ── EQP 장비 MODEL (availability EQP_MODEL, 구형 ST 문자열 호환) ─────────
     eqp_model_map: Dict[str, str] = {}
@@ -607,6 +607,10 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     )
     eqp_oper_cap = _rebuild_eqp_oper_cap(discrete_raw, lot_info)
 
+    for (lid, _eid, _oper_id), st_pw in proc_time_matrix.items():
+        wf = int(lot_info.get(lid, {}).get("wf_qty", 1))
+        max_proc_time = max(max_proc_time, effective_proc_time(st_pw, wf))
+
     lot_initial_start: Dict[str, int] = {lid: 0 for lid in lot_info}
 
     abstract_inventory, abstract_wip_init, abstract_lot_meta = _build_abstract_inventory(
@@ -637,7 +641,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         lot_id = r["LOT_ID"]
         eid = r["EQP_ID"]
         oper_id = r.get("OPER_ID") or lot_info.get(lot_id, {}).get("oper_id", "")
-        proc_time = proc_time_matrix.get((lot_id, eid, oper_id), 60)
+        st_per_wafer = proc_time_matrix.get((lot_id, eid, oper_id), 60)
+        wf_qty_row = int(r["WF_QTY"])
         row_model = (
             str(r["EQP_MODEL"]) if r.get("EQP_MODEL")
             else _legacy_st_as_eqp_model(r.get("ST"))
@@ -648,11 +653,11 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "lot_id":           lot_id,
             "oper_id":          oper_id,
             "plan_prod_key":    r["PLAN_PROD_KEY"],
-            "st":               proc_time,
-            "proc_time":        proc_time,
+            "st":               st_per_wafer,
+            "proc_time":        effective_proc_time(st_per_wafer, wf_qty_row),
             "eqp_model":        row_model,
             "initial_start_tm": 0,
-            "wf_qty":           int(r["WF_QTY"]),
+            "wf_qty":           wf_qty_row,
         })
 
     max_wf_qty = max((v["wf_qty"] for v in lot_info.values()), default=1)

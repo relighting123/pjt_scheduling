@@ -38,8 +38,8 @@ class GeneratorConfig:
     n_opers: int = 2
     lots_per_oper: int = 3
     wf_qty: int = 25
-    st_min: float = 60.0
-    st_max: float = 180.0
+    st_min: float = 3.0
+    st_max: float = 8.0
     st_std: float = 20.0
     eligibility: float = 0.7          # 0=전용, 1=전체 가능
     plan_qty_min: int = 25
@@ -97,7 +97,7 @@ def _discrete_row(
     lot_id: str,
     ppk: str,
     oper_id: str,
-    proc_time: int,
+    st_per_wafer: int,
     wf_qty: int = 25,
     eqp_model: str = "A",
     seq: Optional[int] = None,
@@ -108,7 +108,7 @@ def _discrete_row(
         "LOT_ID": lot_id,
         "PLAN_PROD_KEY": ppk,
         "OPER_ID": oper_id,
-        "ST": proc_time,
+        "ST": st_per_wafer,
         "EQP_MODEL": eqp_model,
         "WF_QTY": wf_qty,
     }
@@ -323,8 +323,8 @@ def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]
     ppk = "PPK001"
     wf_qty = 25
     n_lots = 8
-    proc1 = 120
-    proc2 = 90
+    proc1 = 5
+    proc2 = 4
     st_step1 = 120
     st_step2 = 60
     oper1_eqps = ("EQP001", "EQP002")
@@ -470,7 +470,7 @@ def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict]]:
     - OPER001만 초기 schedule; OPER002는 abstract 유입 → 계단/공백이 잘 보임
     """
     wf_qty = 25
-    proc = 90
+    proc = 4
     plan_qty = 100
     ppk_a, ppk_b = "PPK001", "PPK002"
 
@@ -514,7 +514,7 @@ def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict]]:
 
 def build_pacing_steady_abstract_arrange() -> List[dict]:
     """OPER002 유입 라우트 — 초기 discrete에 OPER2 LOT 없어도 abstract 유입 가능."""
-    st = 90
+    st = 4
     rows = []
     for ppk in ("PPK001", "PPK002"):
         for oper in ("OPER001", "OPER002"):
