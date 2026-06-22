@@ -9,7 +9,8 @@ main.py - 운영 CLI
     python main.py inference --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --prevdays 3 --nodb
     python main.py collect --fac-id FAC001 --prevdays 1 --once
-    python -m data.collector --fac-id FAC001 --interval 3600
+    python main.py collect --fac-id FAC001 --once --preflight
+    python -m data.collector --fac-id FAC001 --once --dry-run -v --debug
     python main.py db-check
     python main.py ui
 """
@@ -36,7 +37,7 @@ from config import (
     resolve_infer_rule_timekey,
     list_split_folders,
 )
-from data.collector import TrainingDataCollector
+from data.collector import TrainingDataCollector, add_debug_arguments, run_collector_cli
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader import fetch_period_range, fetch_from_db, load_data, validate_data, preprocess
 from agent.rl_agent import SchedulingAgent
@@ -263,18 +264,29 @@ def cmd_collect(
     once: bool = False,
     snapshot: bool = False,
     period: str = None,
+    verbose: bool = False,
+    dry_run: bool = False,
+    debug: bool = False,
+    preflight: bool = False,
 ):
-    collector = TrainingDataCollector(
+    args = argparse.Namespace(
         fac_id=fac_id,
         split=split,
+        interval=interval,
         prevdays=prevdays,
         from_key=from_key,
         to_key=to_key,
+        once=once,
+        snapshot=snapshot,
+        period=period,
+        verbose=verbose,
+        dry_run=dry_run,
+        debug=debug,
+        preflight=preflight,
     )
-    if once or interval <= 0:
-        collector.collect_once(snapshot_only=snapshot, period=period)
-    else:
-        collector.run_loop(interval, snapshot_only=snapshot)
+    code = run_collector_cli(args)
+    if code:
+        sys.exit(code)
 
 
 def parse_args():
@@ -343,6 +355,7 @@ def parse_args():
     collect_p.add_argument("--once", action="store_true")
     collect_p.add_argument("--snapshot", action="store_true")
     collect_p.add_argument("--period", help="--snapshot 시 RULE_TIMEKEY")
+    add_debug_arguments(collect_p)
 
     return parser.parse_args()
 
@@ -386,6 +399,10 @@ def main():
                 once=args.once,
                 snapshot=args.snapshot,
                 period=args.period,
+                verbose=args.verbose,
+                dry_run=args.dry_run,
+                debug=args.debug,
+                preflight=args.preflight,
             )
 
         elif args.command == "db-check":

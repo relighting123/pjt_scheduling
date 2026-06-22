@@ -135,6 +135,27 @@ def _execute_query(conn, sql: str, binds: dict) -> List[dict]:
         cur.close()
 
 
+def _format_fetch_error(
+    *,
+    sql_file: str,
+    sql_path: Path,
+    alias: str,
+    period: Optional[str],
+    binds: Dict[str, Any],
+    cause: BaseException,
+) -> str:
+    per = f"period={period}" if period else "period=(없음)"
+    bind_keys = ", ".join(sorted(binds))
+    return (
+        f"SQL 실패: {sql_file}\n"
+        f"  path: {sql_path}\n"
+        f"  db alias: {alias}\n"
+        f"  {per}\n"
+        f"  binds: {bind_keys}\n"
+        f"  원인 ({type(cause).__name__}): {cause}"
+    )
+
+
 def _oracle_connect():
     """하위 호환 – default alias 단일 연결."""
     from data.db_registry import DbRegistry
@@ -149,13 +170,17 @@ def fetch_from_db(
     period: Optional[str] = None,
     extra_binds: Optional[Dict[str, Any]] = None,
     db_registry: Optional[DbRegistry] = None,
+    *,
+    verbose: bool = False,
+    dry_run: bool = False,
 ) -> Path:
     """external/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용)."""
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     per = period or snapshot
     if output_dir is None:
         output_dir, _ = resolve_dataset_path(fac_id, split, per)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     sql_dir = CONFIG.path.sql_dir
     binds: Dict[str, Any] = {"FAC_ID": fac_id}
@@ -168,19 +193,55 @@ def fetch_from_db(
 
     own_registry = db_registry is None
     registry = db_registry or DbRegistry()
+    if verbose:
+        print(
+            f"[loader] 준비 fac={fac_id} split={split} {f'period={per}' if per else ''} "
+            f"sql_dir={sql_dir} dry_run={dry_run}",
+        )
+        if registry.default_warn:
+            print(f"[loader] note: {registry.default_warn}")
     try:
         for key, (sql_file, json_file) in SQL_JSON_MAP.items():
             sql_path = sql_dir / sql_file
-            sql = _read_sql(sql_path)
-            alias = parse_sql_db_alias(sql, registry.default_alias)
-            conn = registry.connect(alias)
-            rows = _execute_query(conn, sql, binds)
-            out_path = output_dir / json_file
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
-            print(
-                f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows)",
-            )
+            try:
+                sql = _read_sql(sql_path)
+                alias = parse_sql_db_alias(sql, registry.default_alias)
+                out_path = output_dir / json_file
+                if verbose or dry_run:
+                    print(
+                        f"[loader] 계획 @{alias} {sql_file} → {out_path} "
+                        f"binds={binds}",
+                    )
+                if dry_run:
+                    registry.get_credentials(alias)
+                    continue
+                conn = registry.connect(alias)
+                rows = _execute_query(conn, sql, binds)
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
+                print(
+                    f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows)",
+                )
+            except Exception as exc:
+                alias_guess = registry.default_alias
+                if sql_path.exists():
+                    try:
+                        alias_guess = parse_sql_db_alias(
+                            sql_path.read_text(encoding="utf-8"),
+                            registry.default_alias,
+                        )
+                    except Exception:
+                        pass
+                raise RuntimeError(
+                    _format_fetch_error(
+                        sql_file=sql_file,
+                        sql_path=sql_path,
+                        alias=alias_guess,
+                        period=per,
+                        binds=binds,
+                        cause=exc,
+                    ),
+                ) from exc
     finally:
         if own_registry:
             registry.close_all()
@@ -197,6 +258,8 @@ def fetch_period_range(
     *,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    verbose: bool = False,
+    dry_run: bool = False,
 ) -> List[Path]:
     """RULE_TIMEKEY 구간별 Oracle SQL → JSON 저장"""
     start_key = from_timekey or from_date
@@ -205,8 +268,13 @@ def fetch_period_range(
         raise ValueError("from_timekey와 to_timekey(또는 from_date/to_date)를 지정하세요.")
 
     paths: List[Path] = []
+    keys = list(iter_rule_timekeys(start_key, end_key))
+    if dry_run and keys:
+        keys = keys[:1]
+        if verbose:
+            print(f"[loader] dry-run: {start_key}~{end_key} 중 1일만 검증")
     with DbRegistry() as registry:
-        for period in iter_rule_timekeys(start_key, end_key):
+        for period in keys:
             day_binds = {"RULE_TIMEKEY": period, **(extra_binds or {})}
             path = fetch_from_db(
                 fac_id=fac_id,
@@ -214,7 +282,12 @@ def fetch_period_range(
                 period=period,
                 extra_binds=day_binds,
                 db_registry=registry,
+                verbose=verbose,
+                dry_run=dry_run,
             )
             paths.append(path)
-    print(f"[loader] {split} RULE_TIMEKEY {start_key}~{end_key} → {len(paths)}개 폴더 생성")
+    if dry_run:
+        print(f"[loader] dry-run 완료 – {len(paths)}개 폴더 계획 확인")
+    else:
+        print(f"[loader] {split} RULE_TIMEKEY {start_key}~{end_key} → {len(paths)}개 폴더 생성")
     return paths
