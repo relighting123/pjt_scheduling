@@ -129,6 +129,14 @@ def _walk_yaml_node(
         _walk_yaml_node(child_node, prefix + [child_name], buckets)
 
 
+def _ensure_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(BASE_DIR / ".env")
+    except ImportError:
+        pass
+
+
 def default_db_config_path() -> Path:
     raw = os.environ.get("DB_CONFIG", "config/databases.yaml").strip()
     path = Path(raw)
@@ -141,6 +149,7 @@ def load_db_aliases_from_yaml(
     path: Optional[Path] = None,
 ) -> Tuple[Dict[str, Dict[str, str]], Optional[str]]:
     """YAML 계층 설정 → alias buckets + default alias."""
+    _ensure_dotenv()
     cfg_path = path or default_db_config_path()
     if not cfg_path.exists():
         return {}, None
@@ -160,6 +169,17 @@ def load_db_aliases_from_yaml(
 
     yaml_default = raw.get("default") or raw.get("_default")
     buckets: Dict[str, Dict[str, str]] = {}
+
+    # default alias 에 루트 수준 user/password/dsn (흔한 설정 실수 허용)
+    root_fields: Dict[str, str] = {}
+    for key, value in raw.items():
+        if key in _META_KEYS or isinstance(value, dict):
+            continue
+        field = _normalize_field(str(key))
+        if field and value is not None and not isinstance(value, (dict, list)):
+            root_fields[field] = str(value).strip()
+    if root_fields and yaml_default:
+        buckets.setdefault(_normalize_alias(str(yaml_default)), {}).update(root_fields)
 
     for key, value in raw.items():
         if key in _META_KEYS:
@@ -210,6 +230,7 @@ def load_db_aliases(
     environ: Optional[Dict[str, str]] = None,
 ) -> Tuple[Dict[str, Dict[str, str]], Optional[str]]:
     """YAML 우선, .env 평면 설정으로 보완·병합."""
+    _ensure_dotenv()
     yaml_buckets, yaml_default = load_db_aliases_from_yaml(yaml_path)
     env_buckets = load_db_aliases_from_env(environ)
 
@@ -218,6 +239,74 @@ def load_db_aliases(
         merged.setdefault(alias, {}).update(fields)
 
     return merged, yaml_default
+
+
+def diagnose_db_config(
+    yaml_path: Optional[Path] = None,
+    environ: Optional[Dict[str, str]] = None,
+) -> dict:
+    """DB 설정 진단 – collector/fetch 오류 시 원인 확인용."""
+    _ensure_dotenv()
+    cfg_path = yaml_path or default_db_config_path()
+    example_path = BASE_DIR / "config" / "databases.yaml.example"
+    buckets, yaml_default = load_db_aliases(yaml_path=yaml_path, environ=environ)
+    default_alias = default_db_alias(yaml_default, environ)
+
+    issues: List[str] = []
+    if not cfg_path.exists():
+        issues.append(f"YAML 파일 없음: {cfg_path}")
+        if example_path.exists():
+            try:
+                rel_cfg = cfg_path.relative_to(BASE_DIR)
+                rel_ex = example_path.relative_to(BASE_DIR)
+            except ValueError:
+                rel_cfg = cfg_path
+                rel_ex = example_path
+            issues.append(f"실행: cp {rel_ex} {rel_cfg}")
+    elif not buckets:
+        issues.append(
+            f"YAML 은 있으나 DB alias 가 비어 있습니다: {cfg_path} "
+            "(Prd: 아래에 user/password/dsn 이 Prd 블록 안에 있어야 합니다)"
+        )
+
+    if default_alias not in buckets and not any(
+        anc in buckets for anc in alias_ancestors(default_alias)
+    ):
+        issues.append(
+            f"default alias '{default_alias}' 가 buckets 에 없습니다. "
+            f"등록된 alias: {', '.join(sorted(buckets)) or '(없음)'}"
+        )
+
+    return {
+        "config_path": str(cfg_path),
+        "config_exists": cfg_path.exists(),
+        "example_path": str(example_path),
+        "default_alias": default_alias,
+        "yaml_default": yaml_default,
+        "known_aliases": sorted(buckets),
+        "buckets": {
+            alias: {k: ("***" if k == "password" and v else v) for k, v in fields.items()}
+            for alias, fields in buckets.items()
+        },
+        "issues": issues,
+        "ok": not issues,
+    }
+
+
+def format_db_config_error(alias: str, buckets: Dict[str, Dict[str, str]]) -> str:
+    cfg_path = default_db_config_path()
+    diag = diagnose_db_config()
+    known = ", ".join(sorted(buckets)) or "(없음)"
+    lines = [
+        f"DB alias '{_normalize_alias(alias)}' 가 설정에 없습니다.",
+        f"등록된 alias: {known}",
+        f"설정 파일: {cfg_path} ({'있음' if cfg_path.exists() else '없음'})",
+        f"default alias: {diag['default_alias']}",
+    ]
+    if diag["issues"]:
+        lines.append("확인 사항:")
+        lines.extend(f"  - {item}" for item in diag["issues"])
+    return "\n".join(lines)
 
 
 def alias_ancestors(alias: str) -> List[str]:
@@ -250,11 +339,7 @@ def resolve_db_credentials(
             if fields.get(field):
                 merged[field] = fields[field]
     if not matched_any:
-        known = ", ".join(sorted(buckets)) or "(없음)"
-        raise KeyError(
-            f"DB alias '{key}' 가 설정에 없습니다. "
-            f"등록된 alias: {known}"
-        )
+        raise KeyError(format_db_config_error(key, buckets))
     return DbCredentials(alias=key, **merged)
 
 
@@ -288,6 +373,14 @@ class DbRegistry:
         self._default_alias = _normalize_alias(
             default_alias or default_db_alias(yaml_def),
         )
+        if self._default_alias not in buckets and not any(
+            anc in buckets for anc in alias_ancestors(self._default_alias)
+        ):
+            diag = diagnose_db_config(yaml_path=yaml_path)
+            if diag["issues"]:
+                raise KeyError(
+                    format_db_config_error(self._default_alias, buckets)
+                )
         self._connections: Dict[str, object] = {}
 
     @property
@@ -332,3 +425,32 @@ def read_sql_with_alias(sql_path: Path) -> Tuple[str, str]:
         raise ValueError(f"SQL 파일이 비어 있습니다: {sql_path}")
     alias = parse_sql_db_alias(text)
     return text, alias
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(description="DB alias 설정 진단")
+    parser.add_argument("--json", action="store_true", help="JSON 출력")
+    args = parser.parse_args(argv)
+    report = diagnose_db_config()
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(f"config: {report['config_path']} ({'OK' if report['config_exists'] else 'MISSING'})")
+        print(f"default alias: {report['default_alias']}")
+        print(f"known aliases: {', '.join(report['known_aliases']) or '(없음)'}")
+        for alias, fields in report["buckets"].items():
+            print(f"  [{alias}] user={fields.get('user', '')} dsn={fields.get('dsn', '')}")
+        if report["issues"]:
+            print("issues:")
+            for issue in report["issues"]:
+                print(f"  - {issue}")
+        else:
+            print("status: OK")
+    return 0 if report["ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

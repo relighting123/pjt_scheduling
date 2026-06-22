@@ -8,6 +8,8 @@ from data.collector import TrainingDataCollector, build_arg_parser
 from data.db_registry import (
     DbRegistry,
     default_db_alias,
+    diagnose_db_config,
+    format_db_config_error,
     load_db_aliases,
     load_db_aliases_from_yaml,
     parse_sql_db_alias,
@@ -103,6 +105,21 @@ def test_oracle_legacy_maps_to_main():
         },
     )
     assert resolve_db_credentials("main", buckets).user == "legacy"
+
+
+def test_diagnose_missing_yaml(monkeypatch):
+    monkeypatch.setenv("DB_DEFAULT_ALIAS", "Prd")
+    monkeypatch.setenv("DB_CONFIG", "config/databases.yaml")
+    report = diagnose_db_config(yaml_path=Path("/nonexistent/databases.yaml"))
+    assert report["default_alias"] == "prd"
+    assert not report["ok"]
+    assert any("YAML 파일 없음" in issue for issue in report["issues"])
+
+
+def test_format_db_config_error_lists_aliases():
+    msg = format_db_config_error("prd", {"main": {"user": "u", "password": "p", "dsn": "d"}})
+    assert "prd" in msg
+    assert "main" in msg
 
 
 def test_db_registry_unknown_alias_raises():
