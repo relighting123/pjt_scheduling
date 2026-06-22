@@ -3,6 +3,7 @@ main.py - 운영 CLI
 
 사용 예:
     python main.py train --facid FAC001 --prevdays 3
+    python main.py train --facid FAC001 --prevdays 3 --nodb
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
     python main.py validate --facid FAC001
     python main.py infer --facid FAC001
@@ -32,11 +33,14 @@ from config import (
     set_input_folder,
     validate_path_segment,
     resolve_train_period_range,
-    resolve_train_folders,
     resolve_infer_rule_timekey,
     list_split_folders,
 )
-from data.collector import TrainingDataCollector, add_debug_arguments, run_collector_cli
+from data.collector import (
+    add_debug_arguments,
+    ensure_train_folders,
+    run_collector_cli,
+)
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader import fetch_from_db, load_data, validate_data, preprocess
 from data.loader.sql_binds import resolve_lot_cd
@@ -93,6 +97,9 @@ def cmd_train(
     prevdays: int = None,
     from_key: str = None,
     to_key: str = None,
+    *,
+    nodb: bool = False,
+    lot_cd: str = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     start_key, end_key = resolve_train_period_range(
@@ -101,9 +108,16 @@ def cmd_train(
 
     print("=" * 60)
     print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}")
+    if nodb:
+        print("[train] --nodb: 기존 JSON만 사용 (자동 수집 없음)")
 
-    train_folders = resolve_train_folders(
-        fac_id, start_key, end_key, prevdays=prevdays,
+    train_folders = ensure_train_folders(
+        fac_id,
+        prevdays=prevdays,
+        from_key=from_key,
+        to_key=to_key,
+        lot_cd=lot_cd,
+        nodb=nodb,
     )
     if not train_folders:
         available = list_split_folders(fac_id, "train")
@@ -112,7 +126,7 @@ def cmd_train(
         if available:
             print(f"  사용 가능한 train 폴더: {', '.join(available)}")
         else:
-            print("  먼저 collect 로 train 데이터를 수집하세요.")
+            print("  collect 로 train 데이터를 수집하거나 --nodb 없이 train 을 실행하세요.")
         sys.exit(1)
 
     print(f"[train] train 폴더 {len(train_folders)}개 사용")
@@ -137,7 +151,7 @@ def cmd_train(
 
     print("=" * 60)
     print("[train] validation (test 전체)")
-    run_validation(fac_id, agent=agent, refresh_sql=True)
+    run_validation(fac_id, agent=agent, refresh_sql=not nodb)
 
 
 def cmd_validate(fac_id: str, *, nodb: bool = False):
@@ -306,6 +320,15 @@ def parse_args():
         "--to", dest="to_key", metavar="RULE_TIMEKEY", default=None,
         help="학습 종료 RULE_TIMEKEY",
     )
+    train_p.add_argument(
+        "--nodb", action="store_true",
+        help="자동 수집·validation DB 조회 생략, dataset 기존 JSON만 사용",
+    )
+    train_p.add_argument(
+        "--lotcd",
+        default=None,
+        help="자동 수집 시 discrete_arrange LOT_CD 필터",
+    )
     val_p = sub.add_parser("validate", help="test 데이터 전체 검증")
     val_p.add_argument("--facid", required=True, help="공장 ID")
     val_p.add_argument(
@@ -375,6 +398,8 @@ def main():
                 prevdays=args.prevdays,
                 from_key=args.from_key,
                 to_key=args.to_key,
+                nodb=args.nodb,
+                lot_cd=args.lotcd,
             )
 
         elif args.command == "validate":

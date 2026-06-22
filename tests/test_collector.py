@@ -1,6 +1,7 @@
 """collector 디버그 CLI 테스트."""
 import textwrap
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -9,6 +10,7 @@ from data.collector import (
     TrainingDataCollector,
     build_arg_parser,
     collector_options_from_args,
+    ensure_train_folders,
 )
 from data.loader.fetch import fetch_from_db
 
@@ -135,6 +137,45 @@ def test_fetch_error_includes_sql_context(tmp_path, monkeypatch):
     assert "discrete_arrange.sql" in msg
     assert "wt_rts" in msg
     assert "period=20260621170000" in msg
+
+
+def test_ensure_train_folders_uses_existing(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.DATASET_DIR", tmp_path)
+    fac_root = tmp_path / "FAC001" / "train" / "20260621170000" / "input"
+    fac_root.mkdir(parents=True)
+    (fac_root / "discrete_arrange.json").write_text("[]", encoding="utf-8")
+
+    folders = ensure_train_folders(
+        "FAC001",
+        from_key="20260621170000",
+        to_key="20260621170000",
+        nodb=True,
+    )
+    assert folders == ["FAC001/train/20260621170000"]
+
+
+def test_ensure_train_folders_collects_when_missing(monkeypatch):
+    monkeypatch.setattr(
+        "data.collector.resolve_train_folders",
+        lambda *args, **kwargs: [],
+    )
+    with patch("data.collector.collect_dataset") as collect:
+        collect.return_value = [Path("/tmp/FAC001/train/20260621170000/input")]
+        folders = ensure_train_folders(
+            "FAC001",
+            from_key="20260621170000",
+            to_key="20260621170000",
+        )
+    collect.assert_called_once()
+    assert folders == ["FAC001/train/20260621170000"]
+
+
+def test_ensure_train_folders_nodb_returns_empty(monkeypatch):
+    monkeypatch.setattr(
+        "data.collector.resolve_train_folders",
+        lambda *args, **kwargs: [],
+    )
+    assert ensure_train_folders("FAC001", prevdays=1, nodb=True) == []
 
 
 def test_collector_preflight_runs_without_db(tmp_path, monkeypatch, capsys):
