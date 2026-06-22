@@ -219,9 +219,9 @@ def test_sql_files_declare_db_alias():
 
 def test_collector_arg_parser_defaults():
     parser = build_arg_parser()
-    args = parser.parse_args(["--once", "--fac-id", "FAC001"])
+    args = parser.parse_args(["--once", "--facid", "FAC001"])
     assert args.once is True
-    assert args.fac_id == "FAC001"
+    assert args.facid == "FAC001"
 
 
 def test_collector_resolve_range_prevdays():

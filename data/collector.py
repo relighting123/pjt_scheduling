@@ -9,12 +9,12 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     COLLECTOR_LOT_CD=LC001   # 선택: SQL :LOT_CD 필터 (미설정 시 전체)
 
 사용 예:
-    python -m data.collector --fac-id FAC001 --once
-    python -m data.collector --fac-id FAC001 --once --lot-cd LC001
-    python -m data.collector --fac-id FAC001 --once --preflight
-    python -m data.collector --fac-id FAC001 --once --dry-run -v
-    python -m data.collector --fac-id FAC001 --once --debug
-    python main.py collect --fac-id FAC001 --prevdays 3 --once
+    python -m data.collector --facid FAC001 --once
+    python -m data.collector --facid FAC001 --once --lot-cd LC001
+    python -m data.collector --facid FAC001 --once --preflight
+    python -m data.collector --facid FAC001 --once --dry-run -v
+    python -m data.collector --facid FAC001 --once --debug
+    python main.py collect --facid FAC001 --prevdays 3 --once
 
 RULE_TIMEKEY (DB 메타 SQL, external/sql/rule_timekey_*.sql):
     rule_timekey_latest.sql  – 최신 1건 (--snapshot 기본값)
@@ -24,9 +24,9 @@ RULE_TIMEKEY (DB 메타 SQL, external/sql/rule_timekey_*.sql):
 
 디버그 순서 (오류 시):
     1. python main.py db-check
-    2. python -m data.collector --fac-id FAC001 --once --preflight
-    3. python -m data.collector --fac-id FAC001 --once --dry-run -v
-    4. python -m data.collector --fac-id FAC001 --once --debug
+    2. python -m data.collector --facid FAC001 --once --preflight
+    3. python -m data.collector --facid FAC001 --once --dry-run -v
+    4. python -m data.collector --facid FAC001 --once --debug
 """
 from __future__ import annotations
 
@@ -301,7 +301,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="주기적 학습 데이터 수집 (SQL @db alias → JSON)",
     )
     parser.add_argument(
-        "--fac-id",
+        "--facid",
         default=_env_str("COLLECTOR_FAC_ID", "FAC001"),
         help="FAB ID (기본: COLLECTOR_FAC_ID 또는 FAC001)",
     )
@@ -350,7 +350,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def run_collector_cli(args: argparse.Namespace) -> int:
     options = collector_options_from_args(args)
     collector = TrainingDataCollector(
-        fac_id=args.fac_id,
+        fac_id=args.facid,
         split=args.split,
         prevdays=args.prevdays,
         from_key=args.from_key,

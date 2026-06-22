@@ -190,19 +190,12 @@ def resolve_train_folders(
     to_key: str,
     *,
     prevdays: Optional[int] = None,
-    nodb: bool = False,
 ) -> List[str]:
     """
-    학습용 train 폴더 목록.
-    --nodb: dataset 기존 train 폴더 중 최근 prevdays개 (구간 무시)
-    기본: RULE_TIMEKEY 구간과 일치하는 폴더
+    학습용 train 폴더 목록 (이미 수집된 dataset 기준).
+    RULE_TIMEKEY 구간과 일치하는 폴더만 반환합니다.
     """
-    all_train = list_split_folders(fac_id, "train")
-    if nodb:
-        if not all_train:
-            return []
-        n = prevdays or len(all_train)
-        return all_train[-n:]
+    del prevdays
     return folders_in_period_range(fac_id, "train", from_key, to_key)
 
 
