@@ -118,7 +118,7 @@ def test_db_registry_unknown_alias_raises():
 
 
 def test_sql_files_declare_db_alias():
-    sql_dir = Path(__file__).resolve().parent.parent / "external" / "sql"
+    sql_dir = Path(__file__).resolve().parent.parent / "external" / "sql.example"
     for path in sql_dir.glob("*.sql"):
         text = path.read_text(encoding="utf-8")
         assert "@db:" in text.splitlines()[0], f"{path.name} 에 -- @db: 헤더 필요"
