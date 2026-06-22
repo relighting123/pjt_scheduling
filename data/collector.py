@@ -9,7 +9,9 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
 
 사용 예:
     python -m data.collector --fac-id FAC001 --once
-    python -m data.collector --fac-id FAC001 --interval 3600
+    python -m data.collector --fac-id FAC001 --once --preflight
+    python -m data.collector --fac-id FAC001 --once --dry-run -v
+    python -m data.collector --fac-id FAC001 --once --debug
     python main.py collect --fac-id FAC001 --prevdays 3 --once
 
 RULE_TIMEKEY (DB 메타 SQL, external/sql/rule_timekey_*.sql):
@@ -17,6 +19,12 @@ RULE_TIMEKEY (DB 메타 SQL, external/sql/rule_timekey_*.sql):
     rule_timekey_recent.sql  – 최근 N개 (--prevdays)
     rule_timekey_list.sql    – FROM~TO 구간 (--from/--to)
     cp external/sql.example/rule_timekey_*.sql external/sql/
+
+디버그 순서 (오류 시):
+    1. python main.py db-check
+    2. python -m data.collector --fac-id FAC001 --once --preflight
+    3. python -m data.collector --fac-id FAC001 --once --dry-run -v
+    4. python -m data.collector --fac-id FAC001 --once --debug
 """
 from __future__ import annotations
 
@@ -24,6 +32,8 @@ import argparse
 import os
 import sys
 import time
+import traceback
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -32,7 +42,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import validate_path_segment
+from config import CONFIG, resolve_dataset_path, validate_path_segment
+from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader.fetch import fetch_from_db, fetch_period_range
 from data.loader.rule_timekey_query import (
     resolve_collect_periods,
@@ -49,6 +60,48 @@ def _env_int(name: str, default: int) -> int:
 
 def _env_str(name: str, default: str) -> str:
     return os.environ.get(name, default).strip() or default
+
+
+@dataclass
+class CollectorOptions:
+    verbose: bool = False
+    dry_run: bool = False
+    debug: bool = False
+    preflight: bool = False
+
+
+def add_debug_arguments(parser: argparse.ArgumentParser) -> None:
+    """collector / main.py collect 공용 디버그 플래그."""
+    group = parser.add_argument_group("디버그")
+    group.add_argument(
+        "--preflight",
+        action="store_true",
+        help="DB·SQL·수집 경로만 점검 (Oracle 연결 없음)",
+    )
+    group.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="수집 계획·SQL alias 확인만 (DB 연결·JSON 저장 없음)",
+    )
+    group.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="단계별 상세 로그",
+    )
+    group.add_argument(
+        "--debug",
+        action="store_true",
+        help="오류 시 전체 traceback 출력",
+    )
+
+
+def collector_options_from_args(args: argparse.Namespace) -> CollectorOptions:
+    return CollectorOptions(
+        verbose=getattr(args, "verbose", False),
+        dry_run=getattr(args, "dry_run", False),
+        debug=getattr(args, "debug", False),
+        preflight=getattr(args, "preflight", False),
+    )
 
 
 class TrainingDataCollector:
@@ -68,17 +121,6 @@ class TrainingDataCollector:
         self.from_key = from_key
         self.to_key = to_key
 
-    def _resolve_range(self) -> tuple[str, str]:
-        periods, _source = resolve_collect_periods(
-            self.fac_id,
-            prevdays=self.prevdays,
-            from_key=self.from_key,
-            to_key=self.to_key,
-        )
-        if not periods:
-            raise ValueError("수집할 RULE_TIMEKEY 가 없습니다.")
-        return periods[0], periods[-1]
-
     def _resolve_periods(self) -> tuple[List[str], str]:
         periods, source = resolve_collect_periods(
             self.fac_id,
@@ -90,11 +132,69 @@ class TrainingDataCollector:
             raise ValueError("수집할 RULE_TIMEKEY 가 없습니다.")
         return periods, source
 
+    def _fetch_kwargs(self, options: CollectorOptions) -> dict:
+        return {
+            "verbose": options.verbose or options.dry_run or options.preflight,
+            "dry_run": options.dry_run or options.preflight,
+        }
+
+    def run_preflight(
+        self,
+        *,
+        snapshot_only: bool = False,
+        period: Optional[str] = None,
+        options: Optional[CollectorOptions] = None,
+    ) -> List[Path]:
+        """DB 설정·SQL·출력 경로 사전 점검."""
+        options = options or CollectorOptions(preflight=True)
+        print("[preflight] === 1) DB 설정 ===")
+        report = diagnose_db_config()
+        print_db_config_report(report)
+
+        print("[preflight] === 2) 수집 계획 ===")
+        print(f"  fac_id={self.fac_id}  split={self.split}")
+        print(f"  sql_dir={CONFIG.path.sql_dir}")
+
+        fetch_kwargs = self._fetch_kwargs(options)
+        if snapshot_only:
+            per, source = resolve_snapshot_rule_timekey(self.fac_id, period)
+            out_dir, _ = resolve_dataset_path(self.fac_id, self.split, per)
+            print(f"  mode=snapshot  period={per} ({source})")
+            print(f"  output_dir={out_dir}")
+            fetch_from_db(
+                fac_id=self.fac_id,
+                split=self.split,
+                period=per,
+                **fetch_kwargs,
+            )
+            return []
+
+        periods, source = self._resolve_periods()
+        sample = periods[0]
+        print(
+            f"  mode=range  RULE_TIMEKEY {periods[0]} ~ {periods[-1]} "
+            f"({source}, {len(periods)}건)",
+        )
+        out_dir, _ = resolve_dataset_path(self.fac_id, self.split, sample)
+        print(f"  sample_period={sample}")
+        print(f"  sample_output_dir={out_dir}")
+        fetch_from_db(
+            fac_id=self.fac_id,
+            split=self.split,
+            period=sample,
+            **fetch_kwargs,
+        )
+        print("[preflight] 완료 – 문제 없으면 --once 로 실제 수집하세요.")
+        return []
+
     def collect_period_range(
         self,
         from_key: Optional[str] = None,
         to_key: Optional[str] = None,
+        *,
+        options: Optional[CollectorOptions] = None,
     ) -> List[Path]:
+        options = options or CollectorOptions()
         if from_key and to_key:
             periods, source = resolve_collect_periods(
                 self.fac_id,
@@ -107,19 +207,32 @@ class TrainingDataCollector:
             f"[collector] {self.fac_id}/{self.split} "
             f"RULE_TIMEKEY {periods[0]} ~ {periods[-1]} ({source}, {len(periods)}건)",
         )
+        if options.verbose:
+            print(f"[collector] sql_dir={CONFIG.path.sql_dir}")
         return fetch_period_range(
             fac_id=self.fac_id,
             split=self.split,
             periods=periods,
+            **self._fetch_kwargs(options),
         )
 
-    def collect_snapshot(self, period: Optional[str] = None) -> Path:
+    def collect_snapshot(
+        self,
+        period: Optional[str] = None,
+        *,
+        options: Optional[CollectorOptions] = None,
+    ) -> Path:
+        options = options or CollectorOptions()
         per, source = resolve_snapshot_rule_timekey(self.fac_id, period)
         print(f"[collector] {self.fac_id}/{self.split}/{per} 단일 스냅샷 ({source})")
+        if options.verbose:
+            out_dir, _ = resolve_dataset_path(self.fac_id, self.split, per)
+            print(f"[collector] output_dir={out_dir}")
         return fetch_from_db(
             fac_id=self.fac_id,
             split=self.split,
             period=per,
+            **self._fetch_kwargs(options),
         )
 
     def collect_once(
@@ -127,19 +240,29 @@ class TrainingDataCollector:
         *,
         snapshot_only: bool = False,
         period: Optional[str] = None,
+        options: Optional[CollectorOptions] = None,
     ) -> List[Path]:
         """1회 수집. snapshot_only=True 이면 현재 시각 1폴더만."""
+        options = options or CollectorOptions()
+        if options.preflight:
+            return self.run_preflight(
+                snapshot_only=snapshot_only,
+                period=period,
+                options=options,
+            )
         if snapshot_only:
-            return [self.collect_snapshot(period=period)]
-        return self.collect_period_range()
+            return [self.collect_snapshot(period=period, options=options)]
+        return self.collect_period_range(options=options)
 
     def run_loop(
         self,
         interval_sec: int,
         *,
         snapshot_only: bool = False,
+        options: Optional[CollectorOptions] = None,
     ) -> None:
         """interval_sec 마다 collect_once 반복."""
+        options = options or CollectorOptions()
         if interval_sec < 1:
             raise ValueError("interval_sec 는 1 이상이어야 합니다.")
         print(
@@ -150,10 +273,15 @@ class TrainingDataCollector:
             started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"[collector] tick {started}")
             try:
-                paths = self.collect_once(snapshot_only=snapshot_only)
+                paths = self.collect_once(
+                    snapshot_only=snapshot_only,
+                    options=options,
+                )
                 print(f"[collector] 완료 – {len(paths)}개 폴더")
             except Exception as exc:
                 print(f"[collector] 오류: {exc}")
+                if options.debug:
+                    traceback.print_exc()
             time.sleep(interval_sec)
 
 
@@ -199,11 +327,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--period",
         help="--snapshot 시 사용할 RULE_TIMEKEY (미지정 시 DB 최신 → 현재 시각)",
     )
+    add_debug_arguments(parser)
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
-    args = build_arg_parser().parse_args(argv)
+def run_collector_cli(args: argparse.Namespace) -> int:
+    options = collector_options_from_args(args)
     collector = TrainingDataCollector(
         fac_id=args.fac_id,
         split=args.split,
@@ -211,14 +340,30 @@ def main(argv: Optional[List[str]] = None) -> int:
         from_key=args.from_key,
         to_key=args.to_key,
     )
-    if args.once or args.interval <= 0:
-        collector.collect_once(
-            snapshot_only=args.snapshot,
-            period=args.period,
-        )
-        return 0
-    collector.run_loop(args.interval, snapshot_only=args.snapshot)
+    try:
+        if args.once or args.interval <= 0:
+            collector.collect_once(
+                snapshot_only=args.snapshot,
+                period=args.period,
+                options=options,
+            )
+        else:
+            collector.run_loop(
+                args.interval,
+                snapshot_only=args.snapshot,
+                options=options,
+            )
+    except Exception as exc:
+        print(f"[collector] 오류: {exc}", file=sys.stderr)
+        if options.debug:
+            traceback.print_exc()
+        return 1
     return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_arg_parser()
+    return run_collector_cli(parser.parse_args(argv))
 
 
 if __name__ == "__main__":

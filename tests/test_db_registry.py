@@ -259,6 +259,7 @@ def test_collector_arg_parser_defaults():
 
 def test_collector_resolve_range_prevdays():
     c = TrainingDataCollector(fac_id="FAC001", prevdays=1)
-    start, end = c._resolve_range()
-    assert len(start) == 14
-    assert len(end) == 14
+    periods, source = c._resolve_periods()
+    assert source == "local"
+    assert len(periods) == 1
+    assert len(periods[0]) == 14

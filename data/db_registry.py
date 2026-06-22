@@ -617,6 +617,10 @@ class DbRegistry:
         return self._default_alias
 
     @property
+    def default_warn(self) -> Optional[str]:
+        return self._default_warn
+
+    @property
     def known_aliases(self) -> List[str]:
         return sorted(self._buckets)
 
