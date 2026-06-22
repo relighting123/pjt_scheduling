@@ -4,7 +4,8 @@ data/loader/fetch.py – JSON 로드 및 Oracle SQL → JSON 변환 (입력 fetc
 SQL 템플릿: external/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 각 SQL 상단 ``-- @db: <alias>`` 로 DB 지정 (.env DB_<ALIAS>_*).
 
-공통 바인드: :FAC_ID, :RULE_TIMEKEY(기간 조회 시), :LOT_CD(선택, NULL이면 전체)
+공통 바인드: :FAC_ID, :RULE_TIMEKEY(기간 조회 시)
+discrete_arrange 만 :LOT_CD (선택, NULL이면 전체)
 """
 import json
 from pathlib import Path
@@ -185,12 +186,6 @@ def fetch_from_db(
         output_dir.mkdir(parents=True, exist_ok=True)
 
     sql_dir = CONFIG.path.sql_dir
-    binds = merge_fetch_binds(
-        fac_id,
-        per,
-        lot_cd=lot_cd,
-        extra_binds=extra_binds,
-    )
 
     own_registry = db_registry is None
     registry = db_registry or DbRegistry()
@@ -208,6 +203,13 @@ def fetch_from_db(
                 sql = _read_sql(sql_path)
                 alias = parse_sql_db_alias(sql, registry.default_alias)
                 out_path = output_dir / json_file
+                binds = merge_fetch_binds(
+                    fac_id,
+                    per,
+                    lot_cd=lot_cd,
+                    include_lot_cd=(sql_file == "discrete_arrange.sql"),
+                    extra_binds=extra_binds,
+                )
                 if verbose or dry_run:
                     print(
                         f"[loader] 계획 @{alias} {sql_file} → {out_path} "

@@ -273,7 +273,7 @@ def cmd_collect(
         once=once,
         snapshot=snapshot,
         period=period,
-        lot_cd=lot_cd,
+        lotcd=lot_cd,
         verbose=verbose,
         dry_run=dry_run,
         debug=debug,
@@ -320,9 +320,9 @@ def parse_args():
         help="추론 RULE_TIMEKEY (미지정 시 최신)",
     )
     inf_p.add_argument(
-        "--lot-cd",
+        "--lotcd",
         default=None,
-        help="LOT_CD SQL 필터 (기본: SQL_LOT_CD / COLLECTOR_LOT_CD)",
+        help="discrete_arrange LOT_CD 필터 (기본: SQL_LOT_CD / COLLECTOR_LOT_CD)",
     )
     inf_p.add_argument(
         "--nodb", action="store_true",
@@ -351,9 +351,9 @@ def parse_args():
     collect_p.add_argument("--snapshot", action="store_true")
     collect_p.add_argument("--period", help="--snapshot 시 RULE_TIMEKEY")
     collect_p.add_argument(
-        "--lot-cd",
+        "--lotcd",
         default=None,
-        help="LOT_CD SQL 필터 (기본: COLLECTOR_LOT_CD / SQL_LOT_CD)",
+        help="discrete_arrange LOT_CD 필터 (기본: COLLECTOR_LOT_CD / SQL_LOT_CD)",
     )
     add_debug_arguments(collect_p)
 
@@ -385,7 +385,7 @@ def main():
                 fac_id=args.facid,
                 rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
-                lot_cd=args.lot_cd,
+                lot_cd=args.lotcd,
             )
 
         elif args.command == "collect":
@@ -399,7 +399,7 @@ def main():
                 once=args.once,
                 snapshot=args.snapshot,
                 period=args.period,
-                lot_cd=args.lot_cd,
+                lot_cd=args.lotcd,
                 verbose=args.verbose,
                 dry_run=args.dry_run,
                 debug=args.debug,

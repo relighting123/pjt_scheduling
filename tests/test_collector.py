@@ -93,17 +93,18 @@ def test_fetch_dry_run_logs_lot_cd_bind(tmp_path, monkeypatch, capsys):
         verbose=True,
     )
     out = capsys.readouterr().out
+    assert "discrete_arrange.sql" in out
     assert "LOT_CD" in out
 
 
-def test_collector_lot_cd_arg():
+def test_collector_lotcd_arg():
     parser = build_arg_parser()
     args = parser.parse_args([
-        "--once", "--facid", "FAC001", "--lot-cd", "LC001",
+        "--once", "--facid", "FAC001", "--lotcd", "LC001",
     ])
-    assert args.lot_cd == "LC001"
+    assert args.lotcd == "LC001"
     assert args.facid == "FAC001"
-    collector = TrainingDataCollector(fac_id=args.facid, lot_cd=args.lot_cd)
+    collector = TrainingDataCollector(fac_id=args.facid, lot_cd=args.lotcd)
     assert collector.lot_cd == "LC001"
 
 
