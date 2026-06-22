@@ -258,21 +258,33 @@ def fetch_period_range(
     *,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    periods: Optional[List[str]] = None,
     verbose: bool = False,
     dry_run: bool = False,
 ) -> List[Path]:
     """RULE_TIMEKEY 구간별 Oracle SQL → JSON 저장"""
-    start_key = from_timekey or from_date
-    end_key = to_timekey or to_date
-    if not start_key or not end_key:
-        raise ValueError("from_timekey와 to_timekey(또는 from_date/to_date)를 지정하세요.")
+    if periods is not None:
+        keys = [normalize_rule_timekey(p) for p in periods]
+        range_label = (
+            f"{keys[0]}~{keys[-1]} (db {len(keys)}건)"
+            if keys else "(empty)"
+        )
+    else:
+        start_key = from_timekey or from_date
+        end_key = to_timekey or to_date
+        if not start_key or not end_key:
+            raise ValueError(
+                "from_timekey와 to_timekey(또는 from_date/to_date, periods)를 지정하세요."
+            )
+        keys = list(iter_rule_timekeys(start_key, end_key))
+        range_label = f"{start_key}~{end_key}"
 
-    paths: List[Path] = []
-    keys = list(iter_rule_timekeys(start_key, end_key))
     if dry_run and keys:
         keys = keys[:1]
         if verbose:
-            print(f"[loader] dry-run: {start_key}~{end_key} 중 1일만 검증")
+            print(f"[loader] dry-run: {range_label} 중 1일만 검증")
+
+    paths: List[Path] = []
     with DbRegistry() as registry:
         for period in keys:
             day_binds = {"RULE_TIMEKEY": period, **(extra_binds or {})}
@@ -289,5 +301,5 @@ def fetch_period_range(
     if dry_run:
         print(f"[loader] dry-run 완료 – {len(paths)}개 폴더 계획 확인")
     else:
-        print(f"[loader] {split} RULE_TIMEKEY {start_key}~{end_key} → {len(paths)}개 폴더 생성")
+        print(f"[loader] {split} RULE_TIMEKEY {range_label} → {len(paths)}개 폴더 생성")
     return paths

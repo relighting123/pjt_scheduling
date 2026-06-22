@@ -14,6 +14,12 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     python -m data.collector --fac-id FAC001 --once --debug
     python main.py collect --fac-id FAC001 --prevdays 3 --once
 
+RULE_TIMEKEY (DB 메타 SQL, external/sql/rule_timekey_*.sql):
+    rule_timekey_latest.sql  – 최신 1건 (--snapshot 기본값)
+    rule_timekey_recent.sql  – 최근 N개 (--prevdays)
+    rule_timekey_list.sql    – FROM~TO 구간 (--from/--to)
+    cp external/sql.example/rule_timekey_*.sql external/sql/
+
 디버그 순서 (오류 시):
     1. python main.py db-check
     2. python -m data.collector --fac-id FAC001 --once --preflight
@@ -36,16 +42,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import (
-    CONFIG,
-    iter_rule_timekeys,
-    resolve_dataset_path,
-    resolve_train_period_range,
-    rule_timekey_now,
-    validate_path_segment,
-)
+from config import CONFIG, resolve_dataset_path, validate_path_segment
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader.fetch import fetch_from_db, fetch_period_range
+from data.loader.rule_timekey_query import (
+    resolve_collect_periods,
+    resolve_snapshot_rule_timekey,
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -118,11 +121,16 @@ class TrainingDataCollector:
         self.from_key = from_key
         self.to_key = to_key
 
-    def _resolve_range(self) -> tuple[str, str]:
-        if self.from_key and self.to_key:
-            return self.from_key, self.to_key
-        start, end = resolve_train_period_range(prevdays=self.prevdays)
-        return start, end
+    def _resolve_periods(self) -> tuple[List[str], str]:
+        periods, source = resolve_collect_periods(
+            self.fac_id,
+            prevdays=self.prevdays,
+            from_key=self.from_key,
+            to_key=self.to_key,
+        )
+        if not periods:
+            raise ValueError("수집할 RULE_TIMEKEY 가 없습니다.")
+        return periods, source
 
     def _fetch_kwargs(self, options: CollectorOptions) -> dict:
         return {
@@ -149,9 +157,9 @@ class TrainingDataCollector:
 
         fetch_kwargs = self._fetch_kwargs(options)
         if snapshot_only:
-            per = period or rule_timekey_now()
+            per, source = resolve_snapshot_rule_timekey(self.fac_id, period)
             out_dir, _ = resolve_dataset_path(self.fac_id, self.split, per)
-            print(f"  mode=snapshot  period={per}")
+            print(f"  mode=snapshot  period={per} ({source})")
             print(f"  output_dir={out_dir}")
             fetch_from_db(
                 fac_id=self.fac_id,
@@ -161,20 +169,21 @@ class TrainingDataCollector:
             )
             return []
 
-        start, end = self._resolve_range()
-        keys = list(iter_rule_timekeys(start, end))
-        sample = keys[0] if keys else None
-        print(f"  mode=range  RULE_TIMEKEY {start} ~ {end} ({len(keys)}일)")
-        if sample:
-            out_dir, _ = resolve_dataset_path(self.fac_id, self.split, sample)
-            print(f"  sample_period={sample}")
-            print(f"  sample_output_dir={out_dir}")
-            fetch_from_db(
-                fac_id=self.fac_id,
-                split=self.split,
-                period=sample,
-                **fetch_kwargs,
-            )
+        periods, source = self._resolve_periods()
+        sample = periods[0]
+        print(
+            f"  mode=range  RULE_TIMEKEY {periods[0]} ~ {periods[-1]} "
+            f"({source}, {len(periods)}건)",
+        )
+        out_dir, _ = resolve_dataset_path(self.fac_id, self.split, sample)
+        print(f"  sample_period={sample}")
+        print(f"  sample_output_dir={out_dir}")
+        fetch_from_db(
+            fac_id=self.fac_id,
+            split=self.split,
+            period=sample,
+            **fetch_kwargs,
+        )
         print("[preflight] 완료 – 문제 없으면 --once 로 실제 수집하세요.")
         return []
 
@@ -186,20 +195,24 @@ class TrainingDataCollector:
         options: Optional[CollectorOptions] = None,
     ) -> List[Path]:
         options = options or CollectorOptions()
-        start, end = from_key or self.from_key, to_key or self.to_key
-        if not start or not end:
-            start, end = self._resolve_range()
+        if from_key and to_key:
+            periods, source = resolve_collect_periods(
+                self.fac_id,
+                from_key=from_key,
+                to_key=to_key,
+            )
+        else:
+            periods, source = self._resolve_periods()
         print(
             f"[collector] {self.fac_id}/{self.split} "
-            f"RULE_TIMEKEY {start} ~ {end}",
+            f"RULE_TIMEKEY {periods[0]} ~ {periods[-1]} ({source}, {len(periods)}건)",
         )
         if options.verbose:
             print(f"[collector] sql_dir={CONFIG.path.sql_dir}")
         return fetch_period_range(
             fac_id=self.fac_id,
-            from_timekey=start,
-            to_timekey=end,
             split=self.split,
+            periods=periods,
             **self._fetch_kwargs(options),
         )
 
@@ -210,8 +223,8 @@ class TrainingDataCollector:
         options: Optional[CollectorOptions] = None,
     ) -> Path:
         options = options or CollectorOptions()
-        per = period or rule_timekey_now()
-        print(f"[collector] {self.fac_id}/{self.split}/{per} 단일 스냅샷")
+        per, source = resolve_snapshot_rule_timekey(self.fac_id, period)
+        print(f"[collector] {self.fac_id}/{self.split}/{per} 단일 스냅샷 ({source})")
         if options.verbose:
             out_dir, _ = resolve_dataset_path(self.fac_id, self.split, per)
             print(f"[collector] output_dir={out_dir}")
@@ -312,7 +325,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--period",
-        help="--snapshot 시 사용할 RULE_TIMEKEY (미지정 시 now)",
+        help="--snapshot 시 사용할 RULE_TIMEKEY (미지정 시 DB 최신 → 현재 시각)",
     )
     add_debug_arguments(parser)
     return parser
