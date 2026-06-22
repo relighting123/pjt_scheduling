@@ -137,6 +137,64 @@ def _ensure_dotenv() -> None:
         pass
 
 
+def _read_dotenv_file() -> Dict[str, str]:
+    """`.env` 파일 값 (프로세스 환경과 비교용, 비밀은 마스킹하지 않음)."""
+    path = BASE_DIR / ".env"
+    if not path.exists():
+        return {}
+    values: Dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def default_alias_source(
+    yaml_default: Optional[str] = None,
+    environ: Optional[Dict[str, str]] = None,
+) -> str:
+    env = environ if environ is not None else os.environ
+    raw = env.get("DB_DEFAULT_ALIAS", "").strip()
+    if raw:
+        norm = _normalize_alias(raw)
+        return f".env DB_DEFAULT_ALIAS={raw} (내부 키: {norm})"
+    if yaml_default:
+        return f"yaml default: {yaml_default} (내부 키: {yaml_default})"
+    return "fallback: main (DB_DEFAULT_ALIAS·yaml default 미설정)"
+
+
+def scan_sql_db_aliases(sql_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """runtime SQL 폴더의 @db 헤더 스캔."""
+    from config import SQL_DIR
+
+    target = sql_dir or SQL_DIR
+    rows: List[Dict[str, Any]] = []
+    if not target.exists():
+        return rows
+    for path in sorted(target.glob("*.sql")):
+        head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:20])
+        match = _DB_HEADER_RE.search(head)
+        if match:
+            raw = match.group(1)
+            rows.append({
+                "file": path.name,
+                "raw_alias": raw,
+                "alias": _normalize_alias(raw),
+                "uses_default": False,
+            })
+        else:
+            rows.append({
+                "file": path.name,
+                "raw_alias": None,
+                "alias": None,
+                "uses_default": True,
+            })
+    return rows
+
+
 def default_db_config_path() -> Path:
     raw = os.environ.get("DB_CONFIG", "config/databases.yaml").strip()
     path = Path(raw)
@@ -249,10 +307,15 @@ def diagnose_db_config(
     _ensure_dotenv()
     cfg_path = yaml_path or default_db_config_path()
     example_path = BASE_DIR / "config" / "databases.yaml.example"
+    env = environ if environ is not None else os.environ
     buckets, yaml_default = load_db_aliases(yaml_path=yaml_path, environ=environ)
     default_alias = default_db_alias(yaml_default, environ)
+    alias_source = default_alias_source(yaml_default, environ)
+    dotenv_values = _read_dotenv_file()
+    sql_aliases = scan_sql_db_aliases()
 
     issues: List[str] = []
+    notes: List[str] = []
     if not cfg_path.exists():
         issues.append(f"YAML 파일 없음: {cfg_path}")
         if example_path.exists():
@@ -277,20 +340,97 @@ def diagnose_db_config(
             f"등록된 alias: {', '.join(sorted(buckets)) or '(없음)'}"
         )
 
+    for var in ("DB_CONFIG", "DB_DEFAULT_ALIAS"):
+        file_val = dotenv_values.get(var, "").strip()
+        proc_val = env.get(var, "").strip()
+        if file_val and proc_val and file_val != proc_val:
+            issues.append(
+                f"환경 변수 {var} 불일치: 셸/서비스={proc_val!r}, .env={file_val!r} "
+                "(셸 값이 우선 적용됩니다. systemd/cron 이면 WorkingDirectory·EnvironmentFile 확인)"
+            )
+
+    from config import SQL_DIR
+
+    if not SQL_DIR.exists():
+        issues.append(
+            f"SQL 폴더 없음: {SQL_DIR} "
+            "(실행: cp -r external/sql.example external/sql)"
+        )
+    elif not sql_aliases:
+        issues.append(f"SQL 폴더에 *.sql 없음: {SQL_DIR}")
+    else:
+        for row in sql_aliases:
+            alias = row.get("alias")
+            if alias is None:
+                issues.append(
+                    f"{row['file']}: -- @db: 헤더 없음 → default alias '{default_alias}' 사용"
+                )
+                continue
+            if not any(anc in buckets for anc in alias_ancestors(alias)):
+                issues.append(
+                    f"{row['file']}: -- @db: {row['raw_alias']} "
+                    f"(내부 키: {alias}) 가 databases.yaml 에 없습니다"
+                )
+
+    sql_alias_set = {row["alias"] for row in sql_aliases if row.get("alias")}
+    if sql_alias_set == {default_alias} and default_alias:
+        notes.append(
+            f"모든 SQL 이 -- @db: 로 '{default_alias}' 를 직접 지정합니다. "
+            "fetch/collect 시 default 가 아니라 SQL 헤더 alias 가 사용됩니다."
+        )
+    if default_alias == "prd":
+        notes.append(
+            "Prd → prd 는 정상입니다. alias 는 대소문자 구분 없이 소문자로 통일됩니다."
+        )
+
     return {
         "config_path": str(cfg_path),
         "config_exists": cfg_path.exists(),
         "example_path": str(example_path),
         "default_alias": default_alias,
+        "default_alias_source": alias_source,
         "yaml_default": yaml_default,
+        "sql_dir": str(SQL_DIR),
+        "sql_aliases": sql_aliases,
         "known_aliases": sorted(buckets),
         "buckets": {
             alias: {k: ("***" if k == "password" and v else v) for k, v in fields.items()}
             for alias, fields in buckets.items()
         },
         "issues": issues,
+        "notes": notes,
         "ok": not issues,
     }
+
+
+def print_db_config_report(report: dict) -> None:
+    """diagnose_db_config() 결과를 사람이 읽기 좋게 출력."""
+    print(f"config: {report['config_path']} ({'OK' if report['config_exists'] else 'MISSING'})")
+    print(f"default alias: {report['default_alias']}")
+    print(f"default source: {report.get('default_alias_source', '')}")
+    print(f"known aliases: {', '.join(report['known_aliases']) or '(없음)'}")
+    for alias, fields in report["buckets"].items():
+        print(f"  [{alias}] user={fields.get('user', '')} dsn={fields.get('dsn', '')}")
+    if report.get("sql_aliases"):
+        print(f"sql dir: {report['sql_dir']}")
+        for row in report["sql_aliases"]:
+            if row.get("uses_default"):
+                print(f"  {row['file']}: (헤더 없음 → default)")
+            else:
+                print(
+                    f"  {row['file']}: -- @db: {row['raw_alias']} "
+                    f"(내부 키: {row['alias']})"
+                )
+    if report.get("notes"):
+        print("notes:")
+        for note in report["notes"]:
+            print(f"  - {note}")
+    if report["issues"]:
+        print("issues:")
+        for issue in report["issues"]:
+            print(f"  - {issue}")
+    else:
+        print("status: OK")
 
 
 def format_db_config_error(alias: str, buckets: Dict[str, Dict[str, str]]) -> str:
@@ -438,17 +578,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
-        print(f"config: {report['config_path']} ({'OK' if report['config_exists'] else 'MISSING'})")
-        print(f"default alias: {report['default_alias']}")
-        print(f"known aliases: {', '.join(report['known_aliases']) or '(없음)'}")
-        for alias, fields in report["buckets"].items():
-            print(f"  [{alias}] user={fields.get('user', '')} dsn={fields.get('dsn', '')}")
-        if report["issues"]:
-            print("issues:")
-            for issue in report["issues"]:
-                print(f"  - {issue}")
-        else:
-            print("status: OK")
+        print_db_config_report(report)
     return 0 if report["ok"] else 1
 
 

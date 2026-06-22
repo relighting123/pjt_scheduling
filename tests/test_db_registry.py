@@ -8,12 +8,14 @@ from data.collector import TrainingDataCollector, build_arg_parser
 from data.db_registry import (
     DbRegistry,
     default_db_alias,
+    default_alias_source,
     diagnose_db_config,
     format_db_config_error,
     load_db_aliases,
     load_db_aliases_from_yaml,
     parse_sql_db_alias,
     resolve_db_credentials,
+    scan_sql_db_aliases,
 )
 
 
@@ -105,6 +107,38 @@ def test_oracle_legacy_maps_to_main():
         },
     )
     assert resolve_db_credentials("main", buckets).user == "legacy"
+
+
+def test_default_alias_source_env(monkeypatch):
+    monkeypatch.setenv("DB_DEFAULT_ALIAS", "Prd")
+    assert "DB_DEFAULT_ALIAS=Prd" in default_alias_source("dev")
+    assert "prd" in default_alias_source("dev")
+
+
+def test_scan_sql_db_aliases(tmp_path):
+    (tmp_path / "plan.sql").write_text("-- @db: Prd\nSELECT 1", encoding="utf-8")
+    (tmp_path / "flow.sql").write_text("-- flow\nSELECT 1", encoding="utf-8")
+    rows = scan_sql_db_aliases(tmp_path)
+    by_file = {row["file"]: row for row in rows}
+    assert by_file["plan.sql"]["alias"] == "prd"
+    assert by_file["flow.sql"]["uses_default"] is True
+
+
+def test_diagnose_sql_alias_mismatch(tmp_path, monkeypatch):
+    cfg = tmp_path / "databases.yaml"
+    cfg.write_text(
+        "default: Dev\nDev:\n  user: u\n  password: p\n  dsn: d\n",
+        encoding="utf-8",
+    )
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "plan.sql").write_text("-- @db: Prd\nSELECT 1", encoding="utf-8")
+    monkeypatch.setenv("DB_CONFIG", str(cfg))
+    monkeypatch.setenv("DB_DEFAULT_ALIAS", "Dev")
+    monkeypatch.setattr("config.SQL_DIR", sql_dir)
+    report = diagnose_db_config(yaml_path=cfg)
+    assert not report["ok"]
+    assert any("plan.sql" in issue for issue in report["issues"])
 
 
 def test_diagnose_missing_yaml(monkeypatch):
