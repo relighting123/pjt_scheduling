@@ -150,9 +150,10 @@ def build_abstract_arrange(
     ]
 
 
-def _split_row(ppk: str, eqp_model: str, split_qty: int) -> dict:
+def _split_row(ppk: str, oper_id: str, eqp_model: str, split_qty: int) -> dict:
     return {
         "PLAN_PROD_KEY": ppk,
+        "OPER_ID": oper_id,
         "EQP_MODEL": eqp_model,
         "SPLIT_QTY": split_qty,
     }
@@ -163,11 +164,11 @@ def build_split_rules(
     split_qty: int = 3,
     models: Tuple[str, ...] = ("A", "B", "C", "D", "E"),
 ) -> List[dict]:
-    """flow의 PPK × EQP MODEL 별 SPLIT_QTY 규칙 생성"""
-    ppks = sorted({r["PLAN_PROD_KEY"] for r in flow})
+    """flow의 PPK × OPER × EQP MODEL 별 SPLIT_QTY 규칙 생성"""
+    ppk_opers = sorted({(r["PLAN_PROD_KEY"], r["OPER_ID"]) for r in flow})
     return [
-        _split_row(ppk, model, split_qty)
-        for ppk in ppks
+        _split_row(ppk, oper_id, model, split_qty)
+        for ppk, oper_id in ppk_opers
         for model in models
     ]
 

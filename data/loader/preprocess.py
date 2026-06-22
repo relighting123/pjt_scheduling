@@ -29,25 +29,32 @@ def _legacy_st_as_eqp_model(value) -> Optional[str]:
     return None
 
 
-def _build_split_lookup(split_raw: List[dict]) -> Dict[Tuple[str, str], int]:
-    lookup: Dict[Tuple[str, str], int] = {}
+def _build_split_lookup(split_raw: List[dict]) -> Dict[Tuple[str, str, str], int]:
+    lookup: Dict[Tuple[str, str, str], int] = {}
     for r in split_raw:
         ppk = r["PLAN_PROD_KEY"]
+        oper = str(r.get("OPER_ID", "*")).strip().upper() or "*"
         model = str(r.get("EQP_MODEL", "*")).strip().upper() or "*"
-        lookup[(ppk, model)] = int(r["SPLIT_QTY"])
+        lookup[(ppk, oper, model)] = int(r["SPLIT_QTY"])
     return lookup
 
 
 def _resolve_split_qty(
     ppk: str,
+    oper_id: str,
     eqp_model: str,
-    split_lookup: Dict[Tuple[str, str], int],
+    split_lookup: Dict[Tuple[str, str, str], int],
 ) -> Optional[int]:
     model = (eqp_model or "A").strip().upper()
-    if (ppk, model) in split_lookup:
-        return split_lookup[(ppk, model)]
-    if (ppk, "*") in split_lookup:
-        return split_lookup[(ppk, "*")]
+    oper = (oper_id or "*").strip().upper()
+    for key in (
+        (ppk, oper, model),
+        (ppk, oper, "*"),
+        (ppk, "*", model),
+        (ppk, "*", "*"),
+    ):
+        if key in split_lookup:
+            return split_lookup[key]
     return None
 
 
@@ -203,9 +210,9 @@ def _apply_wafer_lot_split(
     proc_time_matrix: Dict[Tuple[str, str, str], int],
     discrete_raw: List[dict],
     eqp_model_map: Dict[str, str],
-    split_lookup: Dict[Tuple[str, str], int],
+    split_lookup: Dict[Tuple[str, str, str], int],
 ) -> None:
-    """PPK×MODEL SPLIT_QTY 규칙에 따라 LOT을 wafer sub-lot으로 분할"""
+    """PPK×OPER×MODEL SPLIT_QTY 규칙에 따라 LOT을 wafer sub-lot으로 분할"""
     if not split_lookup:
         return
 
@@ -215,7 +222,9 @@ def _apply_wafer_lot_split(
         info = lot_info[parent_id]
         wf = int(info["wf_qty"])
         model = eqp_model_map.get(info["original_eqp"], "A")
-        split_qty = _resolve_split_qty(info["plan_prod_key"], model, split_lookup)
+        split_qty = _resolve_split_qty(
+            info["plan_prod_key"], info["oper_id"], model, split_lookup,
+        )
         if split_qty is None or split_qty <= 0 or wf <= split_qty:
             continue
 
