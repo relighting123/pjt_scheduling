@@ -11,8 +11,9 @@ build/
 # External dataset (JSON 산출물, git 제외) – SQL 템플릿은 추적
 data/dataset/
 
-# Trained models (large binary files – keep only the latest manually)
-models/*.zip
+# Trained models (large binary files – checkpoints/best 등 하위 경로 포함)
+models/**
+!models/.gitkeep
 
 # IDE
 .vscode/
