@@ -11,6 +11,12 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     python -m data.collector --fac-id FAC001 --once
     python -m data.collector --fac-id FAC001 --interval 3600
     python main.py collect --fac-id FAC001 --prevdays 3 --once
+
+RULE_TIMEKEY (DB 메타 SQL, external/sql/rule_timekey_*.sql):
+    rule_timekey_latest.sql  – 최신 1건 (--snapshot 기본값)
+    rule_timekey_recent.sql  – 최근 N개 (--prevdays)
+    rule_timekey_list.sql    – FROM~TO 구간 (--from/--to)
+    cp external/sql.example/rule_timekey_*.sql external/sql/
 """
 from __future__ import annotations
 
@@ -26,12 +32,12 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import (
-    resolve_train_period_range,
-    rule_timekey_now,
-    validate_path_segment,
-)
+from config import validate_path_segment
 from data.loader.fetch import fetch_from_db, fetch_period_range
+from data.loader.rule_timekey_query import (
+    resolve_collect_periods,
+    resolve_snapshot_rule_timekey,
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -63,33 +69,53 @@ class TrainingDataCollector:
         self.to_key = to_key
 
     def _resolve_range(self) -> tuple[str, str]:
-        if self.from_key and self.to_key:
-            return self.from_key, self.to_key
-        start, end = resolve_train_period_range(prevdays=self.prevdays)
-        return start, end
+        periods, _source = resolve_collect_periods(
+            self.fac_id,
+            prevdays=self.prevdays,
+            from_key=self.from_key,
+            to_key=self.to_key,
+        )
+        if not periods:
+            raise ValueError("수집할 RULE_TIMEKEY 가 없습니다.")
+        return periods[0], periods[-1]
+
+    def _resolve_periods(self) -> tuple[List[str], str]:
+        periods, source = resolve_collect_periods(
+            self.fac_id,
+            prevdays=self.prevdays,
+            from_key=self.from_key,
+            to_key=self.to_key,
+        )
+        if not periods:
+            raise ValueError("수집할 RULE_TIMEKEY 가 없습니다.")
+        return periods, source
 
     def collect_period_range(
         self,
         from_key: Optional[str] = None,
         to_key: Optional[str] = None,
     ) -> List[Path]:
-        start, end = from_key or self.from_key, to_key or self.to_key
-        if not start or not end:
-            start, end = self._resolve_range()
+        if from_key and to_key:
+            periods, source = resolve_collect_periods(
+                self.fac_id,
+                from_key=from_key,
+                to_key=to_key,
+            )
+        else:
+            periods, source = self._resolve_periods()
         print(
             f"[collector] {self.fac_id}/{self.split} "
-            f"RULE_TIMEKEY {start} ~ {end}",
+            f"RULE_TIMEKEY {periods[0]} ~ {periods[-1]} ({source}, {len(periods)}건)",
         )
         return fetch_period_range(
             fac_id=self.fac_id,
-            from_timekey=start,
-            to_timekey=end,
             split=self.split,
+            periods=periods,
         )
 
     def collect_snapshot(self, period: Optional[str] = None) -> Path:
-        per = period or rule_timekey_now()
-        print(f"[collector] {self.fac_id}/{self.split}/{per} 단일 스냅샷")
+        per, source = resolve_snapshot_rule_timekey(self.fac_id, period)
+        print(f"[collector] {self.fac_id}/{self.split}/{per} 단일 스냅샷 ({source})")
         return fetch_from_db(
             fac_id=self.fac_id,
             split=self.split,
@@ -171,7 +197,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--period",
-        help="--snapshot 시 사용할 RULE_TIMEKEY (미지정 시 now)",
+        help="--snapshot 시 사용할 RULE_TIMEKEY (미지정 시 DB 최신 → 현재 시각)",
     )
     return parser
 

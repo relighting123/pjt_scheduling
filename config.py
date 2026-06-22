@@ -132,9 +132,16 @@ def resolve_train_period_range(
 
 
 def resolve_infer_rule_timekey(fac_id: str, rule_timekey: Optional[str] = None) -> str:
-    """추론 SQL 조회용 RULE_TIMEKEY (미지정 시 최신)."""
+    """추론 SQL 조회용 RULE_TIMEKEY (미지정 시 DB 최신 → 로컬 폴더 → 현재 시각)."""
     if rule_timekey:
         return normalize_rule_timekey(rule_timekey)
+    try:
+        from data.loader.rule_timekey_query import fetch_latest_rule_timekey
+        db_key = fetch_latest_rule_timekey(fac_id)
+        if db_key:
+            return db_key
+    except Exception:
+        pass
     return (
         latest_period(fac_id, "test")
         or latest_period(fac_id, "train")
@@ -361,6 +368,7 @@ class PathConfig:
 
 # SQL 파일명 ↔ JSON 파일명 (loader.fetch_from_db)
 # 각 SQL 첫 줄: -- @db: Prd / Dev / Prd.Plan  (config/databases.yaml 계층)
+# 메타 SQL (JSON 변환 없음): rule_timekey_latest.sql, rule_timekey_list.sql, rule_timekey_recent.sql
 SQL_JSON_MAP = {
     "discrete_arrange": ("discrete_arrange.sql", "discrete_arrange.json"),
     "abstract_arrange": ("abstract_arrange.sql", "abstract_arrange.json"),
