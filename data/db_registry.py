@@ -97,10 +97,6 @@ def _normalize_field(key: str) -> Optional[str]:
     return _FIELD_ALIASES.get(key.strip().lower().replace("-", "_"))
 
 
-def _is_credential_leaf(node: dict) -> bool:
-    return any(_normalize_field(k) for k in node)
-
-
 def _walk_yaml_node(
     node: dict,
     prefix: List[str],
