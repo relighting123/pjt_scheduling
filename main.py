@@ -8,6 +8,8 @@ main.py - 운영 CLI
     python main.py inference --facid FAC001
     python main.py inference --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --prevdays 3 --nodb
+    python main.py collect --fac-id FAC001 --prevdays 1 --once
+    python -m data.collector --fac-id FAC001 --interval 3600
     python main.py ui
 """
 import argparse
@@ -33,6 +35,7 @@ from config import (
     resolve_infer_rule_timekey,
     list_split_folders,
 )
+from data.collector import TrainingDataCollector
 from data.loader import fetch_period_range, fetch_from_db, load_data, validate_data, preprocess
 from agent.rl_agent import SchedulingAgent
 from inference.runner import run_inference, save_result
@@ -248,6 +251,30 @@ def cmd_ui():
         api_proc.wait(timeout=5)
 
 
+def cmd_collect(
+    fac_id: str,
+    split: str = "train",
+    interval: int = 0,
+    prevdays: int = 1,
+    from_key: str = None,
+    to_key: str = None,
+    once: bool = False,
+    snapshot: bool = False,
+    period: str = None,
+):
+    collector = TrainingDataCollector(
+        fac_id=fac_id,
+        split=split,
+        prevdays=prevdays,
+        from_key=from_key,
+        to_key=to_key,
+    )
+    if once or interval <= 0:
+        collector.collect_once(snapshot_only=snapshot, period=period)
+    else:
+        collector.run_loop(interval, snapshot_only=snapshot)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Scheduling RL 운영 CLI",
@@ -295,6 +322,24 @@ def parse_args():
 
     sub.add_parser("ui", help="React UI + API 서버 실행")
 
+    collect_p = sub.add_parser(
+        "collect", help="주기적 학습 데이터 수집 (SQL @db alias → JSON)",
+    )
+    collect_p.add_argument("--fac-id", dest="fac_id", required=True, help="공장 ID")
+    collect_p.add_argument(
+        "--split", default="train", choices=("train", "test", "infer"),
+    )
+    collect_p.add_argument(
+        "--interval", type=int, default=0,
+        help="수집 주기(초). 0 또는 --once 이면 1회",
+    )
+    collect_p.add_argument("--prevdays", type=int, default=1)
+    collect_p.add_argument("--from", dest="from_key", metavar="RULE_TIMEKEY")
+    collect_p.add_argument("--to", dest="to_key", metavar="RULE_TIMEKEY")
+    collect_p.add_argument("--once", action="store_true")
+    collect_p.add_argument("--snapshot", action="store_true")
+    collect_p.add_argument("--period", help="--snapshot 시 RULE_TIMEKEY")
+
     return parser.parse_args()
 
 
@@ -324,6 +369,19 @@ def main():
                 fac_id=args.facid,
                 rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
+            )
+
+        elif args.command == "collect":
+            cmd_collect(
+                fac_id=args.fac_id,
+                split=args.split,
+                interval=args.interval,
+                prevdays=args.prevdays,
+                from_key=args.from_key,
+                to_key=args.to_key,
+                once=args.once,
+                snapshot=args.snapshot,
+                period=args.period,
             )
 
         elif args.command == "ui":

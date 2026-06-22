@@ -1,3 +1,4 @@
+-- @db: Prd
 -- split.sql → split.json
 -- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (기간, YYYYMMDDHHmmss)
 -- PPK × EQP_MODEL 별 1회 투입 wafer split 크기 (장)

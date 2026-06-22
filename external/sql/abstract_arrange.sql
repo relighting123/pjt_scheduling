@@ -1,3 +1,4 @@
+-- @db: Prd
 -- abstract_arrange.sql → abstract_arrange.json
 -- Abstract arrange: PPK×OPER×EQP_MODEL feasible route (+ ST)
 -- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (기간, YYYYMMDDHHmmss)
