@@ -38,7 +38,7 @@ def _bucket_block_reason(
         return "no_wip", f"{ppk}/{oper_id} 재공 0"
 
     if not sim._eqp_can_process(eqp_id, ppk, oper_id):
-        model = sim._eqp_model_map.get(eqp_id, "A")
+        model = sim._eqp_model_map[eqp_id]
         if sim._abstract_row_for(eqp_id, ppk, oper_id) is None:
             return "no_route", f"EQP MODEL {model}에 {ppk}/{oper_id} route 없음"
         return "no_route", f"{eqp_id}가 {ppk}/{oper_id} 가공 불가"
@@ -90,7 +90,7 @@ def diagnose_eqp(sim: "SchedulingSimulator", eqp_id: str) -> dict:
     feasible_set = set(feasible_flats)
     blocked_buckets: List[dict] = []
     seen: set = set()
-    model = sim._eqp_model_map.get(eqp_id, "A")
+    model = sim._eqp_model_map[eqp_id]
 
     for tmpl in sim._abstract_template:
         if tmpl["eqp_model"] != model:

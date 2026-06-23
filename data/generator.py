@@ -140,7 +140,7 @@ def build_abstract_arrange(
         if not oper:
             continue
         ppk = r["PLAN_PROD_KEY"]
-        model = str(r.get("EQP_MODEL") or "A")
+        model = str(r["EQP_MODEL"])
         st = int(r.get("ST") or 60)
         route_st.setdefault((ppk, oper, model), []).append(st)
 
