@@ -16,6 +16,7 @@ from gymnasium import spaces
 
 from config import CONFIG
 from simulation.simulator import SchedulingSimulator
+from simulation.decision_log import build_step_decision_entry
 
 
 def compute_obs_dim() -> int:
@@ -43,11 +44,14 @@ class SchedulingEnv(gym.Env):
         env_data: dict,
         render_mode: Optional[str] = None,
         record_history: bool = True,
+        record_decision_log: bool = False,
         max_episode_steps: Optional[int] = None,
     ):
         super().__init__()
         self._env_data = env_data
         self._record_history = record_history
+        self._record_decision_log = record_decision_log
+        self._decision_log: List[dict] = []
         self._max_episode_steps_override = max_episode_steps
         self._max_episode_steps = 0
         self._episode_steps = 0
@@ -81,6 +85,7 @@ class SchedulingEnv(gym.Env):
             else sim_end + 500
         )
         self._episode_steps = 0
+        self._decision_log = []
         obs = self.sim.get_observation()
         return obs, {}
 
@@ -116,17 +121,19 @@ class SchedulingEnv(gym.Env):
         time_at_step_start = self.sim.current_time
         eqp_id = self._ensure_decision_eqp()
         time_advanced = self.sim.current_time != time_at_step_start
+        schedule_before = len(self.sim.schedule)
 
         arrange_actual_before = self.sim.get_remaining_arrange_actual()
         arrange_abstract_before = self.sim.get_abstract_arrange()
         wip_waiting_before = self.sim.get_wip_waiting()
 
         reward = 0.0
+        resolved_flat: Optional[int] = None
         if eqp_id is not None:
             feasible = self.sim.get_feasible_ppk_oper(eqp_id)
-            flat = self._resolve_ppk_oper(ppk_oper_idx, feasible)
-            if flat is not None and self.sim.eqps[eqp_id].status == "idle":
-                ppk, oper_id = self.sim.ppk_oper_from_flat(flat)
+            resolved_flat = self._resolve_ppk_oper(ppk_oper_idx, feasible)
+            if resolved_flat is not None and self.sim.eqps[eqp_id].status == "idle":
+                ppk, oper_id = self.sim.ppk_oper_from_flat(resolved_flat)
                 reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
             elif feasible:
                 reward = -0.5
@@ -141,6 +148,31 @@ class SchedulingEnv(gym.Env):
                 self.sim._advance_to_next_decision()
                 time_advanced = self.sim.current_time != time_at_step_start
 
+        self._episode_steps += 1
+        terminated = self.sim.is_done()
+        truncated = (not terminated) and (
+            self.sim.current_time >= self.sim.sim_end
+            or self._episode_steps >= self._max_episode_steps
+        )
+
+        if self._record_decision_log:
+            entry = build_step_decision_entry(
+                step=self._episode_steps,
+                sim_time=time_at_step_start,
+                sim_time_after=self.sim.current_time,
+                eqp_id=eqp_id,
+                action_flat=ppk_oper_idx,
+                resolved_flat=resolved_flat,
+                reward=reward,
+                sim=self.sim,
+                terminated=terminated,
+            )
+            if len(self.sim.schedule) > schedule_before:
+                entry["assigned_lot_id"] = self.sim.schedule[-1].get("LOT_ID")
+                if entry["status"] not in ("assigned", "action_corrected"):
+                    entry["status"] = "assigned"
+            self._decision_log.append(entry)
+
         wip_for_history = (
             wip_waiting_before
             if time_advanced
@@ -153,13 +185,7 @@ class SchedulingEnv(gym.Env):
             wip_waiting_snapshot=wip_for_history,
         )
         self._total_reward += reward
-        self._episode_steps += 1
 
-        terminated = self.sim.is_done()
-        truncated = (not terminated) and (
-            self.sim.current_time >= self.sim.sim_end
-            or self._episode_steps >= self._max_episode_steps
-        )
         obs = self.sim.get_observation()
         info = {
             "total_reward":  self._total_reward,
@@ -177,6 +203,9 @@ class SchedulingEnv(gym.Env):
 
     def get_history(self) -> list:
         return self.sim.history if self.sim else []
+
+    def get_decision_log(self) -> list:
+        return list(self._decision_log)
 
     def action_masks(self) -> np.ndarray:
         """MaskablePPO용 – 현재 idle EQP에서 feasible한 ppk_oper mask (O×P)."""

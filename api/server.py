@@ -204,6 +204,10 @@ class InferenceRequest(BaseModel):
         default=None,
         description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
     )
+    decision_log: bool = Field(
+        default=False,
+        description="step별 EQP/PPK/OPER 결정 및 미할당 사유 로그 포함",
+    )
 
 
 class GeneratorConfigModel(BaseModel):
@@ -270,6 +274,10 @@ class CompareRequest(BaseModel):
     input_folder: Optional[str] = Field(
         default=None,
         description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
+    )
+    decision_log: bool = Field(
+        default=False,
+        description="step별 EQP/PPK/OPER 결정 및 미할당 사유 로그 포함",
     )
 
 
@@ -534,7 +542,12 @@ def inference(req: InferenceRequest):
             )
         agent = SchedulingAgent.load()
 
-    result = run_inference(env_data, algorithm=req.algorithm, agent=agent)
+    result = run_inference(
+        env_data,
+        algorithm=req.algorithm,
+        agent=agent,
+        record_decision_log=req.decision_log,
+    )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]
     result["eqp_ids"] = env_data["eqp_ids"]
@@ -558,7 +571,11 @@ def inference_compare(req: CompareRequest):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    payload = run_inference_compare(env_data, req.algorithms)
+    payload = run_inference_compare(
+        env_data,
+        req.algorithms,
+        record_decision_log=req.decision_log,
+    )
     if not payload["results"]:
         raise HTTPException(
             status_code=400,

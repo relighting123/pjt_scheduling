@@ -107,10 +107,49 @@ export interface InferenceStats {
   completed_qty: Record<string, number>;
 }
 
+export interface DecisionLogFeasibleOption {
+  flat: number;
+  ppk: string;
+  oper_id: string;
+  lot_id?: string | null;
+}
+
+export interface DecisionLogBlockedBucket {
+  ppk: string;
+  oper_id: string;
+  reason: string;
+  detail: string;
+  wip_qty?: number;
+}
+
+export interface DecisionLogEntry {
+  step: number;
+  sim_time: number;
+  sim_time_after: number;
+  time_advanced: boolean;
+  eqp_id?: string | null;
+  action_requested_flat: number;
+  action_requested_ppk?: string | null;
+  action_requested_oper?: string | null;
+  resolved_flat?: number | null;
+  resolved_ppk?: string | null;
+  resolved_oper?: string | null;
+  action_corrected: boolean;
+  status: string;
+  reason: string;
+  reward: number;
+  assigned_lot_id?: string | null;
+  failure_code?: string;
+  failure_detail?: string;
+  feasible_options?: DecisionLogFeasibleOption[];
+  blocked_buckets?: DecisionLogBlockedBucket[];
+}
+
 export interface InferenceResult {
   schedule: ScheduleRecord[];
   history: HistorySnap[];
   event_log?: SimEvent[];
+  decision_log?: DecisionLogEntry[];
   conversion_plans?: ConversionPlan[];
   stats: InferenceStats;
   plan: PlanRecord[];

@@ -24,6 +24,7 @@ def run_inference(
     model_path: Optional[str] = None,
     deterministic: bool = True,
     record_history: bool = True,
+    record_decision_log: bool = False,
 ) -> dict:
     """
     목적: 선택한 알고리즘으로 Scheduling 추론 실행
@@ -54,7 +55,14 @@ def run_inference(
     elif algorithm == "earliest_st":
         heuristic_agent = EarliestSTAgent()
 
-    env = ActionMasker(SchedulingEnv(run_data, record_history=record_history), _mask_fn)
+    env = ActionMasker(
+        SchedulingEnv(
+            run_data,
+            record_history=record_history,
+            record_decision_log=record_decision_log,
+        ),
+        _mask_fn,
+    )
     sched_env: SchedulingEnv = env.unwrapped
     obs, _ = env.reset()
     done = False
@@ -87,6 +95,7 @@ def run_inference(
         "schedule":         schedule,
         "history":          history,
         "event_log":        list(sched_env.sim.event_log),
+        "decision_log":     sched_env.get_decision_log() if record_decision_log else [],
         "conversion_plans": list(sched_env.sim.conversion_plans),
         "stats":            {
             "idle_total":    stats["idle_total"],
@@ -129,6 +138,7 @@ def save_result(
         "schedule":         result["schedule"],
         "history":          serialize_history(result.get("history", [])),
         "event_log":        result.get("event_log", []),
+        "decision_log":     result.get("decision_log", []),
         "conversion_plans": result.get("conversion_plans", []),
         "stats":            result["stats"],
         "plan":             result["plan"],
@@ -146,6 +156,7 @@ def run_inference_compare(
     algorithms: list[str],
     model_path: Optional[str] = None,
     record_history: bool = False,
+    record_decision_log: bool = False,
     rl_agent: Optional[SchedulingAgent] = None,
 ) -> dict:
     """
@@ -175,6 +186,7 @@ def run_inference_compare(
                 algorithm=algo,
                 agent=rl_loaded if algo == "rl" else None,
                 record_history=record_history,
+                record_decision_log=record_decision_log,
             )
             result["prod_keys"] = env_data["prod_keys"]
             result["oper_ids"] = env_data["oper_ids"]

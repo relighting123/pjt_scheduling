@@ -1841,3 +1841,90 @@ tr.evt-highlight td:first-child {
   background: rgba(100, 116, 139, 0.15);
   color: #475569;
 }
+
+/* ── Inference decision log ─────────────────────────────────────────────── */
+
+.inference-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.inference-option input {
+  margin-top: 0.2rem;
+}
+
+.inference-option-hint {
+  display: block;
+  margin-top: 0.15rem;
+}
+
+.decision-log-scroll {
+  overflow: auto;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+}
+
+.decision-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.decision-log-table th,
+.decision-log-table td {
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  vertical-align: top;
+}
+
+.decision-log-table th {
+  position: sticky;
+  top: 0;
+  background: var(--card-bg, #fff);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.decision-log-row-active {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.decision-reason,
+.decision-blocked {
+  max-width: 16rem;
+  font-size: 0.78rem;
+}
+
+.decision-sub {
+  margin-top: 0.2rem;
+  color: var(--text-muted, #64748b);
+}
+
+.decision-status {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.decision-status-assigned,
+.decision-status-action_corrected {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
+}
+
+.decision-status-no_feasible,
+.decision-status-assign_failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.decision-status-no_idle_eqp,
+.decision-status-eqp_not_idle {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+}
+

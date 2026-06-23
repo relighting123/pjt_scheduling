@@ -112,17 +112,25 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getTrainingStatus: () => request<TrainStatusResponse>("/api/train/status"),
-  runInference: (algorithm: AlgorithmId = "rl", input_folder?: string) =>
+  runInference: (algorithm: AlgorithmId = "rl", input_folder?: string, decision_log = false) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ algorithm, ...(input_folder ? { input_folder } : {}) }),
+      body: JSON.stringify({
+        algorithm,
+        decision_log,
+        ...(input_folder ? { input_folder } : {}),
+      }),
     }),
-  runCompare: (algorithms: AlgorithmId[], input_folder?: string) =>
+  runCompare: (algorithms: AlgorithmId[], input_folder?: string, decision_log = false) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ algorithms, ...(input_folder ? { input_folder } : {}) }),
+      body: JSON.stringify({
+        algorithms,
+        decision_log,
+        ...(input_folder ? { input_folder } : {}),
+      }),
     }),
   getTestDatasets: (fac_id?: string) =>
     request<TestDatasetsResponse>(
