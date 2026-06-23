@@ -18,6 +18,8 @@ import { EventTimeline, eventsUpToStep } from "../components/EventTimeline";
 
 import BatchInfoTable from "../components/BatchInfoTable";
 
+import DecisionLogTable from "../components/DecisionLogTable";
+
 import { api } from "../lib/api";
 
 import {
@@ -135,6 +137,8 @@ export default function InferencePage({
   const [tableAlgo, setTableAlgo] = useState<AlgorithmId | null>(null);
 
   const [algorithm, setAlgorithm] = useState<AlgorithmId>("rl");
+
+  const [decisionLogEnabled, setDecisionLogEnabled] = useState(false);
 
   const [compareAlgos, setCompareAlgos] = useState<Set<AlgorithmId>>(new Set());
 
@@ -256,7 +260,7 @@ export default function InferencePage({
 
     try {
 
-      const res = await api.runInference(algorithm, selectedFolder);
+      const res = await api.runInference(algorithm, selectedFolder, decisionLogEnabled);
 
       setResult(res);
 
@@ -274,7 +278,7 @@ export default function InferencePage({
 
     }
 
-  }, [algorithm, selectedFolder]);
+  }, [algorithm, selectedFolder, decisionLogEnabled]);
 
 
 
@@ -296,7 +300,7 @@ export default function InferencePage({
 
     try {
 
-      const res = await api.runCompare(ids, selectedFolder);
+      const res = await api.runCompare(ids, selectedFolder, decisionLogEnabled);
 
       setCompareData(res);
 
@@ -312,7 +316,7 @@ export default function InferencePage({
 
     }
 
-  }, [compareAlgos, selectedFolder]);
+  }, [compareAlgos, selectedFolder, decisionLogEnabled]);
 
 
 
@@ -717,6 +721,34 @@ export default function InferencePage({
           </p>
 
         )}
+
+        <label className="inference-option inference-option-log">
+
+          <input
+
+            type="checkbox"
+
+            checked={decisionLogEnabled}
+
+            onChange={(e) => setDecisionLogEnabled(e.target.checked)}
+
+            disabled={loading || compareLoading}
+
+          />
+
+          <span>
+
+            <strong>결정 로그</strong>
+
+            <span className="hint inference-option-hint">
+
+              step별 대상 EQP, 선택 PPK/OPER, feasible 후보, 미할당 사유 기록
+
+            </span>
+
+          </span>
+
+        </label>
 
         <div className="btn-row">
 
@@ -1465,6 +1497,18 @@ export default function InferencePage({
                     )}
 
                   </section>
+
+
+
+                  <DecisionLogTable
+
+                    entries={result.decision_log ?? []}
+
+                    highlightStep={snap?.step}
+
+                    title={`결정 로그 (step ${snap?.step ?? step})`}
+
+                  />
 
 
 
