@@ -17,6 +17,22 @@ from sb3_contrib.common.wrappers import ActionMasker
 from utils.helpers import minutes_to_str
 
 
+def _inference_max_steps(env_data: dict) -> int:
+    """추론 안전장치용 step 상한. 시간 horizon이 아니라 작업 규모 기준."""
+    initial_lots = max(
+        len(env_data.get("abstract_lot_meta", {})),
+        len(env_data.get("lots", [])),
+        1,
+    )
+    flow_depth = max(
+        (len(steps) for steps in env_data.get("flow", {}).values()),
+        default=max(len(env_data.get("oper_ids", [])), 1),
+    )
+    eqp_count = max(len(env_data.get("eqp_ids", [])), 1)
+    expected_assignments = initial_lots * max(flow_depth, 1)
+    return max(10_000, expected_assignments * 4 + eqp_count * 100 + 500)
+
+
 def run_inference(
     env_data: dict,
     algorithm: str = "rl",
@@ -55,19 +71,23 @@ def run_inference(
     elif algorithm == "earliest_st":
         heuristic_agent = EarliestSTAgent()
 
+    max_steps = _inference_max_steps(env_data)
     env = ActionMasker(
         SchedulingEnv(
             run_data,
             record_history=record_history,
             record_decision_log=record_decision_log,
+            max_episode_steps=max_steps,
+            truncate_on_time=False,
         ),
         _mask_fn,
     )
     sched_env: SchedulingEnv = env.unwrapped
     obs, _ = env.reset()
     done = False
-    max_steps = int(env_data.get("sim_end_minutes", 1440)) + 500
     steps = 0
+    terminated = False
+    truncated = False
 
     while not done:
         if heuristic_agent is not None:
@@ -103,6 +123,12 @@ def run_inference(
             "prod_switches": stats["prod_switches"],
             "conversions":   stats.get("conversions", 0),
             "completed_qty": {str(k): v for k, v in stats["completed_qty"].items()},
+            "remaining_wip":  sched_env.sim.get_wip_waiting(),
+            "steps":          steps,
+            "terminated":     terminated,
+            "truncated":      truncated,
+            "current_time":   sched_env.sim.current_time,
+            "sim_end_minutes": sched_env.sim.sim_end,
         },
         "plan":      env_data["plan"],
         "algorithm": algorithm,

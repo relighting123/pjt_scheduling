@@ -208,6 +208,12 @@ def build_step_decision_entry(
     time_advanced = sim_time_after != sim_time
     diagnosis = diagnose_eqp(sim, eqp_id) if eqp_id else None
     feasible = diagnosis["feasible_options"] if diagnosis else []
+    selected = getattr(sim, "_last_decision_assignment", None)
+    selected_matches_eqp = bool(
+        selected
+        and eqp_id is not None
+        and selected.get("eqp_id") == eqp_id
+    )
 
     action_corrected = (
         resolved_flat is not None
@@ -217,8 +223,14 @@ def build_step_decision_entry(
     )
 
     assigned_lot_id: Optional[str] = None
-    if reward >= 0 and sim._last_assigned and sim._last_assigned.get("eqp_id") == eqp_id:
+    if selected_matches_eqp:
+        assigned_lot_id = selected.get("lot_id")
+    elif sim._last_assigned and sim._last_assigned.get("eqp_id") == eqp_id:
         assigned_lot_id = sim._last_assigned.get("lot_id")
+
+    selected_eqp_id = selected.get("eqp_id") if selected_matches_eqp else eqp_id
+    selected_ppk = selected.get("plan_prod_key") if selected_matches_eqp else res_ppk
+    selected_oper = selected.get("oper_id") if selected_matches_eqp else res_oper
 
     status = "no_idle_eqp"
     reason = REASON_LABELS["no_idle_eqp"]
@@ -241,16 +253,22 @@ def build_step_decision_entry(
             top = diagnosis["blocked_buckets"][0]
             failure_code = top["reason"]
             failure_detail = top["detail"]
+    elif selected_matches_eqp and action_corrected:
+        status = "action_corrected"
+        reason = (
+            f"요청 {req_ppk}/{req_oper} → 보정 {selected_ppk}/{selected_oper}"
+            + (f" · LOT {assigned_lot_id}" if assigned_lot_id else "")
+        )
+    elif selected_matches_eqp:
+        status = "assigned"
+        reason = (
+            f"{eqp_id} ← {selected_ppk}/{selected_oper}"
+            + (f" · LOT {assigned_lot_id}" if assigned_lot_id else "")
+        )
     elif reward < 0:
         status = "assign_failed"
         failure_code, failure_detail = diagnose_assign_failure(sim, eqp_id, res_ppk or "", res_oper or "")
         reason = failure_detail
-    elif action_corrected:
-        status = "action_corrected"
-        reason = (
-            f"요청 {req_ppk}/{req_oper} → 보정 {res_ppk}/{res_oper}"
-            + (f" · LOT {assigned_lot_id}" if assigned_lot_id else "")
-        )
     else:
         status = "assigned"
         reason = (
@@ -270,6 +288,11 @@ def build_step_decision_entry(
         "resolved_flat": resolved_flat,
         "resolved_ppk": res_ppk,
         "resolved_oper": res_oper,
+        "selected_eqp_id": selected_eqp_id,
+        "selected_ppk": selected_ppk,
+        "selected_oper_id": selected_oper,
+        "selected_lot_id": assigned_lot_id,
+        "selection_reason": reason,
         "action_corrected": action_corrected,
         "status": status,
         "reason": reason,

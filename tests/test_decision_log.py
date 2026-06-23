@@ -37,6 +37,14 @@ def test_decision_log_records_assignments():
     assert first.get("eqp_id")
     assert first.get("resolved_ppk")
     assert first.get("resolved_oper")
+    assert first.get("selected_eqp_id")
+    assert first.get("selected_ppk")
+    assert first.get("selected_oper_id")
+    assert first.get("selected_lot_id")
+    assert first.get("selection_reason")
+    assert result["stats"]["terminated"] is True
+    assert result["stats"]["truncated"] is False
+    assert result["stats"]["remaining_wip"] == {}
 
 
 def test_decision_log_disabled_by_default():
