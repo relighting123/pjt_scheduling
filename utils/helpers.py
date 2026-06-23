@@ -41,7 +41,7 @@ def encode_normalized(value: Optional[str], index_map: Dict[str, int], total: in
 # ── 검증 ───────────────────────────────────────────────────────────────────────
 
 REQUIRED_DISCRETE_ARRANGE_FIELDS = {
-    "EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "OPER_ID", "ST", "WF_QTY",
+    "EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "OPER_ID", "ST", "EQP_MODEL", "WF_QTY",
 }
 REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_KEY", "OPER_ID", "EQP_MODEL_CD", "ST"}
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_KEY", "OPER_ID",
@@ -92,8 +92,18 @@ def validate_records(records: List[dict], required: set, label: str) -> List[str
     if not records:
         errors.append(f"{label}: 데이터가 비어 있습니다.")
         return errors
-    first_keys = set(records[0].keys())
-    missing = required - first_keys
-    if missing:
-        errors.append(f"{label}: 필드 누락 – {missing}")
+    for idx, record in enumerate(records, start=1):
+        missing = required - set(record.keys())
+        if missing:
+            errors.append(f"{label}[{idx}]: 필드 누락 – {missing}")
+            continue
+
+        empty = {
+            field
+            for field in required
+            if record[field] is None
+            or (isinstance(record[field], str) and not record[field].strip())
+        }
+        if empty:
+            errors.append(f"{label}[{idx}]: 필드 값 비어 있음 – {empty}")
     return errors

@@ -92,3 +92,58 @@ def test_build_abstract_arrange_uses_eqp_model_cd():
             "ST": 10,
         },
     ]
+
+
+def test_validate_data_requires_eqp_model_fields():
+    """장비 모델 누락/빈 값은 기본값으로 보정하지 않고 검증에서 차단."""
+    raw = {
+        "discrete_arrange": [
+            {
+                "EQP_ID": "EQP001",
+                "LOT_ID": "LOT001",
+                "PLAN_PROD_KEY": "PPK001",
+                "OPER_ID": "OPER001",
+                "ST": 10,
+                "WF_QTY": 25,
+            },
+            {
+                "EQP_ID": "EQP002",
+                "LOT_ID": "LOT002",
+                "PLAN_PROD_KEY": "PPK001",
+                "OPER_ID": "OPER001",
+                "ST": 10,
+                "EQP_MODEL": "",
+                "WF_QTY": 25,
+            },
+        ],
+        "abstract_arrange": [
+            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "", "ST": 10},
+        ],
+        "plan": [
+            {
+                "PLAN_PROD_KEY": "PPK001",
+                "OPER_ID": "OPER001",
+                "D0_PLAN_QTY": 25,
+                "D1_PLAN_QTY": 25,
+                "PLAN_PRIORITY": 1,
+            },
+        ],
+        "flow": [
+            {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        ],
+        "split": [
+            {
+                "PLAN_PROD_KEY": "PPK001",
+                "OPER_ID": "OPER001",
+                "EQP_MODEL_CD": "",
+                "SPLIT_QTY": 3,
+            },
+        ],
+    }
+
+    errors = validate_data(raw)
+
+    assert any("discrete_arrange[1]" in e and "EQP_MODEL" in e for e in errors)
+    assert any("discrete_arrange[2]" in e and "EQP_MODEL" in e for e in errors)
+    assert any("abstract_arrange[1]" in e and "EQP_MODEL_CD" in e for e in errors)
+    assert any("split[1]" in e and "EQP_MODEL_CD" in e for e in errors)

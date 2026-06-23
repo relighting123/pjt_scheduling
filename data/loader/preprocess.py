@@ -20,21 +20,12 @@ def _coerce_proc_time(value) -> Optional[int]:
     return None
 
 
-def _legacy_st_as_eqp_model(value) -> Optional[str]:
-    """구 샘플: ST가 'A' 등 문자열이면 장비 MODEL로 해석"""
-    if value is None:
-        return None
-    if isinstance(value, str) and not value.isdigit():
-        return value
-    return None
-
-
 def _build_split_lookup(split_raw: List[dict]) -> Dict[Tuple[str, str, str], int]:
     lookup: Dict[Tuple[str, str, str], int] = {}
     for r in split_raw:
         ppk = r["PLAN_PROD_KEY"]
         oper = str(r.get("OPER_ID", "*")).strip().upper() or "*"
-        model = str(r.get("EQP_MODEL_CD", "*")).strip().upper() or "*"
+        model = str(r["EQP_MODEL_CD"]).strip().upper()
         lookup[(ppk, oper, model)] = int(r["SPLIT_QTY"])
     return lookup
 
@@ -45,7 +36,7 @@ def _resolve_split_qty(
     eqp_model: str,
     split_lookup: Dict[Tuple[str, str, str], int],
 ) -> Optional[int]:
-    model = (eqp_model or "A").strip().upper()
+    model = eqp_model.strip().upper()
     oper = (oper_id or "*").strip().upper()
     for key in (
         (ppk, oper, model),
@@ -221,7 +212,7 @@ def _apply_wafer_lot_split(
     for parent_id in list(lot_info.keys()):
         info = lot_info[parent_id]
         wf = int(info["wf_qty"])
-        model = eqp_model_map.get(info["original_eqp"], "A")
+        model = eqp_model_map[info["original_eqp"]]
         split_qty = _resolve_split_qty(
             info["plan_prod_key"], info["oper_id"], model, split_lookup,
         )
@@ -283,7 +274,7 @@ def _build_abstract_route_maps(
     for r in abstract_raw:
         ppk = r["PLAN_PROD_KEY"]
         oper_id = r["OPER_ID"]
-        model = str(r.get("EQP_MODEL_CD") or "A")
+        model = str(r["EQP_MODEL_CD"])
         st = _coerce_proc_time(r.get("ST")) or 60
         route_map[(ppk, oper_id, model)] = st
         by_ppk_oper.setdefault((ppk, oper_id), []).append((model, st))
@@ -317,7 +308,7 @@ def _build_abstract_inventory(
     for r in abstract_raw:
         ppk = r["PLAN_PROD_KEY"]
         oper_id = r["OPER_ID"]
-        model = str(r.get("EQP_MODEL_CD") or "A")
+        model = str(r["EQP_MODEL_CD"])
         abs_key = f"{ppk}|{oper_id}|{model}"
         if abs_key in seen:
             continue
@@ -544,18 +535,11 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # 집계 정규화 스케일 팩터 (split 이후 LOT별 실제 소요시간 기준)
     max_proc_time = 1
 
-    # ── EQP 장비 MODEL (availability EQP_MODEL, 구형 ST 문자열 호환) ─────────
+    # ── EQP 장비 MODEL (availability EQP_MODEL) ─────────────────────────────
     eqp_model_map: Dict[str, str] = {}
     for r in discrete_raw:
         eid = r["EQP_ID"]
-        if r.get("EQP_MODEL"):
-            eqp_model_map[eid] = str(r["EQP_MODEL"])
-    for r in discrete_raw:
-        eid = r["EQP_ID"]
-        if eid in eqp_model_map:
-            continue
-        legacy = _legacy_st_as_eqp_model(r.get("ST"))
-        eqp_model_map[eid] = legacy if legacy else "A"
+        eqp_model_map[eid] = str(r["EQP_MODEL"])
 
     abstract_route_map, abstract_routes_by_ppk_oper = _build_abstract_route_maps(abstract_raw)
 
@@ -575,7 +559,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     oper_eqp_models: Dict[str, List[str]] = {}
     abstract_proc_time: Dict[Tuple[str, str], list] = {}
     for eid, opers in eqp_oper_cap.items():
-        model = eqp_model_map.get(eid, "A")
+        model = eqp_model_map[eid]
         for oper_id in opers:
             oper_eqp_models.setdefault(oper_id, [])
             if model not in oper_eqp_models[oper_id]:
@@ -583,7 +567,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     for (lid, eid, oper_id), pt in proc_time_matrix.items():
         if lid not in lot_info:
             continue
-        model = eqp_model_map.get(eid, "A")
+        model = eqp_model_map[eid]
         abstract_proc_time.setdefault((oper_id, model), []).append(pt)
     abstract_proc_time_val: Dict[Tuple[str, str], int] = {
         k: int(sum(v) / len(v)) for k, v in abstract_proc_time.items()
@@ -643,11 +627,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         oper_id = r.get("OPER_ID") or lot_info.get(lot_id, {}).get("oper_id", "")
         st_per_wafer = proc_time_matrix.get((lot_id, eid, oper_id), 60)
         wf_qty_row = int(r["WF_QTY"])
-        row_model = (
-            str(r["EQP_MODEL"]) if r.get("EQP_MODEL")
-            else _legacy_st_as_eqp_model(r.get("ST"))
-            or eqp_model_map.get(eid, "A")
-        )
+        row_model = str(r["EQP_MODEL"])
         arrange_actual_table.append({
             "eqp_id":           eid,
             "lot_id":           lot_id,

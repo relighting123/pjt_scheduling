@@ -42,18 +42,24 @@ class ToolTracker:
         self._eqp_model_map = eqp_model_map
         self._busy: dict = {}
 
+    def _model_for(self, eqp_id: str) -> str:
+        try:
+            return self._eqp_model_map[eqp_id]
+        except KeyError as exc:
+            raise ValueError(f"EQP_MODEL 누락: {eqp_id}") from exc
+
     def can_assign(self, lot_cd: str, eqp_id: str) -> bool:
-        model = self._eqp_model_map.get(eqp_id, "A")
+        model = self._model_for(eqp_id)
         cap = self._capacity.get((lot_cd, model), 999)
         return self._busy.get((lot_cd, model), 0) < cap
 
     def occupy(self, lot_cd: str, eqp_id: str) -> None:
-        model = self._eqp_model_map.get(eqp_id, "A")
+        model = self._model_for(eqp_id)
         key = (lot_cd, model)
         self._busy[key] = self._busy.get(key, 0) + 1
 
     def release(self, lot_cd: str, eqp_id: str) -> None:
-        model = self._eqp_model_map.get(eqp_id, "A")
+        model = self._model_for(eqp_id)
         key = (lot_cd, model)
         if key in self._busy:
             self._busy[key] = max(self._busy[key] - 1, 0)
@@ -463,14 +469,14 @@ class SchedulingSimulator:
 
     def _eqp_can_process(self, eqp_id: str, ppk: str, oper_id: str) -> bool:
         """abstract route(MODEL) 또는 discrete eqp_oper_cap 기준 처리 가능."""
-        model = self._eqp_model_map.get(eqp_id, "A")
+        model = self._eqp_model_map[eqp_id]
         route_map = self._env_data.get("abstract_route_map", {})
         if (ppk, oper_id, model) in route_map:
             return True
         return oper_id in self._env_data.get("eqp_oper_cap", {}).get(eqp_id, [])
 
     def _abstract_row_for(self, eqp_id: str, ppk: str, oper_id: str) -> Optional[dict]:
-        model = self._eqp_model_map.get(eqp_id, "A")
+        model = self._eqp_model_map[eqp_id]
         for row in self._abstract_template:
             if (
                 row["plan_prod_key"] == ppk
