@@ -379,7 +379,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     목적: 원시 입력 4종을 RL 환경·시뮬레이터가 사용하는 공통 데이터 구조로 변환
     Input:
         raw = {
-            "discrete_arrange": [{EQP_ID, LOT_ID, PLAN_PROD_KEY, OPER_ID, ST, EQP_MODEL, WF_QTY, ...}, ...],
+            "discrete_arrange": [{EQP_ID, LOT_ID, PLAN_PROD_KEY, OPER_ID, ST, EQP_MODEL_CD, WF_QTY, ...}, ...],
             "abstract_arrange": [{PLAN_PROD_KEY, OPER_ID, EQP_MODEL_CD, ST}, ...],
             "plan":         [{PLAN_PROD_KEY, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY, PLAN_PRIORITY}, ...],
             "flow":         [{PLAN_PROD_KEY, OPER_SEQ, OPER_ID}, ...]
@@ -535,11 +535,11 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # 집계 정규화 스케일 팩터 (split 이후 LOT별 실제 소요시간 기준)
     max_proc_time = 1
 
-    # ── EQP 장비 MODEL (availability EQP_MODEL) ─────────────────────────────
+    # ── EQP 장비 MODEL (availability EQP_MODEL_CD) ──────────────────────────
     eqp_model_map: Dict[str, str] = {}
     for r in discrete_raw:
         eid = r["EQP_ID"]
-        eqp_model_map[eid] = str(r["EQP_MODEL"])
+        eqp_model_map[eid] = str(r["EQP_MODEL_CD"])
 
     abstract_route_map, abstract_routes_by_ppk_oper = _build_abstract_route_maps(abstract_raw)
 
@@ -627,7 +627,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         oper_id = r.get("OPER_ID") or lot_info.get(lot_id, {}).get("oper_id", "")
         st_per_wafer = proc_time_matrix.get((lot_id, eid, oper_id), 60)
         wf_qty_row = int(r["WF_QTY"])
-        row_model = str(r["EQP_MODEL"])
+        row_model = str(r["EQP_MODEL_CD"])
         arrange_actual_table.append({
             "eqp_id":           eid,
             "lot_id":           lot_id,

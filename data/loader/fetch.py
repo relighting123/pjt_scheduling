@@ -74,8 +74,8 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
 
     abstract_arrange = _read_optional(CONFIG.path.abstract_arrange_file)
     if not abstract_arrange and all(
-        r.get("EQP_MODEL") is not None
-        and (not isinstance(r.get("EQP_MODEL"), str) or r.get("EQP_MODEL").strip())
+        r.get("EQP_MODEL_CD") is not None
+        and (not isinstance(r.get("EQP_MODEL_CD"), str) or r.get("EQP_MODEL_CD").strip())
         for r in discrete_arrange
     ):
         abstract_arrange = build_abstract_arrange(discrete_arrange, flow)

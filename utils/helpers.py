@@ -41,7 +41,7 @@ def encode_normalized(value: Optional[str], index_map: Dict[str, int], total: in
 # ── 검증 ───────────────────────────────────────────────────────────────────────
 
 REQUIRED_DISCRETE_ARRANGE_FIELDS = {
-    "EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "OPER_ID", "ST", "EQP_MODEL", "WF_QTY",
+    "EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "OPER_ID", "ST", "EQP_MODEL_CD", "WF_QTY",
 }
 REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_KEY", "OPER_ID", "EQP_MODEL_CD", "ST"}
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_KEY", "OPER_ID",

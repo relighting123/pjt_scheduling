@@ -19,7 +19,7 @@ def test_preprocess_proc_time_after_split():
             "PLAN_PROD_KEY": "PPK001",
             "OPER_ID": "OPER001",
             "ST": 10,
-            "EQP_MODEL": "A",
+            "EQP_MODEL_CD": "A",
             "WF_QTY": 25,
         },
     ]
@@ -79,7 +79,7 @@ def test_build_abstract_arrange_uses_eqp_model_cd():
             "PLAN_PROD_KEY": "PPK001",
             "OPER_ID": "OPER001",
             "ST": 10,
-            "EQP_MODEL": "A",
+            "EQP_MODEL_CD": "A",
             "WF_QTY": 25,
         },
     ])
@@ -104,6 +104,7 @@ def test_validate_data_requires_eqp_model_fields():
                 "PLAN_PROD_KEY": "PPK001",
                 "OPER_ID": "OPER001",
                 "ST": 10,
+                "EQP_MODEL": "A",
                 "WF_QTY": 25,
             },
             {
@@ -112,7 +113,7 @@ def test_validate_data_requires_eqp_model_fields():
                 "PLAN_PROD_KEY": "PPK001",
                 "OPER_ID": "OPER001",
                 "ST": 10,
-                "EQP_MODEL": "",
+                "EQP_MODEL_CD": "",
                 "WF_QTY": 25,
             },
         ],
@@ -143,7 +144,7 @@ def test_validate_data_requires_eqp_model_fields():
 
     errors = validate_data(raw)
 
-    assert any("discrete_arrange[1]" in e and "EQP_MODEL" in e for e in errors)
-    assert any("discrete_arrange[2]" in e and "EQP_MODEL" in e for e in errors)
+    assert any("discrete_arrange[1]" in e and "EQP_MODEL_CD" in e for e in errors)
+    assert any("discrete_arrange[2]" in e and "EQP_MODEL_CD" in e for e in errors)
     assert any("abstract_arrange[1]" in e and "EQP_MODEL_CD" in e for e in errors)
     assert any("split[1]" in e and "EQP_MODEL_CD" in e for e in errors)
