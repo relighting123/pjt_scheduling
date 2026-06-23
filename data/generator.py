@@ -109,7 +109,7 @@ def _discrete_row(
         "PLAN_PROD_KEY": ppk,
         "OPER_ID": oper_id,
         "ST": st_per_wafer,
-        "EQP_MODEL": eqp_model,
+        "EQP_MODEL_CD": eqp_model,
         "WF_QTY": wf_qty,
     }
     if seq is not None:
@@ -140,7 +140,7 @@ def build_abstract_arrange(
         if not oper:
             continue
         ppk = r["PLAN_PROD_KEY"]
-        model = str(r["EQP_MODEL"])
+        model = str(r["EQP_MODEL_CD"])
         st = int(r.get("ST") or 60)
         route_st.setdefault((ppk, oper, model), []).append(st)
 

@@ -75,7 +75,7 @@ pjt_scheduling/
 | **WIP 풀** (런타임) | `(PPK, OPER)` | LOT 수 `+1`/`-1`, `oper_in_time` — 전공정 완료·배정 시 갱신 |
 
 - **LOT_CD / TEMP**: `batch_info.json` **(PPK, OPER)별** 권장. 없으면 `lot_master.json`(LOT별) 또는 PPK 추정. EQP 직전 값과 다르면 **전환 60분** + tool `(LOT_CD, EQP_MODEL)` cap 검사.
-- **EQP_MODEL**: 장비 **군**(1:N). 여러 `EQP_ID`가 동일 MODEL을 공유. abstract route/split 입력은 `EQP_MODEL_CD`, tool은 `EQP_MODEL` 단위, 배정·conversion은 EQP_ID 단위.
+- **EQP_MODEL_CD**: 장비 **군**(1:N). 여러 `EQP_ID`가 동일 MODEL을 공유. discrete/abstract route/split 입력은 `EQP_MODEL_CD`, tool은 `EQP_MODEL` 단위, 배정·conversion은 EQP_ID 단위.
 
 ### 결정 흐름 (한 step)
 
@@ -169,7 +169,7 @@ step(action=[ppk_oper_flat, eqp_idx]):
 
 | 파일 | 설명 |
 |------|------|
-| `discrete_arrange.json` | `(EQP, LOT)` Actual + **OPER_ID**(현재 공정), WF_QTY, ST, EQP_MODEL |
+| `discrete_arrange.json` | `(EQP, LOT)` Actual + **OPER_ID**(현재 공정), WF_QTY, ST, EQP_MODEL_CD |
 | `abstract_arrange.json` | `(PPK, OPER, EQP_MODEL_CD, ST)` route (없으면 discrete에서 집계 생성) |
 | `plan.json` | (PPK, OPER) 계획량·우선순위 |
 | `flow.json` | PPK별 공정 순서 (`OPER_SEQ`) |

@@ -10,7 +10,7 @@ SELECT
     a.OPER_ID,
     a.CARRIER_ID,
     a.ST,
-    a.EQP_MODEL,
+    a.EQP_MODEL_CD,
     a.WF_QTY
 FROM AVAILABILITY a
 WHERE a.FAC_ID = :FAC_ID

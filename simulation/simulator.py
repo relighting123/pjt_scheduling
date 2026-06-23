@@ -46,7 +46,7 @@ class ToolTracker:
         try:
             return self._eqp_model_map[eqp_id]
         except KeyError as exc:
-            raise ValueError(f"EQP_MODEL 누락: {eqp_id}") from exc
+            raise ValueError(f"EQP_MODEL_CD 누락: {eqp_id}") from exc
 
     def can_assign(self, lot_cd: str, eqp_id: str) -> bool:
         model = self._model_for(eqp_id)
