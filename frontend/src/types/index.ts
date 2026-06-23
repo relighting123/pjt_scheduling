@@ -246,30 +246,4 @@ export interface TestDatasetsResponse {
   datasets: TestDatasetInfo[];
 }
 
-export interface SampleScenario {
-  id: string;
-  name: string;
-  description: string;
-  configurable?: boolean;
-}
-
-export interface GeneratorConfig {
-  n_products: number;
-  n_eqps: number;
-  n_opers: number;
-  lots_per_oper: number;
-  wf_qty: number;
-  st_min: number;
-  st_max: number;
-  st_std: number;
-  eligibility: number;
-  plan_qty_min: number;
-  plan_qty_max: number;
-  plan_priority: number;
-  train_period_count: number;
-  test_period_count: number;
-  split_qty: number;
-  seed: number | null;
-}
-
 export type AppMode = "train" | "test" | "inference" | "dataset";

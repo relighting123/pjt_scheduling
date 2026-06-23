@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
-import DatasetEmptyPanel, { type CreateSampleOpts } from "./components/DatasetEmptyPanel";
+import DatasetEmptyPanel from "./components/DatasetEmptyPanel";
 import DatasetPage from "./pages/DatasetPage";
 import InferencePage from "./pages/InferencePage";
 import TestPage from "./pages/TestPage";
 import TrainPage from "./pages/TrainPage";
 import { api } from "./lib/api";
-import type { AppConfig, AppMode, DataSummary, GeneratorConfig, SampleScenario } from "./types";
+import type { AppConfig, AppMode, DataSummary } from "./types";
 import "./App.css";
 
 const SIDEBAR_KEY = "pjt_sidebar_open";
@@ -17,42 +17,14 @@ export default function App() {
   const [summary, setSummary] = useState<DataSummary | null>(null);
   const [modelExists, setModelExists] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [sampleLoading, setSampleLoading] = useState(false);
   const [folderLoading, setFolderLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_KEY) !== "false",
   );
 
-  const [facId, setFacId] = useState("FAC001");
-  const [scenario, setScenario] = useState("random");
-  const [scenarios, setScenarios] = useState<SampleScenario[]>([]);
-  const [genConfig, setGenConfig] = useState<GeneratorConfig | null>(null);
-
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, String(sidebarOpen));
   }, [sidebarOpen]);
-
-  useEffect(() => {
-    Promise.all([api.getSampleScenarios(), api.getGeneratorConfigDefaults()])
-      .then(([sc, defs]) => {
-        setScenarios(sc.scenarios);
-        setGenConfig(defs.defaults);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (config?.fac_id) setFacId(config.fac_id);
-  }, [config?.fac_id]);
-
-  const sampleOpts = useCallback(
-    (): CreateSampleOpts => ({
-      fac_id: facId,
-      scenario,
-      generator_config: genConfig ?? undefined,
-    }),
-    [facId, scenario, genConfig],
-  );
 
   const refreshData = useCallback(async () => {
     setLoadError(null);
@@ -83,19 +55,6 @@ export default function App() {
     refreshData();
   }, [refreshData]);
 
-  const handleCreateSample = async (opts: CreateSampleOpts) => {
-    setSampleLoading(true);
-    setLoadError(null);
-    try {
-      await api.createSample(opts);
-      await refreshData();
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "샘플 생성 실패");
-    } finally {
-      setSampleLoading(false);
-    }
-  };
-
   const handleInputFolderChange = async (folder: string) => {
     setFolderLoading(true);
     setLoadError(null);
@@ -110,21 +69,6 @@ export default function App() {
   };
 
   const hasData = summary !== null;
-  const datasetProps = {
-    config,
-    summary,
-    facId,
-    onFacIdChange: setFacId,
-    scenario,
-    onScenarioChange: setScenario,
-    scenarios,
-    genConfig,
-    onGenConfigChange: (patch: Partial<GeneratorConfig>) =>
-      setGenConfig((prev) => (prev ? { ...prev, ...patch } : prev)),
-    sampleLoading,
-    loadError,
-    onCreateSample: handleCreateSample,
-  };
 
   return (
     <div className={`app-layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
@@ -150,19 +94,21 @@ export default function App() {
           <div className="banner banner-warn">{loadError}</div>
         )}
         <div key={mode} className="page-enter">
-          {mode === "dataset" && <DatasetPage {...datasetProps} />}
+          {mode === "dataset" && (
+            <DatasetPage
+              config={config}
+              summary={summary}
+              folderLoading={folderLoading}
+              loadError={loadError}
+              onInputFolderChange={handleInputFolderChange}
+            />
+          )}
           {mode === "test" && config && (
             <TestPage config={config} modelExists={modelExists} />
           )}
           {mode !== "dataset" && mode !== "test" && !hasData && (
             <DatasetEmptyPanel
-              facId={facId}
-              scenario={scenario}
-              scenarios={scenarios}
-              sampleLoading={sampleLoading}
               loadError={loadError}
-              onCreateSample={handleCreateSample}
-              sampleOpts={sampleOpts}
               onGoToDataset={() => setMode("dataset")}
             />
           )}
