@@ -5,8 +5,6 @@ import type {
   AppConfig,
   DataSummary,
   InferenceResult,
-  SampleScenario,
-  GeneratorConfig,
   TestBenchmarkResponse,
   TestDatasetsResponse,
   TrainMetrics,
@@ -43,18 +41,6 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function sanitizeGeneratorConfig(
-  cfg?: Partial<GeneratorConfig>,
-): Partial<GeneratorConfig> | undefined {
-  if (!cfg) return undefined;
-  const out: Partial<GeneratorConfig> = { ...cfg };
-  const seed = out.seed;
-  if (seed == null || seed === ("" as unknown as number) || Number.isNaN(Number(seed))) {
-    delete out.seed;
-  }
-  return out;
-}
-
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
   getConfig: () => request<AppConfig>("/api/config"),
@@ -67,40 +53,6 @@ export const api = {
         body: JSON.stringify({ input_folder }),
       },
     ),
-  createSample: (opts?: {
-    fac_id?: string;
-    split?: string;
-    scenario?: string;
-    bootstrap?: boolean;
-    from_date?: string;
-    to_date?: string;
-    use_period_count?: boolean;
-    generator_config?: Partial<GeneratorConfig>;
-  }) => {
-    const scenario = opts?.scenario ?? "random";
-    const generator_config =
-      scenario === "random" ? sanitizeGeneratorConfig(opts?.generator_config) : undefined;
-    return request<{
-      message: string;
-      input_folder: string;
-      input_dir: string;
-      scenario: string;
-      generator_config?: GeneratorConfig;
-    }>("/api/sample", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scenario,
-        fac_id: opts?.fac_id ?? "FAC001",
-        split: opts?.split ?? "train",
-        bootstrap: opts?.bootstrap ?? false,
-        use_period_count: opts?.use_period_count ?? false,
-        ...(opts?.from_date ? { from_date: opts.from_date } : {}),
-        ...(opts?.to_date ? { to_date: opts.to_date } : {}),
-        ...(generator_config ? { generator_config } : {}),
-      }),
-    });
-  },
   fetchDataset: (opts?: {
     fac_id?: string;
     split?: string;
@@ -123,10 +75,6 @@ export const api = {
   getModelStatus: () => request<{ exists: boolean }>("/api/model/status"),
   getAlgorithms: () =>
     request<{ algorithms: AlgorithmInfo[] }>("/api/algorithms"),
-  getSampleScenarios: () =>
-    request<{ scenarios: SampleScenario[] }>("/api/sample/scenarios"),
-  getGeneratorConfigDefaults: () =>
-    request<{ defaults: GeneratorConfig }>("/api/sample/generator-config"),
   train: (body: {
     total_timesteps: number;
     learning_rate: number;

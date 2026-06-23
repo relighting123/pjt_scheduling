@@ -76,7 +76,7 @@ export default function Sidebar({
           className={`btn btn-secondary sidebar-dataset-link${mode === "dataset" ? " active" : ""}`}
           onClick={() => onModeChange("dataset")}
         >
-          데이터셋 생성
+          데이터셋 조회
         </button>
       </div>
 

@@ -376,7 +376,7 @@ export default function TrainPage({
         {rangeMode === "pick" && (
           <div className="train-folder-pick">
             {trainFolders.length === 0 ? (
-              <p className="hint">train 기간 데이터가 없습니다. 데이터셋 탭에서 생성하세요.</p>
+              <p className="hint">train 기간 데이터가 없습니다. dataset 폴더에 train JSON을 준비하세요.</p>
             ) : (
               trainFolders.map((folder) => (
                 <label key={folder} className="train-folder-option">
@@ -412,7 +412,7 @@ export default function TrainPage({
               <Metric label="시뮬 종료(분)" value={String(summary.sim_end_minutes)} />
             </div>
           ) : (
-            <p className="hint">데이터를 불러올 수 없습니다. 샘플 데이터를 생성하세요.</p>
+            <p className="hint">데이터를 불러올 수 없습니다. dataset 폴더에 JSON을 준비하세요.</p>
           )}
           <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
             데이터 새로고침

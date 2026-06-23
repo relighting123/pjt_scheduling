@@ -314,7 +314,7 @@ export default function TestPage({ config, modelExists }: TestPageProps) {
           </div>
         )}
         {testFolders.length === 0 && (
-          <p className="status-warn">test 데이터셋이 없습니다. 데이터셋 페이지에서 test 기간을 생성하세요.</p>
+          <p className="status-warn">test 데이터셋이 없습니다. dataset 폴더에 test JSON을 준비하세요.</p>
         )}
       </section>
 
