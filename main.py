@@ -9,6 +9,7 @@ main.py - 운영 CLI
     python main.py validate --facid FAC001
     python main.py infer --facid FAC001
     python main.py infer --facid FAC001 --ruletimekey 20260621170000
+    python main.py infer --facid FAC001 --nodb --decision-log
     python main.py collect --facid FAC001 --prevdays 1 --once
     python main.py collect --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v --debug
@@ -190,7 +191,14 @@ def cmd_validate(fac_id: str, *, nodb: bool = False):
     print(f"\n[validate] 완료 ({len(payload['results'])}개 test)")
 
 
-def cmd_inference(fac_id: str, rule_timekey: str = None, *, nodb: bool = False, lot_cd: str = None):
+def cmd_inference(
+    fac_id: str,
+    rule_timekey: str = None,
+    *,
+    nodb: bool = False,
+    lot_cd: str = None,
+    decision_log: bool = False,
+):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
 
@@ -218,7 +226,14 @@ def cmd_inference(fac_id: str, rule_timekey: str = None, *, nodb: bool = False, 
 
     print("=" * 60)
     print("[inference] 추론 실행")
-    result = run_inference(env_data, algorithm="rl", agent=agent)
+    if decision_log:
+        print("[inference] 결정 로그: ON (step별 EQP/PPK/OPER·미할당 사유)")
+    result = run_inference(
+        env_data,
+        algorithm="rl",
+        agent=agent,
+        record_decision_log=decision_log,
+    )
     path = save_result(result, env_data=env_data)
     stats = result["stats"]
     print(f"  배정 LOT 수:    {len(result['schedule'])}")
@@ -226,6 +241,9 @@ def cmd_inference(fac_id: str, rule_timekey: str = None, *, nodb: bool = False, 
     print(f"  제품 전환 횟수: {stats['prod_switches']}")
     print(f"  Idle 합계:      {stats['idle_total']}분")
     print(f"  결과 파일:      {path}")
+    if decision_log:
+        log = result.get("decision_log", [])
+        print(f"  결정 로그:      {len(log)}건 → result_full.json 의 decision_log")
 
 
 def cmd_ui():
@@ -378,6 +396,10 @@ def parse_args():
         "--nodb", action="store_true",
         help="Oracle 조회 생략, dataset 기존 JSON 사용",
     )
+    inf_p.add_argument(
+        "--decision-log", action="store_true",
+        help="step별 EQP/PPK/OPER 결정 및 미할당 사유를 result_full.json에 기록",
+    )
 
     sub.add_parser("db-check", help="DB alias 설정 진단 (databases.yaml / .env)")
 
@@ -448,6 +470,7 @@ def main():
                 rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
+                decision_log=args.decision_log,
             )
 
         elif args.command == "collect":
