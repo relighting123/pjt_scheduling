@@ -16,6 +16,11 @@
   --text-secondary: #5c6478;
   --text-muted: #8b93a7;
 
+  --border: #d0d5df;
+  --input-bg: #ffffff;
+  --input-border: #c5ccd8;
+  --input-border-focus: var(--accent);
+
   --sidebar-bg: linear-gradient(180deg, #12131f 0%, #1a1b2e 55%, #151628 100%);
   --sidebar-border: rgba(255, 255, 255, 0.06);
   --sidebar-text: #e8eaf0;

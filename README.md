@@ -1,235 +1,427 @@
 # pjt_scheduling
 
-반도체 **Post-Scheduling** 문제를 강화학습(RL)으로 해결하는 프로젝트입니다.  
-초기 스케줄링 결과를 입력으로 받아, EQP가 idle이 될 때마다 배정할 LOT을 에이전트가 선택하여 **공정 전환·제품 전환·Idle 시간**을 최소화합니다.
+반도체 **Scheduling** 문제를 강화학습(RL)과 휴리스틱으로 실행하는 프로젝트입니다.
+`discrete_arrange` / `abstract_arrange` / `plan` / `flow` 입력을 전처리해 DES(Discrete Event Simulation)를 돌리고,
+EQP가 idle이 될 때마다 **현재 결정 EQP에 투입할 (PPK, OPER)** 를 선택합니다. LOT은 규칙 기반으로 자동 선택됩니다.
 
 ---
 
-## 폴더 구조
+## 현재 구조 요약
 
 ```
 pjt_scheduling/
-├── main.py                 # CLI 워크플로우 진입점 (샘플생성 / 학습 / 추론 / UI)
-├── config.py               # 경로, 환경, RL, 보상 파라미터 중앙 설정
-├── requirements.txt        # Python 의존성
+├── main.py                 # 운영 CLI (collect / train / validate / infer / ui / db-check)
+├── config.py               # 경로, 환경 축 크기, RL, reward 파라미터
+├── requirements.txt
 │
 ├── agent/
-│   └── rl_agent.py         # Stable-Baselines3 PPO 에이전트 래퍼 (학습·저장·예측·평가)
+│   ├── rl_agent.py         # MaskablePPO 학습/로드/예측
+│   ├── minprogress_agent.py
+│   ├── earliest_st_agent.py
+│   └── registry.py         # 알고리즘 목록
 │
 ├── env/
-│   └── scheduling_env.py   # Gymnasium 커스텀 환경 (SchedulingSimulator 래핑)
+│   └── scheduling_env.py   # Gymnasium Env, Discrete action, action mask
 │
 ├── simulation/
-│   └── simulator.py        # 이산 사건 시뮬레이션(DES) 엔진, 관측·보상 계산
+│   ├── simulator.py        # DES 엔진, EQP/LOT/WIP, 보상, 전환, tool cap
+│   ├── decision_log.py     # step별 결정/미할당 사유 진단
+│   └── events.py
 │
 ├── data/
-│   ├── loader.py           # JSON 로드·검증, 샘플 데이터 생성
-│   └── preprocessor.py     # 원시 JSON → RL 환경 입력 변환
+│   ├── dataset/            # {FAC_ID}/{train|test|infer}/.../input|output (git 제외)
+│   ├── loader/             # Oracle SQL/JSON 로드 + preprocess
+│   ├── writer/             # 추론 결과 output.json / SQL 생성
+│   ├── sql.example/        # SQL 템플릿
+│   ├── sql/                # 환경별 SQL (git 제외)
+│   └── generator.py        # 개발/테스트용 샘플 생성 함수
 │
 ├── inference/
-│   └── runner.py           # 학습된 모델로 추론 실행 및 결과 JSON 저장
+│   └── runner.py           # 단일/비교 추론 실행
 │
 ├── api/
-│   ├── server.py           # FastAPI REST API (학습·추론·데이터)
-│   └── serializers.py      # API 응답 JSON 직렬화
+│   ├── server.py           # FastAPI
+│   ├── serializers.py      # UI 응답 경량/상세 직렬화
+│   └── train_service.py
 │
-├── frontend/               # React + TypeScript UI (Vite)
-│   ├── src/
-│   │   ├── App.tsx         # 메인 레이아웃
-│   │   ├── pages/          # 학습 / 추론 페이지
-│   │   ├── components/     # 사이드바, Plotly 차트
-│   │   └── lib/            # API 클라이언트, 차트 빌더
-│   └── package.json
-│
-├── external/               # DB 연동 JSON (git 제외)
-│   ├── input/              # 기본 입력 폴더 (이름 변경 가능)
-│   ├── <case_name>/        # 시나리오별 입력 폴더
-│   └── output/
-│       └── <case_name>/    # 시나리오별 결과
-│
-├── utils/
-│   └── helpers.py          # 날짜 변환, 인덱스 맵, 검증 유틸
-│
-└── models/                 # 학습된 모델 저장 (.zip, git 제외)
+├── frontend/               # React + TypeScript + Vite + Plotly
+├── tests/
+└── models/                 # PPO 체크포인트 (.zip, git 제외)
 ```
 
 | 모듈 | 역할 |
 |------|------|
-| `data/` | DB 조회 결과(JSON) 로드·검증·전처리 |
-| `simulation/` | EQP/LOT 상태 관리, 결정 시점 탐색, 보상·관측 계산 |
-| `env/` | Gymnasium `reset` / `step` 인터페이스 제공 |
-| `agent/` | PPO 학습, 체크포인트·평가 콜백, 모델 저장/로드 |
-| `inference/` | 추론 실행 후 `external/output/`에 결과 저장 |
-| `api/` | FastAPI 백엔드 — React UI용 REST API |
-| `frontend/` | React TypeScript UI — 간트 차트·분석·학습/추론 제어 |
+| `data.loader` | Oracle/JSON 입력 로드, 검증, `env_data` 전처리 |
+| `simulation` | EQP 상태, WIP 풀, flow 유입, conversion/tool, reward, event log |
+| `env` | Gymnasium `reset/step/action_masks` |
+| `agent` | RL/휴리스틱 정책 |
+| `inference` | 추론 루프, 빠른/상세 실행 옵션 |
+| `api` + `frontend` | UI, 학습/추론/비교 API |
 
 ---
 
-## 강화학습 구현
+## 데이터 모델
 
-### 문제 정의
+| 레이어 | 단위 | 설명 |
+|--------|------|------|
+| `discrete_arrange` | `(EQP_ID, LOT_ID, OPER_ID)` | 실제 LOT/EQP feasible 조합, ST, WF_QTY, EQP_MODEL_CD |
+| `abstract_arrange` | `(PPK, OPER, EQP_MODEL_CD)` | 추상 route 템플릿, 후속 flow 유입 가능성 |
+| Runtime WIP pool | `(PPK, OPER)` + LOT list | 현재/유입 재공 수량, `oper_in_time`, LOT meta |
 
-- **상황**: 초기 스케줄링이 끝난 뒤, 각 EQP 큐에 대기 중인 LOT 중 하나를 선택해 재배정
-- **결정 시점**: EQP가 idle이 되고 배정 가능한 LOT이 있을 때
-- **목표**: 동일 공정(OPER)·동일 제품(PROD) 연속 가공을 유도하고, Idle·전환 횟수를 줄임
+주요 부가 입력:
 
-### MDP 구성
+- `flow.json`: PPK별 공정 순서. 유입 재공 이벤트 ON 시 공정 완료 LOT이 다음 OPER WIP로 주입됩니다.
+- `batch_info.json`: `(PPK, OPER) -> LOT_CD, TEMP`. conversion/tool 판단의 우선 소스입니다.
+- `tool_capacity.json`: `(LOT_CD, EQP_MODEL)` 단위 동시 가공 cap.
+- `eqp_initial_state.json`: EQP별 초기 LOT_CD/TEMP/직전 PPK/OPER.
+- `split.json`: wafer lot split 규칙.
 
-| 요소 | 내용 |
+---
+
+## 의사결정 흐름
+
+한 step의 현재 구현은 다음과 같습니다.
+
+1. simulator가 배정 가능한 idle EQP를 찾습니다.
+   - 기본 EQP 선택: `eqp_ids` 순서상 첫 번째 feasible idle EQP
+   - `earliest_st` 추론: idle EQP 중 최소 ST 후보가 있는 EQP 우선 (`eqp_selection="min_st"`)
+2. 정책은 **현재 결정 EQP에서 선택할 `(PPK, OPER)` bucket** 을 고릅니다.
+3. action mask는 현재 EQP에서 feasible한 `(PPK, OPER)`만 True로 표시합니다.
+4. 선택 bucket이 invalid면 현재 feasible 첫 후보로 보정합니다.
+5. LOT은 `_auto_select_lot()`이 자동 선택합니다.
+6. conversion/tool cap을 확인하고, WIP를 `-1` 한 뒤 가공/전환 이벤트를 생성합니다.
+7. 유입 재공 이벤트가 켜져 있으면 공정 완료 시 `flow_next` 기준으로 다음 OPER WIP를 주입합니다.
+
+중요: 현재 RL action은 EQP를 직접 선택하지 않습니다. EQP는 simulator의 현재 결정 EQP입니다.
+
+---
+
+## 강화학습/환경 구성
+
+### MDP
+
+| 요소 | 현재 값/구조 |
+|------|--------------|
+| 알고리즘 | `MaskablePPO` (`sb3-contrib`, `MlpPolicy`) |
+| 행동 공간 | `Discrete(O * P)` = `(OPER, PPK)` bucket |
+| action mask | 현재 idle EQP 기준 feasible `(PPK, OPER)` mask |
+| LOT 선택 | 규칙 기반 자동 선택 |
+| 기본 종료(학습 Env) | assignable work 없음 + busy/converting 없음, 또는 시간/step truncate |
+| 추론 종료 | 기본: 현재 재공 배정 완료 기준. 옵션으로 flow 유입 재공까지 확장 |
+
+현재 기본 축(`config.py`):
+
+```text
+O = max_oper_count  = 3
+P = max_prod_count  = 10
+K = max_model_count = 5
+F = BUCKET_FEATURES = 14
+
+obs_dim = Global(6) + O*P*K*F + current_eqp(6) + Context(4)
+        = 6 + 3*10*5*14 + 6 + 4
+        = 2116
+```
+
+### 관측 벡터
+
+| 블록 | 내용 |
 |------|------|
-| **알고리즘** | PPO (`stable-baselines3`, `MlpPolicy`) |
-| **행동 공간** | `Discrete(max_queue_size)` — 현재 idle EQP 큐에서 LOT 인덱스 선택 (기본 20) |
-| **관측 공간** | `Box(0, 1, shape=(obs_dim,))` — 이분 그래프 기반 고정 크기 벡터 |
-| **에피소드 종료** | 모든 LOT 배정 완료 (`terminated`) 또는 시뮬레이션 시간 초과 (`truncated`) |
+| Global(6) | 경과 시간, soft cutoff 잔여, LOT pool 비율, 완료율, conversion EQP 비율, tool utilization |
+| Bucket `(OPER, PPK, EQP_MODEL, F)` | valid, WIP 비율, min_end, throughput, same_ppk, takt, ST, urgency, LOT_CD/TEMP, conversion/tool 가능 여부 |
+| Current EQP(6) | 현재 결정 EQP idle/busy, 직전 LOT_CD/TEMP, 잔여 busy 시간, conversion 필요 여부 |
+| Context(4) | 직전 배정 PPK/OPER/EQP/LOT_CD |
 
-관측 차원 (`config.env` 기준, O=15, P=10, M=10):
+### Reward
 
-```
-obs_dim = O*P*5 + O*(4 + M*2) + 6 = 1,026
-```
+| 항목 | 기본값 | 설명 |
+|------|--------|------|
+| `w_same_oper` | `+2.0` | 동일 OPER 연속 |
+| `w_same_prod` | `+0.5` | 동일 PPK + feasible 재공 있을 때 |
+| `w_prod_switch` | `+0.8` | 이전 PPK 재공 고갈 후 전환 |
+| `w_idle_per_min` | `-0.5` | EQP idle 시간 |
+| `w_completion` | `+1.0` | LOT 투입량 보상 |
+| `w_plan_hit` | `+5.0` | 계획 gap 감소 |
+| `w_pacing` | `+3.0` | 계획 직선 대비 누적 편차 shaping |
+| `w_conversion` | `-30.0` | LOT_CD/TEMP 전환 |
+| `w_late_finish` | `-2.0` | soft cutoff 이후 END_TM |
 
-### 관측 벡터 구조 (`simulator.get_observation`)
+---
 
-이분 그래프 집계 방식으로 EQP/LOT 수와 무관하게 고정 크기를 유지합니다.
+## 추론 종료/유입 재공 옵션
 
-| 그룹 | 크기 | 내용 |
-|------|------|------|
-| **Group A** | O×P×3 | WIP 노드 — (OPER, PROD)별 대기 LOT 수·수량·우선순위 |
-| **Group B** | O×4 | EQP 노드 — OPER별 처리 가능 설비 수, idle 비율, 잔여시간, 전환율 |
-| **Group E** | O×M×2 | WIP×EQP 엣지 — (OPER, EQP) 조합별 평균 처리시간·호환 LOT 수 |
-| **Group C** | O×P×2 | 계획 노드 — (OPER, PROD) 달성률·우선순위 |
-| **Group D** | 6 | 컨텍스트 — 경과 시간, 전체 달성률, 현재 EQP 이전 OPER/PROD 등 |
+추론은 현재 운영 요구에 맞춰 기본이 **현재 재공 기준**입니다.
 
-처리시간은 LOT 단독 속성이 아니라 **(LOT, EQP) 조합**으로 `proc_time_matrix`에 저장됩니다.
+| 옵션 | 기본값 | 의미 |
+|------|--------|------|
+| `enable_wip_inflow` | `False` | OFF면 공정 완료 후 다음 공정 WIP를 주입하지 않습니다. 현재 재공만 배정합니다. |
+| `current_wip_only` | `None` | 하위 호환용. `None`이면 `not enable_wip_inflow`로 자동 결정됩니다. |
+| `termination_mode` | `current_wip_assigned` | 현재 재공이 모두 배정되면 busy 장비 후속 완료를 기다리지 않고 종료합니다. |
+| `enable_wip_inflow=True` | - | 공정 완료 시 `flow_next` 기준으로 다음 OPER WIP를 주입하고 계속 배정합니다. |
 
-### 보상 함수 (`simulator.assign_lot`)
+결과 `stats`에는 다음이 포함됩니다.
 
-`config.reward` 가중치로 즉각 보상을 계산합니다.
+- `remaining_wip`
+- `remaining_current_wip`
+- `terminated`
+- `truncated`
+- `current_time`
+- `steps`
+- `termination_mode`
+- `enable_wip_inflow`
 
-| 항목 | 가중치 (기본값) | 설명 |
-|------|----------------|------|
-| 동일 OPER 연속 | `+2.0` | 이전 공정과 같으면 보너스 |
-| 동일 PROD 연속 | `+1.0` | 이전 제품과 같으면 보너스 |
-| Idle 패널티 | `-0.5`/분 | EQP 대기 시간에 비례해 감점 |
-| LOT 완료 | `+1.0` × (wf_qty/25) | 완료 시 수량 기반 보상 |
-| 계획 달성 | `+5.0` | (설정값, 향후 확장용) |
+---
 
-공정·제품이 바뀌면 `oper_switches`, `prod_switches` 통계가 증가합니다.
+## 추론 빠르게 실행하기
 
-### 에이전트 (`agent/rl_agent.py`)
+### 기본 원칙
+
+추론 속도와 UI 표시 속도에 가장 큰 영향을 주는 것은 아래 세 가지입니다.
+
+1. `history/event_log/decision_log` payload 생성/전송
+2. step별 arrange/WIP snapshot 계산
+3. 결과 파일/SQL 저장 I/O
+
+빠른 결과 확인이 목적이면 아래처럼 실행합니다.
+
+| 경로 | 빠른 설정 |
+|------|-----------|
+| Python | `run_inference(..., record_history=False, record_decision_log=False, enable_wip_inflow=False)` |
+| API | `include_history=false`, `decision_log=false`, `enable_wip_inflow=false`, `save_output=false` |
+| UI | 기본값 그대로 실행: history/event payload와 output 저장을 생략 |
+| CLI | 기본적으로 `--include-history`를 주지 않으면 history snapshot을 만들지 않음 |
+
+### Python
 
 ```python
-agent = SchedulingAgent()
-agent.train(env_data)          # PPO 학습
-agent.save()                   # models/scheduling_rl.zip
-agent = SchedulingAgent.load() # 모델 로드
-action = agent.predict(obs)    # 행동 예측
-metrics = agent.evaluate(env_data, n_episodes=5)
+from inference.runner import run_inference
+
+# 가장 빠른 현재 재공 기준 추론
+result = run_inference(
+    env_data,
+    algorithm="rl",
+    agent=agent,
+    record_history=False,
+    record_decision_log=False,
+    enable_wip_inflow=False,
+)
+
+# flow 유입 재공까지 이어서 추론
+result = run_inference(
+    env_data,
+    algorithm="rl",
+    agent=agent,
+    record_history=False,
+    enable_wip_inflow=True,
+)
+
+# UI 재생/step별 분석용 상세 추론
+result = run_inference(
+    env_data,
+    algorithm="rl",
+    agent=agent,
+    record_history=True,
+    record_decision_log=True,
+)
 ```
 
-학습 시 콜백:
-- **EvalCallback** — 주기적 평가, `models/best/`에 최적 모델 저장
-- **CheckpointCallback** — `models/checkpoints/`에 체크포인트 저장
+### API
 
-PPO 하이퍼파라미터 (`config.rl`):
+`POST /api/inference`
 
-| 파라미터 | 기본값 |
-|----------|--------|
-| `learning_rate` | 3e-4 |
-| `n_steps` | 2,048 |
-| `batch_size` | 64 |
-| `n_epochs` | 10 |
-| `gamma` | 0.99 |
-| `total_timesteps` | 200,000 |
-| `eval_freq` | 10,000 |
-
-### 환경 루프 (`env/scheduling_env.py`)
-
-```
-reset() → sim 초기화, 첫 관측 반환
-  ↓
-step(action):
-  1. current_idle_eqp() 로 결정 대기 EQP 확인
-  2. available_lots() 큐에서 action 인덱스로 LOT 선택
-  3. assign_lot() → 보상 계산, 스케줄 기록
-  4. save_history_step() → UI 재생용 히스토리 저장
-  5. is_done() / 시간 초과 확인 → 다음 관측 반환
+```json
+{
+  "algorithm": "rl",
+  "input_folder": "FAC001/infer",
+  "enable_wip_inflow": false,
+  "include_history": false,
+  "decision_log": false,
+  "save_output": false
+}
 ```
 
-`action_masks()` 메서드가 있어 **MaskablePPO**(`sb3-contrib`) 확장도 가능합니다.
+| 필드 | 설명 |
+|------|------|
+| `include_history=false` | `history` / replay용 event payload 생략 |
+| `decision_log=false` | step별 진단 로그 생략 |
+| `save_output=false` | UI 즉시 표시용. output JSON/SQL 저장 I/O 생략 |
+| `enable_wip_inflow=false` | 현재 재공만 배정 |
 
-### 데이터 흐름
+`POST /api/inference/compare`
 
+```json
+{
+  "algorithms": ["rl", "minprogress", "earliest_st"],
+  "input_folder": "FAC001/test/20260624070000",
+  "include_history": false,
+  "decision_log": false,
+  "enable_wip_inflow": false
+}
 ```
-external/input/*.json
-    → loader.load_data() + validate_data()
-    → preprocessor.preprocess()  → env_data
-    → SchedulingEnv(env_data) / SchedulingSimulator
-    → SchedulingAgent.train() / run_inference()
-    → external/output/result.json
+
+비교 화면은 기본적으로 schedule/stats 중심이므로 `include_history=false`가 권장됩니다.
+
+### UI
+
+Inference 화면 옵션:
+
+| 옵션 | 권장 |
+|------|------|
+| `시뮬레이션 재생 데이터 포함` | 빠른 결과만 필요하면 OFF |
+| `결정 로그` | 분석 필요 시에만 ON. ON이면 상세 payload가 필요합니다. |
+| `유입 재공 이벤트 사용` | 현재 재공만 보면 OFF, 다음 공정 flow까지 보면 ON |
+
+기본 단일 추론은 빠른 표시를 위해 schedule/stats만 받고, 결과는 스케줄 비교 탭에서 즉시 표시합니다.
+재생이 필요하면 `시뮬레이션 재생 데이터 포함`을 켜고 다시 실행합니다.
+
+### CLI
+
+```bash
+# 빠른 현재 재공 기준 RL 추론 (기본)
+python main.py infer --facid FAC001 --nodb
+
+# 결정 로그 포함
+python main.py infer --facid FAC001 --nodb --decision-log
+
+# UI 재생용 history/event snapshot 포함
+python main.py infer --facid FAC001 --nodb --include-history
+
+# 다음 공정 flow 유입 재공까지 추론
+python main.py infer --facid FAC001 --nodb --enable-wip-inflow
 ```
 
-입력 JSON 4종:
-- `schedule.json` — 초기 스케줄
-- `availability.json` — EQP별 LOT 투입 가능 여부·수량
-- `plan.json` — (제품, 공정) 계획 수량
-- `flow.json` — 제품별 공정 순서
+CLI `infer`는 현재 RL 모델 추론 경로입니다. 알고리즘 비교는 UI/API의 `/api/inference/compare`를 사용합니다.
 
 ---
 
-## UI (React + FastAPI)
+## 운영 CLI
 
-Streamlit 대신 **React TypeScript + FastAPI** 구조로 동작합니다.
-
-| 구성 | 포트 | 설명 |
-|------|------|------|
-| FastAPI (`api/server.py`) | 8000 | 데이터·학습·추론 API |
-| React (`frontend/`) | 5173 | 간트 차트, WIP/달성률, 시뮬레이션 재생 |
+### 데이터 수집
 
 ```bash
-# 일괄 실행 (API + 프론트엔드)
-python main.py ui
+mkdir -p data/sql
+cp data/sql.example/*.sql data/sql/
+# data/sql/*.sql 의 -- @db alias, 테이블명, WHERE 조건을 환경에 맞게 수정
 
-# 개별 실행
+python main.py collect --facid FAC001 --split train --prevdays 3 --once
+python main.py collect --facid FAC001 --split test --from 20260601070000 --to 20260603070000 --once
+```
+
+### 학습
+
+```bash
+# DB 수집 포함 최근 N일 학습
+python main.py train --facid FAC001 --prevdays 3
+
+# 기존 JSON만 사용
+python main.py train --facid FAC001 --from 20260601070000 --to 20260603070000 --nodb
+
+# 단일 RULE_TIMEKEY
+python main.py train --facid FAC001 --ruletimekey 20260624070000 --nodb
+```
+
+### 검증/추론/UI
+
+```bash
+python main.py validate --facid FAC001 --nodb
+python main.py infer --facid FAC001 --nodb
+python main.py ui
+python main.py db-check
+```
+
+---
+
+## UI
+
+| 구성 | 포트 |
+|------|------|
+| FastAPI | 8000 |
+| Vite dev server | 5173 |
+
+```bash
+python main.py ui
+```
+
+개별 실행:
+
+```bash
 uvicorn api.server:app --reload --port 8000
 cd frontend && npm install && npm run dev
 ```
 
-UI 기능:
-- **학습 모드** — 파라미터 설정, PPO 학습, 평가 지표 표시
-- **추론 모드** — Post-Scheduling 실행, 스텝별 간트 재생, 초기 vs Post KPI 비교
+| 탭 | 기능 |
+|----|------|
+| Dataset | 입력 폴더/데이터 요약 |
+| Train | 기간/폴더 선택, PPO 학습, 학습 로그/차트 |
+| Test | test dataset 벤치마크 |
+| Inference | 빠른 단일 추론, 알고리즘 비교, 선택 시 상세 재생, 결과 파일 직접 보기 |
+
+### 백엔드 없이 결과 보기 (오프라인 뷰어)
+
+Inference 탭의 **"파일에서 결과 보기 (output.json)"** 버튼으로 백엔드 API(8000)가
+실행 중이 아니어도 저장된 결과 파일을 직접 열어 간트/스케줄 비교를 볼 수 있습니다.
+
+- 지원 파일: `output.json`(RTS 적재 JSON) 또는 `result_full.json`(UI 전체 결과)
+- 파일은 브라우저에서 직접 파싱되며, EQP/제품/공정 축은 schedule 행에서 복원합니다.
+- 추론·비교 실행은 기존대로 백엔드 API가 필요합니다.
 
 ---
 
-## 사용 방법
+## 출력 파일
+
+CLI 추론 또는 API `save_output=true`일 때 `data/dataset/.../output/`에 저장됩니다.
+
+| 파일 | 설명 |
+|------|------|
+| `output.json` | RTS 적재용 결과 payload |
+| `output/sql/*.sql` | RTS insert/delete SQL |
+| `result_full.json` | UI/디버그용 schedule/history/event/decision log |
+
+UI 기본 추론은 빠른 표시를 위해 `save_output=false`로 호출합니다.
+
+---
+
+## 테스트
 
 ```bash
-pip install -r requirements.txt
-
-python main.py sample          # 샘플 데이터 생성 (external/input/)
-python main.py sample -i case_a   # external/case_a/ 에 생성
-set SCHEDULING_INPUT=case_a   # 환경변수로 기본 입력 폴더 지정 (Windows)
-python main.py train           # PPO 모델 학습
-python main.py infer           # 추론 및 결과 저장
-python main.py all             # 샘플생성 + 학습 + 추론 일괄 실행
-python main.py ui              # React UI + API 서버 실행
-
-python main.py train --timesteps 50000   # 타임스텝 지정 학습
+python3 -m pytest tests/test_decision_log.py tests/test_scheduling_env.py -q
+cd frontend && npm run build
 ```
+
+전체 테스트 실행:
+
+```bash
+python3 -m pytest -q
+```
+
+현재 일부 테스트 파일은 별도 시나리오 모듈(`data.conversion_scenarios`, `data.pacing_scenarios`)을 요구합니다. 해당 모듈이 없는 환경에서는 collection 단계에서 실패할 수 있습니다.
 
 ---
 
 ## 의존성
 
-- **gymnasium** — RL 환경 표준 인터페이스
-- **stable-baselines3** — PPO 구현
-- **sb3-contrib** — MaskablePPO (선택 확장)
-- **torch** — 신경망 백엔드
-- **fastapi / uvicorn** — REST API 백엔드
-- **numpy / pandas / scipy** — 수치·데이터 처리
+Python:
 
-### Frontend (frontend/)
+- gymnasium
+- stable-baselines3
+- sb3-contrib
+- torch
+- numpy / pandas / scipy
+- fastapi / uvicorn
+- oracledb
+- python-dotenv / pyyaml
 
-- **react / react-dom** — UI 프레임워크
-- **plotly.js / react-plotly.js** — 간트·KPI 차트
-- **vite** — 빌드·개발 서버
+Frontend:
+
+- React
+- TypeScript
+- Vite
+- Plotly
+
+---
+
+## 주의사항
+
+- 관측/action/reward 구조가 바뀌면 기존 PPO checkpoint와 호환되지 않을 수 있습니다.
+- 현재 RL action은 EQP를 직접 선택하지 않습니다. EQP는 simulator가 현재 idle feasible EQP로 정합니다.
+- 빠른 UI 추론은 history/event payload를 만들지 않으므로 시뮬레이션 재생 탭에는 데이터가 없습니다.
+- 결정 로그나 재생이 필요하면 `include_history` 또는 UI의 `시뮬레이션 재생 데이터 포함` 옵션을 켜고 다시 실행하세요.

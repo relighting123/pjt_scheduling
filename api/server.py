@@ -5,28 +5,20 @@ React UI가 호출하는 REST API를 제공합니다.
 실행: uvicorn api.server:app --reload --port 8000
 """
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, train_snapshot_now, PERIOD_SPLITS, validate_path_segment, iter_rule_timekeys, parse_input_folder, latest_period
-from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range
-from data.generator import (
-    generate_sample_data,
-    generate_sample_period_range,
-    list_sample_scenarios,
-    bootstrap_facility_datasets,
-    generator_config_from_dict,
-    generator_config_to_dict,
-    DEFAULT_GENERATOR_CONFIG,
-)
-from data.preprocessor import preprocess
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods
+from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
+from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
@@ -41,7 +33,7 @@ from api.test_benchmark_store import (
 )
 from api.train_service import train_progress, start_training, is_training
 
-app = FastAPI(title="Post-Scheduling RL API", version="1.0.0")
+app = FastAPI(title="Scheduling RL API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -137,16 +129,18 @@ def _resolve_train_folders(req: "TrainRequest") -> list[str]:
         return folders
 
     if req.from_date and req.to_date:
-        folders = [
-            f"{fac_id}/train/{key}"
-            for key in iter_rule_timekeys(req.from_date, req.to_date)
-            if f"{fac_id}/train/{key}" in available
-        ]
+        periods, _ = resolve_collect_periods(
+            fac_id,
+            from_key=req.from_date,
+            to_key=req.to_date,
+            require_db=True,
+        )
+        folders = train_folders_for_periods(fac_id, periods)
         if not folders:
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"기간 {req.from_date}~{req.to_date}에 해당하는 "
+                    f"기간 {req.from_date}~{req.to_date} (DB RULE_TIMEKEY)에 해당하는 "
                     f"train 데이터가 없습니다."
                 ),
             )
@@ -173,6 +167,16 @@ class TrainRequest(BaseModel):
     learning_rate: float = Field(default=CONFIG.rl.learning_rate, gt=0)
     w_same_oper: float = Field(default=CONFIG.reward.w_same_oper)
     w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
+    train_budget_mode: Literal["timesteps", "episodes"] = Field(
+        default="timesteps",
+        description="학습량 기준: timesteps | episodes",
+    )
+    n_episodes: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=100_000,
+        description="train_budget_mode=episodes 일 때 목표 에피소드 수",
+    )
     input_folder: Optional[str] = Field(
         default=None,
         description="단일 train 스냅샷 (미지정 시 사이드바 현재 선택)",
@@ -199,7 +203,23 @@ class InferenceRequest(BaseModel):
     algorithm: str = Field(default="rl", description="rl | minprogress | earliest_st")
     input_folder: Optional[str] = Field(
         default=None,
-        description="입력 데이터 폴더명 (external/<name>/)",
+        description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
+    )
+    decision_log: bool = Field(
+        default=False,
+        description="step별 EQP/PPK/OPER 결정 및 미할당 사유 로그 포함",
+    )
+    enable_wip_inflow: bool = Field(
+        default=False,
+        description="공정 완료 시 다음 공정 flow 재공 유입 이벤트 사용",
+    )
+    include_history: bool = Field(
+        default=False,
+        description="시뮬레이션 재생용 history/event payload 포함",
+    )
+    save_output: bool = Field(
+        default=True,
+        description="추론 결과 output/result_full 파일 및 SQL 생성",
     )
 
 
@@ -209,8 +229,8 @@ class GeneratorConfigModel(BaseModel):
     n_opers: int = Field(default=2, ge=1, le=10)
     lots_per_oper: int = Field(default=3, ge=1, le=30)
     wf_qty: int = Field(default=25, ge=1, le=500)
-    st_min: float = Field(default=60.0, ge=1)
-    st_max: float = Field(default=180.0, ge=1)
+    st_min: float = Field(default=3.0, ge=1, description="장당 ST 하한(분/장)")
+    st_max: float = Field(default=8.0, ge=1, description="장당 ST 상한(분/장)")
     st_std: float = Field(default=20.0, ge=0)
     eligibility: float = Field(default=0.7, ge=0, le=1)
     plan_qty_min: int = Field(default=25, ge=0)
@@ -220,6 +240,13 @@ class GeneratorConfigModel(BaseModel):
     test_period_count: int = Field(default=1, ge=1, le=365)
     split_qty: int = Field(default=3, ge=1, le=100)
     seed: Optional[int] = Field(default=None)
+
+    @field_validator("seed", mode="before")
+    @classmethod
+    def _coerce_seed(cls, value):
+        if value is None or value == "":
+            return None
+        return value
 
 
 class SampleRequest(BaseModel):
@@ -242,6 +269,10 @@ class FetchRequest(BaseModel):
     snapshot: Optional[str] = Field(default=None, description="단일 RULE_TIMEKEY (YYYYMMDDHHmmss)")
     from_date: Optional[str] = Field(default=None, description="시작 RULE_TIMEKEY (YYYYMMDDHHmmss)")
     to_date: Optional[str] = Field(default=None, description="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)")
+    lot_cd: Optional[str] = Field(
+        default=None,
+        description="SQL :LOT_CD 바인드 (discrete_arrange 제외, 미지정 시 전체)",
+    )
 
 
 class InputFolderRequest(BaseModel):
@@ -255,7 +286,19 @@ class CompareRequest(BaseModel):
     )
     input_folder: Optional[str] = Field(
         default=None,
-        description="입력 데이터 폴더명 (external/<name>/)",
+        description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
+    )
+    decision_log: bool = Field(
+        default=False,
+        description="step별 EQP/PPK/OPER 결정 및 미할당 사유 로그 포함",
+    )
+    enable_wip_inflow: bool = Field(
+        default=False,
+        description="공정 완료 시 다음 공정 flow 재공 유입 이벤트 사용",
+    )
+    include_history: bool = Field(
+        default=False,
+        description="비교 응답에 history/event payload 포함",
     )
 
 
@@ -304,6 +347,7 @@ def get_config():
         "infer_output_dir": str(CONFIG.path.infer_output_dir),
         "input_folders": list_input_folders(),
         "default_timesteps": CONFIG.rl.total_timesteps,
+        "default_n_episodes": CONFIG.rl.default_n_episodes,
         "default_learning_rate": CONFIG.rl.learning_rate,
         "default_w_same_oper": CONFIG.reward.w_same_oper,
         "default_w_idle_per_min": CONFIG.reward.w_idle_per_min,
@@ -336,20 +380,8 @@ def get_generator_config_defaults():
     return {"defaults": generator_config_to_dict(DEFAULT_GENERATOR_CONFIG)}
 
 
-def _split_input_path(paths: dict, split: str) -> str:
-    entry = paths[split]
-    if isinstance(entry, list):
-        return entry[-1]["input"]
-    return entry["input"]
-
-
 @app.post("/api/sample")
 def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
-    from data.generator import SAMPLE_SCENARIOS
-
-    if req.scenario not in SAMPLE_SCENARIOS:
-        raise HTTPException(status_code=400, detail=f"알 수 없는 시나리오: {req.scenario}")
-
     try:
         gen_cfg = generator_config_from_dict(
             req.generator_config.model_dump() if req.generator_config else None
@@ -360,64 +392,27 @@ def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
     global _env_data_cache
     _env_data_cache = None
 
-    if req.bootstrap:
-        info = bootstrap_facility_datasets(
-            fac_id=req.fac_id, scenario=req.scenario, gen_config=gen_cfg,
-        )
-        snap = info["train_snapshot"]
-        set_input_folder(f"{req.fac_id}/train/{snap}")
-        path = _split_input_path(info["paths"], "train")
-    elif req.use_period_count:
-        count = (
-            gen_cfg.train_period_count if req.split == "train"
-            else gen_cfg.test_period_count if req.split == "test"
-            else 1
-        )
-        paths = generate_sample_period_range(
+    try:
+        result = generate_sample(
             scenario=req.scenario,
             fac_id=req.fac_id,
             split=req.split,
-            gen_config=gen_cfg,
-            period_count=count,
-        )
-        last = paths[-1]
-        if req.split in PERIOD_SPLITS:
-            set_input_folder(f"{req.fac_id}/{req.split}/{last.parent.name}")
-        else:
-            set_input_folder(f"{req.fac_id}/{req.split}")
-        path = last
-    elif req.from_date and req.to_date:
-        paths = generate_sample_period_range(
-            scenario=req.scenario,
-            fac_id=req.fac_id,
+            bootstrap=req.bootstrap,
             from_date=req.from_date,
             to_date=req.to_date,
-            split=req.split,
+            use_period_count=req.use_period_count,
             gen_config=gen_cfg,
         )
-        last = paths[-1]
-        set_input_folder(f"{req.fac_id}/{req.split}/{last.parent.name}")
-        path = last
-    elif req.from_date or req.to_date:
-        raise HTTPException(status_code=400, detail="from_date와 to_date를 함께 지정하세요.")
-    else:
-        path = generate_sample_data(
-            scenario=req.scenario,
-            fac_id=req.fac_id,
-            split=req.split,
-            gen_config=gen_cfg,
-        )
-        if req.split in PERIOD_SPLITS:
-            set_input_folder(f"{req.fac_id}/{req.split}/{path.parent.name}")
-        else:
-            set_input_folder(f"{req.fac_id}/{req.split}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
+    path = result["path"]
     return {
         "message": f"샘플 데이터가 생성되었습니다. ({path})",
         "scenario": req.scenario,
         "input_folder": CONFIG.path.input_folder_key,
         "input_dir": str(path),
-        "generator_config": generator_config_to_dict(gen_cfg),
+        "generator_config": result["generator_config"],
     }
 
 
@@ -425,18 +420,34 @@ def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
 def fetch_dataset(req: FetchRequest):
     try:
         if req.from_date and req.to_date:
+            periods, _ = resolve_collect_periods(
+                req.fac_id,
+                from_key=req.from_date,
+                to_key=req.to_date,
+                require_db=(req.split == "train"),
+            )
             paths = fetch_period_range(
                 fac_id=req.fac_id,
-                from_date=req.from_date,
-                to_date=req.to_date,
+                periods=periods,
                 split=req.split,
+                lot_cd=req.lot_cd,
             )
             path = paths[-1]
         elif req.from_date or req.to_date:
             raise ValueError("from_date와 to_date를 함께 지정하세요.")
         else:
-            snap = req.snapshot or (train_snapshot_now() if req.split == "train" else None)
-            path = fetch_from_db(fac_id=req.fac_id, split=req.split, snapshot=snap)
+            require_db = req.split == "train" and not req.snapshot
+            snap, _ = resolve_snapshot_rule_timekey(
+                req.fac_id,
+                req.snapshot,
+                require_db=require_db,
+            )
+            path = fetch_from_db(
+                fac_id=req.fac_id,
+                split=req.split,
+                snapshot=snap,
+                lot_cd=req.lot_cd,
+            )
     except (ValueError, FileNotFoundError, ImportError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -484,6 +495,8 @@ def train_start(req: TrainRequest):
         "learning_rate": req.learning_rate,
         "w_same_oper": req.w_same_oper,
         "w_idle_per_min": req.w_idle_per_min,
+        "train_budget_mode": req.train_budget_mode,
+        "n_episodes": req.n_episodes,
         "input_folders": folders,
     }
     payload = env_list if len(env_list) > 1 else env_list[0]
@@ -511,9 +524,13 @@ def train(req: TrainRequest):
 
     agent = SchedulingAgent()
     payload = env_list if len(env_list) > 1 else env_list[0]
-    agent.train(payload, verbose=0)
+    train_kwargs: dict = {"verbose": 0}
+    if req.train_budget_mode == "episodes" and req.n_episodes:
+        train_kwargs["n_episodes"] = req.n_episodes
+    agent.train(payload, **train_kwargs)
     agent.save()
-    metrics = agent.evaluate(env_list[0], n_episodes=3)
+    eval_eps = req.n_episodes if req.train_budget_mode == "episodes" and req.n_episodes else 3
+    metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
     return {"message": "학습 완료", "metrics": metrics, "input_folders": folders}
 
 
@@ -538,22 +555,35 @@ def inference(req: InferenceRequest):
 
     agent = None
     if req.algorithm == "rl":
-        agent = SchedulingAgent()
-        if not agent.model_exists():
+        try:
+            agent = SchedulingAgent.load()
+        except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(
                 status_code=400,
-                detail="학습된 모델이 없습니다. 먼저 학습을 실행하세요.",
-            )
-        agent = SchedulingAgent.load()
+                detail=str(exc),
+            ) from exc
 
-    result = run_inference(env_data, algorithm=req.algorithm, agent=agent)
+    result = run_inference(
+        env_data,
+        algorithm=req.algorithm,
+        agent=agent,
+        record_history=req.include_history,
+        record_decision_log=req.decision_log,
+        enable_wip_inflow=req.enable_wip_inflow,
+    )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
-    save_result(result, output_dir=CONFIG.path.infer_output_dir)
+    if req.save_output:
+        save_result(result, output_dir=CONFIG.path.infer_output_dir, env_data=env_data)
     _last_inference = result
-    return serialize_inference_result(result)
+    return serialize_inference_result(
+        result,
+        include_history=req.include_history,
+        include_event_log=req.include_history,
+        include_decision_log=req.decision_log,
+    )
 
 
 @app.post("/api/inference/compare")
@@ -570,7 +600,13 @@ def inference_compare(req: CompareRequest):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    payload = run_inference_compare(env_data, req.algorithms)
+    payload = run_inference_compare(
+        env_data,
+        req.algorithms,
+        record_history=req.include_history,
+        record_decision_log=req.decision_log,
+        enable_wip_inflow=req.enable_wip_inflow,
+    )
     if not payload["results"]:
         raise HTTPException(
             status_code=400,
@@ -579,14 +615,96 @@ def inference_compare(req: CompareRequest):
                 "errors": payload["errors"],
             },
         )
-    return serialize_compare_response(payload)
+    return serialize_compare_response(payload, include_history=req.include_history)
+
+
+def _minutes_from_timekey(value: str, base: datetime) -> int:
+    try:
+        fmt = "%Y%m%d%H%M%S" if len(value) == 14 else "%Y%m%d%H%M"
+        return int((datetime.strptime(value, fmt) - base).total_seconds() // 60)
+    except Exception:
+        return 0
+
+
+def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
+    """RTS output.json만 있을 때 UI 간트용 result 구조로 복원."""
+    base = env_data["sim_base_time"]
+    schedule = []
+    for row in payload.get("RTS_RSLT_INF", []):
+        start_tm = _minutes_from_timekey(str(row.get("START_TIME", "")), base)
+        end_tm = _minutes_from_timekey(str(row.get("END_TIME", "")), base)
+        schedule.append({
+            "EQP_ID":        row.get("EQP_ID", ""),
+            "LOT_ID":        row.get("LOT_ID", ""),
+            "CARRIER_ID":    row.get("CARRIER_ID", ""),
+            "PLAN_PROD_KEY": row.get("PLAN_PROD_KEY", ""),
+            "OPER_ID":       row.get("OPER_ID", ""),
+            "EQP_MODEL":     row.get("EQP_MODEL_CD", ""),
+            "SEQ":           int(row.get("SEQ_NO") or 0),
+            "START_TM":      start_tm,
+            "END_TM":        end_tm,
+            "PROC_TIME":     max(end_tm - start_tm, 0),
+            "WF_QTY":        int(row.get("PRODUCE_QTY") or 0),
+            "LOT_CD":        row.get("LOT_CD", ""),
+            "TEMP":          row.get("TEMPER_VAL", ""),
+            "START_TM_STR":  row.get("START_TIME", ""),
+            "END_TM_STR":    row.get("END_TIME", ""),
+        })
+    schedule.sort(key=lambda r: (r["START_TM"], r["EQP_ID"], r["SEQ"], r["LOT_ID"]))
+
+    conversion_plans = []
+    for row in payload.get("RTS_EQPCONVPLAN_INF", []):
+        conv_start = _minutes_from_timekey(str(row.get("CONV_START_TM", "")), base)
+        conv_end = _minutes_from_timekey(str(row.get("CONV_END_TM", "")), base)
+        conversion_plans.append({
+            "eqp_id":         row.get("EQP_ID", ""),
+            "eqp_model_cd":   row.get("EQP_MODEL_CD", ""),
+            "oper_id":        row.get("OPER_ID", ""),
+            "plan_prod_key":  row.get("PLAN_PROD_ATTR_VAL", ""),
+            "from_lot_cd":    row.get("LOT_CD", ""),
+            "from_temp":      row.get("TEMPER_VAL", ""),
+            "to_lot_cd":      row.get("TO_LOT_CD", ""),
+            "to_temp":        row.get("TO_TEMPER_VAL", ""),
+            "conv_start_min": conv_start,
+            "conv_end_min":   conv_end,
+            "conv_time":      int(row.get("CONV_TIME") or max(conv_end - conv_start, 0)),
+        })
+
+    completed: dict[str, int] = {}
+    for rec in schedule:
+        key = f"{rec['PLAN_PROD_KEY']}|{rec.get('OPER_ID', '')}"
+        completed[key] = completed.get(key, 0) + int(rec.get("WF_QTY") or 0)
+
+    meta = payload.get("meta", {})
+    return {
+        "schedule":         schedule,
+        "history":          [],
+        "event_log":        [],
+        "decision_log":     [],
+        "conversion_plans": conversion_plans,
+        "stats": {
+            "idle_total": 0,
+            "oper_switches": 0,
+            "prod_switches": 0,
+            "completed_qty": completed,
+            "source_file": "output.json",
+        },
+        "plan":             env_data["plan"],
+        "prod_keys":        env_data["prod_keys"],
+        "oper_ids":         env_data["oper_ids"],
+        "eqp_ids":          env_data["eqp_ids"],
+        "sim_end_minutes":  env_data["sim_end_minutes"],
+        "algorithm":        meta.get("ALGORITHM", "saved"),
+    }
 
 
 @app.get("/api/inference/result")
-def get_inference_result():
+def get_inference_result(input_folder: Optional[str] = None):
     global _last_inference
-    if _last_inference is not None:
-        return serialize_inference_result(_last_inference)
+    if input_folder is None and _last_inference is not None:
+        return serialize_inference_result(_last_inference, include_history=False)
+
+    _apply_input_folder(input_folder)
 
     # 캐시 없으면 env_data만 로드해 prod/oper 키 복원
     try:
@@ -594,30 +712,35 @@ def get_inference_result():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="추론 결과가 없습니다.")
 
-    from pathlib import Path
     import json
 
-    full_path = CONFIG.path.infer_output_dir / "result_full.json"
-    if not full_path.exists():
-        raise HTTPException(status_code=404, detail="추론 결과가 없습니다.")
+    output_dir = CONFIG.path.output_dir
+    full_path = output_dir / "result_full.json"
+    if full_path.exists():
+        with open(full_path, encoding="utf-8") as f:
+            saved = json.load(f)
+        result = {
+            "schedule": saved.get("schedule", []),
+            "history": saved.get("history", []),
+            "event_log": saved.get("event_log", []),
+            "decision_log": saved.get("decision_log", []),
+            "conversion_plans": saved.get("conversion_plans", []),
+            "stats": {**saved.get("stats", {}), "source_file": "result_full.json"},
+            "plan": saved.get("plan", env_data["plan"]),
+            "prod_keys": env_data["prod_keys"],
+            "oper_ids": env_data["oper_ids"],
+            "eqp_ids": env_data["eqp_ids"],
+            "sim_end_minutes": env_data["sim_end_minutes"],
+            "algorithm": saved.get("algorithm", "rl"),
+        }
+        return serialize_inference_result(result, include_history=False)
 
-    with open(full_path, encoding="utf-8") as f:
-        saved = json.load(f)
-
-    # history는 파일에 없을 수 있음
-    result = {
-        "schedule": saved.get("schedule", []),
-        "initial_schedule": saved.get("initial_schedule", []),
-        "history": saved.get("history", []),
-        "stats": saved.get("stats", {}),
-        "plan": saved.get("plan", []),
-        "prod_keys": env_data["prod_keys"],
-        "oper_ids": env_data["oper_ids"],
-        "eqp_ids": env_data["eqp_ids"],
-        "sim_end_minutes": env_data["sim_end_minutes"],
-        "algorithm": saved.get("algorithm", "rl"),
-    }
-    return serialize_inference_result(result)
+    output_path = output_dir / CONFIG.path.output_file
+    if not output_path.exists():
+        raise HTTPException(status_code=404, detail=f"저장된 추론 결과가 없습니다: {output_dir}")
+    with open(output_path, encoding="utf-8") as f:
+        result = _result_from_rts_output(json.load(f), env_data)
+    return serialize_inference_result(result, include_history=False)
 
 
 def _test_folders_for_fac(fac_id: str) -> list[str]:

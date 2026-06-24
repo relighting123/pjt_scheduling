@@ -1,14 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import PlotChart from "../components/PlotChart";
 
+import ChartPanel from "../components/ChartPanel";
+
 import ChartSettingsPanel from "../components/ChartSettingsPanel";
+
+import ChartVisibilityPanel from "../components/ChartVisibilityPanel";
+
+import { useChartVisibility, type ChartVisibilityItem } from "../hooks/useChartVisibility";
 
 import ArrangeTable from "../components/ArrangeTable";
 
 import AbstractArrangeTable from "../components/AbstractArrangeTable";
 
+import { EventTimeline, eventsUpToStep } from "../components/EventTimeline";
+
+import BatchInfoTable from "../components/BatchInfoTable";
+
+import DecisionLogTable from "../components/DecisionLogTable";
+
 import { api } from "../lib/api";
+
+import { loadResultFromFile } from "../lib/resultFile";
 
 import {
 
@@ -62,6 +76,22 @@ interface InferencePageProps {
 
   folderLoading: boolean;
 
+  onInputFolderChange: (folder: string) => void | Promise<void>;
+
+}
+
+
+
+function folderPeriodLabel(folder: string): string {
+
+  const parts = folder.split("/");
+
+  return parts[parts.length - 1] ?? folder;
+
+}
+
+function isAlgorithmId(value: unknown): value is AlgorithmId {
+  return value === "rl" || value === "minprogress" || value === "earliest_st";
 }
 
 
@@ -92,6 +122,8 @@ export default function InferencePage({
 
   folderLoading,
 
+  onInputFolderChange,
+
 }: InferencePageProps) {
 
   const [result, setResult] = useState<InferenceResult | null>(null);
@@ -112,6 +144,10 @@ export default function InferencePage({
 
   const [algorithm, setAlgorithm] = useState<AlgorithmId>("rl");
 
+  const [decisionLogEnabled, setDecisionLogEnabled] = useState(false);
+  const [includeHistory, setIncludeHistory] = useState(false);
+  const [enableWipInflow, setEnableWipInflow] = useState(false);
+
   const [compareAlgos, setCompareAlgos] = useState<Set<AlgorithmId>>(new Set());
 
   const [algorithms, setAlgorithms] = useState<AlgorithmInfo[]>([]);
@@ -119,6 +155,15 @@ export default function InferencePage({
   const [stepBump, setStepBump] = useState(false);
 
   const [selectedFolder, setSelectedFolder] = useState("FAC001/infer");
+
+  const [fileSource, setFileSource] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const datasetFolders = useMemo(
+    () =>
+      (config?.input_folders?.length ? config.input_folders : config ? [config.input_folder] : []),
+    [config],
+  );
 
   const [ganttTimeFixed, setGanttTimeFixed] = useState(false);
 
@@ -130,17 +175,41 @@ export default function InferencePage({
 
   useEffect(() => {
 
-    if (config?.input_folder) {
+    if (!config || datasetFolders.length === 0) return;
 
-      setSelectedFolder(config.input_folder);
+    setSelectedFolder((prev) => {
+
+      if (datasetFolders.includes(prev)) return prev;
+
+      const infer = datasetFolders.find((f) => f.endsWith("/infer"));
+
+      return infer ?? datasetFolders[0];
+
+    });
+
+  }, [config, datasetFolders]);
+
+
+
+  const handleDatasetChange = useCallback(
+
+    async (folder: string) => {
+
+      if (!folder || folder === selectedFolder) return;
+
+      setSelectedFolder(folder);
 
       setResult(null);
 
       setCompareData(null);
 
-    }
+      await onInputFolderChange(folder);
 
-  }, [config?.input_folder]);
+    },
+
+    [onInputFolderChange, selectedFolder],
+
+  );
 
 
 
@@ -201,14 +270,34 @@ export default function InferencePage({
     setError(null);
 
     try {
+      const withReplayPayload = includeHistory || decisionLogEnabled;
 
-      const res = await api.runInference(algorithm, selectedFolder);
+      const res = await api.runInference({
+        algorithm,
+        input_folder: selectedFolder,
+        decision_log: decisionLogEnabled,
+        include_history: withReplayPayload,
+        enable_wip_inflow: enableWipInflow,
+      });
 
       setResult(res);
+      if (withReplayPayload) {
+        setCompareData(null);
+      } else {
+        setCompareData({
+          results: [res],
+          errors: [],
+          plan: res.plan,
+          prod_keys: res.prod_keys,
+          oper_ids: res.oper_ids,
+          eqp_ids: res.eqp_ids,
+          sim_end_minutes: res.sim_end_minutes,
+        });
+      }
 
       setStep(0);
 
-      setTab("sim");
+      setTab(withReplayPayload ? "sim" : "schedule");
 
     } catch (e) {
 
@@ -220,9 +309,93 @@ export default function InferencePage({
 
     }
 
-  }, [algorithm, selectedFolder]);
+  }, [algorithm, selectedFolder, decisionLogEnabled, includeHistory, enableWipInflow]);
 
 
+
+  const loadSavedResult = useCallback(async () => {
+
+    setLoading(true);
+
+    setError(null);
+
+    try {
+
+      const res = await api.getInferenceResult(selectedFolder);
+
+      setResult(res);
+
+      setCompareData({
+        results: [res],
+        errors: [],
+        plan: res.plan,
+        prod_keys: res.prod_keys,
+        oper_ids: res.oper_ids,
+        eqp_ids: res.eqp_ids,
+        sim_end_minutes: res.sim_end_minutes,
+      });
+
+      if (isAlgorithmId(res.algorithm)) {
+        setAlgorithm(res.algorithm);
+      }
+
+      setStep(0);
+
+      setTab("schedule");
+
+    } catch (e) {
+
+      setError(e instanceof Error ? e.message : "저장된 결과 불러오기 실패");
+
+    } finally {
+
+      setLoading(false);
+
+    }
+
+  }, [selectedFolder]);
+
+
+
+  const loadFromFile = useCallback(async (file: File) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await loadResultFromFile(file);
+
+      setResult(res);
+      setCompareData({
+        results: [res],
+        errors: [],
+        plan: res.plan,
+        prod_keys: res.prod_keys,
+        oper_ids: res.oper_ids,
+        eqp_ids: res.eqp_ids,
+        sim_end_minutes: res.sim_end_minutes,
+      });
+
+      if (isAlgorithmId(res.algorithm)) {
+        setAlgorithm(res.algorithm);
+      }
+
+      setFileSource(file.name);
+      setStep(0);
+      setTab("schedule");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "결과 파일 불러오기 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (file) void loadFromFile(file);
+    },
+    [loadFromFile],
+  );
 
   const runCompare = useCallback(async (algoIds?: AlgorithmId[]) => {
 
@@ -242,7 +415,12 @@ export default function InferencePage({
 
     try {
 
-      const res = await api.runCompare(ids, selectedFolder);
+      const res = await api.runCompare(ids, {
+        input_folder: selectedFolder,
+        decision_log: decisionLogEnabled,
+        include_history: false,
+        enable_wip_inflow: enableWipInflow,
+      });
 
       setCompareData(res);
 
@@ -258,7 +436,7 @@ export default function InferencePage({
 
     }
 
-  }, [compareAlgos, selectedFolder]);
+  }, [compareAlgos, selectedFolder, decisionLogEnabled, enableWipInflow]);
 
 
 
@@ -296,7 +474,7 @@ export default function InferencePage({
 
     setResult(res);
 
-    if (res.algorithm) setAlgorithm(res.algorithm);
+    if (isAlgorithmId(res.algorithm)) setAlgorithm(res.algorithm);
 
     setStep(0);
 
@@ -313,6 +491,40 @@ export default function InferencePage({
     const idx = Math.min(step, result.history.length - 1);
 
     return result.history[idx];
+
+  }, [result, step]);
+
+
+
+  const { timelineEvents, currentStepEventKinds, currentStepEvents } = useMemo(() => {
+
+    if (!result?.history.length) {
+
+      return {
+        timelineEvents: [],
+        currentStepEventKinds: new Set<string>(),
+        currentStepEvents: [],
+      };
+
+    }
+
+    const { cumulative, current } = eventsUpToStep(
+
+      result.event_log,
+
+      result.history,
+
+      step,
+
+    );
+
+    const kinds = new Set(current.map((e) => e.kind));
+
+    return {
+      timelineEvents: cumulative,
+      currentStepEventKinds: kinds,
+      currentStepEvents: current,
+    };
 
   }, [result, step]);
 
@@ -392,6 +604,80 @@ export default function InferencePage({
 
 
 
+  const compareChartItems = useMemo((): ChartVisibilityItem[] => {
+
+    const items: ChartVisibilityItem[] = [
+
+      { id: "compare-kpi", title: "KPI 차트" },
+
+      { id: "compare-achievement", title: "달성률 차트" },
+
+      { id: "compare-gantt", title: "알고리즘별 간트 비교" },
+
+    ];
+
+    if (compareEntries.length > 0 && compareData && compareData.plan.length > 0) {
+
+      compareEntries.forEach((e) => {
+
+        items.push({
+
+          id: `compare-prod-${e.algorithm}`,
+
+          title: `누적 생산 – ${e.label}`,
+
+        });
+
+      });
+
+    }
+
+    return items;
+
+  }, [compareEntries, compareData]);
+
+
+
+  const simChartItems = useMemo(
+
+    (): ChartVisibilityItem[] => [
+
+      { id: "sim-gantt", title: "설비(EQP) 배정 현황" },
+
+      { id: "sim-wip", title: "WIP 수량 현황" },
+
+      { id: "sim-achievement", title: "계획 달성 현황" },
+
+      { id: "sim-prod", title: "제품별 누적 생산량" },
+
+      { id: "sim-switch", title: "전환 횟수" },
+
+    ],
+
+    [],
+
+  );
+
+
+
+  const compareCharts = useChartVisibility(
+
+    "inference-compare",
+
+    compareChartItems.map((c) => c.id),
+
+  );
+
+  const simCharts = useChartVisibility(
+
+    "inference-sim",
+
+    simChartItems.map((c) => c.id),
+
+  );
+
+
+
   const tableResult = useMemo(() => {
 
     if (!tableAlgo || !compareData) return null;
@@ -436,13 +722,68 @@ export default function InferencePage({
 
     <div className="page">
 
-      <h2>Post-Scheduling 추론 및 시각화</h2>
+      <h2>Scheduling 추론 및 시각화</h2>
 
-      {summary && config && (
-        <p className="hint dataset-summary page-dataset-meta">
-          데이터셋 <code>{config.input_folder}</code>
-          {" · "}EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정 {summary.oper_count}
-        </p>
+      <section className="card inference-dataset-card">
+
+        <h3>추론 데이터셋</h3>
+
+        <p className="hint">추론·비교에 사용할 입력 JSON 경로를 선택합니다.</p>
+
+        <label className="field-label" htmlFor="inference-dataset">
+
+          dataset 경로
+
+        </label>
+
+        <select
+
+          id="inference-dataset"
+
+          className="input-select inference-dataset-select"
+
+          value={selectedFolder}
+
+          onChange={(e) => void handleDatasetChange(e.target.value)}
+
+          disabled={!config || folderLoading || datasetFolders.length === 0}
+
+        >
+
+          {datasetFolders.map((f) => (
+
+            <option key={f} value={f}>
+
+              {f} ({folderPeriodLabel(f)})
+
+            </option>
+
+          ))}
+
+        </select>
+
+        {summary && (
+
+          <p className="hint dataset-summary">
+
+            EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count} · 공정{" "}
+
+            {summary.oper_count}
+            {(summary.batch_info_count ?? 0) > 0 && <> · batch {summary.batch_info_count}</>}
+
+            {folderLoading ? " · 불러오는 중…" : ""}
+
+          </p>
+
+        )}
+
+      </section>
+
+      {summary && (
+        <section className="card">
+          <h3>Batch Info (PPK × OPER → LOT_CD / TEMP)</h3>
+          <BatchInfoTable rows={summary.batch_info ?? []} />
+        </section>
       )}
 
       <section className="card">
@@ -501,6 +842,88 @@ export default function InferencePage({
 
         )}
 
+        <label className="inference-option inference-option-log">
+
+          <input
+
+            type="checkbox"
+
+            checked={decisionLogEnabled}
+
+            onChange={(e) => setDecisionLogEnabled(e.target.checked)}
+
+            disabled={loading || compareLoading}
+
+          />
+
+          <span>
+
+            <strong>결정 로그</strong>
+
+            <span className="hint inference-option-hint">
+
+              step별 대상 EQP, 선택 PPK/OPER, feasible 후보, 미할당 사유 기록
+
+            </span>
+
+          </span>
+
+        </label>
+        <label className="inference-option inference-option-log">
+
+          <input
+
+            type="checkbox"
+
+            checked={includeHistory}
+
+            onChange={(e) => setIncludeHistory(e.target.checked)}
+
+            disabled={loading || compareLoading}
+
+          />
+
+          <span>
+
+            <strong>시뮬레이션 재생 데이터 포함</strong>
+
+            <span className="hint inference-option-hint">
+
+              OFF이면 history/event payload 생성을 생략해 추론 결과 표시가 빨라집니다.
+
+            </span>
+
+          </span>
+
+        </label>
+        <label className="inference-option inference-option-log">
+
+          <input
+
+            type="checkbox"
+
+            checked={enableWipInflow}
+
+            onChange={(e) => setEnableWipInflow(e.target.checked)}
+
+            disabled={loading || compareLoading}
+
+          />
+
+          <span>
+
+            <strong>유입 재공 이벤트 사용</strong>
+
+            <span className="hint inference-option-hint">
+
+              ON이면 공정 완료 후 다음 공정 flow 재공을 유입해 계속 배정합니다.
+
+            </span>
+
+          </span>
+
+        </label>
+
         <div className="btn-row">
 
           <button
@@ -518,8 +941,51 @@ export default function InferencePage({
             {loading ? "추론 진행 중..." : "단일 추론 실행"}
 
           </button>
+          <button
+
+            type="button"
+
+            className={`btn btn-secondary${loading ? " is-loading" : ""}`}
+
+            onClick={loadSavedResult}
+
+            disabled={loading || compareLoading || folderLoading}
+
+          >
+
+            저장 결과 불러오기
+
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading || compareLoading}
+          >
+            파일에서 결과 보기 (output.json)
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
 
         </div>
+
+        <p className="hint">
+          백엔드 API 없이도 저장된 <code>output.json</code> 또는{" "}
+          <code>result_full.json</code> 파일을 직접 열어 결과를 볼 수 있습니다.
+          {fileSource && (
+            <>
+              {" "}
+              현재 표시: <code>{fileSource}</code>
+            </>
+          )}
+        </p>
 
       </section>
 
@@ -647,7 +1113,7 @@ export default function InferencePage({
 
             <p className="result-meta">
 
-              시뮬레이션: <strong>{algorithmLabel}</strong> · 데이터셋 <code>{selectedFolder}</code>
+              시뮬레이션: <strong>{algorithmLabel}</strong> · 데이터셋 <code>{fileSource ?? selectedFolder}</code>
 
             </p>
 
@@ -657,7 +1123,7 @@ export default function InferencePage({
 
             <p className="result-meta">
 
-              스케줄링 결과 비교 · <strong>{compareEntries.length}개 알고리즘</strong> · 데이터셋 <code>{selectedFolder}</code>
+              스케줄링 결과 비교 · <strong>{compareEntries.length}개 알고리즘</strong> · 데이터셋 <code>{fileSource ?? selectedFolder}</code>
 
             </p>
 
@@ -701,9 +1167,57 @@ export default function InferencePage({
 
             stepBump={stepBump}
 
+            stepSimTime={snap?.time}
+
+            stepEvents={currentStepEvents}
+
             onStepChange={setStep}
 
           />
+
+
+
+          {tab === "schedule" && compareData && compareEntries.length > 0 && (
+
+            <ChartVisibilityPanel
+
+              title="스케줄 비교 차트 표시"
+
+              charts={compareChartItems}
+
+              visibility={compareCharts.visibility}
+
+              onToggle={compareCharts.toggle}
+
+              onShowAll={compareCharts.showAll}
+
+              onHideAll={compareCharts.hideAll}
+
+            />
+
+          )}
+
+
+
+          {tab === "sim" && result?.history.length ? (
+
+            <ChartVisibilityPanel
+
+              title="시뮬레이션 차트 표시"
+
+              charts={simChartItems}
+
+              visibility={simCharts.visibility}
+
+              onToggle={simCharts.toggle}
+
+              onShowAll={simCharts.showAll}
+
+              onHideAll={simCharts.hideAll}
+
+            />
+
+          ) : null}
 
 
 
@@ -863,47 +1377,87 @@ export default function InferencePage({
 
               <div className="grid-2">
 
-                <section className="card">
+                <ChartPanel
 
-                  <h3>KPI 차트</h3>
+                  id="compare-kpi"
 
-                  <PlotChart {...buildAlgorithmKpiComparison(compareEntries)} />
+                  title="KPI 차트"
 
-                </section>
+                  visible={compareCharts.isVisible("compare-kpi")}
 
-                <section className="card">
+                  onVisibleChange={(v) => compareCharts.setVisible("compare-kpi", v)}
 
-                  <h3>달성률 차트</h3>
+                  renderChart={() => <PlotChart {...buildAlgorithmKpiComparison(compareEntries)} />}
 
-                  <PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} />
+                />
 
-                </section>
+                <ChartPanel
+
+                  id="compare-achievement"
+
+                  title="달성률 차트"
+
+                  visible={compareCharts.isVisible("compare-achievement")}
+
+                  onVisibleChange={(v) => compareCharts.setVisible("compare-achievement", v)}
+
+                  renderChart={() => (
+
+                    <PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} />
+
+                  )}
+
+                />
 
               </div>
 
 
 
-              <section className="card">
+              <ChartPanel
 
-                <h3>알고리즘별 간트 비교</h3>
+                id="compare-gantt"
 
-                <PlotChart {...buildAlgorithmGanttComparison(compareEntries, ganttAxis)} />
+                title="알고리즘별 간트 비교"
 
-              </section>
+                visible={compareCharts.isVisible("compare-gantt")}
+
+                onVisibleChange={(v) => compareCharts.setVisible("compare-gantt", v)}
+
+                renderChart={() => (
+
+                  <PlotChart
+
+                    className="plot-chart gantt-chart"
+
+                    {...buildAlgorithmGanttComparison(compareEntries, ganttAxis)}
+
+                  />
+
+                )}
+
+              />
 
 
 
               {compareEntries.length > 0 && compareData.plan.length > 0 && (
 
-                <section className="card">
+                compareEntries.map((e) => (
 
-                  <h3>제품별 누적 생산량 (알고리즘별)</h3>
+                  <ChartPanel
 
-                  {compareEntries.map((e) => (
+                    key={e.algorithm}
 
-                    <div key={e.algorithm} className="algo-prod-chart">
+                    id={`compare-prod-${e.algorithm}`}
 
-                      <h4>{e.label}</h4>
+                    title={`제품별 누적 생산량 – ${e.label}`}
+
+                    visible={compareCharts.isVisible(`compare-prod-${e.algorithm}`)}
+
+                    onVisibleChange={(v) => compareCharts.setVisible(`compare-prod-${e.algorithm}`, v)}
+
+                    className="algo-prod-chart"
+
+                    renderChart={() => (
 
                       <PlotChart
 
@@ -931,11 +1485,11 @@ export default function InferencePage({
 
                       />
 
-                    </div>
+                    )}
 
-                  ))}
+                  />
 
-                </section>
+                ))
 
               )}
 
@@ -1027,55 +1581,91 @@ export default function InferencePage({
 
               {!result.history.length ? (
 
-                <p className="hint">히스토리 데이터가 없습니다. 스케줄링 결과 비교에서 시뮬레이션을 선택하세요.</p>
+                <p className="hint">
+                  히스토리 데이터가 없습니다. 재생이 필요하면 “시뮬레이션 재생 데이터 포함”을 켜고 다시 실행하세요.
+                </p>
 
               ) : (
 
                 <div className="card-stagger">
 
-                  <section className="card">
+                  <ChartPanel
 
-                    <h3>설비(EQP) 배정 현황</h3>
+                    id="sim-gantt"
 
-                    <PlotChart
+                    title="설비(EQP) 배정 현황"
 
-                      {...buildStepGantt(
+                    visible={simCharts.isVisible("sim-gantt")}
 
-                        result.history,
+                    onVisibleChange={(v) => simCharts.setVisible("sim-gantt", v)}
 
-                        step,
+                    renderChart={() => (
 
-                        result.prod_keys,
+                      <PlotChart
 
-                        result.oper_ids,
+                        className="plot-chart gantt-chart"
 
-                        ganttAxis,
+                        {...buildStepGantt(
 
-                      )}
+                          result.history,
 
-                    />
+                          step,
 
-                  </section>
+                          result.prod_keys,
+
+                          result.oper_ids,
+
+                          ganttAxis,
+
+                          result.conversion_plans ?? [],
+
+                        )}
+
+                      />
+
+                    )}
+
+                  />
 
 
 
                   <div className="grid-2">
 
-                    <section className="card">
+                    <ChartPanel
 
-                      <h3>WIP 수량 현황</h3>
+                      id="sim-wip"
 
-                      {snap && <PlotChart {...buildWipChart(snap, result.plan)} />}
+                      title="WIP 수량 현황"
 
-                    </section>
+                      visible={simCharts.isVisible("sim-wip")}
 
-                    <section className="card">
+                      onVisibleChange={(v) => simCharts.setVisible("sim-wip", v)}
 
-                      <h3>계획 달성 현황</h3>
+                      renderChart={() =>
 
-                      {snap && <PlotChart {...buildAchievementChart(snap, result.plan)} />}
+                        snap ? <PlotChart {...buildWipChart(snap, result.plan)} /> : null
 
-                    </section>
+                      }
+
+                    />
+
+                    <ChartPanel
+
+                      id="sim-achievement"
+
+                      title="계획 달성 현황"
+
+                      visible={simCharts.isVisible("sim-achievement")}
+
+                      onVisibleChange={(v) => simCharts.setVisible("sim-achievement", v)}
+
+                      renderChart={() =>
+
+                        snap ? <PlotChart {...buildAchievementChart(snap, result.plan)} /> : null
+
+                      }
+
+                    />
 
                   </div>
 
@@ -1129,51 +1719,91 @@ export default function InferencePage({
 
 
 
-                  <section className="card">
+                  <DecisionLogTable
 
-                    <h3>제품별 누적 생산량 (시간 × 수량)</h3>
+                    entries={result.decision_log ?? []}
 
-                    {snap && (
+                    highlightStep={snap?.step}
 
-                      <PlotChart
+                    title={`결정 로그 (step ${snap?.step ?? step})`}
 
-                        {...buildProductProductionCharts(
-
-                          snap.schedule,
-
-                          result.plan,
-
-                          result.prod_keys,
-
-                          ganttAxis.timeEndMinutes,
-
-                          {
-
-                            title: `제품별 누적 생산량 – 공정별 (스텝 ${snap.step})`,
-
-                            operIds: result.oper_ids,
-
-                            timeAxis: ganttAxis,
-
-                          },
-
-                        )}
-
-                      />
-
-                    )}
-
-                  </section>
+                  />
 
 
 
-                  <section className="card">
+                  <EventTimeline
 
-                    <h3>전환 횟수</h3>
+                    events={timelineEvents}
 
-                    {snap && <PlotChart {...buildSwitchMetrics(snap)} />}
+                    highlightKinds={currentStepEventKinds}
 
-                  </section>
+                    title={`시뮬레이션 이벤트 (step ${step}, 누적 ${timelineEvents.length}건)`}
+
+                  />
+
+
+
+                  <ChartPanel
+
+                    id="sim-prod"
+
+                    title="제품별 누적 생산량 (시간 × 수량)"
+
+                    visible={simCharts.isVisible("sim-prod")}
+
+                    onVisibleChange={(v) => simCharts.setVisible("sim-prod", v)}
+
+                    renderChart={() =>
+
+                      snap ? (
+
+                        <PlotChart
+
+                          {...buildProductProductionCharts(
+
+                            snap.schedule,
+
+                            result.plan,
+
+                            result.prod_keys,
+
+                            ganttAxis.timeEndMinutes,
+
+                            {
+
+                              title: `제품별 누적 생산량 – 공정별 (스텝 ${snap.step})`,
+
+                              operIds: result.oper_ids,
+
+                              timeAxis: ganttAxis,
+
+                            },
+
+                          )}
+
+                        />
+
+                      ) : null
+
+                    }
+
+                  />
+
+
+
+                  <ChartPanel
+
+                    id="sim-switch"
+
+                    title="전환 횟수"
+
+                    visible={simCharts.isVisible("sim-switch")}
+
+                    onVisibleChange={(v) => simCharts.setVisible("sim-switch", v)}
+
+                    renderChart={() => (snap ? <PlotChart {...buildSwitchMetrics(snap)} /> : null)}
+
+                  />
 
                 </div>
 

@@ -23,10 +23,19 @@ def serialize_history(history: list[dict]) -> list[dict]:
     return out
 
 
-def serialize_inference_result(result: dict, *, include_history: bool = True) -> dict:
+def serialize_inference_result(
+    result: dict,
+    *,
+    include_history: bool = True,
+    include_event_log: bool | None = None,
+    include_decision_log: bool | None = None,
+) -> dict:
+    if include_event_log is None:
+        include_event_log = include_history
+    if include_decision_log is None:
+        include_decision_log = include_history
     payload = {
         "schedule": result["schedule"],
-        "initial_schedule": result["initial_schedule"],
         "stats": {
             **result["stats"],
             "completed_qty": serialize_completed(result["stats"].get("completed_qty", {})),
@@ -42,14 +51,24 @@ def serialize_inference_result(result: dict, *, include_history: bool = True) ->
         payload["history"] = serialize_history(result.get("history", []))
     else:
         payload["history"] = []
+    payload["event_log"] = result.get("event_log", []) if include_event_log else []
+    payload["decision_log"] = result.get("decision_log", []) if include_decision_log else []
+    payload["conversion_plans"] = result.get("conversion_plans", [])
     return payload
 
 
-def serialize_compare_response(payload: dict) -> dict:
+def serialize_compare_response(payload: dict, *, include_history: bool = False) -> dict:
     return {
-        "results": [serialize_inference_result(r) for r in payload["results"]],
+        "results": [
+            serialize_inference_result(
+                r,
+                include_history=include_history,
+                include_event_log=include_history,
+                include_decision_log=include_history,
+            )
+            for r in payload["results"]
+        ],
         "errors": payload.get("errors", []),
-        "initial_schedule": payload["initial_schedule"],
         "plan": payload["plan"],
         "prod_keys": payload.get("prod_keys", []),
         "oper_ids": payload.get("oper_ids", []),
@@ -60,14 +79,26 @@ def serialize_compare_response(payload: dict) -> dict:
 
 def env_data_summary(env_data: dict) -> dict:
     base: datetime = env_data["sim_base_time"]
+    batch_info_map = env_data.get("batch_info_map", {})
+    batch_info = [
+        {
+            "plan_prod_key": ppk,
+            "oper_id": oper_id,
+            "lot_cd": info["lot_cd"],
+            "temp": info["temp"],
+        }
+        for (ppk, oper_id), info in sorted(batch_info_map.items())
+    ]
     return {
         "eqp_count": len(env_data["eqp_ids"]),
         "lot_count": len(env_data["lots"]),
         "prod_count": len(env_data["prod_keys"]),
         "oper_count": len(env_data["oper_ids"]),
+        "batch_info_count": len(batch_info),
         "sim_end_minutes": env_data["sim_end_minutes"],
         "sim_base_time": base.isoformat(sep=" "),
         "eqp_ids": env_data["eqp_ids"],
         "prod_keys": env_data["prod_keys"],
         "oper_ids": env_data["oper_ids"],
+        "batch_info": batch_info,
     }

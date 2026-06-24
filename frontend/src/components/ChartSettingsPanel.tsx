@@ -1,3 +1,6 @@
+import type { SimEvent } from "../types";
+import { StepEventBar } from "./StepEventBar";
+
 interface ChartSettingsPanelProps {
   dataTimeEnd: number;
   ganttTimeFixed: boolean;
@@ -10,6 +13,8 @@ interface ChartSettingsPanelProps {
   step?: number;
   maxStep?: number;
   stepBump?: boolean;
+  stepSimTime?: number;
+  stepEvents?: SimEvent[];
   onStepChange?: (step: number) => void;
 }
 
@@ -25,6 +30,8 @@ export default function ChartSettingsPanel({
   step = 0,
   maxStep = 0,
   stepBump = false,
+  stepSimTime,
+  stepEvents = [],
   onStepChange,
 }: ChartSettingsPanelProps) {
   return (
@@ -118,6 +125,7 @@ export default function ChartSettingsPanel({
                 마지막
               </button>
             </div>
+            <StepEventBar step={step} simTime={stepSimTime} events={stepEvents} />
           </section>
         )}
       </div>

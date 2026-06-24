@@ -12,8 +12,25 @@ from agent.minprogress_agent import MinProgressAgent
 from agent.earliest_st_agent import EarliestSTAgent
 from agent.registry import validate_algorithm, VALID_ALGORITHMS
 from env.scheduling_env import SchedulingEnv
+from data.writer import write_inference_result
 from sb3_contrib.common.wrappers import ActionMasker
 from utils.helpers import minutes_to_str
+
+
+def _inference_max_steps(env_data: dict) -> int:
+    """추론 안전장치용 step 상한. 시간 horizon이 아니라 작업 규모 기준."""
+    initial_lots = max(
+        len(env_data.get("abstract_lot_meta", {})),
+        len(env_data.get("lots", [])),
+        1,
+    )
+    flow_depth = max(
+        (len(steps) for steps in env_data.get("flow", {}).values()),
+        default=max(len(env_data.get("oper_ids", [])), 1),
+    )
+    eqp_count = max(len(env_data.get("eqp_ids", [])), 1)
+    expected_assignments = initial_lots * max(flow_depth, 1)
+    return max(10_000, expected_assignments * 4 + eqp_count * 100 + 500)
 
 
 def run_inference(
@@ -23,9 +40,12 @@ def run_inference(
     model_path: Optional[str] = None,
     deterministic: bool = True,
     record_history: bool = True,
+    record_decision_log: bool = False,
+    enable_wip_inflow: bool = False,
+    current_wip_only: Optional[bool] = None,
 ) -> dict:
     """
-    목적: 선택한 알고리즘으로 Post-Scheduling 추론 실행
+    목적: 선택한 알고리즘으로 Scheduling 추론 실행
     Input:
         env_data      (dict): preprocessor.preprocess() 반환값
         algorithm     (str):  "rl" | "minprogress" | "earliest_st"
@@ -34,12 +54,20 @@ def run_inference(
         deterministic (bool): RL 예측 시 greedy 여부
     Output:
         {
-          "schedule", "initial_schedule", "history", "stats", "plan", "algorithm"
+          "schedule", "history", "stats", "plan", "algorithm"
         }
     """
     algorithm = validate_algorithm(algorithm)
 
+    if current_wip_only is None:
+        current_wip_only = not enable_wip_inflow
+    else:
+        enable_wip_inflow = not current_wip_only
+
     run_data = dict(env_data)
+    run_data["enable_wip_inflow"] = enable_wip_inflow
+    if current_wip_only:
+        run_data["termination_mode"] = "current_wip_assigned"
     if algorithm == "earliest_st":
         run_data["eqp_selection"] = "min_st"
 
@@ -51,24 +79,42 @@ def run_inference(
     if algorithm == "minprogress":
         heuristic_agent = MinProgressAgent(env_data)
     elif algorithm == "earliest_st":
-        heuristic_agent = EarliestSTAgent(env_data)
+        heuristic_agent = EarliestSTAgent()
 
-    env = ActionMasker(SchedulingEnv(run_data, record_history=record_history), _mask_fn)
+    max_steps = _inference_max_steps(env_data)
+    env = ActionMasker(
+        SchedulingEnv(
+            run_data,
+            record_history=record_history,
+            record_decision_log=record_decision_log,
+            max_episode_steps=max_steps,
+            truncate_on_time=False,
+        ),
+        _mask_fn,
+    )
+    sched_env: SchedulingEnv = env.unwrapped
     obs, _ = env.reset()
     done = False
+    steps = 0
+    terminated = False
+    truncated = False
 
     while not done:
         if heuristic_agent is not None:
-            action = heuristic_agent.predict(env.sim)
+            action = heuristic_agent.predict(sched_env.sim)
         else:
-            action = agent.predict(obs, deterministic=deterministic)
+            mask = env.action_masks()
+            action = agent.predict(obs, deterministic=deterministic, action_masks=mask)
 
         obs, _, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
+        steps += 1
+        if steps >= max_steps:
+            break
 
-    schedule = env.get_schedule()
-    history = env.get_history()
-    stats = env.sim.stats
+    schedule = sched_env.get_schedule()
+    history = sched_env.get_history()
+    stats = sched_env.sim.stats
     base_time = env_data["sim_base_time"]
 
     for rec in schedule:
@@ -77,52 +123,62 @@ def run_inference(
 
     return {
         "schedule":         schedule,
-        "initial_schedule": env_data["initial_schedule"],
         "history":          history,
+        "event_log":        list(sched_env.sim.event_log),
+        "decision_log":     sched_env.get_decision_log() if record_decision_log else [],
+        "conversion_plans": list(sched_env.sim.conversion_plans),
         "stats":            {
             "idle_total":    stats["idle_total"],
             "oper_switches": stats["oper_switches"],
             "prod_switches": stats["prod_switches"],
             "conversions":   stats.get("conversions", 0),
             "completed_qty": {str(k): v for k, v in stats["completed_qty"].items()},
+            "remaining_wip":  sched_env.sim.get_wip_waiting(),
+            "remaining_current_wip": sched_env.sim.get_remaining_current_wip(),
+            "steps":          steps,
+            "terminated":     terminated,
+            "truncated":      truncated,
+            "current_time":   sched_env.sim.current_time,
+            "sim_end_minutes": sched_env.sim.sim_end,
+            "termination_mode": sched_env.sim._termination_mode,
+            "enable_wip_inflow": sched_env.sim._enable_wip_inflow,
         },
         "plan":      env_data["plan"],
         "algorithm": algorithm,
     }
 
 
-def save_result(result: dict, output_dir: Path = None) -> Path:
+def save_result(
+    result: dict,
+    output_dir: Path = None,
+    result_name: str = "result",
+    env_data: Optional[dict] = None,
+    *,
+    write_sql: bool = True,
+) -> Path:
     """
-    추론 결과를 dataset/{FAC_ID}/infer/output/ 에 저장
+    추론 결과 저장:
+      - output.json  : RTS 적재 JSON (data.writer)
+      - result_full.json : UI·디버그용 전체 결과
     """
     d = output_dir or CONFIG.path.infer_output_dir
     d.mkdir(parents=True, exist_ok=True)
 
-    output_records = [
-        {
-            "EQP_ID":        r["EQP_ID"],
-            "LOT_ID":        r["LOT_ID"],
-            "CARRIER_ID":    r["CARRIER_ID"],
-            "PLAN_PROD_KEY": r["PLAN_PROD_KEY"],
-            "ST":            r["ST"],
-            "SEQ":           r["SEQ"],
-            "START_TM":      r["START_TM_STR"],
-            "END_TM":        r["END_TM_STR"],
-        }
-        for r in result["schedule"]
-    ]
+    writer_path = None
+    if env_data is not None:
+        writer_path = write_inference_result(
+            result, env_data, output_dir=d, write_sql_files=write_sql,
+        )
 
-    out_path = d / "result.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(output_records, f, ensure_ascii=False, indent=2)
-
-    full_path = d / "result_full.json"
+    full_path = d / f"{result_name}_full.json"
     from api.serializers import serialize_history
 
     serializable = {
         "schedule":         result["schedule"],
-        "initial_schedule": result["initial_schedule"],
         "history":          serialize_history(result.get("history", [])),
+        "event_log":        result.get("event_log", []),
+        "decision_log":     result.get("decision_log", []),
+        "conversion_plans": result.get("conversion_plans", []),
         "stats":            result["stats"],
         "plan":             result["plan"],
         "algorithm":        result.get("algorithm", "rl"),
@@ -130,8 +186,8 @@ def save_result(result: dict, output_dir: Path = None) -> Path:
     with open(full_path, "w", encoding="utf-8") as f:
         json.dump(serializable, f, ensure_ascii=False, indent=2)
 
-    print(f"[runner] 결과 저장 → {out_path}")
-    return out_path
+    print(f"[runner] 결과 저장 → {full_path}")
+    return writer_path if writer_path is not None else full_path
 
 
 def run_inference_compare(
@@ -139,7 +195,9 @@ def run_inference_compare(
     algorithms: list[str],
     model_path: Optional[str] = None,
     record_history: bool = False,
+    record_decision_log: bool = False,
     rl_agent: Optional[SchedulingAgent] = None,
+    enable_wip_inflow: bool = False,
 ) -> dict:
     """
     동일 입력 데이터로 여러 알고리즘 추론 후 비교용 결과 반환
@@ -149,14 +207,13 @@ def run_inference_compare(
 
     rl_loaded = rl_agent
     if "rl" in algorithms and rl_loaded is None:
-        agent = SchedulingAgent()
-        if not agent.model_exists():
+        try:
+            rl_loaded = SchedulingAgent.load(model_path)
+        except (FileNotFoundError, ValueError) as exc:
             errors.append({
                 "algorithm": "rl",
-                "message": "학습된 모델이 없습니다.",
+                "message": str(exc),
             })
-        else:
-            rl_loaded = SchedulingAgent.load(model_path)
 
     for algo in algorithms:
         if algo == "rl" and rl_loaded is None:
@@ -168,6 +225,8 @@ def run_inference_compare(
                 algorithm=algo,
                 agent=rl_loaded if algo == "rl" else None,
                 record_history=record_history,
+                record_decision_log=record_decision_log,
+                enable_wip_inflow=enable_wip_inflow,
             )
             result["prod_keys"] = env_data["prod_keys"]
             result["oper_ids"] = env_data["oper_ids"]
@@ -180,7 +239,6 @@ def run_inference_compare(
     return {
         "results": results,
         "errors": errors,
-        "initial_schedule": env_data["initial_schedule"],
         "plan": env_data["plan"],
         "prod_keys": env_data["prod_keys"],
         "oper_ids": env_data["oper_ids"],

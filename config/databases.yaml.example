@@ -1,0 +1,22 @@
+# config/databases.yaml.example → 복사: config/databases.yaml
+# SQL: -- @db: Prd  /  -- @db: Dev  /  -- @db: Prd.Plan (하위 노드)
+
+default: Prd
+
+Prd:
+  user: your_oracle_user
+  password: your_oracle_password
+  dsn: prd-host:1521/ORCL
+  # 하위 DB (선택) – Prd 접속 정보 상속 + 덮어쓰기
+  # Plan:
+  #   dsn: prd-plan-host:1521/ORCL
+
+Dev:
+  user: dev_user
+  password: dev_password
+  dsn: dev-host:1521/ORCL
+
+# User / Pw / Dsn (대소문자 혼용) 도 동일하게 인식합니다.
+# Prd:
+#   User: ...
+#   Pw: ...

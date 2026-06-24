@@ -5,8 +5,6 @@ import type {
   AppConfig,
   DataSummary,
   InferenceResult,
-  SampleScenario,
-  GeneratorConfig,
   TestBenchmarkResponse,
   TestDatasetsResponse,
   TrainMetrics,
@@ -25,12 +23,19 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
-    const message =
-      typeof detail === "string"
-        ? detail
-        : detail?.errors
-          ? detail.errors.join("\n")
-          : `요청 실패 (${res.status})`;
+    let message: string;
+    if (typeof detail === "string") {
+      message = detail;
+    } else if (Array.isArray(detail)) {
+      message = detail.map((d: { msg?: string; loc?: unknown[] }) => {
+        const loc = Array.isArray(d.loc) ? d.loc.filter((x) => x !== "body").join(".") : "";
+        return loc ? `${loc}: ${d.msg ?? "invalid"}` : (d.msg ?? "invalid");
+      }).join("\n");
+    } else if (detail?.errors) {
+      message = detail.errors.join("\n");
+    } else {
+      message = `요청 실패 (${res.status})`;
+    }
     throw new Error(message);
   }
   return res.json() as Promise<T>;
@@ -48,36 +53,6 @@ export const api = {
         body: JSON.stringify({ input_folder }),
       },
     ),
-  createSample: (opts?: {
-    fac_id?: string;
-    split?: string;
-    scenario?: string;
-    bootstrap?: boolean;
-    from_date?: string;
-    to_date?: string;
-    use_period_count?: boolean;
-    generator_config?: Partial<GeneratorConfig>;
-  }) =>
-    request<{
-      message: string;
-      input_folder: string;
-      input_dir: string;
-      scenario: string;
-      generator_config?: GeneratorConfig;
-    }>("/api/sample", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scenario: opts?.scenario ?? "random",
-        fac_id: opts?.fac_id ?? "FAC001",
-        split: opts?.split ?? "train",
-        bootstrap: opts?.bootstrap ?? false,
-        use_period_count: opts?.use_period_count ?? false,
-        ...(opts?.from_date ? { from_date: opts.from_date } : {}),
-        ...(opts?.to_date ? { to_date: opts.to_date } : {}),
-        ...(opts?.generator_config ? { generator_config: opts.generator_config } : {}),
-      }),
-    }),
   fetchDataset: (opts?: {
     fac_id?: string;
     split?: string;
@@ -100,15 +75,13 @@ export const api = {
   getModelStatus: () => request<{ exists: boolean }>("/api/model/status"),
   getAlgorithms: () =>
     request<{ algorithms: AlgorithmInfo[] }>("/api/algorithms"),
-  getSampleScenarios: () =>
-    request<{ scenarios: SampleScenario[] }>("/api/sample/scenarios"),
-  getGeneratorConfigDefaults: () =>
-    request<{ defaults: GeneratorConfig }>("/api/sample/generator-config"),
   train: (body: {
     total_timesteps: number;
     learning_rate: number;
     w_same_oper: number;
     w_idle_per_min: number;
+    train_budget_mode?: "timesteps" | "episodes";
+    n_episodes?: number;
     input_folder?: string;
     input_folders?: string[];
     from_date?: string;
@@ -125,6 +98,8 @@ export const api = {
     learning_rate: number;
     w_same_oper: number;
     w_idle_per_min: number;
+    train_budget_mode?: "timesteps" | "episodes";
+    n_episodes?: number;
     input_folder?: string;
     input_folders?: string[];
     from_date?: string;
@@ -137,18 +112,50 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getTrainingStatus: () => request<TrainStatusResponse>("/api/train/status"),
-  runInference: (algorithm: AlgorithmId = "rl", input_folder?: string) =>
+  runInference: (opts: {
+    algorithm?: AlgorithmId;
+    input_folder?: string;
+    decision_log?: boolean;
+    include_history?: boolean;
+    enable_wip_inflow?: boolean;
+    save_output?: boolean;
+  } = {}) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ algorithm, ...(input_folder ? { input_folder } : {}) }),
+      body: JSON.stringify({
+        algorithm: opts.algorithm ?? "rl",
+        decision_log: opts.decision_log ?? false,
+        include_history: opts.include_history ?? false,
+        enable_wip_inflow: opts.enable_wip_inflow ?? false,
+        save_output: opts.save_output ?? false,
+        ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
+      }),
     }),
-  runCompare: (algorithms: AlgorithmId[], input_folder?: string) =>
+  runCompare: (
+    algorithms: AlgorithmId[],
+    opts: {
+      input_folder?: string;
+      decision_log?: boolean;
+      include_history?: boolean;
+      enable_wip_inflow?: boolean;
+    } = {},
+  ) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ algorithms, ...(input_folder ? { input_folder } : {}) }),
+      body: JSON.stringify({
+        algorithms,
+        decision_log: opts.decision_log ?? false,
+        include_history: opts.include_history ?? false,
+        enable_wip_inflow: opts.enable_wip_inflow ?? false,
+        ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
+      }),
     }),
+  getInferenceResult: (input_folder?: string) =>
+    request<InferenceResult>(
+      `/api/inference/result${input_folder ? `?input_folder=${encodeURIComponent(input_folder)}` : ""}`,
+    ),
   getTestDatasets: (fac_id?: string) =>
     request<TestDatasetsResponse>(
       `/api/test/datasets${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
@@ -191,5 +198,4 @@ export const api = {
         ...(opts?.input_folders ? { input_folders: opts.input_folders } : {}),
       }),
     }),
-  getInferenceResult: () => request<InferenceResult>("/api/inference/result"),
 };

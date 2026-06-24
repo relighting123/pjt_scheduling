@@ -1,6 +1,7 @@
 export interface ArrangeRow {
   eqp_id: string;
   lot_id: string;
+  oper_id?: string;
   plan_prod_key: string;
   /** EQP×LOT 소요시간(분) – availability ST */
   st: number;
@@ -52,5 +53,6 @@ export interface AssignedLot {
   st?: number;
   wf_qty?: number;
   oper_in_time?: number;
+  oper_id?: string;
   start_tm: number;
 }

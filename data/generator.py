@@ -2,9 +2,9 @@
 data/generator.py – 샘플 JSON 데이터 생성 (Oracle 없이 개발·테스트용)
 
 출력 경로:
-  external/dataset/{FAC_ID}/train/{RULE_TIMEKEY}/input|output
-  external/dataset/{FAC_ID}/test/{RULE_TIMEKEY}/input|output
-  external/dataset/{FAC_ID}/infer/input|output
+  data/dataset/{FAC_ID}/train/{RULE_TIMEKEY}/input|output
+  data/dataset/{FAC_ID}/test/{RULE_TIMEKEY}/input|output
+  data/dataset/{FAC_ID}/infer/input|output
 """
 import json
 import random
@@ -25,6 +25,7 @@ from config import (
     resolve_dataset_path,
     rule_timekey_now,
     rule_timekey_today,
+    set_input_folder,
     validate_path_segment,
 )
 
@@ -37,8 +38,8 @@ class GeneratorConfig:
     n_opers: int = 2
     lots_per_oper: int = 3
     wf_qty: int = 25
-    st_min: float = 60.0
-    st_max: float = 180.0
+    st_min: float = 3.0
+    st_max: float = 8.0
     st_std: float = 20.0
     eligibility: float = 0.7          # 0=전용, 1=전체 가능
     plan_qty_min: int = 25
@@ -91,71 +92,56 @@ def list_period_keys(count: int, start_key: Optional[str] = None) -> List[str]:
     return keys
 
 
-_SAMPLE_BASE = datetime(2024, 1, 15, 8, 0, 0)
-
-
-def _fmt_minutes(minutes: int) -> str:
-    return (_SAMPLE_BASE + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _schedule_row(
-    eqp_id: str, lot_id: str, carrier_id: str, ppk: str, seq: int,
-    start_min: int, end_min: int, eqp_model: str = "A",
-) -> dict:
-    proc = max(end_min - start_min, 1)
-    return {
-        "EQP_ID": eqp_id, "LOT_ID": lot_id, "CARRIER_ID": carrier_id,
-        "PLAN_PROD_KEY": ppk, "EQP_MODEL": eqp_model, "ST": proc, "SEQ": seq,
-        "STARTTM": _fmt_minutes(start_min), "ENDTM": _fmt_minutes(end_min),
-    }
-
-
 def _discrete_row(
-    eqp_id: str, lot_id: str, ppk: str, proc_time: int,
-    wf_qty: int = 25, eqp_model: str = "A",
+    eqp_id: str,
+    lot_id: str,
+    ppk: str,
+    oper_id: str,
+    st_per_wafer: int,
+    wf_qty: int = 25,
+    eqp_model: str = "A",
+    seq: Optional[int] = None,
+    carrier_id: Optional[str] = None,
 ) -> dict:
-    return {
-        "EQP_ID": eqp_id, "LOT_ID": lot_id, "PLAN_PROD_KEY": ppk,
-        "ST": proc_time, "EQP_MODEL": eqp_model, "WF_QTY": wf_qty,
+    row = {
+        "EQP_ID": eqp_id,
+        "LOT_ID": lot_id,
+        "PLAN_PROD_KEY": ppk,
+        "OPER_ID": oper_id,
+        "ST": st_per_wafer,
+        "EQP_MODEL_CD": eqp_model,
+        "WF_QTY": wf_qty,
     }
+    if seq is not None:
+        row["SEQ"] = seq
+    if carrier_id:
+        row["CARRIER_ID"] = carrier_id
+    return row
 
 
 def _abstract_row(ppk: str, oper_id: str, eqp_model: str, st: int) -> dict:
     return {
         "PLAN_PROD_KEY": ppk,
         "OPER_ID": oper_id,
-        "EQP_MODEL": eqp_model,
+        "EQP_MODEL_CD": eqp_model,
         "ST": st,
     }
 
 
 def build_abstract_arrange(
     discrete_arrange: List[dict],
-    schedule: List[dict],
-    flow: List[dict],
+    flow: Optional[List[dict]] = None,
 ) -> List[dict]:
-    """discrete_arrange + schedule/flow → PPK×OPER×MODEL feasible routes."""
-    flow_oper: Dict[Tuple[str, int], str] = {}
-    for r in flow:
-        flow_oper[(r["PLAN_PROD_KEY"], int(r["SEQ_ID"]))] = r["OPER_ID"]
-
-    lot_oper: Dict[str, Tuple[str, str]] = {}
-    for r in schedule:
-        ppk = r["PLAN_PROD_KEY"]
-        oper = flow_oper.get((ppk, int(r["SEQ"])))
-        if oper:
-            lot_oper[r["LOT_ID"]] = (ppk, oper)
-
+    """discrete_arrange → PPK×OPER×MODEL feasible routes (OPER_ID·ST 집계)."""
+    del flow
     route_st: Dict[Tuple[str, str, str], List[int]] = {}
     for r in discrete_arrange:
-        lot_id = r["LOT_ID"]
-        ppk = r["PLAN_PROD_KEY"]
-        model = str(r.get("EQP_MODEL") or "A")
-        st = int(r.get("ST") or 60)
-        if lot_id in lot_oper:
-            _, oper = lot_oper[lot_id]
-        else:
+        oper = r.get("OPER_ID")
+        if not oper:
             continue
+        ppk = r["PLAN_PROD_KEY"]
+        model = str(r["EQP_MODEL_CD"])
+        st = int(r.get("ST") or 60)
         route_st.setdefault((ppk, oper, model), []).append(st)
 
     return [
@@ -164,13 +150,11 @@ def build_abstract_arrange(
     ]
 
 
-_avail_row = _discrete_row  # legacy alias
-
-
-def _split_row(ppk: str, eqp_model: str, split_qty: int) -> dict:
+def _split_row(ppk: str, oper_id: str, eqp_model: str, split_qty: int) -> dict:
     return {
         "PLAN_PROD_KEY": ppk,
-        "EQP_MODEL": eqp_model,
+        "OPER_ID": oper_id,
+        "EQP_MODEL_CD": eqp_model,
         "SPLIT_QTY": split_qty,
     }
 
@@ -180,22 +164,19 @@ def build_split_rules(
     split_qty: int = 3,
     models: Tuple[str, ...] = ("A", "B", "C", "D", "E"),
 ) -> List[dict]:
-    """flow의 PPK × EQP MODEL 별 SPLIT_QTY 규칙 생성"""
-    ppks = sorted({r["PLAN_PROD_KEY"] for r in flow})
+    """flow의 PPK × OPER × EQP MODEL CD 별 SPLIT_QTY 규칙 생성"""
+    ppk_opers = sorted({(r["PLAN_PROD_KEY"], r["OPER_ID"]) for r in flow})
     return [
-        _split_row(ppk, model, split_qty)
-        for ppk in ppks
+        _split_row(ppk, oper_id, model, split_qty)
+        for ppk, oper_id in ppk_opers
         for model in models
     ]
 
 
-def build_lot_master_from_schedule(
-    schedule: List[dict],
-    flow_map: Dict[str, Dict[int, str]],
-) -> List[dict]:
+def build_lot_master_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
     rows = []
     seen = set()
-    for r in schedule:
+    for r in discrete_arrange:
         lid = r["LOT_ID"]
         if lid in seen:
             continue
@@ -205,6 +186,26 @@ def build_lot_master_from_schedule(
             "LOT_ID": lid,
             "LOT_CD": f"LC{ppk[-3:]}",
             "TEMP": "T650" if int(ppk[-3:]) % 2 else "T700",
+        })
+    return rows
+
+
+def build_batch_info_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
+    """(PPK, OPER)별 LOT_CD/TEMP — conversion 레시피."""
+    pairs: set = set()
+    for r in discrete_arrange:
+        oper_id = r.get("OPER_ID")
+        if not oper_id:
+            continue
+        pairs.add((r["PLAN_PROD_KEY"], oper_id))
+    rows = []
+    for ppk, oper_id in sorted(pairs):
+        suffix = int(ppk[-3:]) if ppk[-3:].isdigit() else sum(ord(c) for c in ppk)
+        rows.append({
+            "PLAN_PROD_KEY": ppk,
+            "OPER_ID": oper_id,
+            "LOT_CD": f"LC{ppk[-3:]}",
+            "TEMP": "T650" if suffix % 2 == 0 else "T700",
         })
     return rows
 
@@ -224,39 +225,43 @@ def build_tool_capacity_from_lots(
 
 def write_json_bundle(
     output_dir: Path,
-    schedule: List[dict],
     discrete_arrange: List[dict],
     plan: List[dict],
     flow: List[dict],
     split: Optional[List[dict]] = None,
     lot_master: Optional[List[dict]] = None,
+    batch_info: Optional[List[dict]] = None,
     tool_capacity: Optional[List[dict]] = None,
     abstract_arrange: Optional[List[dict]] = None,
+    eqp_initial_state: Optional[List[dict]] = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     split_data = split if split is not None else build_split_rules(flow)
     abstract_data = abstract_arrange if abstract_arrange is not None else build_abstract_arrange(
-        discrete_arrange, schedule, flow,
+        discrete_arrange,
     )
-    flow_map: Dict[str, Dict[int, str]] = {}
-    for r in flow:
-        flow_map.setdefault(r["PLAN_PROD_KEY"], {})[int(r["SEQ_ID"])] = r["OPER_ID"]
-    lot_master_data = lot_master if lot_master is not None else build_lot_master_from_schedule(
-        schedule, flow_map,
+    lot_master_data = lot_master if lot_master is not None else build_lot_master_from_discrete(
+        discrete_arrange,
+    )
+    batch_info_data = batch_info if batch_info is not None else build_batch_info_from_discrete(
+        discrete_arrange,
     )
     tool_capacity_data = tool_capacity if tool_capacity is not None else build_tool_capacity_from_lots(
         lot_master_data,
     )
-    for filename, data in [
-        (CONFIG.path.schedule_file, schedule),
+    files = [
         (CONFIG.path.discrete_arrange_file, discrete_arrange),
         (CONFIG.path.abstract_arrange_file, abstract_data),
         (CONFIG.path.plan_file, plan),
         (CONFIG.path.flow_file, flow),
         (CONFIG.path.split_file, split_data),
         (CONFIG.path.lot_master_file, lot_master_data),
+        (CONFIG.path.batch_info_file, batch_info_data),
         (CONFIG.path.tool_capacity_file, tool_capacity_data),
-    ]:
+    ]
+    if eqp_initial_state is not None:
+        files.append((CONFIG.path.eqp_initial_state_file, eqp_initial_state))
+    for filename, data in files:
         with open(output_dir / filename, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -269,30 +274,26 @@ def ensure_split_dirs(fac_id: str, split: str, snapshot: Optional[str] = None) -
     return inp, out
 
 
-def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
-    schedule = [
-        _schedule_row("EQP001", "LOT001", "CAR001", "PPK001", 1, 0, 120),
-        _schedule_row("EQP001", "LOT002", "CAR002", "PPK002", 1, 120, 210),
-        _schedule_row("EQP001", "LOT003", "CAR003", "PPK001", 1, 210, 330),
-        _schedule_row("EQP002", "LOT004", "CAR004", "PPK003", 1, 0, 105),
-        _schedule_row("EQP002", "LOT005", "CAR005", "PPK001", 1, 105, 225),
-        _schedule_row("EQP002", "LOT006", "CAR006", "PPK002", 1, 225, 345),
-        _schedule_row("EQP003", "LOT007", "CAR007", "PPK002", 2, 0, 180),
-        _schedule_row("EQP003", "LOT008", "CAR008", "PPK003", 2, 180, 300),
-        _schedule_row("EQP003", "LOT009", "CAR009", "PPK001", 2, 300, 480),
+def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict]]:
+    oper1, oper2 = "OPER001", "OPER002"
+    discrete: List[dict] = []
+    lot_specs = [
+        ("LOT001", "CAR001", "PPK001", oper1, 1, 120, ("EQP001",)),
+        ("LOT002", "CAR002", "PPK002", oper1, 1, 90, ("EQP001",)),
+        ("LOT003", "CAR003", "PPK001", oper1, 1, 120, ("EQP001",)),
+        ("LOT004", "CAR004", "PPK003", oper1, 1, 105, ("EQP001", "EQP002")),
+        ("LOT005", "CAR005", "PPK001", oper1, 1, 120, ("EQP002",)),
+        ("LOT006", "CAR006", "PPK002", oper1, 1, 120, ("EQP002",)),
+        ("LOT007", "CAR007", "PPK002", oper2, 2, 180, ("EQP003",)),
+        ("LOT008", "CAR008", "PPK003", oper2, 2, 120, ("EQP003",)),
+        ("LOT009", "CAR009", "PPK001", oper2, 2, 180, ("EQP003",)),
     ]
-    availability = [
-        _avail_row("EQP001", "LOT001", "PPK001", 120),
-        _avail_row("EQP001", "LOT002", "PPK002", 90),
-        _avail_row("EQP001", "LOT003", "PPK001", 120),
-        _avail_row("EQP001", "LOT004", "PPK003", 105),
-        _avail_row("EQP002", "LOT004", "PPK003", 105),
-        _avail_row("EQP002", "LOT005", "PPK001", 120),
-        _avail_row("EQP002", "LOT006", "PPK002", 120),
-        _avail_row("EQP003", "LOT007", "PPK002", 180),
-        _avail_row("EQP003", "LOT008", "PPK003", 120),
-        _avail_row("EQP003", "LOT009", "PPK001", 180),
-    ]
+    for lot_id, carrier, ppk, oper_id, seq, st, eqps in lot_specs:
+        for eqp_id in eqps:
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk, oper_id, st,
+                carrier_id=carrier, seq=seq,
+            ))
     plan = [
         {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001",
          "D0_PLAN_QTY": 75, "D1_PLAN_QTY": 100, "PLAN_PRIORITY": 1},
@@ -308,48 +309,45 @@ def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict], List[di
          "D0_PLAN_QTY": 25, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
     ]
     flow = [
-        {"PLAN_PROD_KEY": "PPK001", "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK001", "SEQ_ID": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": "PPK002", "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK002", "SEQ_ID": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": "PPK003", "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK003", "SEQ_ID": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": "PPK002", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": "PPK002", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": "PPK003", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": "PPK003", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
-    return schedule, availability, plan, flow
+    return discrete, plan, flow
 
 
-def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]]:
     ppk = "PPK001"
     wf_qty = 25
     n_lots = 8
-    proc1 = 120
-    proc2 = 90
+    proc1 = 5
+    proc2 = 4
     st_step1 = 120
     st_step2 = 60
     oper1_eqps = ("EQP001", "EQP002")
     all_eqps = ("EQP001", "EQP002", "EQP003")
 
-    schedule: List[dict] = []
-    availability: List[dict] = []
+    discrete: List[dict] = []
 
     for i in range(n_lots):
         lot_id = f"LOT{i + 1:03d}"
-        st_min = i * st_step1
         eqp = "EQP001" if i < n_lots // 2 else "EQP002"
-        schedule.append(_schedule_row(
-            eqp, lot_id, f"CAR{i + 1:03d}", ppk, 1, st_min, st_min + proc1,
-        ))
         for eqp_id in oper1_eqps:
-            availability.append(_avail_row(eqp_id, lot_id, ppk, proc1, wf_qty))
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk, "OPER001", proc1, wf_qty,
+                carrier_id=f"CAR{i + 1:03d}", seq=1,
+            ))
 
     for i in range(n_lots):
         lot_id = f"LOT{101 + i}"
-        st_min = i * st_step2
-        schedule.append(_schedule_row(
-            "EQP003", lot_id, f"CAR{101 + i}", ppk, 2, st_min, st_min + proc2,
-        ))
         for eqp_id in all_eqps:
-            availability.append(_avail_row(eqp_id, lot_id, ppk, proc2, wf_qty))
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk, "OPER002", proc2, wf_qty,
+                carrier_id=f"CAR{101 + i}", seq=2,
+            ))
 
     total = n_lots * wf_qty
     plan = [
@@ -359,10 +357,10 @@ def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]
          "D0_PLAN_QTY": total, "D1_PLAN_QTY": total + 50, "PLAN_PRIORITY": 1},
     ]
     flow = [
-        {"PLAN_PROD_KEY": ppk, "SEQ_ID": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": ppk, "SEQ_ID": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": ppk, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
-    return schedule, availability, plan, flow
+    return discrete, plan, flow
 
 
 def _sample_st(rng: random.Random, cfg: GeneratorConfig) -> int:
@@ -396,7 +394,7 @@ def _is_eqp_eligible(
 
 def _build_random_sample(
     cfg: Optional[GeneratorConfig] = None,
-) -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+) -> Tuple[List[dict], List[dict], List[dict]]:
     cfg = cfg or DEFAULT_GENERATOR_CONFIG
     cfg.validate()
     rng = random.Random(cfg.seed)
@@ -411,7 +409,7 @@ def _build_random_sample(
         for seq in range(1, cfg.n_opers + 1):
             flow.append({
                 "PLAN_PROD_KEY": ppk,
-                "SEQ_ID": seq,
+                "OPER_SEQ": seq,
                 "OPER_ID": opers[seq - 1],
             })
 
@@ -430,14 +428,13 @@ def _build_random_sample(
                 "PLAN_PRIORITY": cfg.plan_priority,
             })
 
-    schedule: List[dict] = []
-    availability: List[dict] = []
-    eqp_timeline = {eqp: 0 for eqp in eqps}
+    discrete: List[dict] = []
     lot_counter = 0
 
     for p_idx, ppk in enumerate(products):
         for o_idx in range(cfg.n_opers):
             seq = o_idx + 1
+            oper_id = opers[o_idx]
             for _ in range(cfg.lots_per_oper):
                 lot_counter += 1
                 lot_id = f"LOT{lot_counter:03d}"
@@ -450,28 +447,82 @@ def _build_random_sample(
                 if not eligible_eqps:
                     eligible_eqps = [eqps[p_idx % cfg.n_eqps]]
 
-                sched_eqp = rng.choice(eligible_eqps)
-                proc = _sample_st(rng, cfg)
-                start = eqp_timeline[sched_eqp]
-                end = start + proc
-                eqp_timeline[sched_eqp] = end
-
                 eqp_model = eqp_models[p_idx % len(eqp_models)]
-                schedule.append(_schedule_row(
-                    sched_eqp, lot_id, carrier_id, ppk, seq, start, end, eqp_model,
-                ))
-
                 for e_idx, eqp in enumerate(eqps):
                     if _is_eqp_eligible(rng, p_idx, e_idx, cfg.n_eqps, cfg.eligibility):
                         st = _sample_st(rng, cfg)
-                        availability.append(_avail_row(
-                            eqp, lot_id, ppk, st, cfg.wf_qty, eqp_model,
+                        discrete.append(_discrete_row(
+                            eqp, lot_id, ppk, oper_id, st, cfg.wf_qty, eqp_model,
+                            seq=seq, carrier_id=carrier_id,
                         ))
 
-    return schedule, availability, plan, flow
+    return discrete, plan, flow
 
 
-SampleBuilder = Callable[[], Tuple[List[dict], List[dict], List[dict], List[dict]]]
+def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict]]:
+    """
+    Pacing·PPK 전환 검증용 미니 문제.
+
+    - PPK001/PPK002, 2공정(OPER001→OPER002), EQP 2대(EQP001/002)
+    - 계획: 각 PPK×OPER 100매 (soft_cutoff 1320분 → 이상 기울기 ≈ 100/1320 매/분)
+    - PPK001: OPER001 재공 4 LOT (100매) — OPER002는 유입만 가능
+    - PPK002: OPER001 재공 2 LOT (50매) — OPER1 부족 → 전환·앞공정 우선 학습
+    - OPER001만 초기 schedule; OPER002는 abstract 유입 → 계단/공백이 잘 보임
+    """
+    wf_qty = 25
+    proc = 4
+    plan_qty = 100
+    ppk_a, ppk_b = "PPK001", "PPK002"
+
+    flow = [
+        {"PLAN_PROD_KEY": ppk_a, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk_a, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+    ]
+    plan = [
+        {"PLAN_PROD_KEY": ppk_a, "OPER_ID": "OPER001",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+        {"PLAN_PROD_KEY": ppk_a, "OPER_ID": "OPER002",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_ID": "OPER001",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+        {"PLAN_PROD_KEY": ppk_b, "OPER_ID": "OPER002",
+         "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
+    ]
+
+    discrete: List[dict] = []
+
+    for i in range(4):
+        lot_id = f"LOT{i + 1:03d}"
+        for eqp_id in ("EQP001", "EQP002"):
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk_a, "OPER001", proc, wf_qty,
+                carrier_id=f"CAR{i + 1:03d}", seq=1,
+            ))
+
+    for i in range(2):
+        lot_id = f"LOT{101 + i}"
+        for eqp_id in ("EQP001", "EQP002"):
+            discrete.append(_discrete_row(
+                eqp_id, lot_id, ppk_b, "OPER001", proc, wf_qty,
+                carrier_id=f"CAR{101 + i}", seq=1,
+            ))
+
+    return discrete, plan, flow
+
+
+def build_pacing_steady_abstract_arrange() -> List[dict]:
+    """OPER002 유입 라우트 — 초기 discrete에 OPER2 LOT 없어도 abstract 유입 가능."""
+    st = 4
+    rows = []
+    for ppk in ("PPK001", "PPK002"):
+        for oper in ("OPER001", "OPER002"):
+            rows.append(_abstract_row(ppk, oper, "A", st))
+    return rows
+
+
+SampleBuilder = Callable[[], Tuple[List[dict], List[dict], List[dict]]]
 
 SAMPLE_SCENARIOS: Dict[str, dict] = {
     "default": {
@@ -486,6 +537,16 @@ SAMPLE_SCENARIOS: Dict[str, dict] = {
         "build": _build_single_heavy_wip_sample,
         "configurable": False,
     },
+    "pacing_steady": {
+        "name": "Pacing 검증 (2제품)",
+        "description": (
+            "PPK001/002 2공정·계획 100매. PPK002 OPER1 재공 50매 부족. "
+            "누적 생산 점선 대비 기울기·PPK 전환 테스트용."
+        ),
+        "build": _build_pacing_steady_sample,
+        "configurable": False,
+        "abstract_arrange": build_pacing_steady_abstract_arrange,
+    },
     "random": {
         "name": "랜덤 (파라미터)",
         "description": "ST·eligibility·계획량·규모·train/test 크기를 UI/설정으로 생성",
@@ -494,11 +555,23 @@ SAMPLE_SCENARIOS: Dict[str, dict] = {
     },
 }
 
+try:
+    from data.pacing_scenarios import TAKT_SCENARIOS  # noqa: E402
+    SAMPLE_SCENARIOS.update(TAKT_SCENARIOS)
+except ImportError:
+    pass
+
+try:
+    from data.conversion_scenarios import CONV_SCENARIOS  # noqa: E402
+    SAMPLE_SCENARIOS.update(CONV_SCENARIOS)
+except ImportError:
+    pass
+
 
 def _build_dataset_bundle(
     scenario: str,
     gen_config: Optional[GeneratorConfig] = None,
-) -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
+) -> Tuple[List[dict], List[dict], List[dict]]:
     if scenario not in SAMPLE_SCENARIOS:
         raise ValueError(f"알 수 없는 시나리오: {scenario}")
     if scenario == "random":
@@ -560,12 +633,28 @@ def generate_sample_data(
             "seed": cfg.seed + period_seed_offset,
         })
 
-    schedule, availability, plan, flow = _build_dataset_bundle(scenario, cfg)
+    discrete, plan, flow = _build_dataset_bundle(scenario, cfg)
     split_rules = build_split_rules(
         flow,
         split_qty=(cfg.split_qty if cfg and scenario == "random" else 3),
     )
-    write_json_bundle(output_dir, schedule, availability, plan, flow, split_rules)
+    meta = SAMPLE_SCENARIOS.get(scenario, {})
+    abstract_fn = meta.get("abstract_arrange")
+    abstract_data = abstract_fn() if callable(abstract_fn) else None
+    bundle_kwargs: dict = {"abstract_arrange": abstract_data}
+    full_build = meta.get("full_build")
+    if callable(full_build):
+        _d, _p, _f, lot_master, abstract_full, eqp_init, tool_cap = full_build()
+        bundle_kwargs.update({
+            "lot_master": lot_master,
+            "abstract_arrange": abstract_full,
+            "eqp_initial_state": eqp_init,
+            "tool_capacity": tool_cap,
+        })
+    write_json_bundle(
+        output_dir, discrete, plan, flow, split_rules,
+        **bundle_kwargs,
+    )
     print(f"[generator] 샘플 생성 ({scenario}) → {output_dir}")
     return output_dir
 
@@ -657,5 +746,124 @@ def bootstrap_facility_datasets(
         "train_snapshot": train_keys[-1] if train_keys else rule_timekey_now(),
         "test_period": test_keys[-1] if test_keys else rule_timekey_today(),
         "paths": paths,
+        "generator_config": generator_config_to_dict(cfg),
+    }
+
+
+def _last_split_input(paths: dict, split: str) -> Path:
+    entry = paths[split]
+    if isinstance(entry, list):
+        return Path(entry[-1]["input"])
+    return Path(entry["input"])
+
+
+def _apply_sample_input_folder(fac_id: str, split: str, path: Path) -> None:
+    if split in PERIOD_SPLITS:
+        set_input_folder(f"{fac_id}/{split}/{path.parent.name}")
+    else:
+        set_input_folder(f"{fac_id}/{split}")
+
+
+def generate_sample(
+    scenario: str = "default",
+    fac_id: str = "FAC001",
+    split: str = "train",
+    *,
+    bootstrap: bool = False,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    use_period_count: bool = False,
+    gen_config: Optional[GeneratorConfig] = None,
+    update_input_folder: bool = True,
+    verbose: bool = False,
+) -> dict:
+    """
+    샘플 JSON 생성 통합 진입점 (CLI · API 공용).
+
+    Returns:
+        path: 마지막 생성 input 디렉터리
+        bootstrap_info: bootstrap 시 bootstrap_facility_datasets 반환값
+        generator_config: 적용된 GeneratorConfig dict
+    """
+    if scenario not in SAMPLE_SCENARIOS:
+        raise ValueError(
+            f"알 수 없는 시나리오: {scenario}. "
+            f"사용 가능: {', '.join(SAMPLE_SCENARIOS)}"
+        )
+
+    cfg = gen_config or DEFAULT_GENERATOR_CONFIG
+    if verbose:
+        print("=" * 60)
+        print(f"[generator] 샘플 데이터 생성 (시나리오: {scenario}, FAC: {fac_id})")
+
+    if bootstrap:
+        info = bootstrap_facility_datasets(fac_id=fac_id, scenario=scenario, gen_config=cfg)
+        snap = info["train_snapshot"]
+        path = _last_split_input(info["paths"], "train")
+        if update_input_folder:
+            set_input_folder(f"{fac_id}/train/{snap}")
+        if verbose:
+            print(f"  train periods: {info.get('train_periods', [snap])}")
+            print(f"  test periods:  {info.get('test_periods', [info.get('test_period')])}")
+        return {
+            "path": path,
+            "bootstrap_info": info,
+            "generator_config": info.get("generator_config"),
+        }
+
+    if use_period_count:
+        count = (
+            cfg.train_period_count if split == "train"
+            else cfg.test_period_count if split == "test"
+            else 1
+        )
+        paths = generate_sample_period_range(
+            scenario=scenario,
+            fac_id=fac_id,
+            split=split,
+            gen_config=cfg,
+            period_count=count,
+        )
+        path = paths[-1]
+        if update_input_folder:
+            _apply_sample_input_folder(fac_id, split, path)
+        return {
+            "path": path,
+            "bootstrap_info": None,
+            "generator_config": generator_config_to_dict(cfg),
+        }
+
+    if from_date and to_date:
+        paths = generate_sample_period_range(
+            scenario=scenario,
+            fac_id=fac_id,
+            from_date=from_date,
+            to_date=to_date,
+            split=split,
+            gen_config=cfg,
+        )
+        path = paths[-1]
+        if update_input_folder:
+            _apply_sample_input_folder(fac_id, split, path)
+        return {
+            "path": path,
+            "bootstrap_info": None,
+            "generator_config": generator_config_to_dict(cfg),
+        }
+
+    if from_date or to_date:
+        raise ValueError("from_date와 to_date를 함께 지정하세요.")
+
+    path = generate_sample_data(
+        scenario=scenario,
+        fac_id=fac_id,
+        split=split,
+        gen_config=cfg,
+    )
+    if update_input_folder:
+        _apply_sample_input_folder(fac_id, split, path)
+    return {
+        "path": path,
+        "bootstrap_info": None,
         "generator_config": generator_config_to_dict(cfg),
     }
