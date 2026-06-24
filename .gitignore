@@ -33,3 +33,4 @@ frontend/dist/
 
 # 실험 산출물 (재현 가능, chat로 보고)
 experiment_results.json
+experiment_results_v2.json
