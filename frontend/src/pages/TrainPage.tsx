@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PlotChart from "../components/PlotChart";
+import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import { api } from "../lib/api";
 import { buildTrainExplainedVarChart, buildTrainLossChart, buildTrainRewardChart, hasTrainChartData } from "../lib/charts";
 import type { AppConfig, DataSummary, TrainMetrics, TrainStatusResponse } from "../types";
@@ -188,7 +189,7 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
 
       {/* ── Main content ── */}
       <div className="content-area">
-        {error && <div className="banner banner-err">{error}</div>}
+        {error && <ExpandableErrorBanner message={error} />}
 
         {showLive && (
           <div className="card mb-2">

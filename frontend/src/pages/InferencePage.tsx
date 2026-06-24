@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PlotChart from "../components/PlotChart";
+import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import GanttKpiPanel from "../components/GanttKpiPanel";
 import { EventTimeline } from "../components/EventTimeline";
 import { api } from "../lib/api";
@@ -298,7 +299,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
       {/* ── Main content ── */}
       <div className="content-area">
-        {error && <div className="banner banner-err">{error}</div>}
+        {error && <ExpandableErrorBanner message={error} />}
         {compareData?.errors?.length ? (
           <div className="banner banner-warn">일부 알고리즘 실패: {compareData.errors.map(e => `${e.algorithm}: ${e.message}`).join(" / ")}</div>
         ) : null}

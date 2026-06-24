@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PlotChart from "../components/PlotChart";
+import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import { api } from "../lib/api";
 import {
   ALGO_CHART_COLORS,
@@ -194,7 +195,7 @@ export default function TestPage({ config, modelExists }: Props) {
 
       {/* ── Main content ── */}
       <div className="content-area">
-        {error && <div className="banner banner-err">{error}</div>}
+        {error && <ExpandableErrorBanner message={error} />}
         {savedLoading && <div className="hint">저장 결과 불러오는 중...</div>}
 
         {!savedLoading && !hasData && !loading && (

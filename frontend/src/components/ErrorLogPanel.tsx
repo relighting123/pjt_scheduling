@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface Props {
   errors?: string[];
@@ -7,10 +7,16 @@ interface Props {
 
 type MsgGroup = { source: string; messages: string[] };
 
+function expandMessages(msgs: string[]): string[] {
+  return msgs.flatMap((msg) =>
+    msg.split("\n").map((line) => line.trim()).filter(Boolean),
+  );
+}
+
 function parseGroups(msgs: string[]): MsgGroup[] {
+  const expanded = expandMessages(msgs);
   const grouped: Record<string, string[]> = {};
-  for (const msg of msgs) {
-    // Format: "discrete_arrange[3]: 필드 누락 – {'EQP_MODEL_CD'}"
+  for (const msg of expanded) {
     const colonIdx = msg.indexOf(":");
     const source = colonIdx > 0 ? msg.slice(0, colonIdx).replace(/\[\d+\]$/, "") : "데이터";
     (grouped[source] ??= []).push(msg);
@@ -18,16 +24,29 @@ function parseGroups(msgs: string[]): MsgGroup[] {
   return Object.entries(grouped).map(([source, messages]) => ({ source, messages }));
 }
 
+function previewText(msgs: string[]): string {
+  const first = expandMessages(msgs)[0];
+  if (!first) return "";
+  return first.length > 100 ? `${first.slice(0, 100)}…` : first;
+}
+
 export default function ErrorLogPanel({ errors = [], warnings = [] }: Props) {
   const [open, setOpen] = useState(false);
-  const errGroups  = useMemo(() => parseGroups(errors),   [errors]);
-  const warnGroups = useMemo(() => parseGroups(warnings),  [warnings]);
+  const expandedErrors = useMemo(() => expandMessages(errors), [errors]);
+  const expandedWarnings = useMemo(() => expandMessages(warnings), [warnings]);
+  const errGroups = useMemo(() => parseGroups(errors), [errors]);
+  const warnGroups = useMemo(() => parseGroups(warnings), [warnings]);
 
-  const hasErrors   = errors.length > 0;
-  const hasWarnings = warnings.length > 0;
+  const hasErrors = expandedErrors.length > 0;
+  const hasWarnings = expandedWarnings.length > 0;
+
+  useEffect(() => {
+    if (hasErrors) setOpen(true);
+  }, [hasErrors, errors]);
+
   if (!hasErrors && !hasWarnings) return null;
 
-  const totalCount = errors.length + warnings.length;
+  const totalCount = expandedErrors.length + expandedWarnings.length;
 
   return (
     <div className={`error-log-panel${open ? " open" : ""}${hasErrors ? " has-errors" : " has-warnings"}`}>
@@ -39,11 +58,31 @@ export default function ErrorLogPanel({ errors = [], warnings = [] }: Props) {
       >
         <span className="error-log-icon">{hasErrors ? "✕" : "⚠"}</span>
         <span className="error-log-summary">
-          {hasErrors && <><strong>{errors.length}개 오류</strong>{hasWarnings ? ` · ${warnings.length}개 경고` : ""}</>}
-          {!hasErrors && hasWarnings && <><strong>{warnings.length}개 경고</strong> — 데이터 필드 일부 누락 (자동 보정됨)</>}
+          {hasErrors && (
+            <>
+              <strong>{expandedErrors.length}개 오류</strong>
+              {hasWarnings ? ` · ${expandedWarnings.length}개 경고` : ""}
+            </>
+          )}
+          {!hasErrors && hasWarnings && (
+            <>
+              <strong>{expandedWarnings.length}개 경고</strong> — 데이터 필드 일부 누락 (자동 보정됨)
+            </>
+          )}
+          {!open && (
+            <span className="error-log-preview">
+              {previewText(hasErrors ? errors : warnings)}
+            </span>
+          )}
         </span>
-        <span className="error-log-chevron">{open ? "▲" : "▼"}</span>
+        <span className="error-log-chevron" title={open ? "접기" : "클릭하여 상세 보기"}>
+          {open ? "▲" : "▼"}
+        </span>
       </button>
+
+      {!open && (
+        <div className="error-log-collapsed-hint">클릭하여 상세 보기</div>
+      )}
 
       {open && (
         <div className="error-log-body">
@@ -54,12 +93,9 @@ export default function ErrorLogPanel({ errors = [], warnings = [] }: Props) {
                 <span className="error-log-count">{messages.length}건</span>
               </div>
               <ul className="error-log-list">
-                {messages.slice(0, 5).map((m, i) => (
+                {messages.map((m, i) => (
                   <li key={i} className="error-log-item error">{m}</li>
                 ))}
-                {messages.length > 5 && (
-                  <li className="error-log-more">…외 {messages.length - 5}건 더</li>
-                )}
               </ul>
             </div>
           ))}
@@ -72,12 +108,9 @@ export default function ErrorLogPanel({ errors = [], warnings = [] }: Props) {
                 <span className="error-log-fixed">자동 보정</span>
               </div>
               <ul className="error-log-list">
-                {messages.slice(0, 3).map((m, i) => (
+                {messages.map((m, i) => (
                   <li key={i} className="error-log-item warn">{m}</li>
                 ))}
-                {messages.length > 3 && (
-                  <li className="error-log-more">…외 {messages.length - 3}건 더</li>
-                )}
               </ul>
             </div>
           ))}
