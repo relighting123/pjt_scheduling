@@ -535,10 +535,10 @@ class SchedulingSimulator:
         return self._wip_pool.get(self._wip_key(ppk, oper_id))
 
     def _eqp_can_process(self, eqp_id: str, ppk: str, oper_id: str) -> bool:
-        """abstract route(MODEL) 또는 discrete eqp_oper_cap 기준 처리 가능."""
+        """abstract arrange(MODEL) 또는 discrete eqp_oper_cap 기준 처리 가능."""
         model = self._eqp_model_map[eqp_id]
-        route_map = self._env_data.get("abstract_route_map", {})
-        if (ppk, oper_id, model) in route_map:
+        arrange_map = self._env_data.get("abstract_arrange_map", {})
+        if (ppk, oper_id, model) in arrange_map:
             return True
         return oper_id in self._env_data.get("eqp_oper_cap", {}).get(eqp_id, [])
 
@@ -1100,7 +1100,7 @@ class SchedulingSimulator:
         return self._current_eqp
 
     def _lot_candidates_for_eqp(self, eqp_id: str) -> List[dict]:
-        """EQP에 배정 가능한 WIP LOT 후보 (abstract route + WIP 풀)."""
+        """EQP에 배정 가능한 WIP LOT 후보 (abstract arrange + WIP 풀)."""
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
         busy_carriers = {
             v["carrier_id"]
@@ -1160,7 +1160,7 @@ class SchedulingSimulator:
     def available_lots(self, eqp_id: str) -> List[dict]:
         """
         목적: 에이전트 선택을 위한 LOT 상세 정보 리스트 반환.
-        abstract WIP 풀 + MODEL route 기준 (discrete eqp 없어도 가능).
+        abstract WIP 풀 + MODEL arrange 기준 (discrete eqp 없어도 가능).
         """
         lots = self._lot_candidates_for_eqp(eqp_id)
         for item in lots:
@@ -1549,13 +1549,13 @@ class SchedulingSimulator:
         eqp_models = data.get("eqp_models", [])
         eqp_model_map = data.get("eqp_model_map", {})
         eqp_oper_cap = data.get("eqp_oper_cap", {})
-        route_map = data.get("abstract_route_map", {})
-        routes_by = data.get("abstract_routes_by_ppk_oper", {})
+        arrange_map = data.get("abstract_arrange_map", {})
+        arranges_by = data.get("abstract_arranges_by_ppk_oper", {})
         plan_meta = data.get("plan_meta", {})
         n_eqp_per_oper = data.get("n_eqp_per_oper", {})
         flow_prev = data.get("flow_prev", {})
         flow_post = data.get("flow_post", {})
-        max_route_st = max(data.get("max_route_st", 1), 1)
+        max_arrange_st = max(data.get("max_arrange_st", 1), 1)
         wf_unit = max(data.get("max_wf_qty", 1), 1)
         completed = self.stats["completed_qty"]
         lot_cd_idx = data.get("lot_cd_idx", {})
@@ -1593,10 +1593,10 @@ class SchedulingSimulator:
         def st_per_wafer(ppk: str, op: Optional[str], model: str) -> Optional[float]:
             if op is None:
                 return None
-            st = route_map.get((ppk, op, model))
+            st = arrange_map.get((ppk, op, model))
             if st is not None:
                 return float(st)
-            lst = routes_by.get((ppk, op))
+            lst = arranges_by.get((ppk, op))
             if lst:
                 return sum(s for _, s in lst) / len(lst)
             return None
@@ -1605,7 +1605,7 @@ class SchedulingSimulator:
             """수요 페이싱 계획 있을 때 + capacity. per-lot 간격(분)."""
             if op is None:
                 return 0.0
-            lst = routes_by.get((ppk, op))
+            lst = arranges_by.get((ppk, op))
             spw = (sum(s for _, s in lst) / len(lst)) if lst else None
             n = max(n_eqp_per_oper.get(op, 0), 1)
             cap_takt = (spw / n) if spw is not None else 0.0
@@ -1623,7 +1623,7 @@ class SchedulingSimulator:
             for pi in range(min(P, len(prod_keys))):
                 ppk = prod_keys[pi]
                 is_step = (
-                    (ppk, op) in routes_by
+                    (ppk, op) in arranges_by
                     or (ppk, op) in plan_meta
                     or (ppk, op) in wip_po
                 )
@@ -1673,7 +1673,7 @@ class SchedulingSimulator:
                     feats[oi, pi, mi, 5] = same
                     feats[oi, pi, mi, 6] = min(prev_takt, 1.0)
                     feats[oi, pi, mi, 7] = min(post_takt, 1.0)
-                    feats[oi, pi, mi, 8] = (st / max_route_st) if st is not None else 0.0
+                    feats[oi, pi, mi, 8] = (st / max_arrange_st) if st is not None else 0.0
                     feats[oi, pi, mi, 9] = urgency
                     feats[oi, pi, mi, 14] = achievable_ratio
                     lc, tp = self._bucket_lot_cd_temp(ppk, op)

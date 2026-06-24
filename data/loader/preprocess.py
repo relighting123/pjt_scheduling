@@ -270,20 +270,20 @@ def _apply_wafer_lot_split(
     discrete_raw.extend(expanded_avail)
 
 
-def _build_abstract_route_maps(
+def _build_abstract_arrange_maps(
     abstract_raw: List[dict],
 ) -> Tuple[Dict[Tuple[str, str, str], int], Dict[Tuple[str, str], List[Tuple[str, int]]]]:
-    """abstract_arrange.json → route lookup."""
-    route_map: Dict[Tuple[str, str, str], int] = {}
+    """abstract_arrange.json → arrange lookup."""
+    arrange_map: Dict[Tuple[str, str, str], int] = {}
     by_ppk_oper: Dict[Tuple[str, str], List[Tuple[str, int]]] = {}
     for r in abstract_raw:
         ppk = r["PLAN_PROD_KEY"]
         oper_id = r["OPER_ID"]
         model = str(r["EQP_MODEL_CD"])
         st = _coerce_proc_time(r.get("ST")) or 60
-        route_map[(ppk, oper_id, model)] = st
+        arrange_map[(ppk, oper_id, model)] = st
         by_ppk_oper.setdefault((ppk, oper_id), []).append((model, st))
-    return route_map, by_ppk_oper
+    return arrange_map, by_ppk_oper
 
 
 def _build_abstract_inventory(
@@ -292,7 +292,7 @@ def _build_abstract_inventory(
     plan_meta: Dict[Tuple[str, str], dict],
     lot_info: Dict[str, dict],
     lot_initial_start: Dict[str, int],
-    route_map: Dict[Tuple[str, str, str], int],
+    arrange_map: Dict[Tuple[str, str, str], int],
 ) -> Tuple[List[dict], Dict[Tuple[str, str], dict], Dict[str, dict]]:
     """
     PPK×OPER×MODEL abstract 템플릿(평균 ST) + (PPK,OPER)별 초기 WIP 카운터.
@@ -325,7 +325,7 @@ def _build_abstract_inventory(
             "oper_id":         oper_id,
             "eqp_model":       model,
             "seq":             seq_map.get((ppk, oper_id), 1),
-            "proc_time":       route_map.get((ppk, oper_id, model), 60),
+            "proc_time":       arrange_map.get((ppk, oper_id, model), 60),
             "wf_qty":          ppk_wf.get(ppk, 25),
             "plan_priority":   pm.get("priority", 1),
             "d0_plan_qty":     pm.get("d0_plan_qty", 0),
@@ -546,7 +546,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         eid = r["EQP_ID"]
         eqp_model_map[eid] = str(r["EQP_MODEL_CD"])
 
-    abstract_route_map, abstract_routes_by_ppk_oper = _build_abstract_route_maps(abstract_raw)
+    abstract_arrange_map, abstract_arranges_by_ppk_oper = _build_abstract_arrange_maps(abstract_raw)
 
     # ── FLOW: seq → 다음 공정 (DES 유입용) ───────────────────────────────────
     flow_next: Dict[str, Dict[int, dict]] = {}
@@ -608,7 +608,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         plan_meta,
         lot_info,
         lot_initial_start,
-        abstract_route_map,
+        abstract_arrange_map,
     )
 
     eqp_idx = build_index_map(eqp_ids)
@@ -653,7 +653,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     for opers in eqp_oper_cap.values():
         for op in opers:
             n_eqp_per_oper[op] = n_eqp_per_oper.get(op, 0) + 1
-    max_route_st = max((v for v in abstract_route_map.values()), default=1)
+    max_arrange_st = max((v for v in abstract_arrange_map.values()), default=1)
     flow_prev: Dict[str, Dict[str, Optional[str]]] = {}
     flow_post: Dict[str, Dict[str, Optional[str]]] = {}
     for ppk, steps in flow_list.items():
@@ -689,7 +689,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "eqp_models":       eqp_models,
         "model_idx":        model_idx,
         "n_eqp_per_oper":   n_eqp_per_oper,
-        "max_route_st":     max_route_st,
+        "max_arrange_st":     max_arrange_st,
         "flow_prev":        flow_prev,
         "flow_post":        flow_post,
         "flow_next":        flow_next,
@@ -698,8 +698,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "plan_meta":        plan_meta,
         "max_proc_time":    max_proc_time,
         "max_wf_qty":       max_wf_qty,
-        "abstract_route_map":       abstract_route_map,
-        "abstract_routes_by_ppk_oper": abstract_routes_by_ppk_oper,
+        "abstract_arrange_map":       abstract_arrange_map,
+        "abstract_arranges_by_ppk_oper": abstract_arranges_by_ppk_oper,
         "abstract_inventory":       abstract_inventory,
         "abstract_wip_init":        abstract_wip_init,
         "abstract_lot_meta":        abstract_lot_meta,

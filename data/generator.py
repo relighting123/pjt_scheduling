@@ -132,9 +132,9 @@ def build_abstract_arrange(
     discrete_arrange: List[dict],
     flow: Optional[List[dict]] = None,
 ) -> List[dict]:
-    """discrete_arrange → PPK×OPER×MODEL feasible routes (OPER_ID·ST 집계)."""
+    """discrete_arrange → PPK×OPER×MODEL feasible arranges (OPER_ID·ST 집계)."""
     del flow
-    route_st: Dict[Tuple[str, str, str], List[int]] = {}
+    arrange_st: Dict[Tuple[str, str, str], List[int]] = {}
     for r in discrete_arrange:
         oper = r.get("OPER_ID")
         if not oper:
@@ -142,11 +142,11 @@ def build_abstract_arrange(
         ppk = r["PLAN_PROD_KEY"]
         model = str(r["EQP_MODEL_CD"])
         st = int(r.get("ST") or 60)
-        route_st.setdefault((ppk, oper, model), []).append(st)
+        arrange_st.setdefault((ppk, oper, model), []).append(st)
 
     return [
         _abstract_row(ppk, oper, model, int(sum(sts) / len(sts)))
-        for (ppk, oper, model), sts in sorted(route_st.items())
+        for (ppk, oper, model), sts in sorted(arrange_st.items())
     ]
 
 

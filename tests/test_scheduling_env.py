@@ -117,9 +117,9 @@ def test_pacing_steady_scenario_preprocess_and_episode():
         "tool_capacity": [],
     }
     env_data = preprocess(raw)
-    routes = env_data["abstract_routes_by_ppk_oper"]
-    assert ("PPK001", "OPER002") in routes
-    assert ("PPK002", "OPER002") in routes
+    arranges = env_data["abstract_arranges_by_ppk_oper"]
+    assert ("PPK001", "OPER002") in arranges
+    assert ("PPK002", "OPER002") in arranges
     assert env_data["plan_meta"][("PPK002", "OPER001")]["d0_plan_qty"] == 100
     assert env_data["abstract_inventory"], "abstract 템플릿이 있어야 함"
     wip = env_data["abstract_wip_init"]
