@@ -8,16 +8,17 @@ from typing import Dict, List, Optional, Tuple
 from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
-from utils.helpers import build_index_map, effective_proc_time, split_wf_qty
+from utils.helpers import build_index_map, coerce_int, effective_proc_time, split_wf_qty
 
 
 def _coerce_proc_time(value) -> Optional[int]:
     """discrete_arrange ST가 숫자(장당 소요시간 분/장)이면 int로 반환"""
-    if isinstance(value, (int, float)):
-        return int(value)
-    if isinstance(value, str) and value.isdigit():
-        return int(value)
-    return None
+    if value is None:
+        return None
+    try:
+        return coerce_int(value, field="ST")
+    except ValueError:
+        return None
 
 
 def _build_split_lookup(split_raw: List[dict]) -> Dict[Tuple[str, str, str], int]:
@@ -26,7 +27,7 @@ def _build_split_lookup(split_raw: List[dict]) -> Dict[Tuple[str, str, str], int
         ppk = r["PLAN_PROD_KEY"]
         oper = str(r.get("OPER_ID", "*")).strip().upper() or "*"
         model = str(r["EQP_MODEL_CD"]).strip().upper()
-        lookup[(ppk, oper, model)] = int(r["SPLIT_QTY"])
+        lookup[(ppk, oper, model)] = coerce_int(r["SPLIT_QTY"], field="SPLIT_QTY")
     return lookup
 
 
@@ -71,7 +72,7 @@ def _build_flow_maps(
     oper_seq_map: Dict[str, Dict[str, int]] = {}
     for r in flow_raw:
         ppk = r["PLAN_PROD_KEY"]
-        seq = int(r["OPER_SEQ"])
+        seq = coerce_int(r["OPER_SEQ"], field="OPER_SEQ")
         oper_id = r["OPER_ID"]
         flow_map.setdefault(ppk, {})[seq] = oper_id
         oper_seq_map.setdefault(ppk, {})[oper_id] = seq
@@ -86,10 +87,10 @@ def _resolve_lot_oper_seq(
     ppk = row["PLAN_PROD_KEY"]
     if row.get("OPER_ID"):
         oper_id = row["OPER_ID"]
-        seq = int(row.get("SEQ") or oper_seq_map.get(ppk, {}).get(oper_id, 1))
+        seq = coerce_int(row.get("SEQ") or oper_seq_map.get(ppk, {}).get(oper_id, 1), field="SEQ")
         return oper_id, seq
     if row.get("SEQ") is not None:
-        seq = int(row["SEQ"])
+        seq = coerce_int(row["SEQ"], field="SEQ")
         oper_id = flow_map.get(ppk, {}).get(seq, "OPER001")
         return oper_id, seq
     raise ValueError(
@@ -186,7 +187,7 @@ def _build_tool_capacity_map(
 ) -> Dict[Tuple[str, str], int]:
     cap: Dict[Tuple[str, str], int] = {}
     for r in tool_raw:
-        cap[(str(r["LOT_CD"]), str(r["EQP_MODEL"]))] = int(r["MAX_TOOL"])
+        cap[(str(r["LOT_CD"]), str(r["EQP_MODEL"]))] = coerce_int(r["MAX_TOOL"], field="MAX_TOOL")
     if cap:
         return cap
     for lc in lot_cds:
@@ -211,7 +212,7 @@ def _apply_wafer_lot_split(
 
     for parent_id in list(lot_info.keys()):
         info = lot_info[parent_id]
-        wf = int(info["wf_qty"])
+        wf = coerce_int(info["wf_qty"], field="wf_qty")
         model = eqp_model_map[info["original_eqp"]]
         split_qty = _resolve_split_qty(
             info["plan_prod_key"], info["oper_id"], model, split_lookup,
@@ -439,7 +440,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     eqp_lot_map: Dict[str, List[str]] = {}
     for r in discrete_raw:
         key = (r["EQP_ID"], r["LOT_ID"])
-        avail_map[key] = int(r["WF_QTY"])
+        avail_map[key] = coerce_int(r["WF_QTY"], field="WF_QTY")
         eqp_lot_map.setdefault(r["EQP_ID"], [])
         if r["LOT_ID"] not in eqp_lot_map[r["EQP_ID"]]:
             eqp_lot_map[r["EQP_ID"]].append(r["LOT_ID"])
@@ -455,12 +456,12 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
 
         oper_id, seq = _resolve_lot_oper_seq(r, flow_map, oper_seq_map)
         ppk = r["PLAN_PROD_KEY"]
-        wf_qty = int(r["WF_QTY"])
+        wf_qty = coerce_int(r["WF_QTY"], field="WF_QTY")
 
         priority = 1
         for p in plan_raw:
             if p["PLAN_PROD_KEY"] == ppk and p["OPER_ID"] == oper_id:
-                priority = int(p.get("PLAN_PRIORITY", 1))
+                priority = coerce_int(p.get("PLAN_PRIORITY", 1), field="PLAN_PRIORITY")
                 break
 
         st_per_wafer = _coerce_proc_time(r.get("ST")) or 60
@@ -482,9 +483,9 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         plan_list.append({
             "plan_prod_key": p["PLAN_PROD_KEY"],
             "oper_id":       p["OPER_ID"],
-            "d0_plan_qty":   int(p["D0_PLAN_QTY"]),
-            "d1_plan_qty":   int(p["D1_PLAN_QTY"]),
-            "priority":      int(p.get("PLAN_PRIORITY", 1)),
+            "d0_plan_qty":   coerce_int(p["D0_PLAN_QTY"], field="D0_PLAN_QTY"),
+            "d1_plan_qty":   coerce_int(p["D1_PLAN_QTY"], field="D1_PLAN_QTY"),
+            "priority":      coerce_int(p.get("PLAN_PRIORITY", 1), field="PLAN_PRIORITY"),
         })
 
     # FLOW 데이터 정리
@@ -492,7 +493,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     for r in flow_raw:
         ppk = r["PLAN_PROD_KEY"]
         flow_list.setdefault(ppk, [])
-        flow_list[ppk].append({"seq_id": int(r["OPER_SEQ"]), "oper_id": r["OPER_ID"]})
+        flow_list[ppk].append({"seq_id": coerce_int(r["OPER_SEQ"], field="OPER_SEQ"), "oper_id": r["OPER_ID"]})
     for ppk in flow_list:
         flow_list[ppk].sort(key=lambda x: x["seq_id"])
 
@@ -630,7 +631,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         eid = r["EQP_ID"]
         oper_id = r.get("OPER_ID") or lot_info.get(lot_id, {}).get("oper_id", "")
         st_per_wafer = proc_time_matrix.get((lot_id, eid, oper_id), 60)
-        wf_qty_row = int(r["WF_QTY"])
+        wf_qty_row = coerce_int(r["WF_QTY"], field="WF_QTY")
         row_model = str(r["EQP_MODEL_CD"])
         arrange_actual_table.append({
             "eqp_id":           eid,

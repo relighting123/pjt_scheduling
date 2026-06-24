@@ -109,7 +109,7 @@ def _load_env_data() -> dict:
     _data_warnings = soft  # 소프트 경고는 저장하고 계속 진행
     try:
         _env_data_cache = preprocess(raw)
-    except (ValueError, KeyError, TypeError) as exc:
+    except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
         raise HTTPException(
             status_code=400,
             detail={
@@ -144,7 +144,7 @@ def _load_env_data_for_folder(folder: str) -> dict:
             )
         try:
             return preprocess(raw)
-        except (ValueError, KeyError, TypeError) as exc:
+        except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
             raise HTTPException(
                 status_code=400,
                 detail={"errors": [str(exc)], "folder": folder},
@@ -659,7 +659,7 @@ def inference(req: InferenceRequest):
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     if req.save_output:
-        save_result(result, output_dir=CONFIG.path.infer_output_dir, env_data=env_data)
+        save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
     _last_inference = result
     return serialize_inference_result(
         result,
