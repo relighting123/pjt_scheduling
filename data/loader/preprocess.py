@@ -227,11 +227,13 @@ def _apply_wafer_lot_split(
         split_children[parent_id] = list(zip(child_ids, sizes))
         del lot_info[parent_id]
 
-        for cid, qty in zip(child_ids, sizes):
+        parent_carrier = info.get("carrier_id", "")
+        for i, (cid, qty) in enumerate(zip(child_ids, sizes), start=1):
             lot_info[cid] = {
                 **info,
-                "lot_id": cid,
-                "wf_qty": qty,
+                "lot_id":        cid,
+                "wf_qty":        qty,
+                "carrier_id":    f"{parent_carrier}__S{i:02d}" if parent_carrier else cid,
                 "parent_lot_id": parent_id,
             }
 
@@ -253,10 +255,12 @@ def _apply_wafer_lot_split(
     for r in discrete_raw:
         lot_id = r["LOT_ID"]
         if lot_id in split_children:
-            for cid, qty in split_children[lot_id]:
+            parent_carrier = r.get("CARRIER_ID", "")
+            for i, (cid, qty) in enumerate(split_children[lot_id], start=1):
                 row = dict(r)
-                row["LOT_ID"] = cid
-                row["WF_QTY"] = qty
+                row["LOT_ID"]     = cid
+                row["WF_QTY"]     = qty
+                row["CARRIER_ID"] = f"{parent_carrier}__S{i:02d}" if parent_carrier else cid
                 expanded_avail.append(row)
             continue
         expanded_avail.append(dict(r))
