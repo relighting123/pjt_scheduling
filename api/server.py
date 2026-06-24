@@ -51,14 +51,53 @@ _data_warnings: list[str] = []
 
 
 def _is_hard_error(msg: str) -> bool:
-    """구조적 결함(빈 데이터, 파일 없음)은 hard. 필드 누락/값 비어있음은 soft warning."""
-    return "비어 있습니다" in msg or "FileNotFound" in msg or "OPER_ID 또는 SEQ" in msg
+    """구조적 결함(빈 데이터, 파일 없음, OPER_ID/SEQ 누락)은 hard. 그 외 필드 누락은 soft warning."""
+    if "비어 있습니다" in msg or "FileNotFound" in msg or "OPER_ID 또는 SEQ" in msg:
+        return True
+    if "필드 누락" in msg and "OPER_ID" in msg:
+        return True
+    return False
 
 
 def _split_errors(errors: list[str]) -> tuple[list[str], list[str]]:
     hard = [e for e in errors if _is_hard_error(e)]
     soft = [e for e in errors if not _is_hard_error(e)]
     return hard, soft
+
+
+def _require_input_files(input_dir: Path) -> None:
+    """dataset input 폴더에 필수 JSON이 있는지 확인."""
+    required = CONFIG.path.discrete_arrange_file
+    path = input_dir / required
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"입력 파일 없음: {path}\n"
+            f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
+        )
+
+
+def _load_env_data() -> dict:
+    global _env_data_cache, _data_warnings
+    if _env_data_cache is not None:
+        return _env_data_cache
+    _require_input_files(CONFIG.path.input_dir)
+    raw = load_data()
+    errors = validate_data(raw)
+    hard, soft = _split_errors(errors)
+    if hard:
+        raise HTTPException(status_code=400, detail={"errors": hard})
+    _data_warnings = soft  # 소프트 경고는 저장하고 계속 진행
+    try:
+        _env_data_cache = preprocess(raw)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [str(exc)],
+                "hint": "입력 JSON 필드가 전처리 규칙과 맞지 않습니다. dataset input 폴더를 확인하세요.",
+            },
+        ) from exc
+    return _env_data_cache
 
 
 def _apply_input_folder(folder: Optional[str]) -> None:
@@ -69,25 +108,12 @@ def _apply_input_folder(folder: Optional[str]) -> None:
         _data_warnings = []
 
 
-def _load_env_data() -> dict:
-    global _env_data_cache, _data_warnings
-    if _env_data_cache is not None:
-        return _env_data_cache
-    raw = load_data()
-    errors = validate_data(raw)
-    hard, soft = _split_errors(errors)
-    if hard:
-        raise HTTPException(status_code=400, detail={"errors": hard})
-    _data_warnings = soft  # 소프트 경고는 저장하고 계속 진행
-    _env_data_cache = preprocess(raw)
-    return _env_data_cache
-
-
 def _load_env_data_for_folder(folder: str) -> dict:
     """지정 train 스냅샷 1개 로드 (전역 입력 경로는 복원)."""
     original = CONFIG.path.input_folder_key
     try:
         set_input_folder(folder)
+        _require_input_files(CONFIG.path.input_dir)
         raw = load_data()
         errors = validate_data(raw)
         hard, _ = _split_errors(errors)
@@ -96,7 +122,13 @@ def _load_env_data_for_folder(folder: str) -> dict:
                 status_code=400,
                 detail={"errors": hard, "folder": folder},
             )
-        return preprocess(raw)
+        try:
+            return preprocess(raw)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"errors": [str(exc)], "folder": folder},
+            ) from exc
     finally:
         set_input_folder(original)
 
@@ -374,8 +406,11 @@ def get_config():
 def select_input_folder(req: InputFolderRequest):
     try:
         path = set_input_folder(req.input_folder)
+        _require_input_files(path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     global _env_data_cache
     _env_data_cache = None
     return {
@@ -727,8 +762,8 @@ def get_inference_result(input_folder: Optional[str] = None):
     # 캐시 없으면 env_data만 로드해 prod/oper 키 복원
     try:
         env_data = _load_env_data()
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="추론 결과가 없습니다.")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
     import json
 
