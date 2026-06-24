@@ -14,6 +14,8 @@ main.py - 운영 CLI
     python main.py collect --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v --debug
     python main.py db-check
+    python main.py sample --facid FAC001 --bootstrap
+    python main.py sample --facid FAC001 --split test --period 20260621070000
     python main.py ui
 """
 import argparse
@@ -45,6 +47,7 @@ from data.collector import (
     run_collector_cli,
 )
 from data.db_registry import diagnose_db_config, print_db_config_report
+from data.generator import generate_sample, list_sample_scenarios
 from data.loader import fetch_from_db, load_data, validate_data, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods
 from data.loader.sql_binds import resolve_lot_cd
@@ -310,6 +313,63 @@ def cmd_ui():
         api_proc.wait(timeout=5)
 
 
+def cmd_sample(
+    fac_id: str,
+    split: str = "train",
+    scenario: str = "default",
+    *,
+    bootstrap: bool = False,
+    period: str = None,
+    from_key: str = None,
+    to_key: str = None,
+    use_period_count: bool = False,
+):
+    print("=" * 60)
+    print(f"[sample] 샘플 데이터 생성 (FAC: {fac_id}, split: {split}, 시나리오: {scenario})")
+    if bootstrap:
+        print("  모드: bootstrap (train/test/infer 일괄 생성)")
+    elif period:
+        print(f"  기간: {period}")
+    elif from_key and to_key:
+        print(f"  기간 범위: {from_key} ~ {to_key}")
+
+    try:
+        from data.generator import generate_sample_data
+
+        if period and not bootstrap:
+            path = generate_sample_data(
+                scenario=scenario,
+                fac_id=fac_id,
+                split=split,
+                period=period,
+            )
+            set_input_folder(
+                f"{fac_id}/{split}/{period}" if split in ("train", "test") else f"{fac_id}/{split}"
+            )
+            result = {"path": path}
+        else:
+            result = generate_sample(
+                scenario=scenario,
+                fac_id=fac_id,
+                split=split,
+                bootstrap=bootstrap,
+                from_date=from_key,
+                to_date=to_key,
+                use_period_count=use_period_count,
+                verbose=True,
+            )
+    except ValueError as e:
+        print(f"[오류] {e}")
+        scenarios = ", ".join(s["id"] for s in list_sample_scenarios())
+        print(f"  사용 가능 시나리오: {scenarios}")
+        sys.exit(1)
+
+    path = result["path"]
+    print(f"  생성 완료: {path}")
+    print(f"  입력 경로: {CONFIG.path.input_folder_key}")
+    print(f"  input_dir: {CONFIG.path.input_dir}")
+
+
 def cmd_collect(
     fac_id: str,
     split: str = "train",
@@ -447,6 +507,34 @@ def parse_args():
     )
     add_debug_arguments(collect_p)
 
+    sample_p = sub.add_parser(
+        "sample",
+        help="Oracle 없이 샘플 dataset JSON 생성 (train/test/infer)",
+    )
+    sample_p.add_argument("--facid", required=True, help="공장 ID (예: FAC001)")
+    sample_p.add_argument(
+        "--split", default="train", choices=("train", "test", "infer"),
+        help="생성할 split (기본: train)",
+    )
+    sample_p.add_argument(
+        "--scenario", default="default",
+        help="시나리오 ID (default, pacing_steady, random 등)",
+    )
+    sample_p.add_argument(
+        "--bootstrap", action="store_true",
+        help="train 3일 + test 1일 + infer 를 한 번에 생성",
+    )
+    sample_p.add_argument(
+        "--period", metavar="RULE_TIMEKEY",
+        help="특정 RULE_TIMEKEY 폴더에 생성 (예: 20260621070000)",
+    )
+    sample_p.add_argument("--from", dest="from_key", metavar="RULE_TIMEKEY")
+    sample_p.add_argument("--to", dest="to_key", metavar="RULE_TIMEKEY")
+    sample_p.add_argument(
+        "--use-period-count", action="store_true",
+        help="설정된 train/test 기간 수만큼 연속 생성",
+    )
+
     return parser.parse_args()
 
 
@@ -509,6 +597,18 @@ def main():
                 dry_run=args.dry_run,
                 debug=args.debug,
                 preflight=args.preflight,
+            )
+
+        elif args.command == "sample":
+            cmd_sample(
+                fac_id=args.facid,
+                split=args.split,
+                scenario=args.scenario,
+                bootstrap=args.bootstrap,
+                period=args.period,
+                from_key=args.from_key,
+                to_key=args.to_key,
+                use_period_count=args.use_period_count,
             )
 
         elif args.command == "db-check":
