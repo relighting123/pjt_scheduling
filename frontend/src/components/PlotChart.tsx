@@ -1,6 +1,5 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Plot from "react-plotly.js";
-import Plotly from "plotly.js";
 import type { Data, Layout, Config, PlotMouseEvent, PlotRelayoutEvent } from "plotly.js";
 
 interface PlotChartProps {
@@ -30,7 +29,10 @@ const plotConfig: Partial<Config> = {
   ],
 };
 
-function relayoutClampXMin(event: PlotRelayoutEvent, minX: number): Record<string, [number, number]> | null {
+function relayoutClampXMin(
+  event: PlotRelayoutEvent,
+  minX: number,
+): Record<string, [number, number]> | null {
   const updates: Record<string, [number, number]> = {};
   const axisPrefixes = new Set<string>();
 
@@ -54,6 +56,19 @@ function relayoutClampXMin(event: PlotRelayoutEvent, minX: number): Record<strin
   return Object.keys(updates).length > 0 ? updates : null;
 }
 
+function patchLayoutRanges(
+  base: Partial<Layout>,
+  updates: Record<string, [number, number]>,
+): Partial<Layout> {
+  const next: Record<string, unknown> = { ...base };
+  for (const [key, range] of Object.entries(updates)) {
+    const axisKey = key.replace(".range", "");
+    const prev = (next[axisKey] as Record<string, unknown> | undefined) ?? {};
+    next[axisKey] = { ...prev, range };
+  }
+  return next as Partial<Layout>;
+}
+
 export default function PlotChart({
   data,
   layout,
@@ -61,7 +76,16 @@ export default function PlotChart({
   onPointClick,
   clampXMin,
 }: PlotChartProps) {
-  const graphDivRef = useRef<HTMLElement | null>(null);
+  const [rangePatch, setRangePatch] = useState<Partial<Layout>>({});
+
+  useEffect(() => {
+    setRangePatch({});
+  }, [data]);
+
+  const mergedLayout = useMemo(
+    () => ({ ...layout, ...rangePatch, autosize: true }),
+    [layout, rangePatch],
+  );
 
   const handleClick = (ev: Readonly<PlotMouseEvent>) => {
     const pt = ev.points?.[0];
@@ -75,10 +99,7 @@ export default function PlotChart({
       if (clampXMin === undefined) return;
       const updates = relayoutClampXMin(ev, clampXMin);
       if (!updates) return;
-      const el = graphDivRef.current;
-      if (el) {
-        void Plotly.relayout(el, updates);
-      }
+      setRangePatch((prev) => patchLayoutRanges(prev, updates));
     },
     [clampXMin],
   );
@@ -89,13 +110,10 @@ export default function PlotChart({
     <div className={className ?? "plot-chart"}>
       <Plot
         data={data}
-        layout={{ ...layout, autosize: true }}
+        layout={mergedLayout}
         config={plotConfig}
         useResizeHandler
         style={{ width: "100%", height: "100%" }}
-        onInitialized={(_fig, graphDiv) => {
-          graphDivRef.current = graphDiv;
-        }}
         onClick={onPointClick ? handleClick : undefined}
         onRelayout={isGanttPan ? handleRelayout : undefined}
       />
