@@ -88,3 +88,70 @@ def test_earliest_st_uses_end_time_not_per_wafer_st_only():
         key=lambda r: r["START_TM"],
     )
     assert eqp1[0]["PROC_TIME"] <= eqp1[1]["PROC_TIME"]
+
+
+def test_earliest_st_picks_global_eqp_carrier_combo():
+    """idle EQP 전체에서 end_time+ST×qty 최소 (EQP×carrier) 조합 선택."""
+    discrete = [
+        {
+            "EQP_ID": "EQP_FAST",
+            "LOT_ID": "LOT_FAST",
+            "PLAN_PROD_KEY": "PPK001",
+            "OPER_ID": "OPER001",
+            "ST": 5,
+            "EQP_MODEL_CD": "A",
+            "WF_QTY": 2,
+        },
+        {
+            "EQP_ID": "EQP_SLOW",
+            "LOT_ID": "LOT_SLOW",
+            "PLAN_PROD_KEY": "PPK001",
+            "OPER_ID": "OPER001",
+            "ST": 100,
+            "EQP_MODEL_CD": "A",
+            "WF_QTY": 10,
+        },
+    ]
+    raw = {
+        "discrete_arrange": discrete,
+        "abstract_arrange": [
+            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
+        ],
+        "plan": [
+            {
+                "PLAN_PROD_KEY": "PPK001",
+                "OPER_ID": "OPER001",
+                "D0_PLAN_QTY": 12,
+                "D1_PLAN_QTY": 12,
+                "PLAN_PRIORITY": 1,
+            },
+        ],
+        "flow": [{"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
+        "split": [
+            {
+                "PLAN_PROD_KEY": "PPK001",
+                "OPER_ID": "OPER001",
+                "EQP_MODEL_CD": "A",
+                "SPLIT_QTY": 10,
+            },
+        ],
+        "lot_master": [{"LOT_ID": "LC001", "LOT_CD": "LC001", "TEMP": "T700"}],
+        "batch_info": [
+            {
+                "PLAN_PROD_KEY": "PPK001",
+                "OPER_ID": "OPER001",
+                "LOT_CD": "LC001",
+                "TEMP": "T700",
+            },
+        ],
+        "tool_capacity": [],
+        "eqp_initial_state": [],
+    }
+    errors = validate_data(raw)
+    assert not errors, errors
+    env = preprocess(raw)
+    result = run_inference(env, algorithm="earliest_st", record_history=False)
+    first = min(result["schedule"], key=lambda r: r["START_TM"])
+    assert first["EQP_ID"] == "EQP_FAST"
+    assert first["LOT_ID"].startswith("LOT_FAST")
+    assert first["PROC_TIME"] == 10

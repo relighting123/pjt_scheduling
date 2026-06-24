@@ -19,7 +19,7 @@ ALGORITHMS: list[dict] = [
     {
         "id": "earliest_st",
         "name": "Earliest-ST (휴리스틱)",
-        "description": "idle EQP에서 예상 종료 시각(장수×ST+conversion) 최소 재공 우선",
+        "description": "EQP×carrier(ST×qty) 조합 중 예상 종료 시각+소요 최소 재공 우선",
         "requires_model": False,
     },
 ]
