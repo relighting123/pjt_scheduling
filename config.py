@@ -47,6 +47,58 @@ def validate_path_segment(name: str, label: str = "경로") -> str:
     return name
 
 
+def format_missing_input_file_error(input_dir: Path, filename: str = "discrete_arrange.json") -> str:
+    """
+    입력 JSON 미발견 시 진단 메시지.
+    파일이 input/ 밖(상위 폴더·output·data/sql)에 있는 경우 힌트를 붙입니다.
+    """
+    input_dir = Path(input_dir)
+    try:
+        resolved_input = input_dir.resolve()
+    except OSError:
+        resolved_input = input_dir.absolute()
+    target = resolved_input / filename
+    lines = [f"입력 파일 없음: {target}"]
+
+    parent_period = resolved_input.parent
+    wrong_parent = parent_period / filename
+    if wrong_parent.is_file():
+        lines.append(
+            f"※ {filename}이 input/ 밖 상위 폴더에 있습니다: {wrong_parent}\n"
+            f"  → 올바른 위치: {resolved_input / filename}"
+        )
+
+    output_dir = parent_period / "output"
+    wrong_output = output_dir / filename
+    if wrong_output.is_file():
+        lines.append(
+            f"※ output/ 폴더에만 있습니다: {wrong_output}\n"
+            f"  → input/ 으로 복사하거나 fetch/sample을 다시 실행하세요."
+        )
+
+    sql_copy = SQL_DIR / filename
+    if sql_copy.is_file():
+        lines.append(
+            f"※ data/sql/ 에는 있으나 dataset input 에는 없습니다: {sql_copy}\n"
+            f"  → fetch 결과는 dataset/.../input/ 에 저장되어야 합니다."
+        )
+
+    if not resolved_input.is_dir():
+        lines.append(f"※ input 폴더 자체가 없습니다: {resolved_input}")
+        if parent_period.is_dir():
+            siblings = sorted(p.name for p in parent_period.iterdir())
+            lines.append(f"  상위({parent_period.name}) 내용: {', '.join(siblings) or '(비어 있음)'}")
+    else:
+        names = sorted(p.name for p in resolved_input.iterdir())
+        lines.append(f"※ input/ 안 파일: {', '.join(names) if names else '(비어 있음)'}")
+        for name in names:
+            if name.lower() == filename.lower() and name != filename:
+                lines.append(f"※ 대소문자 다른 파일명: {name} (필요: {filename})")
+
+    lines.append("python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요.")
+    return "\n".join(lines)
+
+
 def rule_timekey_now() -> str:
     """현재 시각 RULE_TIMEKEY (YYYYMMDDHHmmss)"""
     return datetime.now().strftime(RULE_TIMEKEY_FMT)
@@ -298,9 +350,12 @@ def list_input_folders() -> List[str]:
                 continue
             if split in PERIOD_SPLITS:
                 for per_path in sorted(split_path.iterdir()):
-                    if per_path.is_dir() and (per_path / "input").is_dir():
+                    inp = per_path / "input"
+                    if inp.is_dir() and (inp / CONFIG.path.discrete_arrange_file).is_file():
                         found.append(f"{fac_id}/{split}/{per_path.name}")
-            elif (split_path / "input").is_dir():
+            elif (split_path / "input").is_dir() and (
+                (split_path / "input" / CONFIG.path.discrete_arrange_file).is_file()
+            ):
                 found.append(f"{fac_id}/{split}")
 
     current = CONFIG.path.input_folder_key

@@ -58,6 +58,27 @@ def effective_proc_time(st_per_wafer: int, wf_qty: int) -> int:
     return max(int(st_per_wafer), 0) * max(int(wf_qty), 0)
 
 
+def coerce_int(value, *, field: str = "값") -> int:
+    """JSON/Oracle 숫자 필드 → int (25, 25.0, \"25\", \"25.0\" 지원)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise ValueError(f"{field}이(가) 비어 있습니다.")
+    if isinstance(value, bool):
+        raise ValueError(f"{field} 정수 변환 불가: {value!r}")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        s = value.strip()
+        if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
+            return int(s)
+        try:
+            return int(float(s))
+        except ValueError as exc:
+            raise ValueError(f"{field} 정수 변환 불가: {value!r}") from exc
+    raise ValueError(f"{field} 정수 변환 불가: {value!r}")
+
+
 def split_wf_qty(total: int, split_qty: int) -> List[int]:
     """
     wafer 수량을 SPLIT_QTY(장) 단위로 분할.

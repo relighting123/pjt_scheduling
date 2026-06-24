@@ -4,6 +4,7 @@ React UI가 호출하는 REST API를 제공합니다.
 
 실행: uvicorn api.server:app --reload --port 8000
 """
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, format_missing_input_file_error
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from agent.rl_agent import SchedulingAgent
@@ -70,10 +71,7 @@ def _require_input_files(input_dir: Path) -> None:
     required = CONFIG.path.discrete_arrange_file
     path = input_dir / required
     if not path.is_file():
-        raise FileNotFoundError(
-            f"입력 파일 없음: {path}\n"
-            f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
-        )
+        raise FileNotFoundError(format_missing_input_file_error(input_dir, required))
 
 
 def _load_env_data() -> dict:
@@ -81,7 +79,29 @@ def _load_env_data() -> dict:
     if _env_data_cache is not None:
         return _env_data_cache
     _require_input_files(CONFIG.path.input_dir)
-    raw = load_data()
+    try:
+        raw = load_data()
+    except FileNotFoundError:
+        raise
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [f"JSON 파싱 오류: {exc}"],
+                "hint": (
+                    f"input 폴더의 JSON 파일 형식이 올바르지 않습니다. "
+                    f"확인: {CONFIG.path.input_dir}"
+                ),
+            },
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [f"입력 파일 읽기 실패: {exc}"],
+                "hint": f"input 폴더 권한·경로를 확인하세요: {CONFIG.path.input_dir}",
+            },
+        ) from exc
     errors = validate_data(raw)
     hard, soft = _split_errors(errors)
     if hard:
@@ -89,7 +109,7 @@ def _load_env_data() -> dict:
     _data_warnings = soft  # 소프트 경고는 저장하고 계속 진행
     try:
         _env_data_cache = preprocess(raw)
-    except (ValueError, KeyError, TypeError) as exc:
+    except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
         raise HTTPException(
             status_code=400,
             detail={
@@ -124,7 +144,7 @@ def _load_env_data_for_folder(folder: str) -> dict:
             )
         try:
             return preprocess(raw)
-        except (ValueError, KeyError, TypeError) as exc:
+        except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
             raise HTTPException(
                 status_code=400,
                 detail={"errors": [str(exc)], "folder": folder},
@@ -524,6 +544,16 @@ def data_summary():
         env_data = _load_env_data()
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [str(e)],
+                "hint": f"데이터 요약 실패. input 폴더를 확인하세요: {CONFIG.path.input_dir}",
+            },
+        ) from e
     result = env_data_summary(env_data)
     result["warnings"] = _data_warnings  # 소프트 경고 포함
     return result
@@ -629,7 +659,7 @@ def inference(req: InferenceRequest):
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     if req.save_output:
-        save_result(result, output_dir=CONFIG.path.infer_output_dir, env_data=env_data)
+        save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
     _last_inference = result
     return serialize_inference_result(
         result,
