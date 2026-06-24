@@ -193,6 +193,11 @@ class SchedulingEnv(gym.Env):
             )
         else:
             self.sim.clear_step_assignment()
+
+        # Step A: step reward clip (PPO advantage 안정화, idle/conversion 폭주 방지)
+        clip = CONFIG.reward.reward_clip
+        if clip and clip > 0:
+            reward = float(np.clip(reward, -clip, clip))
         self._total_reward += reward
 
         obs = self.sim.get_observation()

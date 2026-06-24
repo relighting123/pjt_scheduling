@@ -800,6 +800,39 @@ class SchedulingSimulator:
         pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
         return bool(pm and pm.get("d0_plan_qty", 0) > 0)
 
+    def _flow_post(self, ppk: str, oper_id: str) -> Optional[str]:
+        """같은 PPK의 다음(후속) 공정 OPER (없으면 None)."""
+        return self._env_data.get("flow_post", {}).get(ppk, {}).get(oper_id)
+
+    def _flow_prev(self, ppk: str, oper_id: str) -> Optional[str]:
+        """같은 PPK의 이전(선행) 공정 OPER (없으면 None)."""
+        return self._env_data.get("flow_prev", {}).get(ppk, {}).get(oper_id)
+
+    def _wip_wafers(self, ppk: str, oper_id: str) -> int:
+        """(PPK, OPER) 대기 WIP 웨이퍼 수 (없으면 0)."""
+        return int(self.get_wip_waiting().get(f"{ppk}|{oper_id}", 0))
+
+    def _achievable_qty(self, ppk: str, oper_id: str) -> int:
+        """
+        Step C: 오늘 실제 달성 가능한 상한 추정.
+        = min(계획량, 이미생산 + 현 공정 WIP + 선행 공정들에서 흘러올 수 있는 WIP)
+        재공이 부족하면 계획을 그 수준으로 낮춰 무리한 전환을 막는다.
+        """
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        plan_qty = max(pm["d0_plan_qty"], 1) if pm else 1
+        if not self._reward_cfg.use_achievable_target:
+            return plan_qty
+        done = self.stats["completed_qty"].get((ppk, oper_id), 0)
+        reachable = self._wip_wafers(ppk, oper_id)
+        # 선행 공정 체인의 WIP은 처리되면 이 공정으로 흘러올 수 있다.
+        seen = {oper_id}
+        prev = self._flow_prev(ppk, oper_id)
+        while prev and prev not in seen:
+            seen.add(prev)
+            reachable += self._wip_wafers(ppk, prev)
+            prev = self._flow_prev(ppk, prev)
+        return min(plan_qty, done + reachable)
+
     def _plan_hit_reward(self, ppk: str, oper_id: str, wf_qty: int, end_time: int) -> float:
         reward = self._late_finish_penalty(end_time)
         if end_time > self.soft_cutoff or not self._has_plan(ppk, oper_id):
@@ -807,14 +840,14 @@ class SchedulingSimulator:
         cfg = self._reward_cfg
         if cfg.w_plan_hit <= 0:
             return reward
-        pm = self._env_data["plan_meta"][(ppk, oper_id)]
         key = (ppk, oper_id)
         done_before = self.stats["completed_qty"].get(key, 0)
-        plan_qty = max(pm["d0_plan_qty"], 1)
-        gap_before = max(plan_qty - done_before, 0)
+        # Step C: 고정 계획 대신 달성가능 상한 기준으로 진척 보상
+        target = max(self._achievable_qty(ppk, oper_id), 1)
+        gap_before = max(target - done_before, 0)
         done_after = done_before + wf_qty
-        gap_after = max(plan_qty - done_after, 0)
-        reward += cfg.w_plan_hit * (gap_before - gap_after) / plan_qty
+        gap_after = max(target - done_after, 0)
+        reward += cfg.w_plan_hit * (gap_before - gap_after) / target
         return reward
 
     def _pacing_shaping_reward(
@@ -824,17 +857,17 @@ class SchedulingSimulator:
         cfg = self._reward_cfg
         if cfg.w_pacing <= 0 or not self._has_plan(ppk, oper_id):
             return 0.0
-        pm = self._env_data["plan_meta"][(ppk, oper_id)]
-        plan_qty = max(pm["d0_plan_qty"], 1)
+        # Step C: 선형 takt ideal을 달성가능 상한 기준으로 (재공 한계까지만 추종)
+        target = max(self._achievable_qty(ppk, oper_id), 1)
         horizon = max(self.soft_cutoff, 1)
         t = self.current_time if at_time is None else at_time
-        ideal = plan_qty * min(max(t, 0), horizon) / horizon
+        ideal = target * min(max(t, 0), horizon) / horizon
         key = (ppk, oper_id)
         done_before = self.stats["completed_qty"].get(key, 0)
         done_after = done_before + wf_qty
         err_before = abs(ideal - done_before)
         err_after = abs(ideal - done_after)
-        return cfg.w_pacing * (err_before - err_after) / plan_qty
+        return cfg.w_pacing * (err_before - err_after) / target
 
     def _ppk_has_feasible_assignment(self, ppk: str) -> bool:
         """현재 시점에 해당 PPK로 투입 가능한 (OPER, EQP) 조합이 있는지."""
@@ -843,6 +876,57 @@ class SchedulingSimulator:
             if candidate_ppk == ppk:
                 return True
         return False
+
+    def _is_ahead_of_pace(self, ppk: str, oper_id: str, wf_qty: int) -> bool:
+        """이 (PPK,OPER)가 선형 takt ideal을 이미 초과 생산 중인지 (편중 악화 방지용)."""
+        if not self._has_plan(ppk, oper_id):
+            return False
+        target = max(self._achievable_qty(ppk, oper_id), 1)
+        horizon = max(self.soft_cutoff, 1)
+        ideal = target * min(max(self.current_time, 0), horizon) / horizon
+        done_after = self.stats["completed_qty"].get((ppk, oper_id), 0) + wf_qty
+        return done_after > ideal
+
+    def _same_oper_reward(self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int) -> float:
+        """
+        Step D: 같은 공정 연속 보너스를 '조건부'로.
+        이미 takt를 앞선(과생산) 공정을 계속 도는 것은 후속 공정 starving·편중을
+        악화시키므로 보너스를 죽인다. switch 통계는 그대로 집계.
+        """
+        cfg = self._reward_cfg
+        if eqp.prev_oper == oper_id:
+            if cfg.same_oper_conditional and self._is_ahead_of_pace(ppk, oper_id, wf_qty):
+                return 0.0
+            return cfg.w_same_oper
+        if eqp.prev_oper is not None:
+            eqp.oper_switches += 1
+            self.stats["oper_switches"] += 1
+        return 0.0
+
+    def _flow_balance_reward(self, ppk: str, oper_id: str) -> float:
+        """
+        Step B: flow-balance shaping. 편중(WIP 적체)된 공정을 배정하면 +,
+        후속 공정이 starving(계획 남고 WIP 적음)인데 이 공정을 돌려 재공을
+        흘려보내면 추가 +. 균형 잡힌/과소 공정은 약한 -. (clip으로 bound)
+        """
+        cfg = self._reward_cfg
+        if cfg.w_flow_balance <= 0:
+            return 0.0
+        wips = self.get_wip_waiting()
+        total = sum(wips.values())
+        if total <= 0:
+            return 0.0
+        here = wips.get(f"{ppk}|{oper_id}", 0)
+        n = max(len(wips), 1)
+        share = here / total
+        avg = 1.0 / n
+        score = share - avg  # 편중(>avg) → +, 과소 → -
+        nxt = self._flow_post(ppk, oper_id)
+        if nxt is not None and self._has_plan(ppk, nxt):
+            nxt_wip = wips.get(f"{ppk}|{nxt}", 0)
+            if nxt_wip <= here:  # 후속이 굶주림 → 이 공정 가동이 feeding
+                score += 0.5
+        return cfg.w_flow_balance * score
 
     def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
         """같은 PPK의 재공이 남으면 보너스. 관련 PPK에서 전환 시 페널티 보너스."""
@@ -1173,14 +1257,10 @@ class SchedulingSimulator:
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
 
-        if eqp.prev_oper == oper_id:
-            reward += cfg.w_same_oper
-        elif eqp.prev_oper is not None:
-            eqp.oper_switches += 1
-            self.stats["oper_switches"] += 1
-
+        reward += self._same_oper_reward(eqp, ppk, oper_id, wf_qty)  # Step D
         reward += self._same_prod_reward(eqp, ppk)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty)
+        reward += self._flow_balance_reward(ppk, oper_id)            # Step B
         reward += cfg.w_completion * wf_qty / 25.0
 
         self._emit_event(
@@ -1395,7 +1475,7 @@ class SchedulingSimulator:
         self._pending_step_events = []
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
-    BUCKET_FEATURES = 14
+    BUCKET_FEATURES = 15
 
     def get_bucket_features(self) -> np.ndarray:
         """
@@ -1404,7 +1484,8 @@ class SchedulingSimulator:
               4 throughput_ratio, 5 same_ppk, 6 prev_takt, 7 post_takt,
               8 self_st(per-wafer), 9 plan_urgency,
               10 wip_lot_cd, 11 wip_temp,
-              12 needs_conversion(current_eqp), 13 tool_can_assign(current_eqp).
+              12 needs_conversion(current_eqp), 13 tool_can_assign(current_eqp),
+              14 achievable_ratio (Step C: 달성가능 상한/계획량).
         """
         data = self._env_data
         cfg = CONFIG.env
@@ -1506,6 +1587,20 @@ class SchedulingSimulator:
                 prev_takt = eff_takt(ppk, flow_prev.get(ppk, {}).get(op)) / max_takt
                 post_takt = eff_takt(ppk, flow_post.get(ppk, {}).get(op)) / max_takt
 
+                # Step C: achievable_ratio = 달성가능 상한 / 계획량
+                achievable_ratio = 1.0
+                if pm and pm.get("d0_plan_qty", 0) > 0:
+                    plan_qty = max(pm["d0_plan_qty"], 1)
+                    done = completed.get((ppk, op), 0)
+                    reachable = wip_po.get((ppk, op), 0.0)
+                    seen = {op}
+                    prev_op = flow_prev.get(ppk, {}).get(op)
+                    while prev_op and prev_op not in seen:
+                        seen.add(prev_op)
+                        reachable += wip_po.get((ppk, prev_op), 0.0)
+                        prev_op = flow_prev.get(ppk, {}).get(prev_op)
+                    achievable_ratio = min(min(plan_qty, done + reachable) / plan_qty, 1.0)
+
                 for mi in range(min(K, len(eqp_models))):
                     model = eqp_models[mi]
                     eqp_list = eqps_by_om.get((op, model))
@@ -1526,6 +1621,7 @@ class SchedulingSimulator:
                     feats[oi, pi, mi, 7] = min(post_takt, 1.0)
                     feats[oi, pi, mi, 8] = (st / max_route_st) if st is not None else 0.0
                     feats[oi, pi, mi, 9] = urgency
+                    feats[oi, pi, mi, 14] = achievable_ratio
                     lc, tp = self._bucket_lot_cd_temp(ppk, op)
                     feats[oi, pi, mi, 10] = encode_normalized(lc or None, lot_cd_idx, n_lc)
                     feats[oi, pi, mi, 11] = encode_normalized(tp or None, temp_idx, n_tp)

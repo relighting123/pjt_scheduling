@@ -426,15 +426,24 @@ class RLConfig:
 
 @dataclass
 class RewardConfig:
-    w_same_oper:       float = 2.0
+    # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
+    w_same_oper:       float = 1.0       # 같은 공정 연속 (Step D: 조건부 적용)
     w_same_prod:       float = 0.5       # 같은 PPK 재공이 남아 있을 때만 (조건부)
-    w_prod_switch:     float = 0.8       # 이전 PPK 재공 고갈 시 전환 보너스
-    w_idle_per_min:    float = -0.5
-    w_completion:      float = 1.0
-    w_plan_hit:        float = 5.0
-    w_pacing:          float = 3.0         # 계획 있는 (PPK, OPER)만 적용
-    w_conversion:      float = -30.0    # LOT_CD/TEMP 전환 1회 패널티
-    w_late_finish:     float = -2.0     # soft cutoff(05:00) 이후 END_TM
+    w_prod_switch:     float = 0.5       # 이전 PPK 재공 고갈 시 전환 보너스
+    w_idle_per_min:    float = -0.1      # idle 분당 (clip으로 폭주 방지)
+    w_completion:      float = 0.5
+    w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
+    w_pacing:          float = 2.0       # 선형 takt 추종 (achievable 기준; Step C)
+    w_conversion:      float = -6.0      # LOT_CD/TEMP 전환 1회 패널티 (필요시 허용 수준)
+    w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
+    # --- Step B: flow-balance shaping (편중 해소·후속 공정 feeding) ---
+    w_flow_balance:    float = 1.5       # 적체(편중) 공정 배정·후속 starving 해소 보너스
+    # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
+    reward_clip:       float = 5.0
+    # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
+    use_achievable_target: bool = True
+    # --- Step D: same_oper 보너스를 조건부(과생산 시 억제)로 적용 ---
+    same_oper_conditional: bool = True
 
 
 @dataclass
