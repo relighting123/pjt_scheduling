@@ -30,3 +30,6 @@ logs/
 config/databases.yaml
 frontend/node_modules/
 frontend/dist/
+
+# 실험 산출물 (재현 가능, chat로 보고)
+experiment_results.json
