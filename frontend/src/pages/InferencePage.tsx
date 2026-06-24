@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PlotChart from "../components/PlotChart";
 import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import GanttKpiPanel from "../components/GanttKpiPanel";
+import GanttSummaryPanel from "../components/GanttSummaryPanel";
 import { EventTimeline } from "../components/EventTimeline";
 import { api } from "../lib/api";
 import { loadResultFromFile } from "../lib/resultFile";
@@ -370,6 +371,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     <PlotChart {...ganttChart} clampXMin={0} />
                   </div>
                 )}
+
+                <GanttSummaryPanel result={result} eqpModelMap={eqpModelMap} />
               </div>
             )}
 

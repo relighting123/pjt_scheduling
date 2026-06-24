@@ -1,6 +1,7 @@
 import type { Data, Layout } from "plotly.js";
 import type { ConversionPlan, HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
-import { buildColorMap, OPER_BORDER_COLORS, PROD_COLORS } from "./colors";
+import { buildColorMap, OPER_BORDER_COLORS } from "./colors";
+import { buildShortCodeMap } from "./ganttLabels";
 import type { EqpUtil, ModelUtil, TatRow, AchievementRow } from "./metrics";
 
 export type GanttBarLabel = "lot" | "car" | "prod";
@@ -21,6 +22,68 @@ export function resolveGanttTimeRange(axis: GanttAxisOptions): [number, number] 
   }
   const end = Math.max(axis.timeEndMinutes ?? 0, start + 1, 1);
   return [0, end];
+}
+
+/** 간트 전용 팔레트 — 앱 UI accent 톤 */
+const GANTT_PROD_COLORS = [
+  "#3b6ef0", "#6366f1", "#0ea5e9", "#14b8a6", "#22c55e",
+  "#84cc16", "#d97706", "#f97316", "#ef4444", "#ec4899",
+];
+
+const GANTT_OPER_BORDERS = [
+  "#1d4ed8", "#4338ca", "#0369a1", "#0f766e", "#15803d",
+  "#4d7c0f", "#b45309", "#c2410c", "#b91c1c", "#be185d",
+];
+
+/** 간트·차트 공통 폰트 (한글 지원) */
+export const CHART_FONT = "'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif";
+
+/** 간트 공통 스타일 — 앱 UI 톤 */
+const GANTT_THEME = {
+  plotBg: "#f8f9fb",
+  paperBg: "#ffffff",
+  gridColor: "rgba(15, 23, 42, 0.06)",
+  gridWidth: 1,
+  fontFamily: CHART_FONT,
+  titleColor: "#1b1b18",
+  axisColor: "#5c5c58",
+  barRadius: 4,
+  barOpacity: 0.94,
+  convFill: "#fbbf24",
+  convBorder: "#d97706",
+} as const;
+
+function ganttProdColorMap(prodKeys: string[]): Record<string, string> {
+  return buildColorMap(prodKeys, GANTT_PROD_COLORS);
+}
+
+function ganttOperColorMap(operIds: string[]): Record<string, string> {
+  return buildColorMap(operIds, GANTT_OPER_BORDERS);
+}
+
+function ganttBarMarker(
+  fillColor: string,
+  operColor: string,
+  visible: boolean,
+) {
+  return {
+    color: fillColor,
+    opacity: visible ? GANTT_THEME.barOpacity : 0.14,
+    line: {
+      color: visible ? operColor : "rgba(148, 163, 184, 0.2)",
+      width: visible ? 1.25 : 0,
+    },
+    cornerradius: GANTT_THEME.barRadius,
+  };
+}
+
+function conversionBarMarker() {
+  return {
+    color: GANTT_THEME.convFill,
+    opacity: 0.9,
+    line: { color: GANTT_THEME.convBorder, width: 1.25 },
+    cornerradius: GANTT_THEME.barRadius,
+  } as Record<string, unknown>;
 }
 
 /** 간트 X축: 0 미만으로 pan/zoom 되지 않도록 고정 */
@@ -50,9 +113,15 @@ function sortedEqpIds(eqpIds: string[]): string[] {
   return [...eqpIds].sort();
 }
 
-function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleRecord[]): Data[] {
-  const prodColorMap = buildColorMap(prodKeys, PROD_COLORS);
-  const operColorMap = buildColorMap(operIds, OPER_BORDER_COLORS);
+function legendTraces(
+  prodKeys: string[],
+  operIds: string[],
+  schedule: ScheduleRecord[],
+  prodCodes?: Record<string, string>,
+  operCodes?: Record<string, string>,
+): Data[] {
+  const prodColorMap = ganttProdColorMap(prodKeys);
+  const operColorMap = ganttOperColorMap(operIds);
   const traces: Data[] = [];
 
   prodKeys.forEach((pk) => {
@@ -61,8 +130,8 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
       orientation: "h",
       x: [0],
       y: [""],
-      name: pk,
-      marker: { color: prodColorMap[pk] ?? "#888888" },
+      name: prodCodes?.[pk] ?? pk,
+      marker: { color: prodColorMap[pk] ?? "#94a3b8", cornerradius: GANTT_THEME.barRadius } as Record<string, unknown>,
       showlegend: true,
       visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
     });
@@ -74,12 +143,12 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
       mode: "markers",
       x: [null],
       y: [null],
-      name: `[OPER] ${op}`,
+      name: operCodes?.[op] ? `${operCodes[op]}` : `[OPER] ${op}`,
       marker: {
-        size: 12,
-        color: operColorMap[op] ?? "#222222",
+        size: 10,
+        color: operColorMap[op] ?? "#475569",
         symbol: "square",
-        line: { width: 2, color: "white" },
+        line: { width: 1.5, color: "#ffffff" },
       },
       showlegend: true,
     });
@@ -88,46 +157,14 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
   return traces;
 }
 
-/** 간트·차트 공통 폰트 (한글 지원) */
-export const CHART_FONT = "'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif";
-
-/** 간트 공통 스타일 — Cursor Usage 톤 */
-const GANTT_THEME = {
-  plotBg: "#f7f7f5",
-  paperBg: "#ffffff",
-  gridColor: "rgba(0, 0, 0, 0.06)",
-  gridWidth: 1,
-  fontFamily: CHART_FONT,
-  titleColor: "#1b1b18",
-  axisColor: "#5c5c58",
-  barRadius: 6,
-  barOpacity: 0.88,
-} as const;
-
-function ganttBarMarker(
-  fillColor: string,
-  operColor: string,
-  visible: boolean,
-) {
-  return {
-    color: fillColor,
-    opacity: visible ? GANTT_THEME.barOpacity : 0.12,
-    line: {
-      color: operColor,
-      width: visible ? 2 : 0,
-    },
-    cornerradius: GANTT_THEME.barRadius,
-  };
-}
-
 function ganttTraces(
   schedule: ScheduleRecord[],
   prodKeys: string[],
   operIds: string[],
   highlightMax?: number,
 ): Data[] {
-  const prodColorMap = buildColorMap(prodKeys, PROD_COLORS);
-  const operColorMap = buildColorMap(operIds, OPER_BORDER_COLORS);
+  const prodColorMap = ganttProdColorMap(prodKeys);
+  const operColorMap = ganttOperColorMap(operIds);
   const traces: Data[] = [];
 
   schedule.forEach((rec, idx) => {
@@ -144,10 +181,10 @@ function ganttTraces(
         operColorMap[rec.OPER_ID ?? ""] ?? "#475569",
         visible,
       ),
-      text: visible ? rec.LOT_ID : "",
+      text: visible && width >= 20 ? rec.LOT_ID : "",
       textposition: "inside",
       insidetextanchor: "middle",
-      textfont: { size: 11, color: "#ffffff", family: GANTT_THEME.fontFamily },
+      textfont: { size: 10, color: "#ffffff", family: GANTT_THEME.fontFamily },
       hovertemplate:
         `<b>LOT: ${rec.LOT_ID}</b><br>` +
         `EQP: ${rec.EQP_ID}<br>` +
@@ -170,12 +207,7 @@ function conversionLegendTrace(hasConversion: boolean): Data {
     x: [0],
     y: [""],
     name: "Conversion",
-    marker: {
-      color: "#f59e0b",
-      opacity: 0.88,
-      line: { color: "#b45309", width: 2 },
-      cornerradius: 6,
-    } as Record<string, unknown>,
+    marker: conversionBarMarker(),
     showlegend: true,
     visible: hasConversion ? true : "legendonly",
   };
@@ -197,13 +229,8 @@ function conversionTraces(
         x: [width],
         y: [p.eqp_id],
         base: [p.conv_start_min],
-        marker: {
-          color: "#f59e0b",
-          opacity: 0.88,
-          line: { color: "#b45309", width: 2 },
-          cornerradius: 6,
-        } as Record<string, unknown>,
-        text: `CONV ${p.from_lot_cd}→${p.to_lot_cd}`,
+        marker: conversionBarMarker(),
+        text: `CONV`,
         textposition: "inside",
         insidetextanchor: "middle",
         textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
@@ -226,12 +253,12 @@ const GANTT_LEGEND: Partial<Layout>["legend"] = {
   orientation: "h",
   x: 0.5,
   xanchor: "center",
-  y: -0.18,
+  y: -0.14,
   yanchor: "top",
-  bgcolor: "rgba(255,255,255,0.9)",
-  bordercolor: "rgba(148,163,184,0.25)",
+  bgcolor: "rgba(255,255,255,0.96)",
+  bordercolor: "rgba(15, 23, 42, 0.08)",
   borderwidth: 1,
-  font: { size: 11 },
+  font: { size: 11, color: "#5c5c58", family: CHART_FONT },
 };
 
 function buildGanttLayout(
@@ -1231,10 +1258,14 @@ function getEqpLabel(id: string, modelMap: Record<string, string>): string {
   return model ? `${model} / ${id}` : id;
 }
 
-function barText(rec: ScheduleRecord, mode: GanttBarLabel): string {
+function barText(
+  rec: ScheduleRecord,
+  mode: GanttBarLabel,
+  prodCodes: Record<string, string>,
+): string {
   switch (mode) {
     case "car": return rec.CARRIER_ID ?? rec.LOT_ID;
-    case "prod": return rec.PLAN_PROD_KEY;
+    case "prod": return prodCodes[rec.PLAN_PROD_KEY] ?? rec.PLAN_PROD_KEY;
     default: return rec.LOT_ID;
   }
 }
@@ -1297,11 +1328,17 @@ function segmentTimeRange(segment: GanttBarSegment): { start: number; end: numbe
   return { start, end, width: end - start };
 }
 
-function segmentHoverTemplate(segment: GanttBarSegment): string {
+function segmentHoverTemplate(
+  segment: GanttBarSegment,
+  prodCodes: Record<string, string>,
+  operCodes: Record<string, string>,
+): string {
   const { records } = segment;
   const first = records[0];
   const { start, end, width } = segmentTimeRange(segment);
   const oper = first.OPER_ID ?? "N/A";
+  const prodLabel = prodCodes[first.PLAN_PROD_KEY] ?? first.PLAN_PROD_KEY;
+  const operLabel = operCodes[oper] ?? oper;
 
   if (records.length === 1) {
     const rec = first;
@@ -1309,8 +1346,8 @@ function segmentHoverTemplate(segment: GanttBarSegment): string {
       `<b>LOT: ${rec.LOT_ID}</b><br>` +
       (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
       `EQP: ${rec.EQP_ID}<br>` +
-      `제품: ${rec.PLAN_PROD_KEY}<br>` +
-      `공정: ${oper}<br>` +
+      `제품: ${prodLabel} (${rec.PLAN_PROD_KEY})<br>` +
+      `공정: ${operLabel}<br>` +
       `시작: ${start}분 · 종료: ${end}분 · 소요: ${width}분<extra></extra>`
     );
   }
@@ -1320,8 +1357,8 @@ function segmentHoverTemplate(segment: GanttBarSegment): string {
     : `${records.slice(0, 3).map((r) => r.LOT_ID).join(", ")} 외 ${records.length - 3}건`;
 
   return (
-    `<b>제품: ${first.PLAN_PROD_KEY}</b><br>` +
-    `공정: ${oper}<br>` +
+    `<b>제품: ${prodLabel}</b> (${first.PLAN_PROD_KEY})<br>` +
+    `공정: ${operLabel}<br>` +
     `EQP: ${first.EQP_ID}<br>` +
     `병합 LOT ${records.length}건: ${lotSummary}<br>` +
     `시작: ${start}분 · 종료: ${end}분 · 소요: ${width}분<extra></extra>`
@@ -1341,8 +1378,10 @@ export function buildEnhancedGantt(
   } = {},
 ): { data: Data[]; layout: Partial<Layout> } {
   const { labelMode = "lot", eqpModelMap = {}, conversionPlans = [], title } = options;
-  const prodColorMap = buildColorMap(prodKeys, PROD_COLORS);
-  const operColorMap = buildColorMap(operIds, OPER_BORDER_COLORS);
+  const prodCodeMap = buildShortCodeMap(prodKeys, "P").codeByKey;
+  const operCodeMap = buildShortCodeMap(operIds, "O").codeByKey;
+  const prodColorMap = ganttProdColorMap(prodKeys);
+  const operColorMap = ganttOperColorMap(operIds);
   const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
 
   const sortedEqps = sortedEqpIds(axis.eqpIds);
@@ -1355,6 +1394,7 @@ export function buildEnhancedGantt(
     const rec = segment.records[0];
     const { start, width } = segmentTimeRange(segment);
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
+    const showText = width >= (labelMode === "prod" ? 18 : 24);
     data.push({
       type: "bar",
       orientation: "h",
@@ -1364,14 +1404,17 @@ export function buildEnhancedGantt(
       marker: {
         color: prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
         opacity: GANTT_THEME.barOpacity,
-        line: { color: operColorMap[rec.OPER_ID ?? ""] ?? "#475569", width: 2 },
+        line: {
+          color: operColorMap[rec.OPER_ID ?? ""] ?? "#475569",
+          width: 1.25,
+        },
         cornerradius: GANTT_THEME.barRadius,
       } as Record<string, unknown>,
-      text: barText(rec, labelMode),
+      text: showText ? barText(rec, labelMode, prodCodeMap) : "",
       textposition: "inside",
       insidetextanchor: "middle",
-      textfont: { size: 11, color: "#ffffff", family: GANTT_THEME.fontFamily },
-      hovertemplate: segmentHoverTemplate(segment),
+      textfont: { size: 10, color: "#ffffff", family: GANTT_THEME.fontFamily },
+      hovertemplate: segmentHoverTemplate(segment, prodCodeMap, operCodeMap),
       showlegend: false,
     } as Data);
   });
@@ -1387,13 +1430,8 @@ export function buildEnhancedGantt(
       x: [w],
       y: [label],
       base: [p.conv_start_min],
-      marker: {
-        color: "#f59e0b",
-        opacity: 0.88,
-        line: { color: "#b45309", width: 2 },
-        cornerradius: 6,
-      } as Record<string, unknown>,
-      text: `CONV ${p.from_lot_cd}→${p.to_lot_cd}`,
+      marker: conversionBarMarker(),
+      text: w >= 20 ? "CONV" : "",
       textposition: "inside",
       insidetextanchor: "middle",
       textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
@@ -1404,29 +1442,10 @@ export function buildEnhancedGantt(
   });
 
   // Legend traces
-  prodKeys.forEach((pk) => {
-    data.push({
-      type: "bar",
-      orientation: "h",
-      x: [0],
-      y: [""],
-      name: pk,
-      marker: { color: prodColorMap[pk] ?? "#888888" },
-      showlegend: true,
-      visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
-    });
-  });
-  operIds.forEach((op) => {
-    data.push({
-      type: "scatter",
-      mode: "markers",
-      x: [null],
-      y: [null],
-      name: `[OPER] ${op}`,
-      marker: { size: 12, color: operColorMap[op] ?? "#222222", symbol: "square", line: { width: 2, color: "white" } },
-      showlegend: true,
-    });
-  });
+  data.push(...legendTraces(prodKeys, operIds, schedule, prodCodeMap, operCodeMap));
+  if (conversionPlans.length > 0) {
+    data.push(conversionLegendTrace(true));
+  }
 
   const layout: Partial<Layout> = {
     ...GANTT_PAN_LAYOUT,
@@ -1444,9 +1463,9 @@ export function buildEnhancedGantt(
       fixedrange: true,
     },
     barmode: "overlay",
-    bargap: 0.35,
+    bargap: 0.28,
     legend: {
-      title: { text: "제품 / 공정", font: { size: 11 } },
+      title: { text: "P / O 코드", font: { size: 11, color: GANTT_THEME.axisColor } },
       ...GANTT_LEGEND,
     },
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),

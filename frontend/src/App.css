@@ -1225,6 +1225,112 @@ tbody tr:last-child td { border-bottom: none; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* ══════════════════════════════════════════════════════════════════
+   GANTT SUMMARY TABLES (below chart)
+   ══════════════════════════════════════════════════════════════════ */
+.gantt-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.gantt-summary .card {
+  padding: 0.85rem 1rem;
+}
+
+.gantt-summary-section-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.65rem;
+}
+
+.gantt-summary-subtitle {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.gantt-summary-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.55rem 1rem;
+}
+
+.gantt-summary-kpi-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.gantt-summary-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.gantt-summary-kpi-grid strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.gantt-summary-kpi-grid strong.ok   { color: var(--ok); }
+.gantt-summary-kpi-grid strong.warn { color: var(--warn); }
+.gantt-summary-kpi-grid strong.bad  { color: var(--err); }
+
+.gantt-summary-code-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+@media (max-width: 800px) {
+  .gantt-summary-code-grid { grid-template-columns: 1fr; }
+}
+
+.gantt-summary-table {
+  width: 100%;
+  font-size: 0.78rem;
+}
+
+.gantt-summary-table th {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gantt-summary-table td.mono {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+
+.gantt-summary-table td.ok   { color: var(--ok); font-weight: 600; }
+.gantt-summary-table td.warn { color: var(--warn); font-weight: 600; }
+.gantt-summary-table td.bad  { color: var(--err); font-weight: 600; }
+
+.gantt-summary-table .code-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+
+.gantt-summary-scroll {
+  max-height: 280px;
+  overflow: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════
    GANTT LABEL MODE SELECTOR
    ══════════════════════════════════════════════════════════════════ */
 .gantt-options {

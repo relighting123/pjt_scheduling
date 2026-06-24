@@ -31,6 +31,21 @@ export interface AchievementRow {
   pct: number;
 }
 
+export interface EqpScheduleSummary {
+  eqp_id: string;
+  model?: string;
+  firstStart: number | null;
+  lastEnd: number | null;
+  jobCount: number;
+  busyMin: number;
+  convMin: number;
+  idleMin: number;
+  utilPct: number;
+  outputQty: number;
+  operSwitches: number;
+  prodSwitches: number;
+}
+
 export function buildEqpModelMap(events: SimEvent[]): Record<string, string> {
   const map: Record<string, string> = {};
   events.forEach((e) => {
@@ -59,6 +74,57 @@ export function computeEqpUtil(
       utilPct: simEndMin > 0 ? Math.round((busy / simEndMin) * 1000) / 10 : 0,
     };
   }).sort((a, b) => b.utilPct - a.utilPct);
+}
+
+export function computeEqpScheduleSummary(
+  schedule: ScheduleRecord[],
+  eqpIds: string[],
+  simEndMin: number,
+  modelMap: Record<string, string> = {},
+  conversionPlans: ConversionPlan[] = [],
+): EqpScheduleSummary[] {
+  return eqpIds.map((eqp_id) => {
+    const recs = schedule
+      .filter((r) => r.EQP_ID === eqp_id)
+      .sort((a, b) => a.START_TM - b.START_TM);
+    const convs = conversionPlans.filter((p) => p.eqp_id === eqp_id);
+
+    const busyMin = recs.reduce((s, r) => s + (r.END_TM - r.START_TM), 0);
+    const convMin = convs.reduce((s, p) => s + (p.conv_end_min - p.conv_start_min), 0);
+    const outputQty = recs.reduce((s, r) => s + (r.WF_QTY ?? 25), 0);
+
+    let operSwitches = 0;
+    let prodSwitches = 0;
+    for (let i = 1; i < recs.length; i++) {
+      if ((recs[i].OPER_ID ?? "") !== (recs[i - 1].OPER_ID ?? "")) operSwitches++;
+      if (recs[i].PLAN_PROD_KEY !== recs[i - 1].PLAN_PROD_KEY) prodSwitches++;
+    }
+
+    const convEnds = convs.map((p) => p.conv_end_min);
+    const schedEnds = recs.map((r) => r.END_TM);
+    const lastEnd = schedEnds.length || convEnds.length
+      ? Math.max(0, ...schedEnds, ...convEnds)
+      : null;
+
+    const activeMin = busyMin + convMin;
+    const idleMin = Math.max(0, simEndMin - activeMin);
+    const utilPct = simEndMin > 0 ? Math.round((activeMin / simEndMin) * 1000) / 10 : 0;
+
+    return {
+      eqp_id,
+      model: modelMap[eqp_id],
+      firstStart: recs.length ? recs[0].START_TM : null,
+      lastEnd,
+      jobCount: recs.length,
+      busyMin,
+      convMin,
+      idleMin,
+      utilPct,
+      outputQty,
+      operSwitches,
+      prodSwitches,
+    };
+  }).sort((a, b) => a.eqp_id.localeCompare(b.eqp_id));
 }
 
 export function computeModelUtil(utils: EqpUtil[]): ModelUtil[] {
