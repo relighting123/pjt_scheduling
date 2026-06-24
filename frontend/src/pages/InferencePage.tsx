@@ -88,6 +88,10 @@ function folderPeriodLabel(folder: string): string {
 
 }
 
+function isAlgorithmId(value: unknown): value is AlgorithmId {
+  return value === "rl" || value === "minprogress" || value === "earliest_st";
+}
+
 
 
 type TabId = "sim" | "schedule";
@@ -304,6 +308,50 @@ export default function InferencePage({
 
 
 
+  const loadSavedResult = useCallback(async () => {
+
+    setLoading(true);
+
+    setError(null);
+
+    try {
+
+      const res = await api.getInferenceResult(selectedFolder);
+
+      setResult(res);
+
+      setCompareData({
+        results: [res],
+        errors: [],
+        plan: res.plan,
+        prod_keys: res.prod_keys,
+        oper_ids: res.oper_ids,
+        eqp_ids: res.eqp_ids,
+        sim_end_minutes: res.sim_end_minutes,
+      });
+
+      if (isAlgorithmId(res.algorithm)) {
+        setAlgorithm(res.algorithm);
+      }
+
+      setStep(0);
+
+      setTab("schedule");
+
+    } catch (e) {
+
+      setError(e instanceof Error ? e.message : "저장된 결과 불러오기 실패");
+
+    } finally {
+
+      setLoading(false);
+
+    }
+
+  }, [selectedFolder]);
+
+
+
   const runCompare = useCallback(async (algoIds?: AlgorithmId[]) => {
 
     const ids = algoIds ?? [...compareAlgos];
@@ -381,7 +429,7 @@ export default function InferencePage({
 
     setResult(res);
 
-    if (res.algorithm) setAlgorithm(res.algorithm);
+    if (isAlgorithmId(res.algorithm)) setAlgorithm(res.algorithm);
 
     setStep(0);
 
@@ -846,6 +894,21 @@ export default function InferencePage({
           >
 
             {loading ? "추론 진행 중..." : "단일 추론 실행"}
+
+          </button>
+          <button
+
+            type="button"
+
+            className={`btn btn-secondary${loading ? " is-loading" : ""}`}
+
+            onClick={loadSavedResult}
+
+            disabled={loading || compareLoading || folderLoading}
+
+          >
+
+            저장 결과 불러오기
 
           </button>
 

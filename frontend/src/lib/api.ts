@@ -152,6 +152,10 @@ export const api = {
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
       }),
     }),
+  getInferenceResult: (input_folder?: string) =>
+    request<InferenceResult>(
+      `/api/inference/result${input_folder ? `?input_folder=${encodeURIComponent(input_folder)}` : ""}`,
+    ),
   getTestDatasets: (fac_id?: string) =>
     request<TestDatasetsResponse>(
       `/api/test/datasets${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
