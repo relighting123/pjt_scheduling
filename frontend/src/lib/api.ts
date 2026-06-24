@@ -20,7 +20,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       "서버에 연결할 수 없습니다. API(8000)가 실행 중인지 확인하고 python main.py ui 를 재시작하세요.",
     );
   }
-  if (!res.ok) {
+    if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
     let message: string;
@@ -31,8 +31,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
         const loc = Array.isArray(d.loc) ? d.loc.filter((x) => x !== "body").join(".") : "";
         return loc ? `${loc}: ${d.msg ?? "invalid"}` : (d.msg ?? "invalid");
       }).join("\n");
-    } else if (detail?.errors) {
-      message = detail.errors.join("\n");
+    } else if (detail && typeof detail === "object") {
+      const parts: string[] = [];
+      if (Array.isArray(detail.errors)) parts.push(...detail.errors);
+      if (typeof detail.message === "string") parts.push(detail.message);
+      if (typeof detail.hint === "string") parts.push(detail.hint);
+      message = parts.length ? parts.join("\n") : `요청 실패 (${res.status})`;
     } else {
       message = `요청 실패 (${res.status})`;
     }
