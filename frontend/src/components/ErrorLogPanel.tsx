@@ -20,13 +20,12 @@ function parseGroups(msgs: string[]): MsgGroup[] {
 
 export default function ErrorLogPanel({ errors = [], warnings = [] }: Props) {
   const [open, setOpen] = useState(false);
+  const errGroups  = useMemo(() => parseGroups(errors),   [errors]);
+  const warnGroups = useMemo(() => parseGroups(warnings),  [warnings]);
 
   const hasErrors   = errors.length > 0;
   const hasWarnings = warnings.length > 0;
   if (!hasErrors && !hasWarnings) return null;
-
-  const errGroups  = useMemo(() => parseGroups(errors),   [errors]);
-  const warnGroups = useMemo(() => parseGroups(warnings),  [warnings]);
 
   const totalCount = errors.length + warnings.length;
 
