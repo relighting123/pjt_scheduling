@@ -14,13 +14,36 @@ export interface GanttAxisOptions {
 }
 
 export function resolveGanttTimeRange(axis: GanttAxisOptions): [number, number] {
+  const start = Math.max(0, axis.timeStartMinutes ?? 0);
   if (axis.fixedRange) {
-    const start = Math.max(0, axis.timeStartMinutes ?? 0);
     const end = Math.max(start + 1, axis.timeEndMinutes ?? 1);
     return [start, end];
   }
-  const end = Math.max(axis.timeEndMinutes ?? 0, 1);
+  const end = Math.max(axis.timeEndMinutes ?? 0, start + 1, 1);
   return [0, end];
+}
+
+/** 간트 X축: 0 미만으로 pan/zoom 되지 않도록 고정 */
+function ganttXAxisLayout(
+  timeStart: number,
+  timeEnd: number,
+  extra: Record<string, unknown> = {},
+  fixedRange?: boolean,
+): Record<string, unknown> {
+  const start = Math.max(0, timeStart);
+  const end = Math.max(start + 1, timeEnd);
+  return {
+    showgrid: true,
+    gridcolor: GANTT_THEME.gridColor,
+    gridwidth: GANTT_THEME.gridWidth,
+    zeroline: false,
+    range: [start, end],
+    rangemode: "nonnegative",
+    minallowed: 0,
+    tickfont: { size: 11, color: GANTT_THEME.axisColor },
+    ...(fixedRange ? { fixedrange: true } : {}),
+    ...extra,
+  };
 }
 
 function sortedEqpIds(eqpIds: string[]): string[] {
@@ -226,13 +249,7 @@ function buildGanttLayout(
     },
     xaxis: {
       title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
-      showgrid: true,
-      gridcolor: GANTT_THEME.gridColor,
-      gridwidth: GANTT_THEME.gridWidth,
-      zeroline: false,
-      range: [timeStart, timeEnd],
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      ...(axis.fixedRange ? { fixedrange: true } : {}),
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange),
     },
     yaxis: {
       categoryorder: "array",
@@ -475,10 +492,7 @@ export function buildProductProductionCharts(
 
     (layout as Record<string, unknown>)[xKey] = {
       title: i === n - 1 ? { text: "시뮬레이션 시간 (분)" } : undefined,
-      range: [timeStart, timeEnd],
-      showgrid: true,
-      gridcolor: "#E5E5E5",
-      ...(options.timeAxis?.fixedRange ? { fixedrange: true } : {}),
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, options.timeAxis?.fixedRange),
     };
     (layout as Record<string, unknown>)[yKey] = {
       title: { text: `${prod} 누적 생산 (매)` },
@@ -865,13 +879,7 @@ export function buildAlgorithmGanttComparison(
       domain: [0, 1],
       anchor: yName,
       title: i === n - 1 ? { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
-      showgrid: true,
-      gridcolor: GANTT_THEME.gridColor,
-      gridwidth: GANTT_THEME.gridWidth,
-      zeroline: false,
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      range: [timeStart, timeEnd],
-      ...(axis.fixedRange ? { fixedrange: true } : {}),
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange),
     };
     (layout as Record<string, unknown>)[yKey] = {
       domain,
@@ -1340,13 +1348,7 @@ export function buildEnhancedGantt(
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
     xaxis: {
       title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
-      showgrid: true,
-      gridcolor: GANTT_THEME.gridColor,
-      gridwidth: GANTT_THEME.gridWidth,
-      zeroline: false,
-      range: [timeStart, timeEnd],
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      ...(axis.fixedRange ? { fixedrange: true } : {}),
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange),
     },
     yaxis: {
       categoryorder: "array",

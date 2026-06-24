@@ -237,13 +237,13 @@ export default function TestPage({ config, modelExists }: Props) {
                       X축 고정
                     </label>
                     {ganttFixed && <>
-                      <label className="field-label gantt-time-field">시작<input type="number" className="time-input" value={ganttStart} onChange={e=>setGanttStart(Number(e.target.value))} /></label>
+                      <label className="field-label gantt-time-field">시작<input type="number" className="time-input" min={0} value={ganttStart} onChange={e=>setGanttStart(Math.max(0, Number(e.target.value)))} /></label>
                       <label className="field-label gantt-time-field">종료<input type="number" className="time-input" value={ganttEnd} onChange={e=>setGanttEnd(Number(e.target.value))} /></label>
                     </>}
                   </div>
                 </div>
                 <div className="chart-wrap gantt-chart-panel">
-                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} />
+                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} clampXMin={0} />
                 </div>
               </div>
             )}
