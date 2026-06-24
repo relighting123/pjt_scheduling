@@ -228,6 +228,7 @@ python main.py ui
 - **차트 표시** 패널: 차트별 show/hide (localStorage 저장)
 - **ChartPanel**: 제목 바 **드래그** 또는 **↗** → 별도 창 pop-out (스텝 재생 시 pop-out도 갱신)
 - Arrange Actual / Abstract 테이블, soft cutoff·간트 시간축 설정
+- **RL 구조 애니메이션**: `frontend/public/rl-training-animation.html` (dev 서버 실행 시 `/rl-training-animation.html`)
 
 개별 실행:
 
