@@ -125,9 +125,14 @@ class SchedulingEnv(gym.Env):
         time_advanced = self.sim.current_time != time_at_step_start
         schedule_before = len(self.sim.schedule)
 
-        arrange_actual_before = self.sim.get_remaining_arrange_actual()
-        arrange_abstract_before = self.sim.get_abstract_arrange()
-        wip_waiting_before = self.sim.get_wip_waiting()
+        if self._record_history:
+            arrange_actual_before = self.sim.get_remaining_arrange_actual()
+            arrange_abstract_before = self.sim.get_abstract_arrange()
+            wip_waiting_before = self.sim.get_wip_waiting()
+        else:
+            arrange_actual_before = None
+            arrange_abstract_before = None
+            wip_waiting_before = None
 
         reward = 0.0
         resolved_flat: Optional[int] = None
@@ -175,17 +180,19 @@ class SchedulingEnv(gym.Env):
                     entry["status"] = "assigned"
             self._decision_log.append(entry)
 
-        wip_for_history = (
-            wip_waiting_before
-            if time_advanced
-            else self.sim.get_wip_waiting()
-        )
-
-        self.sim.save_history_step(
-            arrange_snapshot=arrange_actual_before,
-            arrange_abstract_snapshot=arrange_abstract_before,
-            wip_waiting_snapshot=wip_for_history,
-        )
+        if self._record_history:
+            wip_for_history = (
+                wip_waiting_before
+                if time_advanced
+                else self.sim.get_wip_waiting()
+            )
+            self.sim.save_history_step(
+                arrange_snapshot=arrange_actual_before,
+                arrange_abstract_snapshot=arrange_abstract_before,
+                wip_waiting_snapshot=wip_for_history,
+            )
+        else:
+            self.sim.clear_step_assignment()
         self._total_reward += reward
 
         obs = self.sim.get_observation()

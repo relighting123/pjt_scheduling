@@ -212,6 +212,14 @@ class InferenceRequest(BaseModel):
         default=False,
         description="공정 완료 시 다음 공정 flow 재공 유입 이벤트 사용",
     )
+    include_history: bool = Field(
+        default=False,
+        description="시뮬레이션 재생용 history/event payload 포함",
+    )
+    save_output: bool = Field(
+        default=True,
+        description="추론 결과 output/result_full 파일 및 SQL 생성",
+    )
 
 
 class GeneratorConfigModel(BaseModel):
@@ -286,6 +294,10 @@ class CompareRequest(BaseModel):
     enable_wip_inflow: bool = Field(
         default=False,
         description="공정 완료 시 다음 공정 flow 재공 유입 이벤트 사용",
+    )
+    include_history: bool = Field(
+        default=False,
+        description="비교 응답에 history/event payload 포함",
     )
 
 
@@ -542,18 +554,19 @@ def inference(req: InferenceRequest):
 
     agent = None
     if req.algorithm == "rl":
-        agent = SchedulingAgent()
-        if not agent.model_exists():
+        try:
+            agent = SchedulingAgent.load()
+        except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(
                 status_code=400,
-                detail="학습된 모델이 없습니다. 먼저 학습을 실행하세요.",
-            )
-        agent = SchedulingAgent.load()
+                detail=str(exc),
+            ) from exc
 
     result = run_inference(
         env_data,
         algorithm=req.algorithm,
         agent=agent,
+        record_history=req.include_history,
         record_decision_log=req.decision_log,
         enable_wip_inflow=req.enable_wip_inflow,
     )
@@ -561,9 +574,15 @@ def inference(req: InferenceRequest):
     result["oper_ids"] = env_data["oper_ids"]
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
-    save_result(result, output_dir=CONFIG.path.infer_output_dir, env_data=env_data)
+    if req.save_output:
+        save_result(result, output_dir=CONFIG.path.infer_output_dir, env_data=env_data)
     _last_inference = result
-    return serialize_inference_result(result)
+    return serialize_inference_result(
+        result,
+        include_history=req.include_history,
+        include_event_log=req.include_history,
+        include_decision_log=req.decision_log,
+    )
 
 
 @app.post("/api/inference/compare")
@@ -583,6 +602,7 @@ def inference_compare(req: CompareRequest):
     payload = run_inference_compare(
         env_data,
         req.algorithms,
+        record_history=req.include_history,
         record_decision_log=req.decision_log,
         enable_wip_inflow=req.enable_wip_inflow,
     )
@@ -594,14 +614,14 @@ def inference_compare(req: CompareRequest):
                 "errors": payload["errors"],
             },
         )
-    return serialize_compare_response(payload)
+    return serialize_compare_response(payload, include_history=req.include_history)
 
 
 @app.get("/api/inference/result")
 def get_inference_result():
     global _last_inference
     if _last_inference is not None:
-        return serialize_inference_result(_last_inference)
+        return serialize_inference_result(_last_inference, include_history=False)
 
     # 캐시 없으면 env_data만 로드해 prod/oper 키 복원
     try:
@@ -633,7 +653,7 @@ def get_inference_result():
         "sim_end_minutes": env_data["sim_end_minutes"],
         "algorithm": saved.get("algorithm", "rl"),
     }
-    return serialize_inference_result(result)
+    return serialize_inference_result(result, include_history=False)
 
 
 def _test_folders_for_fac(fac_id: str) -> list[str]:

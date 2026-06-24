@@ -139,6 +139,8 @@ export default function InferencePage({
   const [algorithm, setAlgorithm] = useState<AlgorithmId>("rl");
 
   const [decisionLogEnabled, setDecisionLogEnabled] = useState(false);
+  const [includeHistory, setIncludeHistory] = useState(false);
+  const [enableWipInflow, setEnableWipInflow] = useState(false);
 
   const [compareAlgos, setCompareAlgos] = useState<Set<AlgorithmId>>(new Set());
 
@@ -259,14 +261,34 @@ export default function InferencePage({
     setError(null);
 
     try {
+      const withReplayPayload = includeHistory || decisionLogEnabled;
 
-      const res = await api.runInference(algorithm, selectedFolder, decisionLogEnabled);
+      const res = await api.runInference({
+        algorithm,
+        input_folder: selectedFolder,
+        decision_log: decisionLogEnabled,
+        include_history: withReplayPayload,
+        enable_wip_inflow: enableWipInflow,
+      });
 
       setResult(res);
+      if (withReplayPayload) {
+        setCompareData(null);
+      } else {
+        setCompareData({
+          results: [res],
+          errors: [],
+          plan: res.plan,
+          prod_keys: res.prod_keys,
+          oper_ids: res.oper_ids,
+          eqp_ids: res.eqp_ids,
+          sim_end_minutes: res.sim_end_minutes,
+        });
+      }
 
       setStep(0);
 
-      setTab("sim");
+      setTab(withReplayPayload ? "sim" : "schedule");
 
     } catch (e) {
 
@@ -278,7 +300,7 @@ export default function InferencePage({
 
     }
 
-  }, [algorithm, selectedFolder, decisionLogEnabled]);
+  }, [algorithm, selectedFolder, decisionLogEnabled, includeHistory, enableWipInflow]);
 
 
 
@@ -300,7 +322,12 @@ export default function InferencePage({
 
     try {
 
-      const res = await api.runCompare(ids, selectedFolder, decisionLogEnabled);
+      const res = await api.runCompare(ids, {
+        input_folder: selectedFolder,
+        decision_log: decisionLogEnabled,
+        include_history: false,
+        enable_wip_inflow: enableWipInflow,
+      });
 
       setCompareData(res);
 
@@ -316,7 +343,7 @@ export default function InferencePage({
 
     }
 
-  }, [compareAlgos, selectedFolder, decisionLogEnabled]);
+  }, [compareAlgos, selectedFolder, decisionLogEnabled, enableWipInflow]);
 
 
 
@@ -743,6 +770,60 @@ export default function InferencePage({
             <span className="hint inference-option-hint">
 
               step별 대상 EQP, 선택 PPK/OPER, feasible 후보, 미할당 사유 기록
+
+            </span>
+
+          </span>
+
+        </label>
+        <label className="inference-option inference-option-log">
+
+          <input
+
+            type="checkbox"
+
+            checked={includeHistory}
+
+            onChange={(e) => setIncludeHistory(e.target.checked)}
+
+            disabled={loading || compareLoading}
+
+          />
+
+          <span>
+
+            <strong>시뮬레이션 재생 데이터 포함</strong>
+
+            <span className="hint inference-option-hint">
+
+              OFF이면 history/event payload 생성을 생략해 추론 결과 표시가 빨라집니다.
+
+            </span>
+
+          </span>
+
+        </label>
+        <label className="inference-option inference-option-log">
+
+          <input
+
+            type="checkbox"
+
+            checked={enableWipInflow}
+
+            onChange={(e) => setEnableWipInflow(e.target.checked)}
+
+            disabled={loading || compareLoading}
+
+          />
+
+          <span>
+
+            <strong>유입 재공 이벤트 사용</strong>
+
+            <span className="hint inference-option-hint">
+
+              ON이면 공정 완료 후 다음 공정 flow 재공을 유입해 계속 배정합니다.
 
             </span>
 
@@ -1364,7 +1445,9 @@ export default function InferencePage({
 
               {!result.history.length ? (
 
-                <p className="hint">히스토리 데이터가 없습니다. 스케줄링 결과 비교에서 시뮬레이션을 선택하세요.</p>
+                <p className="hint">
+                  히스토리 데이터가 없습니다. 재생이 필요하면 “시뮬레이션 재생 데이터 포함”을 켜고 다시 실행하세요.
+                </p>
 
               ) : (
 

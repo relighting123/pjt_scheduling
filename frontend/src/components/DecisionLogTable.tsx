@@ -80,25 +80,25 @@ export default function DecisionLogTable({
                     {row.sim_time}
                     {row.time_advanced ? `→${row.sim_time_after}` : ""}
                   </td>
-                  <td>{row.eqp_id ?? "—"}</td>
+                  <td>{row.selected_eqp_id ?? row.eqp_id ?? "—"}</td>
                   <td>
                     {row.action_requested_ppk && row.action_requested_oper
                       ? `${row.action_requested_ppk}/${row.action_requested_oper}`
                       : "—"}
                   </td>
                   <td>
-                    {row.resolved_ppk && row.resolved_oper
-                      ? `${row.resolved_ppk}/${row.resolved_oper}`
+                    {(row.selected_ppk ?? row.resolved_ppk) && (row.selected_oper_id ?? row.resolved_oper)
+                      ? `${row.selected_ppk ?? row.resolved_ppk}/${row.selected_oper_id ?? row.resolved_oper}`
                       : "—"}
                   </td>
-                  <td>{row.assigned_lot_id ?? "—"}</td>
+                  <td>{row.selected_lot_id ?? row.assigned_lot_id ?? "—"}</td>
                   <td>
                     <span className={`decision-status decision-status-${row.status}`}>
                       {STATUS_LABELS[row.status] ?? row.status}
                     </span>
                   </td>
                   <td className="decision-reason">
-                    <div>{row.reason}</div>
+                    <div>{row.selection_reason ?? row.reason}</div>
                     {row.feasible_options?.length ? (
                       <div className="decision-sub">feasible: {formatFeasible(row)}</div>
                     ) : null}

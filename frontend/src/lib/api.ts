@@ -112,24 +112,44 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getTrainingStatus: () => request<TrainStatusResponse>("/api/train/status"),
-  runInference: (algorithm: AlgorithmId = "rl", input_folder?: string, decision_log = false) =>
+  runInference: (opts: {
+    algorithm?: AlgorithmId;
+    input_folder?: string;
+    decision_log?: boolean;
+    include_history?: boolean;
+    enable_wip_inflow?: boolean;
+    save_output?: boolean;
+  } = {}) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        algorithm,
-        decision_log,
-        ...(input_folder ? { input_folder } : {}),
+        algorithm: opts.algorithm ?? "rl",
+        decision_log: opts.decision_log ?? false,
+        include_history: opts.include_history ?? false,
+        enable_wip_inflow: opts.enable_wip_inflow ?? false,
+        save_output: opts.save_output ?? false,
+        ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
       }),
     }),
-  runCompare: (algorithms: AlgorithmId[], input_folder?: string, decision_log = false) =>
+  runCompare: (
+    algorithms: AlgorithmId[],
+    opts: {
+      input_folder?: string;
+      decision_log?: boolean;
+      include_history?: boolean;
+      enable_wip_inflow?: boolean;
+    } = {},
+  ) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         algorithms,
-        decision_log,
-        ...(input_folder ? { input_folder } : {}),
+        decision_log: opts.decision_log ?? false,
+        include_history: opts.include_history ?? false,
+        enable_wip_inflow: opts.enable_wip_inflow ?? false,
+        ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
       }),
     }),
   getTestDatasets: (fac_id?: string) =>
