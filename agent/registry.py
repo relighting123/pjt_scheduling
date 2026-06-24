@@ -19,7 +19,7 @@ ALGORITHMS: list[dict] = [
     {
         "id": "earliest_st",
         "name": "Earliest-ST (휴리스틱)",
-        "description": "계획 미참조, idle EQP 중 최소 ST 조합(장비×자재 소요시간) 우선",
+        "description": "idle EQP에서 예상 종료 시각(장수×ST+conversion) 최소 재공 우선",
         "requires_model": False,
     },
 ]

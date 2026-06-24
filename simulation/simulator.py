@@ -418,11 +418,38 @@ class SchedulingSimulator:
         return not self._tool_tracker.can_assign(lot_cd, eqp_id)
 
     def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
-        """EQP에서 투입 가능한 LOT 중 최소 소요시간(ST)."""
+        """EQP에서 투입 가능한 LOT 중 최소 소요시간(장수×ST)."""
         lots = self.available_lots(eqp_id)
         if not lots:
             return None
         return min(int(lot.get("processing_time", 10**9)) for lot in lots)
+
+    def estimate_lot_end_time(self, eqp_id: str, lot: dict) -> int:
+        """예상 종료 시각 = 현재 시각 + conversion(필요 시) + 장수×ST."""
+        t = self.current_time
+        lot_cd = lot.get("lot_cd", "")
+        temp = lot.get("temp", "")
+        if self._would_need_conversion(eqp_id, lot_cd, temp):
+            t += self._conversion_minutes
+        return t + int(lot.get("processing_time", 0))
+
+    def earliest_st_lot_key(self, eqp_id: str, lot: dict) -> Tuple[int, int, str]:
+        """Earliest-ST 정렬 키: (예상 종료 시각, 장수×ST, lot_id)."""
+        proc = int(lot.get("processing_time", 0))
+        end = self.estimate_lot_end_time(eqp_id, lot)
+        return (end, proc, str(lot.get("lot_id", "")))
+
+    def _select_earliest_st_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
+        if not candidates:
+            return None
+        best = min(candidates, key=lambda lot: self.earliest_st_lot_key(eqp_id, lot))
+        return best["lot_id"]
+
+    def _eqp_min_end_time(self, eqp_id: str) -> Optional[int]:
+        lots = self.available_lots(eqp_id)
+        if not lots:
+            return None
+        return min(self.estimate_lot_end_time(eqp_id, lot) for lot in lots)
 
     def _idle_eqps_with_work(self) -> List[str]:
         return [
@@ -439,7 +466,7 @@ class SchedulingSimulator:
         if self._eqp_selection == "min_st":
             return min(
                 candidates,
-                key=lambda e: (self._eqp_min_proc_time(e) or 10**9, e),
+                key=lambda e: (self._eqp_min_end_time(e) or 10**9, e),
             )
         return candidates[0]
 
@@ -945,6 +972,9 @@ class SchedulingSimulator:
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
         if not candidates:
             return None
+
+        if self._eqp_selection == "min_st":
+            return self._select_earliest_st_lot(eqp_id, candidates)
 
         def sort_key(lot: dict):
             return (
