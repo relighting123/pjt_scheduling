@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import PlotChart from "../components/PlotChart";
 
@@ -21,6 +21,8 @@ import BatchInfoTable from "../components/BatchInfoTable";
 import DecisionLogTable from "../components/DecisionLogTable";
 
 import { api } from "../lib/api";
+
+import { loadResultFromFile } from "../lib/resultFile";
 
 import {
 
@@ -153,6 +155,9 @@ export default function InferencePage({
   const [stepBump, setStepBump] = useState(false);
 
   const [selectedFolder, setSelectedFolder] = useState("FAC001/infer");
+
+  const [fileSource, setFileSource] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const datasetFolders = useMemo(
     () =>
@@ -351,6 +356,46 @@ export default function InferencePage({
   }, [selectedFolder]);
 
 
+
+  const loadFromFile = useCallback(async (file: File) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await loadResultFromFile(file);
+
+      setResult(res);
+      setCompareData({
+        results: [res],
+        errors: [],
+        plan: res.plan,
+        prod_keys: res.prod_keys,
+        oper_ids: res.oper_ids,
+        eqp_ids: res.eqp_ids,
+        sim_end_minutes: res.sim_end_minutes,
+      });
+
+      if (isAlgorithmId(res.algorithm)) {
+        setAlgorithm(res.algorithm);
+      }
+
+      setFileSource(file.name);
+      setStep(0);
+      setTab("schedule");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "결과 파일 불러오기 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (file) void loadFromFile(file);
+    },
+    [loadFromFile],
+  );
 
   const runCompare = useCallback(async (algoIds?: AlgorithmId[]) => {
 
@@ -912,7 +957,35 @@ export default function InferencePage({
 
           </button>
 
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading || compareLoading}
+          >
+            파일에서 결과 보기 (output.json)
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+
         </div>
+
+        <p className="hint">
+          백엔드 API 없이도 저장된 <code>output.json</code> 또는{" "}
+          <code>result_full.json</code> 파일을 직접 열어 결과를 볼 수 있습니다.
+          {fileSource && (
+            <>
+              {" "}
+              현재 표시: <code>{fileSource}</code>
+            </>
+          )}
+        </p>
 
       </section>
 
@@ -1040,7 +1113,7 @@ export default function InferencePage({
 
             <p className="result-meta">
 
-              시뮬레이션: <strong>{algorithmLabel}</strong> · 데이터셋 <code>{selectedFolder}</code>
+              시뮬레이션: <strong>{algorithmLabel}</strong> · 데이터셋 <code>{fileSource ?? selectedFolder}</code>
 
             </p>
 
@@ -1050,7 +1123,7 @@ export default function InferencePage({
 
             <p className="result-meta">
 
-              스케줄링 결과 비교 · <strong>{compareEntries.length}개 알고리즘</strong> · 데이터셋 <code>{selectedFolder}</code>
+              스케줄링 결과 비교 · <strong>{compareEntries.length}개 알고리즘</strong> · 데이터셋 <code>{fileSource ?? selectedFolder}</code>
 
             </p>
 

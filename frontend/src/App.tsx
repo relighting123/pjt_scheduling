@@ -90,7 +90,7 @@ export default function App() {
         </button>
       )}
       <main className="main-content">
-        {loadError && hasData && mode !== "dataset" && mode !== "test" && (
+        {loadError && (hasData || mode === "inference") && mode !== "dataset" && mode !== "test" && (
           <div className="banner banner-warn">{loadError}</div>
         )}
         <div key={mode} className="page-enter">
@@ -106,7 +106,7 @@ export default function App() {
           {mode === "test" && config && (
             <TestPage config={config} modelExists={modelExists} />
           )}
-          {mode !== "dataset" && mode !== "test" && !hasData && (
+          {mode === "train" && !hasData && (
             <DatasetEmptyPanel
               loadError={loadError}
               onGoToDataset={() => setMode("dataset")}
@@ -121,7 +121,7 @@ export default function App() {
               onRefresh={refreshData}
             />
           )}
-          {mode === "inference" && hasData && config && summary && (
+          {mode === "inference" && (
             <InferencePage
               modelExists={modelExists}
               config={config}

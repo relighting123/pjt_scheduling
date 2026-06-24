@@ -353,7 +353,16 @@ cd frontend && npm install && npm run dev
 | Dataset | 입력 폴더/데이터 요약 |
 | Train | 기간/폴더 선택, PPO 학습, 학습 로그/차트 |
 | Test | test dataset 벤치마크 |
-| Inference | 빠른 단일 추론, 알고리즘 비교, 선택 시 상세 재생 |
+| Inference | 빠른 단일 추론, 알고리즘 비교, 선택 시 상세 재생, 결과 파일 직접 보기 |
+
+### 백엔드 없이 결과 보기 (오프라인 뷰어)
+
+Inference 탭의 **"파일에서 결과 보기 (output.json)"** 버튼으로 백엔드 API(8000)가
+실행 중이 아니어도 저장된 결과 파일을 직접 열어 간트/스케줄 비교를 볼 수 있습니다.
+
+- 지원 파일: `output.json`(RTS 적재 JSON) 또는 `result_full.json`(UI 전체 결과)
+- 파일은 브라우저에서 직접 파싱되며, EQP/제품/공정 축은 schedule 행에서 복원합니다.
+- 추론·비교 실행은 기존대로 백엔드 API가 필요합니다.
 
 ---
 
