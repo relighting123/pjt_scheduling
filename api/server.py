@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, format_missing_input_file_error
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from agent.rl_agent import SchedulingAgent
@@ -70,10 +70,7 @@ def _require_input_files(input_dir: Path) -> None:
     required = CONFIG.path.discrete_arrange_file
     path = input_dir / required
     if not path.is_file():
-        raise FileNotFoundError(
-            f"입력 파일 없음: {path}\n"
-            f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
-        )
+        raise FileNotFoundError(format_missing_input_file_error(input_dir, required))
 
 
 def _load_env_data() -> dict:
