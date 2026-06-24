@@ -1365,7 +1365,7 @@ export function buildEnhancedGantt(
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 20, t: 40, b: 88 },
+    margin: { l: 160, r: 20, t: 24, b: 64 },
     hoverlabel: {
       bgcolor: "#ffffff",
       bordercolor: "rgba(148,163,184,0.35)",

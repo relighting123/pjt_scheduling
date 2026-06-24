@@ -58,7 +58,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   ];
 
   return (
-    <div>
+    <div className="gantt-kpi-shell">
       <div className="gantt-kpi-strip">
         {kpis.map((k) => (
           <div key={k.label} className="gantt-kpi-item">
@@ -66,15 +66,15 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
             <div className={`gantt-kpi-val ${k.cls}`}>{k.value}</div>
           </div>
         ))}
-        <div className="gantt-kpi-expand">
-          <button
-            type="button"
-            className={`btn btn-xs ${expanded ? "btn-accent" : "btn-ghost"}`}
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded ? "▲ 닫기" : "▼ 세부 지표"}
-          </button>
-        </div>
+      </div>
+      <div className="gantt-kpi-expand">
+        <button
+          type="button"
+          className={`btn btn-xs ${expanded ? "btn-accent" : "btn-ghost"}`}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "세부 지표 닫기" : "세부 지표"}
+        </button>
       </div>
 
       {expanded && (
