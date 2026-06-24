@@ -41,6 +41,7 @@ def run_inference(
     deterministic: bool = True,
     record_history: bool = True,
     record_decision_log: bool = False,
+    current_wip_only: bool = True,
 ) -> dict:
     """
     목적: 선택한 알고리즘으로 Scheduling 추론 실행
@@ -58,6 +59,8 @@ def run_inference(
     algorithm = validate_algorithm(algorithm)
 
     run_data = dict(env_data)
+    if current_wip_only:
+        run_data["termination_mode"] = "current_wip_assigned"
     if algorithm == "earliest_st":
         run_data["eqp_selection"] = "min_st"
 
@@ -124,11 +127,13 @@ def run_inference(
             "conversions":   stats.get("conversions", 0),
             "completed_qty": {str(k): v for k, v in stats["completed_qty"].items()},
             "remaining_wip":  sched_env.sim.get_wip_waiting(),
+            "remaining_current_wip": sched_env.sim.get_remaining_current_wip(),
             "steps":          steps,
             "terminated":     terminated,
             "truncated":      truncated,
             "current_time":   sched_env.sim.current_time,
             "sim_end_minutes": sched_env.sim.sim_end,
+            "termination_mode": sched_env.sim._termination_mode,
         },
         "plan":      env_data["plan"],
         "algorithm": algorithm,
