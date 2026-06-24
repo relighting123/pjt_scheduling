@@ -1188,6 +1188,14 @@ tbody tr:last-child td { border-bottom: none; }
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--bg-panel);
+  width: 100%;
+}
+
+.chart-wrap .plot-chart,
+.chart-wrap .js-plotly-plot,
+.chart-wrap .plot-container {
+  width: 100% !important;
+  max-width: 100%;
 }
 
 .chart-wrap .js-plotly-plot {

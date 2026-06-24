@@ -199,6 +199,18 @@ function conversionTraces(
 
 const GANTT_PAN_LAYOUT: Pick<Layout, "dragmode"> = { dragmode: "pan" };
 
+const GANTT_LEGEND: Partial<Layout>["legend"] = {
+  orientation: "h",
+  x: 0.5,
+  xanchor: "center",
+  y: -0.18,
+  yanchor: "top",
+  bgcolor: "rgba(255,255,255,0.9)",
+  bordercolor: "rgba(148,163,184,0.25)",
+  borderwidth: 1,
+  font: { size: 11 },
+};
+
 function buildGanttLayout(
   title: string,
   axis: GanttAxisOptions,
@@ -234,16 +246,12 @@ function buildGanttLayout(
     bargap: 0.35,
     legend: {
       title: { text: "제품 / 공정", font: { size: 11 } },
-      orientation: "v",
-      x: 1.02,
-      bgcolor: "rgba(255,255,255,0.85)",
-      bordercolor: "rgba(148,163,184,0.25)",
-      borderwidth: 1,
+      ...GANTT_LEGEND,
     },
     height: Math.max(350, 72 * Math.max(eqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 88, r: 188, t: 56, b: 52 },
+    margin: { l: 88, r: 20, t: 44, b: 88 },
     hoverlabel: {
       bgcolor: "#ffffff",
       bordercolor: "rgba(148,163,184,0.35)",
@@ -712,9 +720,9 @@ export function buildAlgorithmKpiComparison(
       barmode: "group",
       yaxis: { title: { text: "값" } },
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.2 },
+      legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
       height: 380,
-      margin: { t: 60, b: 80 },
+      margin: { t: 60, b: 88, l: 48, r: 16 },
     },
   };
 }
@@ -756,9 +764,9 @@ export function buildAlgorithmAchievementComparison(
         line: { dash: "dash", color: "red", width: 1 },
       }],
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.25 },
+      legend: { orientation: "h", y: -0.25, x: 0.5, xanchor: "center" },
       height: 380,
-      margin: { t: 60, b: 100 },
+      margin: { t: 60, b: 100, l: 48, r: 16 },
     },
   };
 }
@@ -769,18 +777,23 @@ function subplotAxisPair(index: number, total: number): {
   xKey: string;
   yKey: string;
   domain: [number, number];
+  titleY: number;
 } {
+  const titleBand = total > 1 ? 0.034 : 0;
+  const rowGap = total > 1 ? 0.04 : 0;
   const rowH = 1 / total;
-  const gap = 0.04;
-  const top = 1 - index * rowH;
-  const bottom = top - rowH + (index < total - 1 ? gap : 0);
+  const rowTop = 1 - index * rowH;
+  const rowBottom = rowTop - rowH;
+  const plotTop = rowTop - titleBand;
+  const plotBottom = rowBottom + (index < total - 1 ? rowGap : 0);
   const n = index + 1;
   return {
     xName: index === 0 ? "x" : `x${n}`,
     yName: index === 0 ? "y" : `y${n}`,
     xKey: index === 0 ? "xaxis" : `xaxis${n}`,
     yKey: index === 0 ? "yaxis" : `yaxis${n}`,
-    domain: [bottom, top - gap * 0.5] as [number, number],
+    domain: [plotBottom, plotTop],
+    titleY: plotTop + 0.008,
   };
 }
 
@@ -799,29 +812,24 @@ export function buildAlgorithmGanttComparison(
   const layout: Partial<Layout> = {
     ...GANTT_PAN_LAYOUT,
     grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
-    height: Math.max(300 * n, 420),
+    height: Math.max(280 * n + 40, 420),
     barmode: "overlay",
     bargap: 0.35,
     showlegend: n === 1,
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    legend: {
-      x: 1.02,
-      bgcolor: "rgba(255,255,255,0.85)",
-      bordercolor: "rgba(148,163,184,0.25)",
-      borderwidth: 1,
-    },
+    legend: n === 1 ? { title: { text: "제품 / 공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: {
       bgcolor: "#ffffff",
       bordercolor: "rgba(148,163,184,0.35)",
       font: { family: GANTT_THEME.fontFamily, size: 12 },
     },
     annotations: [],
-    margin: { l: 88, r: 188, t: 44, b: 52 },
+    margin: { l: 72, r: 16, t: 8, b: n === 1 ? 88 : 52 },
   };
 
   entries.forEach((entry, i) => {
-    const { xName, yName, xKey, yKey, domain } = subplotAxisPair(i, n);
+    const { xName, yName, xKey, yKey, domain, titleY } = subplotAxisPair(i, n);
     const prodKeys = entry.result.prod_keys;
     const operIds = entry.result.oper_ids;
     const traces = ganttTraces(entry.result.schedule, prodKeys, operIds).map((t) => ({
@@ -868,7 +876,7 @@ export function buildAlgorithmGanttComparison(
     (layout as Record<string, unknown>)[yKey] = {
       domain,
       anchor: xName,
-      title: { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } },
+      title: i === 0 ? { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
       tickfont: { size: 11, color: GANTT_THEME.axisColor },
       categoryorder: "array",
       categoryarray: eqps,
@@ -876,17 +884,16 @@ export function buildAlgorithmGanttComparison(
       fixedrange: true,
     };
 
-    const yMid = (domain[0] + domain[1]) / 2;
     layout.annotations = [
       ...(layout.annotations ?? []),
       {
-        text: entry.label,
+        text: `<b>${entry.label}</b>`,
         xref: "paper",
         yref: "paper",
-        x: 0,
-        y: yMid,
+        x: 0.01,
+        y: titleY,
         xanchor: "left",
-        yanchor: "middle",
+        yanchor: "bottom",
         showarrow: false,
         font: { size: 13, color: ALGO_CHART_COLORS[entry.algorithm] ?? "#333" },
       },
@@ -1353,16 +1360,12 @@ export function buildEnhancedGantt(
     bargap: 0.35,
     legend: {
       title: { text: "제품 / 공정", font: { size: 11 } },
-      orientation: "v",
-      x: 1.02,
-      bgcolor: "rgba(255,255,255,0.85)",
-      bordercolor: "rgba(148,163,184,0.25)",
-      borderwidth: 1,
+      ...GANTT_LEGEND,
     },
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 188, t: 40, b: 52 },
+    margin: { l: 160, r: 20, t: 40, b: 88 },
     hoverlabel: {
       bgcolor: "#ffffff",
       bordercolor: "rgba(148,163,184,0.35)",
