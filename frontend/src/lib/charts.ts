@@ -65,15 +65,18 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
   return traces;
 }
 
-/** 간트 공통 스타일 — light precision theme */
+/** 간트·차트 공통 폰트 (한글 지원) */
+export const CHART_FONT = "'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif";
+
+/** 간트 공통 스타일 — Cursor Usage 톤 */
 const GANTT_THEME = {
-  plotBg: "#f8fafc",
+  plotBg: "#f7f7f5",
   paperBg: "#ffffff",
-  gridColor: "rgba(15,23,42,0.07)",
+  gridColor: "rgba(0, 0, 0, 0.06)",
   gridWidth: 1,
-  fontFamily: "'Space Mono', 'Courier New', monospace",
-  titleColor: "#0f172a",
-  axisColor: "#475569",
+  fontFamily: CHART_FONT,
+  titleColor: "#1b1b18",
+  axisColor: "#5c5c58",
   barRadius: 6,
   barOpacity: 0.88,
 } as const;
@@ -279,7 +282,7 @@ export function buildStepGantt(
 const SHARED_DARK: Partial<Layout> = {
   plot_bgcolor: "#f8fafc",
   paper_bgcolor: "#ffffff",
-  font: { family: "'Space Mono', monospace", color: "#0f172a" },
+  font: { family: CHART_FONT, color: "#1b1b18" },
   xaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
   yaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
 };
@@ -1087,7 +1090,7 @@ const TRAIN_CHART_BASE: Partial<Layout> = {
   height: 300,
   margin: { t: 44, b: 48, l: 55, r: 20 },
   xaxis: { title: { text: "Timesteps" }, color: "#475569", gridcolor: "rgba(15,23,42,0.07)" },
-  font: { family: "'Space Mono', monospace", color: "#0f172a" },
+  font: { family: CHART_FONT, color: "#1b1b18" },
 };
 
 export function buildTrainRewardChart(

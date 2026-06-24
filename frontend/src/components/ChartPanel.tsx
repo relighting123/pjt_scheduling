@@ -9,7 +9,7 @@ import {
 import { createRoot, type Root } from "react-dom/client";
 
 const POPOUT_CSS = `
-  html, body { margin: 0; height: 100%; background: #f4f6fb; font-family: system-ui, sans-serif; }
+  html, body { margin: 0; height: 100%; background: #f7f7f5; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif; }
   #chart-popout-root { height: 100%; display: flex; flex-direction: column; }
   .chart-popout-header {
     display: flex; align-items: center; justify-content: space-between;
