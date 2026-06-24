@@ -1466,33 +1466,6 @@ export function buildTatChart(rows: TatRow[]): { data: Data[]; layout: Partial<L
   };
 }
 
-export function buildDashboardKpiChart(
-  kpis: { label: string; value: number; suffix?: string }[],
-): { data: Data[]; layout: Partial<Layout> } {
-  const n = kpis.length;
-  const colW = 1 / n;
-  const data: Data[] = kpis.map((k, i) => ({
-    type: "indicator",
-    mode: "number",
-    value: k.value,
-    number: {
-      suffix: k.suffix ?? "",
-      font: { size: 28, color: "#141824" },
-    },
-    title: { text: k.label, font: { size: 11, color: "#5c6478" } },
-    domain: { x: [i * colW, (i + 1) * colW - 0.01], y: [0, 1] },
-  }));
-
-  return {
-    data,
-    layout: {
-      height: 120,
-      margin: { t: 20, b: 10, l: 10, r: 10 },
-      paper_bgcolor: "white",
-    },
-  };
-}
-
 export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data[]; layout: Partial<Layout> } {
   const colors = rows.map((r) =>
     r.pct >= 100 ? "#55A868" : r.pct >= 60 ? "#DD8452" : "#C44E52",
