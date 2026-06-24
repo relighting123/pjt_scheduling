@@ -965,6 +965,11 @@ class SchedulingSimulator:
     def _lot_candidates_for_eqp(self, eqp_id: str) -> List[dict]:
         """EQP에 배정 가능한 WIP LOT 후보 (abstract route + WIP 풀)."""
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
+        busy_carriers = {
+            v["carrier_id"]
+            for v in self._in_flight.values()
+            if v.get("carrier_id")
+        }
         lots: List[dict] = []
         for row in self._abstract_assignable_on_eqp(eqp_id):
             ppk, oper_id = row["plan_prod_key"], row["oper_id"]
@@ -977,6 +982,9 @@ class SchedulingSimulator:
                 meta = self._wip_lot_meta.get(lid, {})
                 lot = self.lot_pool.get(lid)
                 if not meta and not lot:
+                    continue
+                carrier = meta.get("carrier_id") or (lot.carrier_id if lot else "")
+                if carrier and carrier in busy_carriers:
                     continue
                 oper_in_time = meta.get("oper_in_time", 0)
                 if not self._lot_ready(lid, oper_in_time):
