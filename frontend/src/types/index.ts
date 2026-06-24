@@ -115,6 +115,7 @@ export interface InferenceStats {
   sim_end_minutes?: number;
   termination_mode?: string;
   enable_wip_inflow?: boolean;
+  source_file?: string;
 }
 
 export interface DecisionLogFeasibleOption {
@@ -172,7 +173,7 @@ export interface InferenceResult {
   oper_ids: string[];
   eqp_ids: string[];
   sim_end_minutes: number;
-  algorithm?: AlgorithmId;
+  algorithm?: AlgorithmId | string;
 }
 
 export interface BatchInfoRecord {

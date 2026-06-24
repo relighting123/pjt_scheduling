@@ -5,6 +5,7 @@ React UI가 호출하는 REST API를 제공합니다.
 실행: uvicorn api.server:app --reload --port 8000
 """
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -617,11 +618,93 @@ def inference_compare(req: CompareRequest):
     return serialize_compare_response(payload, include_history=req.include_history)
 
 
+def _minutes_from_timekey(value: str, base: datetime) -> int:
+    try:
+        fmt = "%Y%m%d%H%M%S" if len(value) == 14 else "%Y%m%d%H%M"
+        return int((datetime.strptime(value, fmt) - base).total_seconds() // 60)
+    except Exception:
+        return 0
+
+
+def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
+    """RTS output.json만 있을 때 UI 간트용 result 구조로 복원."""
+    base = env_data["sim_base_time"]
+    schedule = []
+    for row in payload.get("RTS_RSLT_INF", []):
+        start_tm = _minutes_from_timekey(str(row.get("START_TIME", "")), base)
+        end_tm = _minutes_from_timekey(str(row.get("END_TIME", "")), base)
+        schedule.append({
+            "EQP_ID":        row.get("EQP_ID", ""),
+            "LOT_ID":        row.get("LOT_ID", ""),
+            "CARRIER_ID":    row.get("CARRIER_ID", ""),
+            "PLAN_PROD_KEY": row.get("PLAN_PROD_KEY", ""),
+            "OPER_ID":       row.get("OPER_ID", ""),
+            "EQP_MODEL":     row.get("EQP_MODEL_CD", ""),
+            "SEQ":           int(row.get("SEQ_NO") or 0),
+            "START_TM":      start_tm,
+            "END_TM":        end_tm,
+            "PROC_TIME":     max(end_tm - start_tm, 0),
+            "WF_QTY":        int(row.get("PRODUCE_QTY") or 0),
+            "LOT_CD":        row.get("LOT_CD", ""),
+            "TEMP":          row.get("TEMPER_VAL", ""),
+            "START_TM_STR":  row.get("START_TIME", ""),
+            "END_TM_STR":    row.get("END_TIME", ""),
+        })
+    schedule.sort(key=lambda r: (r["START_TM"], r["EQP_ID"], r["SEQ"], r["LOT_ID"]))
+
+    conversion_plans = []
+    for row in payload.get("RTS_EQPCONVPLAN_INF", []):
+        conv_start = _minutes_from_timekey(str(row.get("CONV_START_TM", "")), base)
+        conv_end = _minutes_from_timekey(str(row.get("CONV_END_TM", "")), base)
+        conversion_plans.append({
+            "eqp_id":         row.get("EQP_ID", ""),
+            "eqp_model_cd":   row.get("EQP_MODEL_CD", ""),
+            "oper_id":        row.get("OPER_ID", ""),
+            "plan_prod_key":  row.get("PLAN_PROD_ATTR_VAL", ""),
+            "from_lot_cd":    row.get("LOT_CD", ""),
+            "from_temp":      row.get("TEMPER_VAL", ""),
+            "to_lot_cd":      row.get("TO_LOT_CD", ""),
+            "to_temp":        row.get("TO_TEMPER_VAL", ""),
+            "conv_start_min": conv_start,
+            "conv_end_min":   conv_end,
+            "conv_time":      int(row.get("CONV_TIME") or max(conv_end - conv_start, 0)),
+        })
+
+    completed: dict[str, int] = {}
+    for rec in schedule:
+        key = f"{rec['PLAN_PROD_KEY']}|{rec.get('OPER_ID', '')}"
+        completed[key] = completed.get(key, 0) + int(rec.get("WF_QTY") or 0)
+
+    meta = payload.get("meta", {})
+    return {
+        "schedule":         schedule,
+        "history":          [],
+        "event_log":        [],
+        "decision_log":     [],
+        "conversion_plans": conversion_plans,
+        "stats": {
+            "idle_total": 0,
+            "oper_switches": 0,
+            "prod_switches": 0,
+            "completed_qty": completed,
+            "source_file": "output.json",
+        },
+        "plan":             env_data["plan"],
+        "prod_keys":        env_data["prod_keys"],
+        "oper_ids":         env_data["oper_ids"],
+        "eqp_ids":          env_data["eqp_ids"],
+        "sim_end_minutes":  env_data["sim_end_minutes"],
+        "algorithm":        meta.get("ALGORITHM", "saved"),
+    }
+
+
 @app.get("/api/inference/result")
-def get_inference_result():
+def get_inference_result(input_folder: Optional[str] = None):
     global _last_inference
-    if _last_inference is not None:
+    if input_folder is None and _last_inference is not None:
         return serialize_inference_result(_last_inference, include_history=False)
+
+    _apply_input_folder(input_folder)
 
     # 캐시 없으면 env_data만 로드해 prod/oper 키 복원
     try:
@@ -629,30 +712,34 @@ def get_inference_result():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="추론 결과가 없습니다.")
 
-    from pathlib import Path
     import json
 
-    full_path = CONFIG.path.infer_output_dir / "result_full.json"
-    if not full_path.exists():
-        raise HTTPException(status_code=404, detail="추론 결과가 없습니다.")
+    output_dir = CONFIG.path.output_dir
+    full_path = output_dir / "result_full.json"
+    if full_path.exists():
+        with open(full_path, encoding="utf-8") as f:
+            saved = json.load(f)
+        result = {
+            "schedule": saved.get("schedule", []),
+            "history": saved.get("history", []),
+            "event_log": saved.get("event_log", []),
+            "decision_log": saved.get("decision_log", []),
+            "conversion_plans": saved.get("conversion_plans", []),
+            "stats": {**saved.get("stats", {}), "source_file": "result_full.json"},
+            "plan": saved.get("plan", env_data["plan"]),
+            "prod_keys": env_data["prod_keys"],
+            "oper_ids": env_data["oper_ids"],
+            "eqp_ids": env_data["eqp_ids"],
+            "sim_end_minutes": env_data["sim_end_minutes"],
+            "algorithm": saved.get("algorithm", "rl"),
+        }
+        return serialize_inference_result(result, include_history=False)
 
-    with open(full_path, encoding="utf-8") as f:
-        saved = json.load(f)
-
-    # history는 파일에 없을 수 있음
-    result = {
-        "schedule": saved.get("schedule", []),
-        "history": saved.get("history", []),
-        "event_log": saved.get("event_log", []),
-        "conversion_plans": saved.get("conversion_plans", []),
-        "stats": saved.get("stats", {}),
-        "plan": saved.get("plan", []),
-        "prod_keys": env_data["prod_keys"],
-        "oper_ids": env_data["oper_ids"],
-        "eqp_ids": env_data["eqp_ids"],
-        "sim_end_minutes": env_data["sim_end_minutes"],
-        "algorithm": saved.get("algorithm", "rl"),
-    }
+    output_path = output_dir / CONFIG.path.output_file
+    if not output_path.exists():
+        raise HTTPException(status_code=404, detail=f"저장된 추론 결과가 없습니다: {output_dir}")
+    with open(output_path, encoding="utf-8") as f:
+        result = _result_from_rts_output(json.load(f), env_data)
     return serialize_inference_result(result, include_history=False)
 
 
