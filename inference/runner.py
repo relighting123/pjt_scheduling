@@ -207,14 +207,13 @@ def run_inference_compare(
 
     rl_loaded = rl_agent
     if "rl" in algorithms and rl_loaded is None:
-        agent = SchedulingAgent()
-        if not agent.model_exists():
+        try:
+            rl_loaded = SchedulingAgent.load(model_path)
+        except (FileNotFoundError, ValueError) as exc:
             errors.append({
                 "algorithm": "rl",
-                "message": "학습된 모델이 없습니다.",
+                "message": str(exc),
             })
-        else:
-            rl_loaded = SchedulingAgent.load(model_path)
 
     for algo in algorithms:
         if algo == "rl" and rl_loaded is None:

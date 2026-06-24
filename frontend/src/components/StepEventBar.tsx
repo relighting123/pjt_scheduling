@@ -1,4 +1,4 @@
-import type { SimEvent } from "../types";
+import type { SimEvent, SimEventKind } from "../types";
 import {
   formatSimEventDetail,
   normalizeSimEventKind,

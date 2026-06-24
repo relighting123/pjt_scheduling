@@ -146,7 +146,7 @@ function conversionLegendTrace(hasConversion: boolean): Data {
       opacity: 0.88,
       line: { color: "#b45309", width: 2 },
       cornerradius: 6,
-    },
+    } as Record<string, unknown>,
     showlegend: true,
     visible: hasConversion ? true : "legendonly",
   };
@@ -173,7 +173,7 @@ function conversionTraces(
           opacity: 0.88,
           line: { color: "#b45309", width: 2 },
           cornerradius: 6,
-        },
+        } as Record<string, unknown>,
         text: `CONV ${p.from_lot_cd}→${p.to_lot_cd}`,
         textposition: "inside",
         insidetextanchor: "middle",

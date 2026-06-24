@@ -23,7 +23,17 @@ def serialize_history(history: list[dict]) -> list[dict]:
     return out
 
 
-def serialize_inference_result(result: dict, *, include_history: bool = True) -> dict:
+def serialize_inference_result(
+    result: dict,
+    *,
+    include_history: bool = True,
+    include_event_log: bool | None = None,
+    include_decision_log: bool | None = None,
+) -> dict:
+    if include_event_log is None:
+        include_event_log = include_history
+    if include_decision_log is None:
+        include_decision_log = include_history
     payload = {
         "schedule": result["schedule"],
         "stats": {
@@ -39,19 +49,25 @@ def serialize_inference_result(result: dict, *, include_history: bool = True) ->
     }
     if include_history:
         payload["history"] = serialize_history(result.get("history", []))
-        payload["event_log"] = result.get("event_log", [])
-        payload["decision_log"] = result.get("decision_log", [])
     else:
         payload["history"] = []
-        payload["event_log"] = []
-        payload["decision_log"] = []
+    payload["event_log"] = result.get("event_log", []) if include_event_log else []
+    payload["decision_log"] = result.get("decision_log", []) if include_decision_log else []
     payload["conversion_plans"] = result.get("conversion_plans", [])
     return payload
 
 
-def serialize_compare_response(payload: dict) -> dict:
+def serialize_compare_response(payload: dict, *, include_history: bool = False) -> dict:
     return {
-        "results": [serialize_inference_result(r) for r in payload["results"]],
+        "results": [
+            serialize_inference_result(
+                r,
+                include_history=include_history,
+                include_event_log=include_history,
+                include_decision_log=include_history,
+            )
+            for r in payload["results"]
+        ],
         "errors": payload.get("errors", []),
         "plan": payload["plan"],
         "prod_keys": payload.get("prod_keys", []),

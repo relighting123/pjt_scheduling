@@ -199,6 +199,7 @@ def cmd_inference(
     lot_cd: str = None,
     decision_log: bool = False,
     enable_wip_inflow: bool = False,
+    include_history: bool = False,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
@@ -215,11 +216,11 @@ def cmd_inference(
         fetch_from_db(fac_id=fac_id, split="infer", period=rtk, lot_cd=lcd)
     set_input_folder(f"{fac_id}/infer")
 
-    agent = SchedulingAgent()
-    if not agent.model_exists():
-        print("[오류] 학습된 모델이 없습니다. 먼저 train을 실행하세요.")
+    try:
+        agent = SchedulingAgent.load()
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[오류] {exc}")
         sys.exit(1)
-    agent = SchedulingAgent.load()
 
     print("=" * 60)
     print("[inference] 데이터 로드 및 전처리")
@@ -237,6 +238,7 @@ def cmd_inference(
         env_data,
         algorithm="rl",
         agent=agent,
+        record_history=include_history,
         record_decision_log=decision_log,
         enable_wip_inflow=enable_wip_inflow,
     )
@@ -407,6 +409,11 @@ def parse_args():
         help="step별 EQP/PPK/OPER 결정 및 미할당 사유를 result_full.json에 기록",
     )
     inf_p.add_argument(
+        "--include-history",
+        action="store_true",
+        help="UI 재생용 history/event snapshot을 생성합니다. 기본은 빠른 schedule 결과만 생성.",
+    )
+    inf_p.add_argument(
         "--enable-wip-inflow",
         action="store_true",
         help="공정 완료 시 다음 공정 flow 재공 유입 이벤트를 켭니다. 기본은 현재 재공만 배정.",
@@ -483,6 +490,7 @@ def main():
                 lot_cd=args.lotcd,
                 decision_log=args.decision_log,
                 enable_wip_inflow=args.enable_wip_inflow,
+                include_history=args.include_history,
             )
 
         elif args.command == "collect":

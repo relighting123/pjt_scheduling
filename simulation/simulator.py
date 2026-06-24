@@ -1379,6 +1379,13 @@ class SchedulingSimulator:
         })
         self._pending_step_events = []
 
+    def clear_step_assignment(self) -> None:
+        """history 미기록 추론에서 step 임시 배정 상태만 정리."""
+        self._step_idx += 1
+        self._last_assigned = None
+        self._last_decision_assignment = None
+        self._pending_step_events = []
+
     # --- Bucket(=PPK×MODEL×OPER) feature ---
     BUCKET_FEATURES = 14
 

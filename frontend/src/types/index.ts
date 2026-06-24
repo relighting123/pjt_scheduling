@@ -105,6 +105,16 @@ export interface InferenceStats {
   oper_switches: number;
   prod_switches: number;
   completed_qty: Record<string, number>;
+  conversions?: number;
+  remaining_wip?: Record<string, number>;
+  remaining_current_wip?: Record<string, number>;
+  steps?: number;
+  terminated?: boolean;
+  truncated?: boolean;
+  current_time?: number;
+  sim_end_minutes?: number;
+  termination_mode?: string;
+  enable_wip_inflow?: boolean;
 }
 
 export interface DecisionLogFeasibleOption {
@@ -134,6 +144,11 @@ export interface DecisionLogEntry {
   resolved_flat?: number | null;
   resolved_ppk?: string | null;
   resolved_oper?: string | null;
+  selected_eqp_id?: string | null;
+  selected_ppk?: string | null;
+  selected_oper_id?: string | null;
+  selected_lot_id?: string | null;
+  selection_reason?: string;
   action_corrected: boolean;
   status: string;
   reason: string;
