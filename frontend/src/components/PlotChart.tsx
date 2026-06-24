@@ -1,11 +1,15 @@
+import { useCallback, useRef } from "react";
 import Plot from "react-plotly.js";
-import type { Data, Layout, Config, PlotMouseEvent } from "plotly.js";
+import Plotly from "plotly.js";
+import type { Data, Layout, Config, PlotMouseEvent, PlotRelayoutEvent } from "plotly.js";
 
 interface PlotChartProps {
   data: Data[];
   layout: Partial<Layout>;
   className?: string;
   onPointClick?: (pointIndex: number) => void;
+  /** 간트 pan 시 X축이 0 미만으로 가지 않도록 clamp */
+  clampXMin?: number;
 }
 
 const plotConfig: Partial<Config> = {
@@ -26,13 +30,60 @@ const plotConfig: Partial<Config> = {
   ],
 };
 
-export default function PlotChart({ data, layout, className, onPointClick }: PlotChartProps) {
+function relayoutClampXMin(event: PlotRelayoutEvent, minX: number): Record<string, [number, number]> | null {
+  const updates: Record<string, [number, number]> = {};
+  const axisPrefixes = new Set<string>();
+
+  for (const key of Object.keys(event)) {
+    const m = key.match(/^(xaxis\d*)\.range\[0\]$/);
+    if (m) axisPrefixes.add(m[1] === "xaxis" ? "xaxis" : m[1]);
+  }
+
+  for (const prefix of axisPrefixes) {
+    const startKey = `${prefix}.range[0]`;
+    const endKey = `${prefix}.range[1]`;
+    const start = event[startKey as keyof PlotRelayoutEvent];
+    const end = event[endKey as keyof PlotRelayoutEvent];
+    if (typeof start !== "number" || typeof end !== "number") continue;
+    if (start < minX) {
+      const span = end - start;
+      updates[`${prefix}.range`] = [minX, minX + span];
+    }
+  }
+
+  return Object.keys(updates).length > 0 ? updates : null;
+}
+
+export default function PlotChart({
+  data,
+  layout,
+  className,
+  onPointClick,
+  clampXMin,
+}: PlotChartProps) {
+  const graphDivRef = useRef<HTMLElement | null>(null);
+
   const handleClick = (ev: Readonly<PlotMouseEvent>) => {
     const pt = ev.points?.[0];
     if (pt && typeof pt.pointIndex === "number" && onPointClick) {
       onPointClick(pt.pointIndex);
     }
   };
+
+  const handleRelayout = useCallback(
+    (ev: PlotRelayoutEvent) => {
+      if (clampXMin === undefined) return;
+      const updates = relayoutClampXMin(ev, clampXMin);
+      if (!updates) return;
+      const el = graphDivRef.current;
+      if (el) {
+        void Plotly.relayout(el, updates);
+      }
+    },
+    [clampXMin],
+  );
+
+  const isGanttPan = layout.dragmode === "pan" && clampXMin !== undefined;
 
   return (
     <div className={className ?? "plot-chart"}>
@@ -42,7 +93,11 @@ export default function PlotChart({ data, layout, className, onPointClick }: Plo
         config={plotConfig}
         useResizeHandler
         style={{ width: "100%", height: "100%" }}
+        onInitialized={(_fig, graphDiv) => {
+          graphDivRef.current = graphDiv;
+        }}
         onClick={onPointClick ? handleClick : undefined}
+        onRelayout={isGanttPan ? handleRelayout : undefined}
       />
     </div>
   );

@@ -355,7 +355,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     {ganttFixed && (
                       <>
                         <label className="field-label gantt-time-field">
-                          시작<input type="number" className="time-input" value={ganttStart} onChange={e => setGanttStart(Number(e.target.value))} />
+                          시작<input type="number" className="time-input" min={0} value={ganttStart} onChange={e => setGanttStart(Math.max(0, Number(e.target.value)))} />
                         </label>
                         <label className="field-label gantt-time-field">
                           종료<input type="number" className="time-input" value={ganttEnd} onChange={e => setGanttEnd(Number(e.target.value))} />
@@ -367,7 +367,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
                 {ganttChart && (
                   <div className="chart-wrap gantt-chart-panel">
-                    <PlotChart {...ganttChart} />
+                    <PlotChart {...ganttChart} clampXMin={0} />
                   </div>
                 )}
               </div>
@@ -430,7 +430,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   <div className="card chart-wrap"><PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} /></div>
                 </div>
                 <div className="card chart-wrap">
-                  <PlotChart {...buildAlgorithmGanttComparison(compareEntries, axis)} />
+                  <PlotChart {...buildAlgorithmGanttComparison(compareEntries, axis)} clampXMin={0} />
                 </div>
               </div>
             )}
