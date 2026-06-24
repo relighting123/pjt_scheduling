@@ -200,6 +200,7 @@ class SchedulingSimulator:
 
         self._eqp_selection: str = data.get("eqp_selection", "order")
         self._termination_mode: str = data.get("termination_mode", "all_wip")
+        self._enable_wip_inflow: bool = bool(data.get("enable_wip_inflow", True))
         self._initial_wip_lot_keys: set = {
             (lid, meta.get("plan_prod_key"), meta.get("oper_id"))
             for lid, meta in data.get("abstract_lot_meta", {}).items()
@@ -560,6 +561,8 @@ class SchedulingSimulator:
         """한 공정 완료 후 다음 공정 WIP +1. move_out 시점에 호출."""
         meta = self._in_flight.pop(lot_id, None)
         if not meta:
+            return None
+        if not self._enable_wip_inflow:
             return None
 
         ppk = meta["plan_prod_key"]

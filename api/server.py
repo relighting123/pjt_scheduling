@@ -208,6 +208,10 @@ class InferenceRequest(BaseModel):
         default=False,
         description="step별 EQP/PPK/OPER 결정 및 미할당 사유 로그 포함",
     )
+    enable_wip_inflow: bool = Field(
+        default=False,
+        description="공정 완료 시 다음 공정 flow 재공 유입 이벤트 사용",
+    )
 
 
 class GeneratorConfigModel(BaseModel):
@@ -278,6 +282,10 @@ class CompareRequest(BaseModel):
     decision_log: bool = Field(
         default=False,
         description="step별 EQP/PPK/OPER 결정 및 미할당 사유 로그 포함",
+    )
+    enable_wip_inflow: bool = Field(
+        default=False,
+        description="공정 완료 시 다음 공정 flow 재공 유입 이벤트 사용",
     )
 
 
@@ -547,6 +555,7 @@ def inference(req: InferenceRequest):
         algorithm=req.algorithm,
         agent=agent,
         record_decision_log=req.decision_log,
+        enable_wip_inflow=req.enable_wip_inflow,
     )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]
@@ -575,6 +584,7 @@ def inference_compare(req: CompareRequest):
         env_data,
         req.algorithms,
         record_decision_log=req.decision_log,
+        enable_wip_inflow=req.enable_wip_inflow,
     )
     if not payload["results"]:
         raise HTTPException(

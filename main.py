@@ -198,6 +198,7 @@ def cmd_inference(
     nodb: bool = False,
     lot_cd: str = None,
     decision_log: bool = False,
+    enable_wip_inflow: bool = False,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
@@ -226,6 +227,10 @@ def cmd_inference(
 
     print("=" * 60)
     print("[inference] 추론 실행")
+    print(
+        "[inference] 유입 재공 이벤트: "
+        + ("ON (다음 공정 flow 유입)" if enable_wip_inflow else "OFF (현재 재공만)")
+    )
     if decision_log:
         print("[inference] 결정 로그: ON (step별 EQP/PPK/OPER·미할당 사유)")
     result = run_inference(
@@ -233,6 +238,7 @@ def cmd_inference(
         algorithm="rl",
         agent=agent,
         record_decision_log=decision_log,
+        enable_wip_inflow=enable_wip_inflow,
     )
     path = save_result(result, env_data=env_data)
     stats = result["stats"]
@@ -400,6 +406,11 @@ def parse_args():
         "--decision-log", action="store_true",
         help="step별 EQP/PPK/OPER 결정 및 미할당 사유를 result_full.json에 기록",
     )
+    inf_p.add_argument(
+        "--enable-wip-inflow",
+        action="store_true",
+        help="공정 완료 시 다음 공정 flow 재공 유입 이벤트를 켭니다. 기본은 현재 재공만 배정.",
+    )
 
     sub.add_parser("db-check", help="DB alias 설정 진단 (databases.yaml / .env)")
 
@@ -471,6 +482,7 @@ def main():
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
                 decision_log=args.decision_log,
+                enable_wip_inflow=args.enable_wip_inflow,
             )
 
         elif args.command == "collect":
