@@ -5,12 +5,12 @@ interface PlotChartProps {
   data: Data[];
   layout: Partial<Layout>;
   className?: string;
-  onPointClick?: (pointIndex: number) => void;
+  onPointClick?: (pointIndex: number, xValue?: number) => void;
 }
 
 const plotConfig: Partial<Config> = {
   responsive: true,
-  displayModeBar: true,
+  displayModeBar: false,
   displaylogo: false,
 };
 
@@ -18,7 +18,8 @@ export default function PlotChart({ data, layout, className, onPointClick }: Plo
   const handleClick = (ev: Readonly<PlotMouseEvent>) => {
     const pt = ev.points?.[0];
     if (pt && typeof pt.pointIndex === "number" && onPointClick) {
-      onPointClick(pt.pointIndex);
+      const xVal = typeof pt.x === "number" ? pt.x : undefined;
+      onPointClick(pt.pointIndex, xVal);
     }
   };
 
