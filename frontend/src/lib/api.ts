@@ -21,7 +21,16 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     );
   }
     if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
+    const statusLabel = `HTTP ${res.status}`;
+    const raw = await res.text();
+    let body: Record<string, unknown> = {};
+    try {
+      body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    } catch {
+      if (raw.trim()) {
+        throw new Error(`${statusLabel}\n${raw.trim()}`);
+      }
+    }
     const detail = body.detail;
     let message: string;
     if (typeof detail === "string") {
@@ -33,12 +42,21 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       }).join("\n");
     } else if (detail && typeof detail === "object") {
       const parts: string[] = [];
-      if (Array.isArray(detail.errors)) parts.push(...detail.errors);
-      if (typeof detail.message === "string") parts.push(detail.message);
-      if (typeof detail.hint === "string") parts.push(detail.hint);
+      if (Array.isArray((detail as { errors?: string[] }).errors)) {
+        parts.push(...(detail as { errors: string[] }).errors);
+      }
+      if (typeof (detail as { message?: string }).message === "string") {
+        parts.push((detail as { message: string }).message);
+      }
+      if (typeof (detail as { hint?: string }).hint === "string") {
+        parts.push((detail as { hint: string }).hint);
+      }
       message = parts.length ? parts.join("\n") : `요청 실패 (${res.status})`;
     } else {
       message = `요청 실패 (${res.status})`;
+    }
+    if (!message.includes(String(res.status))) {
+      message = `${statusLabel}\n${message}`;
     }
     throw new Error(message);
   }
