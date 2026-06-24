@@ -37,7 +37,8 @@ from data.generator import build_abstract_arrange
 
 
 def _read_json_file(path: Path) -> List[dict]:
-    with open(path, encoding="utf-8") as f:
+    # utf-8-sig: BOM 있는 파일(PowerShell 저장 등)과 없는 파일 모두 처리
+    with open(path, encoding="utf-8-sig") as f:
         return json.load(f)
 
 

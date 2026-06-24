@@ -195,6 +195,7 @@ export interface DataSummary {
   prod_keys: string[];
   oper_ids: string[];
   batch_info: BatchInfoRecord[];
+  warnings?: string[];
 }
 
 export interface AppConfig {
@@ -301,4 +302,4 @@ export interface TestDatasetsResponse {
   datasets: TestDatasetInfo[];
 }
 
-export type AppMode = "train" | "test" | "inference" | "dataset";
+export type AppMode = "dashboard" | "train" | "test" | "inference" | "dataset";

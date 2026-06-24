@@ -1,30 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import Sidebar from "./components/Sidebar";
-import DatasetEmptyPanel from "./components/DatasetEmptyPanel";
-import DatasetPage from "./pages/DatasetPage";
+import TopNav from "./components/TopNav";
+import ErrorLogPanel from "./components/ErrorLogPanel";
+import DashboardPage from "./pages/DashboardPage";
 import InferencePage from "./pages/InferencePage";
 import TestPage from "./pages/TestPage";
 import TrainPage from "./pages/TrainPage";
+import DatasetPage from "./pages/DatasetPage";
+import DatasetEmptyPanel from "./components/DatasetEmptyPanel";
 import { api } from "./lib/api";
 import type { AppConfig, AppMode, DataSummary } from "./types";
 import "./App.css";
 
-const SIDEBAR_KEY = "pjt_sidebar_open";
-
 export default function App() {
-  const [mode, setMode] = useState<AppMode>("train");
+  const [mode, setMode] = useState<AppMode>("dashboard");
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [summary, setSummary] = useState<DataSummary | null>(null);
   const [modelExists, setModelExists] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [folderLoading, setFolderLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(
-    () => localStorage.getItem(SIDEBAR_KEY) !== "false",
-  );
-
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_KEY, String(sidebarOpen));
-  }, [sidebarOpen]);
 
   const refreshData = useCallback(async () => {
     setLoadError(null);
@@ -45,17 +38,13 @@ export default function App() {
         setConfig(cfg);
         const status = await api.getModelStatus();
         setModelExists(status.exists);
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
     }
   }, []);
 
-  useEffect(() => {
-    refreshData();
-  }, [refreshData]);
+  useEffect(() => { void refreshData(); }, [refreshData]);
 
-  const handleInputFolderChange = async (folder: string) => {
+  const handleInputFolderChange = useCallback(async (folder: string) => {
     setFolderLoading(true);
     setLoadError(null);
     try {
@@ -66,67 +55,67 @@ export default function App() {
     } finally {
       setFolderLoading(false);
     }
-  };
+  }, [refreshData]);
 
   const hasData = summary !== null;
 
   return (
-    <div className={`app-layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
-      <Sidebar
+    <div className="app-shell">
+      <TopNav
         mode={mode}
-        config={config}
         onModeChange={setMode}
-        open={sidebarOpen}
-        onToggle={() => setSidebarOpen((v) => !v)}
+        inputFolder={config?.input_folder}
       />
-      {!sidebarOpen && (
-        <button
-          type="button"
-          className="sidebar-fab"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="사이드바 보이기"
-        >
-          ▶ 메뉴
-        </button>
-      )}
-      <main className="main-content">
-        {loadError && (hasData || mode === "inference") && mode !== "dataset" && mode !== "test" && (
-          <div className="banner banner-warn">{loadError}</div>
-        )}
+
+      <main className="app-main">
+        {/* 데이터 경고/오류: 축약형 ErrorLogPanel만 표시 */}
+        <ErrorLogPanel
+          errors={loadError ? [loadError] : []}
+          warnings={summary?.warnings ?? []}
+        />
+
         <div key={mode} className="page-enter">
-          {mode === "dataset" && (
-            <DatasetPage
-              config={config}
-              summary={summary}
-              folderLoading={folderLoading}
-              loadError={loadError}
-              onInputFolderChange={handleInputFolderChange}
-            />
+          {mode === "dashboard" && (
+            <DashboardPage onNavigate={setMode} />
           )}
-          {mode === "test" && config && (
-            <TestPage config={config} modelExists={modelExists} />
-          )}
-          {mode === "train" && !hasData && (
-            <DatasetEmptyPanel
-              loadError={loadError}
-              onGoToDataset={() => setMode("dataset")}
-            />
-          )}
-          {mode === "train" && hasData && config && (
-            <TrainPage
-              config={config}
-              summary={summary}
-              modelExists={modelExists}
-              onTrained={() => api.getModelStatus().then((s) => setModelExists(s.exists))}
-              onRefresh={refreshData}
-            />
-          )}
+
           {mode === "inference" && (
             <InferencePage
               modelExists={modelExists}
               config={config}
               summary={summary}
               folderLoading={folderLoading}
+              onInputFolderChange={handleInputFolderChange}
+            />
+          )}
+
+          {mode === "test" && (
+            <TestPage config={config} modelExists={modelExists} />
+          )}
+
+          {mode === "train" && !hasData && (
+            <DatasetEmptyPanel
+              loadError={loadError}
+              onGoToDataset={() => setMode("dataset")}
+            />
+          )}
+
+          {mode === "train" && hasData && config && (
+            <TrainPage
+              config={config}
+              summary={summary}
+              modelExists={modelExists}
+              onTrained={() => api.getModelStatus().then((s) => setModelExists(s.exists)).catch(() => {})}
+              onRefresh={refreshData}
+            />
+          )}
+
+          {mode === "dataset" && (
+            <DatasetPage
+              config={config}
+              summary={summary}
+              folderLoading={folderLoading}
+              loadError={loadError}
               onInputFolderChange={handleInputFolderChange}
             />
           )}

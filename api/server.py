@@ -47,23 +47,38 @@ app.add_middleware(
 _last_inference: Optional[dict] = None
 _env_data_cache: Optional[dict] = None
 _benchmark_rl_agent: Optional[SchedulingAgent] = None
+_data_warnings: list[str] = []
+
+
+def _is_hard_error(msg: str) -> bool:
+    """구조적 결함(빈 데이터, 파일 없음)은 hard. 필드 누락/값 비어있음은 soft warning."""
+    return "비어 있습니다" in msg or "FileNotFound" in msg or "OPER_ID 또는 SEQ" in msg
+
+
+def _split_errors(errors: list[str]) -> tuple[list[str], list[str]]:
+    hard = [e for e in errors if _is_hard_error(e)]
+    soft = [e for e in errors if not _is_hard_error(e)]
+    return hard, soft
 
 
 def _apply_input_folder(folder: Optional[str]) -> None:
-    global _env_data_cache
+    global _env_data_cache, _data_warnings
     if folder:
         set_input_folder(folder)
         _env_data_cache = None
+        _data_warnings = []
 
 
 def _load_env_data() -> dict:
-    global _env_data_cache
+    global _env_data_cache, _data_warnings
     if _env_data_cache is not None:
         return _env_data_cache
     raw = load_data()
     errors = validate_data(raw)
-    if errors:
-        raise HTTPException(status_code=400, detail={"errors": errors})
+    hard, soft = _split_errors(errors)
+    if hard:
+        raise HTTPException(status_code=400, detail={"errors": hard})
+    _data_warnings = soft  # 소프트 경고는 저장하고 계속 진행
     _env_data_cache = preprocess(raw)
     return _env_data_cache
 
@@ -75,10 +90,11 @@ def _load_env_data_for_folder(folder: str) -> dict:
         set_input_folder(folder)
         raw = load_data()
         errors = validate_data(raw)
-        if errors:
+        hard, _ = _split_errors(errors)
+        if hard:
             raise HTTPException(
                 status_code=400,
-                detail={"errors": errors, "folder": folder},
+                detail={"errors": hard, "folder": folder},
             )
         return preprocess(raw)
     finally:
@@ -473,7 +489,9 @@ def data_summary():
         env_data = _load_env_data()
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return env_data_summary(env_data)
+    result = env_data_summary(env_data)
+    result["warnings"] = _data_warnings  # 소프트 경고 포함
+    return result
 
 
 @app.get("/api/model/status")

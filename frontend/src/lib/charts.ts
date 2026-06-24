@@ -1,6 +1,9 @@
 import type { Data, Layout } from "plotly.js";
 import type { ConversionPlan, HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
 import { buildColorMap, OPER_BORDER_COLORS, PROD_COLORS } from "./colors";
+import type { EqpUtil, ModelUtil, TatRow, AchievementRow } from "./metrics";
+
+export type GanttBarLabel = "lot" | "car" | "prod";
 
 export interface GanttAxisOptions {
   eqpIds: string[];
@@ -62,17 +65,17 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
   return traces;
 }
 
-/** 간트 공통 스타일 (둥근 pill 바 + 소프트 그리드) */
+/** 간트 공통 스타일 — light precision theme */
 const GANTT_THEME = {
-  plotBg: "#f8f9fc",
+  plotBg: "#f8fafc",
   paperBg: "#ffffff",
-  gridColor: "rgba(148, 163, 184, 0.18)",
+  gridColor: "rgba(15,23,42,0.07)",
   gridWidth: 1,
-  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
-  titleColor: "#1e293b",
-  axisColor: "#64748b",
-  barRadius: 10,
-  barOpacity: 0.92,
+  fontFamily: "'Space Mono', 'Courier New', monospace",
+  titleColor: "#0f172a",
+  axisColor: "#475569",
+  barRadius: 6,
+  barOpacity: 0.88,
 } as const;
 
 function ganttBarMarker(
@@ -273,6 +276,14 @@ export function buildStepGantt(
   };
 }
 
+const SHARED_DARK: Partial<Layout> = {
+  plot_bgcolor: "#f8fafc",
+  paper_bgcolor: "#ffffff",
+  font: { family: "'Space Mono', monospace", color: "#0f172a" },
+  xaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
+  yaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
+};
+
 export function buildWipChart(snap: HistorySnap, plan: PlanRecord[]): { data: Data[]; layout: Partial<Layout> } {
   const completed = snap.completed;
   const waiting = snap.wip_waiting ?? {};
@@ -303,8 +314,7 @@ export function buildWipChart(snap: HistorySnap, plan: PlanRecord[]): { data: Da
       xaxis: { title: { text: "제품 / 공정" } },
       yaxis: { title: { text: "웨이퍼 수량 (매)" } },
       barmode: "stack",
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       legend: { orientation: "h", y: -0.25 },
       height: 320,
       margin: { t: 50, b: 80 },
@@ -346,8 +356,7 @@ export function buildAchievementChart(snap: HistorySnap, plan: PlanRecord[]): { 
       title: { text: `계획 달성률 (스텝 ${snap.step})` },
       xaxis: { title: { text: "달성률 (%)" }, range: [0, 115] },
       shapes: [{ type: "line", x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper", line: { dash: "dash", color: "#4C72B0", width: 1.5 } }],
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       height: 320,
       margin: { l: 150, r: 120, t: 50, b: 40 },
     },
@@ -613,8 +622,7 @@ export function buildComparisonKpi(
       title: { text: "초기 스케줄 vs Scheduling KPI 비교" },
       barmode: "group",
       yaxis: { title: { text: "값" } },
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       legend: { orientation: "h", y: -0.2 },
       height: 360,
       margin: { t: 60, b: 80 },
@@ -642,8 +650,7 @@ export function buildAchievementComparison(
       yaxis: { title: { text: "달성률 (%)" }, range: [0, 120] },
       xaxis: { title: { text: "제품 / 공정" } },
       shapes: [{ type: "line", x0: 0, x1: 1, y0: 100, y1: 100, xref: "paper", line: { dash: "dash", color: "red", width: 1 } }],
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       legend: { orientation: "h", y: -0.25 },
       height: 360,
       margin: { t: 60, b: 80 },
@@ -696,8 +703,7 @@ export function buildAlgorithmKpiComparison(
       title: { text: "알고리즘별 KPI 비교" },
       barmode: "group",
       yaxis: { title: { text: "값" } },
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       legend: { orientation: "h", y: -0.2 },
       height: 380,
       margin: { t: 60, b: 80 },
@@ -741,8 +747,7 @@ export function buildAlgorithmAchievementComparison(
         xref: "paper",
         line: { dash: "dash", color: "red", width: 1 },
       }],
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       legend: { orientation: "h", y: -0.25 },
       height: 380,
       margin: { t: 60, b: 100 },
@@ -971,8 +976,7 @@ function buildTestMetricSingleDatasetChart(
       title: { text: `${metric.label} · ${row?.label ?? ""}`, font: { size: 14 } },
       xaxis: { title: { text: "알고리즘" } },
       yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       height: 340,
       margin: { t: 50, b: 60, l: 55, r: 20 },
     },
@@ -1034,8 +1038,7 @@ function buildTestMetricLineChart(
         ticktext: tickText,
       },
       yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
-      plot_bgcolor: "white",
-      paper_bgcolor: "white",
+      ...SHARED_DARK,
       legend: { orientation: "h", y: -0.35 },
       height: 340,
       margin: { t: 50, b: 90, l: 55, r: 20 },
@@ -1077,12 +1080,14 @@ export function benchmarkRowsFromResponse(
   return [...byFolder.values()].sort((a, b) => a.input_folder.localeCompare(b.input_folder));
 }
 
+const CHART_LIGHT = { plot_bgcolor: "#f8fafc", paper_bgcolor: "#ffffff" } as const;
+
 const TRAIN_CHART_BASE: Partial<Layout> = {
-  plot_bgcolor: "white",
-  paper_bgcolor: "white",
+  ...CHART_LIGHT,
   height: 300,
   margin: { t: 44, b: 48, l: 55, r: 20 },
-  xaxis: { title: { text: "Timesteps" } },
+  xaxis: { title: { text: "Timesteps" }, color: "#475569", gridcolor: "rgba(15,23,42,0.07)" },
+  font: { family: "'Space Mono', monospace", color: "#0f172a" },
 };
 
 export function buildTrainRewardChart(
@@ -1192,4 +1197,310 @@ export function hasTrainChartData(series: TrainSeries): boolean {
     series.timesteps.length > 0
     || series.eval_timesteps.length > 0
   );
+}
+
+// ── Enhanced Gantt with model Y-axis and label mode ───────────────────────
+
+function getEqpLabel(id: string, modelMap: Record<string, string>): string {
+  const model = modelMap[id];
+  return model ? `${model} / ${id}` : id;
+}
+
+function barText(rec: ScheduleRecord, mode: GanttBarLabel): string {
+  switch (mode) {
+    case "car": return rec.CARRIER_ID ?? rec.LOT_ID;
+    case "prod": return rec.PLAN_PROD_KEY;
+    default: return rec.LOT_ID;
+  }
+}
+
+export function buildEnhancedGantt(
+  schedule: ScheduleRecord[],
+  prodKeys: string[],
+  operIds: string[],
+  axis: GanttAxisOptions,
+  options: {
+    labelMode?: GanttBarLabel;
+    eqpModelMap?: Record<string, string>;
+    conversionPlans?: ConversionPlan[];
+    title?: string;
+  } = {},
+): { data: Data[]; layout: Partial<Layout> } {
+  const { labelMode = "lot", eqpModelMap = {}, conversionPlans = [], title } = options;
+  const prodColorMap = buildColorMap(prodKeys, PROD_COLORS);
+  const operColorMap = buildColorMap(operIds, OPER_BORDER_COLORS);
+  const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
+
+  const sortedEqps = sortedEqpIds(axis.eqpIds);
+  const eqpLabels = sortedEqps.map((id) => getEqpLabel(id, eqpModelMap));
+
+  const data: Data[] = [];
+
+  schedule.forEach((rec) => {
+    const width = rec.END_TM - rec.START_TM;
+    const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
+    data.push({
+      type: "bar",
+      orientation: "h",
+      x: [width],
+      y: [label],
+      base: [rec.START_TM],
+      marker: {
+        color: prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
+        opacity: GANTT_THEME.barOpacity,
+        line: { color: operColorMap[rec.OPER_ID ?? ""] ?? "#475569", width: 2 },
+        cornerradius: GANTT_THEME.barRadius,
+      } as Record<string, unknown>,
+      text: barText(rec, labelMode),
+      textposition: "inside",
+      insidetextanchor: "middle",
+      textfont: { size: 11, color: "#ffffff", family: GANTT_THEME.fontFamily },
+      hovertemplate:
+        `<b>LOT: ${rec.LOT_ID}</b><br>` +
+        (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
+        `EQP: ${rec.EQP_ID}<br>` +
+        `제품: ${rec.PLAN_PROD_KEY}<br>` +
+        `공정: ${rec.OPER_ID ?? "N/A"}<br>` +
+        `시작: ${rec.START_TM}분 · 종료: ${rec.END_TM}분 · 소요: ${width}분<extra></extra>`,
+      showlegend: false,
+    } as Data);
+  });
+
+  // Conversion bars
+  conversionPlans.forEach((p) => {
+    const w = Math.max(p.conv_end_min - p.conv_start_min, 0);
+    if (w <= 0) return;
+    const label = getEqpLabel(p.eqp_id, eqpModelMap);
+    data.push({
+      type: "bar",
+      orientation: "h",
+      x: [w],
+      y: [label],
+      base: [p.conv_start_min],
+      marker: {
+        color: "#f59e0b",
+        opacity: 0.88,
+        line: { color: "#b45309", width: 2 },
+        cornerradius: 6,
+      } as Record<string, unknown>,
+      text: `CONV ${p.from_lot_cd}→${p.to_lot_cd}`,
+      textposition: "inside",
+      insidetextanchor: "middle",
+      textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
+      hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${p.from_lot_cd}→${p.to_lot_cd}<br>` +
+        `시작: ${p.conv_start_min}분 · 종료: ${p.conv_end_min}분<extra></extra>`,
+      showlegend: false,
+    } as Data);
+  });
+
+  // Legend traces
+  prodKeys.forEach((pk) => {
+    data.push({
+      type: "bar",
+      orientation: "h",
+      x: [0],
+      y: [""],
+      name: pk,
+      marker: { color: prodColorMap[pk] ?? "#888888" },
+      showlegend: true,
+      visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
+    });
+  });
+  operIds.forEach((op) => {
+    data.push({
+      type: "scatter",
+      mode: "markers",
+      x: [null],
+      y: [null],
+      name: `[OPER] ${op}`,
+      marker: { size: 12, color: operColorMap[op] ?? "#222222", symbol: "square", line: { width: 2, color: "white" } },
+      showlegend: true,
+    });
+  });
+
+  const layout: Partial<Layout> = {
+    title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
+    xaxis: {
+      title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
+      showgrid: true,
+      gridcolor: GANTT_THEME.gridColor,
+      gridwidth: GANTT_THEME.gridWidth,
+      zeroline: false,
+      range: [timeStart, timeEnd],
+      tickfont: { size: 11, color: GANTT_THEME.axisColor },
+      ...(axis.fixedRange ? { fixedrange: true } : {}),
+    },
+    yaxis: {
+      categoryorder: "array",
+      categoryarray: eqpLabels,
+      title: { text: "설비 (모델 / 호기)", font: { size: 12, color: GANTT_THEME.axisColor } },
+      tickfont: { size: 10, color: GANTT_THEME.axisColor },
+      showgrid: false,
+    },
+    barmode: "overlay",
+    bargap: 0.35,
+    legend: {
+      title: { text: "제품 / 공정", font: { size: 11 } },
+      orientation: "v",
+      x: 1.02,
+      bgcolor: "rgba(255,255,255,0.85)",
+      bordercolor: "rgba(148,163,184,0.25)",
+      borderwidth: 1,
+    },
+    height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
+    plot_bgcolor: GANTT_THEME.plotBg,
+    paper_bgcolor: GANTT_THEME.paperBg,
+    margin: { l: 160, r: 188, t: 40, b: 52 },
+    hoverlabel: {
+      bgcolor: "#ffffff",
+      bordercolor: "rgba(148,163,184,0.35)",
+      font: { family: GANTT_THEME.fontFamily, size: 12 },
+    },
+  };
+
+  return { data, layout };
+}
+
+// ── Utilization charts ────────────────────────────────────────────────────
+
+export function buildEqpUtilChart(utils: EqpUtil[]): { data: Data[]; layout: Partial<Layout> } {
+  const sorted = [...utils].sort((a, b) => b.utilPct - a.utilPct);
+  const labels = sorted.map((u) => (u.model ? `${u.model}/${u.eqp_id}` : u.eqp_id));
+  const values = sorted.map((u) => u.utilPct);
+  const colors = values.map((v) => (v >= 80 ? "#55A868" : v >= 50 ? "#4C72B0" : "#DD8452"));
+
+  return {
+    data: [{
+      type: "bar",
+      orientation: "h",
+      x: values,
+      y: labels,
+      marker: { color: colors },
+      text: values.map((v) => `${v}%`),
+      textposition: "outside",
+      hovertemplate: "%{y}<br>가동률: %{x}%<extra></extra>",
+      showlegend: false,
+    }],
+    layout: {
+      title: { text: "장비별 가동률 (%)", font: { size: 13 } },
+      xaxis: { range: [0, 115], title: { text: "가동률 (%)" } },
+      height: Math.max(300, 28 * Math.max(utils.length, 6)),
+      margin: { l: 140, r: 60, t: 40, b: 40 },
+      ...SHARED_DARK,
+    },
+  };
+}
+
+export function buildModelUtilChart(utils: ModelUtil[]): { data: Data[]; layout: Partial<Layout> } {
+  const labels = utils.map((u) => u.model);
+  const values = utils.map((u) => u.avgUtilPct);
+  const colors = values.map((v) => (v >= 80 ? "#55A868" : v >= 50 ? "#4C72B0" : "#DD8452"));
+
+  return {
+    data: [{
+      type: "bar",
+      orientation: "h",
+      x: values,
+      y: labels,
+      marker: { color: colors },
+      text: values.map((v) => `${v}%`),
+      textposition: "outside",
+      hovertemplate: "%{y}<br>평균 가동률: %{x}%<extra></extra>",
+      showlegend: false,
+    }],
+    layout: {
+      title: { text: "장비모델별 평균 가동률 (%)", font: { size: 13 } },
+      xaxis: { range: [0, 115], title: { text: "평균 가동률 (%)" } },
+      height: Math.max(260, 40 * Math.max(utils.length, 4)),
+      margin: { l: 120, r: 60, t: 40, b: 40 },
+      ...SHARED_DARK,
+    },
+  };
+}
+
+export function buildTatChart(rows: TatRow[]): { data: Data[]; layout: Partial<Layout> } {
+  return {
+    data: [
+      {
+        type: "bar",
+        name: "평균 TAT",
+        x: rows.map((r) => r.prod),
+        y: rows.map((r) => r.avgMin),
+        marker: { color: "#4C72B0" },
+        hovertemplate: "%{x}<br>평균 TAT: %{y}분<extra></extra>",
+      },
+      {
+        type: "bar",
+        name: "최대 TAT",
+        x: rows.map((r) => r.prod),
+        y: rows.map((r) => r.maxMin),
+        marker: { color: "#DD8452", opacity: 0.6 },
+        hovertemplate: "%{x}<br>최대 TAT: %{y}분<extra></extra>",
+      },
+    ],
+    layout: {
+      title: { text: "제품별 TAT (Turn Around Time)", font: { size: 13 } },
+      barmode: "group",
+      xaxis: { title: { text: "제품" } },
+      yaxis: { title: { text: "TAT (분)" } },
+      height: 300,
+      margin: { t: 44, b: 60, l: 55, r: 20 },
+      ...SHARED_DARK,
+      legend: { orientation: "h", y: -0.25 },
+    },
+  };
+}
+
+export function buildDashboardKpiChart(
+  kpis: { label: string; value: number; suffix?: string }[],
+): { data: Data[]; layout: Partial<Layout> } {
+  const n = kpis.length;
+  const colW = 1 / n;
+  const data: Data[] = kpis.map((k, i) => ({
+    type: "indicator",
+    mode: "number",
+    value: k.value,
+    number: {
+      suffix: k.suffix ?? "",
+      font: { size: 28, color: "#141824" },
+    },
+    title: { text: k.label, font: { size: 11, color: "#5c6478" } },
+    domain: { x: [i * colW, (i + 1) * colW - 0.01], y: [0, 1] },
+  }));
+
+  return {
+    data,
+    layout: {
+      height: 120,
+      margin: { t: 20, b: 10, l: 10, r: 10 },
+      paper_bgcolor: "white",
+    },
+  };
+}
+
+export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data[]; layout: Partial<Layout> } {
+  const colors = rows.map((r) =>
+    r.pct >= 100 ? "#55A868" : r.pct >= 60 ? "#DD8452" : "#C44E52",
+  );
+  return {
+    data: [{
+      type: "bar",
+      orientation: "h",
+      x: rows.map((r) => Math.min(r.pct, 100)),
+      y: rows.map((r) => `${r.prod}/${r.oper}`),
+      text: rows.map((r) => `${r.doneQty}/${r.planQty}매 (${r.pct}%)`),
+      textposition: "outside",
+      marker: { color: colors },
+      hovertemplate: "%{y}<br>달성률: %{x}%<extra></extra>",
+      showlegend: false,
+    }],
+    layout: {
+      title: { text: "제품/공정별 달성률", font: { size: 13 } },
+      xaxis: { range: [0, 130], title: { text: "달성률 (%)" } },
+      shapes: [{ type: "line" as const, x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper" as const, line: { dash: "dash" as const, color: "#4C72B0", width: 1.5 } }],
+      height: Math.max(260, 28 * Math.max(rows.length, 6)),
+      margin: { l: 140, r: 100, t: 40, b: 40 },
+      ...SHARED_DARK,
+    },
+  };
 }
