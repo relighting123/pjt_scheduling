@@ -88,6 +88,10 @@ function folderPeriodLabel(folder: string): string {
 
 }
 
+function isAlgorithmId(value: unknown): value is AlgorithmId {
+  return value === "rl" || value === "minprogress" || value === "earliest_st";
+}
+
 
 
 type TabId = "sim" | "schedule";
@@ -326,7 +330,7 @@ export default function InferencePage({
         sim_end_minutes: res.sim_end_minutes,
       });
 
-      if (res.algorithm === "rl" || res.algorithm === "minprogress" || res.algorithm === "earliest_st") {
+      if (isAlgorithmId(res.algorithm)) {
         setAlgorithm(res.algorithm);
       }
 
@@ -425,7 +429,7 @@ export default function InferencePage({
 
     setResult(res);
 
-    if (res.algorithm) setAlgorithm(res.algorithm);
+    if (isAlgorithmId(res.algorithm)) setAlgorithm(res.algorithm);
 
     setStep(0);
 
