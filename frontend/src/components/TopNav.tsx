@@ -18,7 +18,7 @@ export default function TopNav({ mode, onModeChange, inputFolder }: TopNavProps)
     <nav className="top-nav">
       <div className="nav-brand">
         <div className="nav-logo">⬡</div>
-        <span className="nav-wordmark">Scheduling<span> OS</span></span>
+        <span className="nav-wordmark">AI Scheduling<span> Dashboard</span></span>
       </div>
 
       <div className="nav-items">

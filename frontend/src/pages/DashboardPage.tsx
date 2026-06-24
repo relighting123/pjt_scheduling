@@ -66,8 +66,8 @@ export default function DashboardPage({ onNavigate }: Props) {
     <div className="dash-page">
       <div className="dash-header">
         <div>
-          <h1 className="dash-title">스케줄링 <span>대시보드</span></h1>
-          <p className="dash-subtitle">제조 스케줄링 AI 결과 요약</p>
+          <h1 className="dash-title">AI Scheduling <span>Dashboard</span></h1>
+          <p className="dash-subtitle">반도체 설비 AI 스케줄링 인텔리전스</p>
         </div>
         <div className="dash-time">{now}</div>
       </div>
