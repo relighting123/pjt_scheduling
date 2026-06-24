@@ -1239,6 +1239,95 @@ function barText(rec: ScheduleRecord, mode: GanttBarLabel): string {
   }
 }
 
+interface GanttBarSegment {
+  records: ScheduleRecord[];
+}
+
+function canMergeProdOperSegment(prev: ScheduleRecord, next: ScheduleRecord): boolean {
+  return (
+    prev.EQP_ID === next.EQP_ID
+    && prev.PLAN_PROD_KEY === next.PLAN_PROD_KEY
+    && (prev.OPER_ID ?? "") === (next.OPER_ID ?? "")
+    && prev.END_TM === next.START_TM
+  );
+}
+
+/** 제품 모드: 동일 EQP에서 연속된 동일 제품·공정 스케줄을 하나의 bar로 묶음 */
+function buildGanttBarSegments(
+  schedule: ScheduleRecord[],
+  labelMode: GanttBarLabel,
+): GanttBarSegment[] {
+  if (labelMode !== "prod" || schedule.length === 0) {
+    return schedule.map((rec) => ({ records: [rec] }));
+  }
+
+  const byEqp = new Map<string, ScheduleRecord[]>();
+  for (const rec of schedule) {
+    const list = byEqp.get(rec.EQP_ID) ?? [];
+    list.push(rec);
+    byEqp.set(rec.EQP_ID, list);
+  }
+
+  const segments: GanttBarSegment[] = [];
+  for (const recs of byEqp.values()) {
+    const sorted = [...recs].sort(
+      (a, b) => a.START_TM - b.START_TM || a.END_TM - b.END_TM,
+    );
+    let current: ScheduleRecord[] = [];
+    for (const rec of sorted) {
+      const prev = current[current.length - 1];
+      if (prev && canMergeProdOperSegment(prev, rec)) {
+        current.push(rec);
+      } else {
+        if (current.length) segments.push({ records: current });
+        current = [rec];
+      }
+    }
+    if (current.length) segments.push({ records: current });
+  }
+
+  return segments;
+}
+
+function segmentTimeRange(segment: GanttBarSegment): { start: number; end: number; width: number } {
+  const first = segment.records[0];
+  const last = segment.records[segment.records.length - 1];
+  const start = first.START_TM;
+  const end = last.END_TM;
+  return { start, end, width: end - start };
+}
+
+function segmentHoverTemplate(segment: GanttBarSegment): string {
+  const { records } = segment;
+  const first = records[0];
+  const { start, end, width } = segmentTimeRange(segment);
+  const oper = first.OPER_ID ?? "N/A";
+
+  if (records.length === 1) {
+    const rec = first;
+    return (
+      `<b>LOT: ${rec.LOT_ID}</b><br>` +
+      (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
+      `EQP: ${rec.EQP_ID}<br>` +
+      `제품: ${rec.PLAN_PROD_KEY}<br>` +
+      `공정: ${oper}<br>` +
+      `시작: ${start}분 · 종료: ${end}분 · 소요: ${width}분<extra></extra>`
+    );
+  }
+
+  const lotSummary = records.length <= 5
+    ? records.map((r) => r.LOT_ID).join(", ")
+    : `${records.slice(0, 3).map((r) => r.LOT_ID).join(", ")} 외 ${records.length - 3}건`;
+
+  return (
+    `<b>제품: ${first.PLAN_PROD_KEY}</b><br>` +
+    `공정: ${oper}<br>` +
+    `EQP: ${first.EQP_ID}<br>` +
+    `병합 LOT ${records.length}건: ${lotSummary}<br>` +
+    `시작: ${start}분 · 종료: ${end}분 · 소요: ${width}분<extra></extra>`
+  );
+}
+
 export function buildEnhancedGantt(
   schedule: ScheduleRecord[],
   prodKeys: string[],
@@ -1260,16 +1349,18 @@ export function buildEnhancedGantt(
   const eqpLabels = sortedEqps.map((id) => getEqpLabel(id, eqpModelMap));
 
   const data: Data[] = [];
+  const barSegments = buildGanttBarSegments(schedule, labelMode);
 
-  schedule.forEach((rec) => {
-    const width = rec.END_TM - rec.START_TM;
+  barSegments.forEach((segment) => {
+    const rec = segment.records[0];
+    const { start, width } = segmentTimeRange(segment);
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
     data.push({
       type: "bar",
       orientation: "h",
       x: [width],
       y: [label],
-      base: [rec.START_TM],
+      base: [start],
       marker: {
         color: prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
         opacity: GANTT_THEME.barOpacity,
@@ -1280,13 +1371,7 @@ export function buildEnhancedGantt(
       textposition: "inside",
       insidetextanchor: "middle",
       textfont: { size: 11, color: "#ffffff", family: GANTT_THEME.fontFamily },
-      hovertemplate:
-        `<b>LOT: ${rec.LOT_ID}</b><br>` +
-        (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
-        `EQP: ${rec.EQP_ID}<br>` +
-        `제품: ${rec.PLAN_PROD_KEY}<br>` +
-        `공정: ${rec.OPER_ID ?? "N/A"}<br>` +
-        `시작: ${rec.START_TM}분 · 종료: ${rec.END_TM}분 · 소요: ${width}분<extra></extra>`,
+      hovertemplate: segmentHoverTemplate(segment),
       showlegend: false,
     } as Data);
   });
