@@ -44,13 +44,34 @@ def test_decision_log_records_assignments():
     assert first.get("selection_reason")
     assert result["stats"]["terminated"] is True
     assert result["stats"]["truncated"] is False
-    assert result["stats"]["remaining_wip"] == {}
+    assert result["stats"]["remaining_current_wip"] == {}
+    assert result["stats"]["termination_mode"] == "current_wip_assigned"
 
 
 def test_decision_log_disabled_by_default():
     env_data = _env_data()
     result = run_inference(env_data, algorithm="earliest_st", record_history=False)
     assert result.get("decision_log", []) == []
+
+
+def test_inference_defaults_to_current_wip_only_completion():
+    env_data = _env_data()
+    current_only = run_inference(
+        env_data,
+        algorithm="earliest_st",
+        record_history=False,
+    )
+    all_wip = run_inference(
+        env_data,
+        algorithm="earliest_st",
+        record_history=False,
+        current_wip_only=False,
+    )
+
+    assert current_only["stats"]["remaining_current_wip"] == {}
+    assert current_only["stats"]["termination_mode"] == "current_wip_assigned"
+    assert len(current_only["schedule"]) == len(env_data["abstract_lot_meta"])
+    assert len(all_wip["schedule"]) > len(current_only["schedule"])
 
 
 def test_scheduling_env_decision_log_statuses():

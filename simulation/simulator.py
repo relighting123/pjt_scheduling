@@ -199,6 +199,11 @@ class SchedulingSimulator:
         self._inject_deadline: Dict[str, int] = dict(data.get("lot_inject_deadline", {}))
 
         self._eqp_selection: str = data.get("eqp_selection", "order")
+        self._termination_mode: str = data.get("termination_mode", "all_wip")
+        self._initial_wip_lot_keys: set = {
+            (lid, meta.get("plan_prod_key"), meta.get("oper_id"))
+            for lid, meta in data.get("abstract_lot_meta", {}).items()
+        }
 
         self._event_q: List[SimEvent] = []
         self._event_seq: int = 0
@@ -445,6 +450,13 @@ class SchedulingSimulator:
                 continue
             for lid in wip["lot_ids"]:
                 t = self._wip_lot_meta.get(lid, {}).get("oper_in_time", 0)
+                meta = self._wip_lot_meta.get(lid, {})
+                if not self._is_current_wip_lot(
+                    lid,
+                    meta.get("plan_prod_key", ""),
+                    meta.get("oper_id", ""),
+                ):
+                    continue
                 if t > after:
                     candidates.append(t)
         return min(candidates) if candidates else None
@@ -575,6 +587,34 @@ class SchedulingSimulator:
     def _lot_ready(self, lot_id: str, oper_in_time: int) -> bool:
         return self.current_time >= oper_in_time
 
+    def _current_wip_only(self) -> bool:
+        return self._termination_mode == "current_wip_assigned"
+
+    def _is_current_wip_lot(self, lot_id: str, ppk: str, oper_id: str) -> bool:
+        if not self._current_wip_only():
+            return True
+        return (lot_id, ppk, oper_id) in self._initial_wip_lot_keys
+
+    def _has_unassigned_current_wip(self) -> bool:
+        for lid, ppk, oper_id in self._initial_wip_lot_keys:
+            wip = self._wip_pool.get((ppk, oper_id))
+            if wip and lid in wip.get("lot_ids", []):
+                return True
+        return False
+
+    def get_remaining_current_wip(self) -> Dict[str, int]:
+        """시뮬 시작 시점 현재 재공 중 아직 배정되지 않은 수량."""
+        remaining: Dict[str, int] = {}
+        for lid, ppk, oper_id in self._initial_wip_lot_keys:
+            wip = self._wip_pool.get((ppk, oper_id))
+            if not wip or lid not in wip.get("lot_ids", []):
+                continue
+            meta = self._wip_lot_meta.get(lid, {})
+            wf = int(meta.get("wf_qty", 25))
+            key = f"{ppk}|{oper_id}"
+            remaining[key] = remaining.get(key, 0) + wf
+        return remaining
+
     def _abstract_assignable_on_eqp(self, eqp_id: str) -> List[dict]:
         model = self._eqp_model_map.get(eqp_id)
         if not model:
@@ -591,6 +631,8 @@ class SchedulingSimulator:
                 continue
             ready = False
             for lid in wip["lot_ids"]:
+                if not self._is_current_wip_lot(lid, ppk, oper_id):
+                    continue
                 meta = self._wip_lot_meta.get(lid, {})
                 oper_in_time = meta.get("oper_in_time", 0)
                 if self._lot_ready(lid, oper_in_time):
@@ -927,6 +969,8 @@ class SchedulingSimulator:
             if not wip:
                 continue
             for lid in list(wip["lot_ids"]):
+                if not self._is_current_wip_lot(lid, ppk, oper_id):
+                    continue
                 meta = self._wip_lot_meta.get(lid, {})
                 lot = self.lot_pool.get(lid)
                 if not meta and not lot:
@@ -1269,6 +1313,8 @@ class SchedulingSimulator:
         """
         목적: 시뮬레이션 종료 — Actual·추상 투입 가능 조합 없고 처리 중인 재공도 없을 때.
         """
+        if self._current_wip_only() and not self._has_unassigned_current_wip():
+            return not self._eqp_pending_assign
         if self._current_eqp is not None:
             return False
         if self._has_pending_processing():
