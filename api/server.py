@@ -4,6 +4,7 @@ React UI가 호출하는 REST API를 제공합니다.
 
 실행: uvicorn api.server:app --reload --port 8000
 """
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -78,7 +79,29 @@ def _load_env_data() -> dict:
     if _env_data_cache is not None:
         return _env_data_cache
     _require_input_files(CONFIG.path.input_dir)
-    raw = load_data()
+    try:
+        raw = load_data()
+    except FileNotFoundError:
+        raise
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [f"JSON 파싱 오류: {exc}"],
+                "hint": (
+                    f"input 폴더의 JSON 파일 형식이 올바르지 않습니다. "
+                    f"확인: {CONFIG.path.input_dir}"
+                ),
+            },
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [f"입력 파일 읽기 실패: {exc}"],
+                "hint": f"input 폴더 권한·경로를 확인하세요: {CONFIG.path.input_dir}",
+            },
+        ) from exc
     errors = validate_data(raw)
     hard, soft = _split_errors(errors)
     if hard:
@@ -521,6 +544,16 @@ def data_summary():
         env_data = _load_env_data()
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [str(e)],
+                "hint": f"데이터 요약 실패. input 폴더를 확인하세요: {CONFIG.path.input_dir}",
+            },
+        ) from e
     result = env_data_summary(env_data)
     result["warnings"] = _data_warnings  # 소프트 경고 포함
     return result
