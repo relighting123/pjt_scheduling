@@ -197,6 +197,8 @@ function conversionTraces(
     .filter((t): t is Data => t !== null);
 }
 
+const GANTT_PAN_LAYOUT: Pick<Layout, "dragmode"> = { dragmode: "pan" };
+
 function buildGanttLayout(
   title: string,
   axis: GanttAxisOptions,
@@ -205,6 +207,7 @@ function buildGanttLayout(
   const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
 
   return {
+    ...GANTT_PAN_LAYOUT,
     title: {
       text: title,
       font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
@@ -225,6 +228,7 @@ function buildGanttLayout(
       title: { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } },
       tickfont: { size: 11, color: GANTT_THEME.axisColor },
       showgrid: false,
+      fixedrange: true,
     },
     barmode: "overlay",
     bargap: 0.35,
@@ -283,6 +287,7 @@ const SHARED_DARK: Partial<Layout> = {
   plot_bgcolor: "#f8fafc",
   paper_bgcolor: "#ffffff",
   font: { family: CHART_FONT, color: "#1b1b18" },
+  dragmode: false,
   xaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
   yaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
 };
@@ -792,6 +797,7 @@ export function buildAlgorithmGanttComparison(
   const n = entries.length;
   const data: Data[] = [];
   const layout: Partial<Layout> = {
+    ...GANTT_PAN_LAYOUT,
     grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
     height: Math.max(300 * n, 420),
     barmode: "overlay",
@@ -867,6 +873,7 @@ export function buildAlgorithmGanttComparison(
       categoryorder: "array",
       categoryarray: eqps,
       showgrid: false,
+      fixedrange: true,
     };
 
     const yMid = (domain[0] + domain[1]) / 2;
@@ -1322,6 +1329,7 @@ export function buildEnhancedGantt(
   });
 
   const layout: Partial<Layout> = {
+    ...GANTT_PAN_LAYOUT,
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
     xaxis: {
       title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
@@ -1339,6 +1347,7 @@ export function buildEnhancedGantt(
       title: { text: "설비 (모델 / 호기)", font: { size: 12, color: GANTT_THEME.axisColor } },
       tickfont: { size: 10, color: GANTT_THEME.axisColor },
       showgrid: false,
+      fixedrange: true,
     },
     barmode: "overlay",
     bargap: 0.35,

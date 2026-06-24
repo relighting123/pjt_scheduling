@@ -10,8 +10,20 @@ interface PlotChartProps {
 
 const plotConfig: Partial<Config> = {
   responsive: true,
-  displayModeBar: true,
+  displayModeBar: false,
   displaylogo: false,
+  scrollZoom: false,
+  doubleClick: false,
+  modeBarButtonsToRemove: [
+    "zoom2d",
+    "pan2d",
+    "select2d",
+    "lasso2d",
+    "zoomIn2d",
+    "zoomOut2d",
+    "autoScale2d",
+    "resetScale2d",
+  ],
 };
 
 export default function PlotChart({ data, layout, className, onPointClick }: PlotChartProps) {
