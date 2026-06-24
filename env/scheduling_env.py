@@ -137,19 +137,30 @@ class SchedulingEnv(gym.Env):
         reward = 0.0
         resolved_flat: Optional[int] = None
         if eqp_id is not None:
-            feasible = self.sim.get_feasible_ppk_oper(eqp_id)
-            resolved_flat = self._resolve_ppk_oper(ppk_oper_idx, feasible)
-            if resolved_flat is not None and self.sim.eqps[eqp_id].status == "idle":
-                ppk, oper_id = self.sim.ppk_oper_from_flat(resolved_flat)
-                reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
-            elif feasible:
-                reward = -0.5
+            if self.sim._eqp_selection == "min_st":
+                if self.sim.eqps[eqp_id].status == "idle":
+                    reward = self.sim.assign_earliest_st_pending(eqp_id)
+                    assignment = self.sim._last_decision_assignment
+                    if assignment and assignment.get("eqp_id") == eqp_id:
+                        resolved_flat = self.sim.ppk_oper_flat_index(
+                            assignment["oper_id"], assignment["plan_prod_key"],
+                        )
+                else:
+                    reward = -0.5
             else:
-                # tool cap 등으로 idle이지만 배정 불가 → 시간 전진
-                self.sim._current_eqp = None
-                if self.sim._has_pending_processing():
-                    self.sim._advance_to_next_decision()
-                    time_advanced = self.sim.current_time != time_at_step_start
+                feasible = self.sim.get_feasible_ppk_oper(eqp_id)
+                resolved_flat = self._resolve_ppk_oper(ppk_oper_idx, feasible)
+                if resolved_flat is not None and self.sim.eqps[eqp_id].status == "idle":
+                    ppk, oper_id = self.sim.ppk_oper_from_flat(resolved_flat)
+                    reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
+                elif feasible:
+                    reward = -0.5
+                else:
+                    # tool cap 등으로 idle이지만 배정 불가 → 시간 전진
+                    self.sim._current_eqp = None
+                    if self.sim._has_pending_processing():
+                        self.sim._advance_to_next_decision()
+                        time_advanced = self.sim.current_time != time_at_step_start
         elif not self.sim.is_done():
             if self.sim._has_pending_processing() or self.sim.get_idle_eqps():
                 self.sim._advance_to_next_decision()
