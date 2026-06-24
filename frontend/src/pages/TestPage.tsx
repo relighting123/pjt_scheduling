@@ -226,21 +226,25 @@ export default function TestPage({ config, modelExists }: Props) {
             )}
 
             {tab === "gantt" && selectedDataset && detailEntries.length > 0 && (
-              <div className="tab-panel">
-                <div className="card mb-2">
-                  <div style={{ display:"flex", gap:"1rem", alignItems:"center", flexWrap:"wrap" }}>
-                    <div className="card-title" style={{ marginBottom:0 }}>간트 비교 — {selectedDataset.label}</div>
-                    <label className="check-label" style={{ marginLeft:"auto" }}>
+              <div className="tab-panel gantt-workspace">
+                <div className="gantt-workspace-head">
+                  <span className="gantt-algo-badge">{selectedDataset.label}</span>
+                </div>
+                <div className="gantt-toolbar">
+                  <div className="gantt-toolbar-group time-range-group" style={{ marginLeft: "auto" }}>
+                    <label className="check-label">
                       <input type="checkbox" checked={ganttFixed} onChange={e => { setGanttFixed(e.target.checked); if(e.target.checked){setGanttStart(0);setGanttEnd(selectedDataset.sim_end_minutes);} }} />
                       X축 고정
                     </label>
                     {ganttFixed && <>
-                      <span className="field-label" style={{display:"flex",gap:"0.35rem",alignItems:"center"}}>시작<input type="number" className="time-input" value={ganttStart} onChange={e=>setGanttStart(Number(e.target.value))} /></span>
-                      <span className="field-label" style={{display:"flex",gap:"0.35rem",alignItems:"center"}}>종료<input type="number" className="time-input" value={ganttEnd} onChange={e=>setGanttEnd(Number(e.target.value))} /></span>
+                      <label className="field-label gantt-time-field">시작<input type="number" className="time-input" value={ganttStart} onChange={e=>setGanttStart(Number(e.target.value))} /></label>
+                      <label className="field-label gantt-time-field">종료<input type="number" className="time-input" value={ganttEnd} onChange={e=>setGanttEnd(Number(e.target.value))} /></label>
                     </>}
                   </div>
                 </div>
-                <div className="chart-wrap"><PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} /></div>
+                <div className="chart-wrap gantt-chart-panel">
+                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} />
+                </div>
               </div>
             )}
 

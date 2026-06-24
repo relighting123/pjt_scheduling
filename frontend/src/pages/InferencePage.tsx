@@ -324,13 +324,17 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
             {/* GANTT TAB */}
             {tab === "gantt" && result && (
-              <div className="tab-panel">
-                <GanttKpiPanel result={result} eqpModelMap={eqpModelMap} />
+              <div className="tab-panel gantt-workspace">
+                <div className="gantt-workspace-head">
+                  <span className="gantt-algo-badge">
+                    {algoList.find((a) => a.id === result.algorithm)?.name ?? result.algorithm ?? "—"}
+                  </span>
+                  <GanttKpiPanel result={result} eqpModelMap={eqpModelMap} />
+                </div>
 
-                {/* Gantt options */}
-                <div className="gantt-options">
-                  <div>
-                    <div className="field-label mb-1">바 표시</div>
+                <div className="gantt-toolbar">
+                  <div className="gantt-toolbar-group">
+                    <span className="gantt-toolbar-label">바 표시</span>
                     <div className="label-mode-group">
                       {(["lot","car","prod"] as GanttBarLabel[]).map(m => (
                         <label key={m} className={`label-pill${labelMode === m ? " active" : ""}`}>
@@ -340,7 +344,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                       ))}
                     </div>
                   </div>
-                  <div className="time-range-group">
+                  <div className="gantt-toolbar-group time-range-group">
                     <label className="check-label">
                       <input type="checkbox" checked={ganttFixed} onChange={e => {
                         setGanttFixed(e.target.checked);
@@ -350,10 +354,10 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     </label>
                     {ganttFixed && (
                       <>
-                        <label className="field-label" style={{ display:"flex", alignItems:"center", gap:"0.35rem" }}>
+                        <label className="field-label gantt-time-field">
                           시작<input type="number" className="time-input" value={ganttStart} onChange={e => setGanttStart(Number(e.target.value))} />
                         </label>
-                        <label className="field-label" style={{ display:"flex", alignItems:"center", gap:"0.35rem" }}>
+                        <label className="field-label gantt-time-field">
                           종료<input type="number" className="time-input" value={ganttEnd} onChange={e => setGanttEnd(Number(e.target.value))} />
                         </label>
                       </>
@@ -362,7 +366,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 </div>
 
                 {ganttChart && (
-                  <div className="chart-wrap">
+                  <div className="chart-wrap gantt-chart-panel">
                     <PlotChart {...ganttChart} />
                   </div>
                 )}
