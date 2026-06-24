@@ -46,6 +46,7 @@ class SchedulingEnv(gym.Env):
         record_history: bool = True,
         record_decision_log: bool = False,
         max_episode_steps: Optional[int] = None,
+        truncate_on_time: bool = True,
     ):
         super().__init__()
         self._env_data = env_data
@@ -55,6 +56,7 @@ class SchedulingEnv(gym.Env):
         self._max_episode_steps_override = max_episode_steps
         self._max_episode_steps = 0
         self._episode_steps = 0
+        self._truncate_on_time = truncate_on_time
 
         env_cfg = CONFIG.env
         O = env_cfg.max_oper_count
@@ -151,7 +153,7 @@ class SchedulingEnv(gym.Env):
         self._episode_steps += 1
         terminated = self.sim.is_done()
         truncated = (not terminated) and (
-            self.sim.current_time >= self.sim.sim_end
+            (self._truncate_on_time and self.sim.current_time >= self.sim.sim_end)
             or self._episode_steps >= self._max_episode_steps
         )
 

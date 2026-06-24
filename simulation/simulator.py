@@ -221,6 +221,7 @@ class SchedulingSimulator:
         self.history:    List[dict] = []
         self._step_idx   = 0
         self._last_assigned: Optional[dict] = None
+        self._last_decision_assignment: Optional[dict] = None
         self._current_eqp: Optional[str] = None
         self._initial_wip_total: int = sum(
             pool.get("wip_qty_init", pool.get("wip_qty", 0))
@@ -1159,6 +1160,20 @@ class SchedulingSimulator:
             "had_conversion": needs_conv,
             "proc_reward": reward,
         }
+        self._last_decision_assignment = {
+            "eqp_id":        eqp_id,
+            "lot_id":        lot_id,
+            "plan_prod_key": ppk,
+            "oper_id":       oper_id,
+            "eqp_model":     row["eqp_model"],
+            "st":            st_per_wafer,
+            "wf_qty":        wf_qty,
+            "lot_cd":        lot_cd,
+            "temp":          temp,
+            "conversion":    needs_conv,
+            "start_tm":      conv_end if needs_conv else conv_start,
+            "oper_in_time":  oper_in_time,
+        }
 
         if needs_conv:
             eqp.status = "converting"
@@ -1275,6 +1290,7 @@ class SchedulingSimulator:
         self._step_idx += 1
         assigned = self._last_assigned
         self._last_assigned = None
+        self._last_decision_assignment = None
         if not self._record_history:
             return
         actual = arrange_snapshot if arrange_snapshot is not None else self.get_remaining_arrange_actual()
