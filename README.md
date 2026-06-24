@@ -65,7 +65,7 @@ pjt_scheduling/
 | 레이어 | 단위 | 설명 |
 |--------|------|------|
 | `discrete_arrange` | `(EQP_ID, LOT_ID, OPER_ID)` | 실제 LOT/EQP feasible 조합, ST, WF_QTY, EQP_MODEL_CD |
-| `abstract_arrange` | `(PPK, OPER, EQP_MODEL_CD)` | 추상 route 템플릿, 후속 flow 유입 가능성 |
+| `abstract_arrange` | `(PPK, OPER, EQP_MODEL_CD)` | 추상 arrange 템플릿, 후속 flow 유입 가능성 |
 | Runtime WIP pool | `(PPK, OPER)` + LOT list | 현재/유입 재공 수량, `oper_in_time`, LOT meta |
 
 주요 부가 입력:

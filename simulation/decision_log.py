@@ -16,7 +16,7 @@ REASON_LABELS: Dict[str, str] = {
     "sim_done": "시뮬레이션 종료",
     "no_wip": "재공(WIP) 없음",
     "wip_not_ready": "재공 oper_in_time 미도래",
-    "no_route": "EQP route/가공 불가",
+    "no_arrange": "EQP arrange/가공 불가",
     "tool_cap_blocked": "tool cap 차단",
     "lot_select_failed": "LOT 자동 선택 실패",
 }
@@ -40,8 +40,8 @@ def _bucket_block_reason(
     if not sim._eqp_can_process(eqp_id, ppk, oper_id):
         model = sim._eqp_model_map[eqp_id]
         if sim._abstract_row_for(eqp_id, ppk, oper_id) is None:
-            return "no_route", f"EQP MODEL {model}에 {ppk}/{oper_id} route 없음"
-        return "no_route", f"{eqp_id}가 {ppk}/{oper_id} 가공 불가"
+            return "no_arrange", f"EQP MODEL {model}에 {ppk}/{oper_id} arrange 없음"
+        return "no_arrange", f"{eqp_id}가 {ppk}/{oper_id} 가공 불가"
 
     ready_lots: List[str] = []
     earliest_not_ready: Optional[int] = None
