@@ -41,7 +41,8 @@ def run_inference(
     deterministic: bool = True,
     record_history: bool = True,
     record_decision_log: bool = False,
-    current_wip_only: bool = True,
+    enable_wip_inflow: bool = False,
+    current_wip_only: Optional[bool] = None,
 ) -> dict:
     """
     목적: 선택한 알고리즘으로 Scheduling 추론 실행
@@ -58,7 +59,13 @@ def run_inference(
     """
     algorithm = validate_algorithm(algorithm)
 
+    if current_wip_only is None:
+        current_wip_only = not enable_wip_inflow
+    else:
+        enable_wip_inflow = not current_wip_only
+
     run_data = dict(env_data)
+    run_data["enable_wip_inflow"] = enable_wip_inflow
     if current_wip_only:
         run_data["termination_mode"] = "current_wip_assigned"
     if algorithm == "earliest_st":
@@ -134,6 +141,7 @@ def run_inference(
             "current_time":   sched_env.sim.current_time,
             "sim_end_minutes": sched_env.sim.sim_end,
             "termination_mode": sched_env.sim._termination_mode,
+            "enable_wip_inflow": sched_env.sim._enable_wip_inflow,
         },
         "plan":      env_data["plan"],
         "algorithm": algorithm,
@@ -189,6 +197,7 @@ def run_inference_compare(
     record_history: bool = False,
     record_decision_log: bool = False,
     rl_agent: Optional[SchedulingAgent] = None,
+    enable_wip_inflow: bool = False,
 ) -> dict:
     """
     동일 입력 데이터로 여러 알고리즘 추론 후 비교용 결과 반환
@@ -218,6 +227,7 @@ def run_inference_compare(
                 agent=rl_loaded if algo == "rl" else None,
                 record_history=record_history,
                 record_decision_log=record_decision_log,
+                enable_wip_inflow=enable_wip_inflow,
             )
             result["prod_keys"] = env_data["prod_keys"]
             result["oper_ids"] = env_data["oper_ids"]

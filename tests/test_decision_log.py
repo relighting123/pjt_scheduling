@@ -74,6 +74,29 @@ def test_inference_defaults_to_current_wip_only_completion():
     assert len(all_wip["schedule"]) > len(current_only["schedule"])
 
 
+def test_wip_inflow_option_controls_next_flow_events():
+    env_data = _env_data()
+    inflow_off = run_inference(
+        env_data,
+        algorithm="earliest_st",
+        record_history=False,
+        enable_wip_inflow=False,
+    )
+    inflow_on = run_inference(
+        env_data,
+        algorithm="earliest_st",
+        record_history=False,
+        enable_wip_inflow=True,
+    )
+
+    assert inflow_off["stats"]["enable_wip_inflow"] is False
+    assert inflow_on["stats"]["enable_wip_inflow"] is True
+    assert len(inflow_off["schedule"]) == len(env_data["abstract_lot_meta"])
+    assert len(inflow_on["schedule"]) > len(inflow_off["schedule"])
+    assert not any(e.get("next_oper_id") for e in inflow_off["event_log"])
+    assert any(e.get("next_oper_id") for e in inflow_on["event_log"])
+
+
 def test_scheduling_env_decision_log_statuses():
     env_data = _env_data()
     env = SchedulingEnv(env_data, record_history=False, record_decision_log=True)
