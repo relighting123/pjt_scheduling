@@ -19,6 +19,7 @@ from config import (
     normalize_rule_timekey,
     resolve_dataset_path,
     validate_path_segment,
+    format_missing_input_file_error,
 )
 from data.db_registry import DbRegistry, parse_sql_db_alias
 from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
@@ -49,10 +50,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
     def _read(filename: str) -> List[dict]:
         path = d / filename
         if not path.exists():
-            raise FileNotFoundError(
-                f"입력 파일 없음: {path}\n"
-                f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
-            )
+            raise FileNotFoundError(format_missing_input_file_error(d, filename))
         return _read_json_file(path)
 
     def _read_optional(filename: str) -> List[dict]:
@@ -65,8 +63,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         path = d / CONFIG.path.discrete_arrange_file
         if not path.exists():
             raise FileNotFoundError(
-                f"입력 파일 없음: {path}\n"
-                f"python main.py sample 또는 python main.py fetch 로 데이터를 생성하세요."
+                format_missing_input_file_error(d, CONFIG.path.discrete_arrange_file)
             )
         return _read_json_file(path)
 
