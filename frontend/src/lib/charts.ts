@@ -72,6 +72,8 @@ const GANTT_THEME = {
   barOpacity: 0.94,
   convFill: "#fbbf24",
   convBorder: "#d97706",
+  rowBorderColor: "rgba(15, 23, 42, 0.12)",
+  rowGridColor: "rgba(15, 23, 42, 0.07)",
 } as const;
 
 /** 간트 hover 툴팁 – 글자색 명시 (미설정 시 투명/흰색으로 안 보이는 경우 방지) */
@@ -173,6 +175,66 @@ function ganttXAxisTitle(baseMs: number | null) {
     font: { size: 12, color: GANTT_THEME.axisColor },
     standoff: 8,
   };
+}
+
+/** 간트 Y축 + 장비|바 구분선·행 구분선(표 느낌) */
+function ganttYAxisLayout(
+  categoryarray: string[],
+  title?: { text: string; font?: { size: number; color: string } },
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    categoryorder: "array",
+    categoryarray,
+    title,
+    tickfont: { size: 11, color: GANTT_THEME.axisColor },
+    showgrid: false,
+    showline: true,
+    linecolor: GANTT_THEME.rowBorderColor,
+    linewidth: 1,
+    zeroline: false,
+    fixedrange: true,
+    ...extra,
+  };
+}
+
+function ganttEqpBarDividerShape(): NonNullable<Layout["shapes"]>[number] {
+  return {
+    type: "line",
+    xref: "paper",
+    yref: "paper",
+    x0: 0,
+    x1: 0,
+    y0: 0,
+    y1: 1,
+    line: { color: GANTT_THEME.rowBorderColor, width: 1.25 },
+    layer: "below",
+  };
+}
+
+function ganttRowDividerShapes(rowCount: number, yAxis = "y"): NonNullable<Layout["shapes"]> {
+  if (rowCount <= 0) return [];
+  const line = { color: GANTT_THEME.rowGridColor, width: 1 };
+  const yref = yAxis as NonNullable<NonNullable<Layout["shapes"]>[number]["yref"]>;
+  const shapes: NonNullable<Layout["shapes"]> = [];
+  for (let i = 0; i <= rowCount; i++) {
+    shapes.push({
+      type: "line",
+      xref: "paper",
+      yref,
+      x0: 0,
+      x1: 1,
+      y0: i - 0.5,
+      y1: i - 0.5,
+      line,
+      layer: "below",
+    });
+  }
+  return shapes;
+}
+
+function ganttTableGridShapes(rowCount: number, yAxis = "y"): NonNullable<Layout["shapes"]> {
+  return [ganttEqpBarDividerShape(), ...ganttRowDividerShapes(rowCount, yAxis)];
 }
 
 function sortedEqpIds(eqpIds: string[]): string[] {
@@ -349,14 +411,10 @@ function buildGanttLayout(
       title: ganttXAxisTitle(baseMs),
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     },
-    yaxis: {
-      categoryorder: "array",
-      categoryarray: eqps,
-      title: { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } },
+    yaxis: ganttYAxisLayout(eqps, { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } }, {
       tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      showgrid: false,
-      fixedrange: true,
-    },
+    }),
+    shapes: ganttTableGridShapes(eqps.length),
     barmode: "overlay",
     bargap: 0.35,
     legend: {
@@ -1023,16 +1081,16 @@ export function buildAlgorithmGanttComparison(
       title: i === 0 ? ganttXAxisTitle(baseMs) : undefined,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     };
-    (layout as Record<string, unknown>)[yKey] = {
-      domain,
-      anchor: xName,
-      title: i === 0 ? { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      categoryorder: "array",
-      categoryarray: eqps,
-      showgrid: false,
-      fixedrange: true,
-    };
+    (layout as Record<string, unknown>)[yKey] = ganttYAxisLayout(eqps,
+      i === 0 ? { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
+      { domain, anchor: xName },
+    );
+
+    layout.shapes = [
+      ...(layout.shapes ?? []),
+      ...(i === 0 ? [ganttEqpBarDividerShape()] : []),
+      ...ganttRowDividerShapes(eqps.length, yName),
+    ];
 
     layout.annotations = [
       ...(layout.annotations ?? []),
@@ -1575,14 +1633,11 @@ export function buildEnhancedGantt(
       title: ganttXAxisTitle(baseMs),
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     },
-    yaxis: {
-      categoryorder: "array",
-      categoryarray: eqpLabels,
-      title: { text: "설비 (모델 / 호기)", font: { size: 12, color: GANTT_THEME.axisColor } },
-      tickfont: { size: 10, color: GANTT_THEME.axisColor },
-      showgrid: false,
-      fixedrange: true,
-    },
+    yaxis: ganttYAxisLayout(eqpLabels, {
+      text: "설비 (모델 / 호기)",
+      font: { size: 12, color: GANTT_THEME.axisColor },
+    }, { tickfont: { size: 10, color: GANTT_THEME.axisColor } }),
+    shapes: ganttTableGridShapes(eqpLabels.length),
     barmode: "overlay",
     bargap: 0.28,
     legend: {
