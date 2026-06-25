@@ -221,6 +221,8 @@ class ProgressCallback(BaseCallback):
         logger = getattr(self.model, "logger", None)
         if logger is None:
             return
+        if hasattr(logger, "dump"):
+            logger.dump(self.num_timesteps)
         values = dict(getattr(logger, "name_to_value", {}))
         if not values:
             return
