@@ -1329,6 +1329,61 @@ tbody tr:last-child td { border-bottom: none; }
 .gantt-summary-scroll {
   max-height: 280px;
   overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.gantt-summary-scroll .gantt-summary-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.gantt-summary-plan-table {
+  min-width: 680px;
+}
+
+.gantt-summary-plan-table .col-code { width: 3.25rem; }
+.gantt-summary-plan-table .col-key { width: auto; }
+.gantt-summary-plan-table .col-num { width: 6.5rem; }
+
+.gantt-summary-eqp .gantt-summary-table {
+  min-width: 960px;
+}
+
+.gantt-summary-table th.num,
+.gantt-summary-table td.num {
+  text-align: right;
+}
+
+.gantt-summary-table td.cell-key {
+  font-family: var(--font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gantt-summary-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-raised);
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.gantt-production-panel {
+  padding: 0.85rem 1rem;
+}
+
+.gantt-production-hint {
+  margin: -0.35rem 0 0.65rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.gantt-production-chart {
+  max-height: min(75vh, 960px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1407,6 +1462,11 @@ tbody tr:last-child td { border-bottom: none; }
   width: 100%;
 }
 
+/* 간트 hover 툴팁이 잘리지 않도록 */
+.gantt-chart-panel.chart-wrap {
+  overflow: visible;
+}
+
 .chart-wrap .plot-chart,
 .chart-wrap .js-plotly-plot,
 .chart-wrap .plot-container {
@@ -1416,6 +1476,13 @@ tbody tr:last-child td { border-bottom: none; }
 
 .chart-wrap .js-plotly-plot {
   border-radius: var(--r-md);
+}
+
+/* Plotly hover 레이어 글자색 (inherit 시 안 보이는 경우 보정) */
+.chart-wrap .hoverlayer .hovertext,
+.chart-wrap .hoverlayer text {
+  fill: var(--text) !important;
+  color: var(--text) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════

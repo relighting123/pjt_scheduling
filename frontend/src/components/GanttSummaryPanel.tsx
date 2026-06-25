@@ -50,8 +50,11 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
   );
 
   const achRows = useMemo(
-    () => computeAchievement(result.schedule, result.plan),
-    [result.schedule, result.plan],
+    () => computeAchievement(result.schedule, result.plan, {
+      prodKeys: result.prod_keys,
+      operIds: result.oper_ids,
+    }),
+    [result.schedule, result.plan, result.prod_keys, result.oper_ids],
   );
 
   const kpi = useMemo(
@@ -114,6 +117,20 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
         <div className="gantt-summary-section-title">장비별 스케줄 · KPI</div>
         <div className="table-wrap gantt-summary-scroll">
           <table className="gantt-summary-table">
+            <colgroup>
+              <col style={{ width: "5.5rem" }} />
+              <col style={{ width: "4.5rem" }} />
+              <col style={{ width: "5rem" }} />
+              <col style={{ width: "5rem" }} />
+              <col style={{ width: "4rem" }} />
+              <col style={{ width: "4.5rem" }} />
+              <col style={{ width: "4.5rem" }} />
+              <col style={{ width: "4rem" }} />
+              <col style={{ width: "4rem" }} />
+              <col style={{ width: "5.5rem" }} />
+              <col style={{ width: "4rem" }} />
+              <col style={{ width: "4rem" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>장비</th>
@@ -121,30 +138,30 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                 <th>할당 시작</th>
                 <th>할당 완료</th>
                 <th>작업</th>
-                <th>가동(분)</th>
-                <th>Conv(분)</th>
-                <th>유휴(분)</th>
-                <th>가동률</th>
-                <th>누적 실적</th>
-                <th>공정전환</th>
-                <th>제품전환</th>
+                <th className="num">가동(분)</th>
+                <th className="num">Conv(분)</th>
+                <th className="num">유휴(분)</th>
+                <th className="num">가동률</th>
+                <th className="num">누적 실적</th>
+                <th className="num">공정전환</th>
+                <th className="num">제품전환</th>
               </tr>
             </thead>
             <tbody>
               {eqpRows.map((row) => (
                 <tr key={row.eqp_id}>
                   <td className="mono">{row.eqp_id}</td>
-                  <td>{row.model ?? "—"}</td>
+                  <td className="cell-key">{row.model ?? "—"}</td>
                   <td className="mono">{fmtMin(row.firstStart)}</td>
                   <td className="mono">{fmtMin(row.lastEnd)}</td>
                   <td className="mono">{row.jobCount}건</td>
-                  <td className="mono">{row.busyMin}</td>
-                  <td className="mono">{row.convMin}</td>
-                  <td className="mono">{row.idleMin}</td>
-                  <td className={`mono ${utilClass(row.utilPct)}`}>{row.utilPct}%</td>
-                  <td className="mono">{row.outputQty.toLocaleString()}매</td>
-                  <td className="mono">{row.operSwitches}회</td>
-                  <td className="mono">{row.prodSwitches}회</td>
+                  <td className="mono num">{row.busyMin}</td>
+                  <td className="mono num">{row.convMin}</td>
+                  <td className="mono num">{row.idleMin}</td>
+                  <td className={`mono num ${utilClass(row.utilPct)}`}>{row.utilPct}%</td>
+                  <td className="mono num">{row.outputQty.toLocaleString()}매</td>
+                  <td className="mono num">{row.operSwitches}회</td>
+                  <td className="mono num">{row.prodSwitches}회</td>
                 </tr>
               ))}
             </tbody>
@@ -155,16 +172,25 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
       <div className="gantt-summary-plan card">
         <div className="gantt-summary-section-title">제품·공정 계획 vs 실적</div>
         <div className="table-wrap gantt-summary-scroll">
-          <table className="gantt-summary-table">
+          <table className="gantt-summary-table gantt-summary-plan-table">
+            <colgroup>
+              <col className="col-code" />
+              <col className="col-code" />
+              <col className="col-key" />
+              <col className="col-key" />
+              <col className="col-num" />
+              <col className="col-num" />
+              <col className="col-num" />
+            </colgroup>
             <thead>
               <tr>
                 <th>제품</th>
                 <th>공정</th>
                 <th>PPK</th>
                 <th>OPER</th>
-                <th>계획량</th>
-                <th>누적 실적</th>
-                <th>달성률</th>
+                <th className="num">계획량</th>
+                <th className="num">누적 실적</th>
+                <th className="num">달성률</th>
               </tr>
             </thead>
             <tbody>
@@ -176,11 +202,11 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                   <tr key={row.key}>
                     <td className="mono code-chip">{pCode}</td>
                     <td className="mono code-chip">{oCode}</td>
-                    <td>{row.prod}</td>
-                    <td>{row.oper}</td>
-                    <td className="mono">{row.planQty.toLocaleString()}매</td>
-                    <td className="mono">{row.doneQty.toLocaleString()}매</td>
-                    <td className={`mono ${achClass(pct)}`}>{row.pct}%</td>
+                    <td className="cell-key">{row.prod}</td>
+                    <td className="cell-key">{row.oper}</td>
+                    <td className="mono num">{row.planQty.toLocaleString()}매</td>
+                    <td className="mono num">{row.doneQty.toLocaleString()}매</td>
+                    <td className={`mono num ${achClass(pct)}`}>{row.pct}%</td>
                   </tr>
                 );
               })}
