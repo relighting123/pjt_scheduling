@@ -9,7 +9,20 @@ import type {
   TestDatasetsResponse,
   TrainMetrics,
   TrainStatusResponse,
+  RewardConfig,
 } from "../types";
+
+export type TrainRequestBody = {
+  total_timesteps: number;
+  learning_rate: number;
+  train_budget_mode?: "timesteps" | "episodes";
+  n_episodes?: number;
+  input_folder?: string;
+  input_folders?: string[];
+  from_date?: string;
+  to_date?: string;
+  fac_id?: string;
+} & RewardConfig;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -97,37 +110,13 @@ export const api = {
   getModelStatus: () => request<{ exists: boolean }>("/api/model/status"),
   getAlgorithms: () =>
     request<{ algorithms: AlgorithmInfo[] }>("/api/algorithms"),
-  train: (body: {
-    total_timesteps: number;
-    learning_rate: number;
-    w_same_oper: number;
-    w_idle_per_min: number;
-    train_budget_mode?: "timesteps" | "episodes";
-    n_episodes?: number;
-    input_folder?: string;
-    input_folders?: string[];
-    from_date?: string;
-    to_date?: string;
-    fac_id?: string;
-  }) =>
+  train: (body: TrainRequestBody) =>
     request<{ message: string; metrics: TrainMetrics; input_folders?: string[] }>("/api/train", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
-  startTraining: (body: {
-    total_timesteps: number;
-    learning_rate: number;
-    w_same_oper: number;
-    w_idle_per_min: number;
-    train_budget_mode?: "timesteps" | "episodes";
-    n_episodes?: number;
-    input_folder?: string;
-    input_folders?: string[];
-    from_date?: string;
-    to_date?: string;
-    fac_id?: string;
-  }) =>
+  startTraining: (body: TrainRequestBody) =>
     request<{ message: string; input_folders?: string[] }>("/api/train/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

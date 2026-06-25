@@ -198,6 +198,22 @@ export interface DataSummary {
   warnings?: string[];
 }
 
+export interface RewardConfig {
+  w_same_oper: number;
+  w_same_prod: number;
+  w_prod_switch: number;
+  w_idle_per_min: number;
+  w_completion: number;
+  w_plan_hit: number;
+  w_pacing: number;
+  w_conversion: number;
+  w_late_finish: number;
+  w_flow_balance: number;
+  reward_clip: number;
+  use_achievable_target: boolean;
+  same_oper_conditional: boolean;
+}
+
 export interface AppConfig {
   model_dir: string;
   input_folder: string;
@@ -213,8 +229,7 @@ export interface AppConfig {
   default_timesteps: number;
   default_n_episodes: number;
   default_learning_rate: number;
-  default_w_same_oper: number;
-  default_w_idle_per_min: number;
+  default_reward: RewardConfig;
 }
 
 export interface TrainMetrics {
