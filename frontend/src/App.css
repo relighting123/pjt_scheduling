@@ -1296,6 +1296,16 @@ tbody tr:last-child td { border-bottom: none; }
 .gantt-summary-table {
   width: 100%;
   font-size: 0.78rem;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.gantt-summary-table th,
+.gantt-summary-table td {
+  padding: 0.42rem 0.55rem;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gantt-summary-table th {
@@ -1303,6 +1313,7 @@ tbody tr:last-child td { border-bottom: none; }
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
+  text-align: left;
 }
 
 .gantt-summary-table td.mono {
@@ -1327,6 +1338,17 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 0.72rem;
 }
 
+.gantt-summary-table th.col-code,
+.gantt-summary-table td.col-code {
+  width: 4rem;
+  text-align: center;
+}
+
+.gantt-summary-table th.col-key,
+.gantt-summary-table td.col-key {
+  text-align: left;
+}
+
 .gantt-summary-scroll {
   max-height: 280px;
   overflow: auto;
@@ -1334,7 +1356,6 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .gantt-summary-scroll .gantt-summary-table {
-  table-layout: fixed;
   width: 100%;
 }
 
@@ -1349,6 +1370,14 @@ tbody tr:last-child td { border-bottom: none; }
 .gantt-summary-eqp .gantt-summary-table {
   min-width: 960px;
 }
+
+.gantt-summary-eqp-table .col-eqp { width: 5.5rem; }
+.gantt-summary-eqp-table .col-model { width: 4.5rem; }
+.gantt-summary-eqp-table .col-time { width: 5rem; }
+.gantt-summary-eqp-table .col-jobs { width: 4rem; }
+.gantt-summary-eqp-table .col-num { width: 4.5rem; }
+.gantt-summary-eqp-table .col-num-sm { width: 4rem; }
+.gantt-summary-eqp-table .col-output { width: 5.5rem; }
 
 .gantt-summary-table th.num,
 .gantt-summary-table td.num {
@@ -1479,7 +1508,11 @@ tbody tr:last-child td { border-bottom: none; }
   border-radius: var(--r-md);
 }
 
-/* Plotly hover 레이어 글자색 (inherit 시 안 보이는 경우 보정) */
+/* Plotly hover 레이어 – 마우스 이벤트 차단 방지(툴팁 깜빡임) + 글자색 보정 */
+.chart-wrap .hoverlayer {
+  pointer-events: none !important;
+}
+
 .chart-wrap .hoverlayer .hovertext,
 .chart-wrap .hoverlayer text {
   fill: var(--text) !important;

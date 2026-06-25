@@ -104,8 +104,9 @@ export default function PlotChart({
   );
 
   const isGanttPan = layout.dragmode === "pan" && clampXMin !== undefined;
+  // pan 중에만 clamp – onRelayout은 hover 직후에도 호출되어 툴팁이 깜빡일 수 있음
   const ganttPanHandlers = isGanttPan
-    ? ({ onRelayouting: clampPanX, onRelayout: clampPanX } as Record<string, unknown>)
+    ? ({ onRelayouting: clampPanX } as Record<string, unknown>)
     : {};
 
   return (
