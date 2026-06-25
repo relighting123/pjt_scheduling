@@ -490,6 +490,8 @@ class RewardConfig:
     w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
     # --- Step B: flow-balance shaping (편중 해소·후속 공정 feeding) ---
     w_flow_balance:    float = 1.5       # 적체(편중) 공정 배정·후속 starving 해소 보너스
+    # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
+    flow_balance_starving_cover_min: float = 120.0
     # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
     reward_clip:       float = 5.0
     # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
@@ -512,6 +514,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_conversion": r.w_conversion,
         "w_late_finish": r.w_late_finish,
         "w_flow_balance": r.w_flow_balance,
+        "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
         "reward_clip": r.reward_clip,
         "use_achievable_target": r.use_achievable_target,
         "same_oper_conditional": r.same_oper_conditional,
@@ -524,7 +527,7 @@ def apply_reward_params(params: dict) -> None:
     float_keys = (
         "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
         "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
-        "w_late_finish", "w_flow_balance", "reward_clip",
+        "w_late_finish", "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
     )
     for key in float_keys:
         if key in params and params[key] is not None:
