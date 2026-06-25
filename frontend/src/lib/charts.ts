@@ -47,7 +47,7 @@ const GANTT_THEME = {
   fontFamily: CHART_FONT,
   titleColor: "#1b1b18",
   axisColor: "#5c5c58",
-  barRadius: 4,
+  barRadius: 0,
   barOpacity: 0.94,
   convFill: "#fbbf24",
   convBorder: "#d97706",
