@@ -86,6 +86,7 @@ export const CHART_HOVERLABEL: NonNullable<Layout["hoverlabel"]> = {
     color: "#1b1b18",
   },
   align: "left",
+  namelength: -1,
 };
 
 const GANTT_HOVERLABEL = CHART_HOVERLABEL;

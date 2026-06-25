@@ -1526,9 +1526,11 @@ tbody tr:last-child td { border-bottom: none; }
   border-radius: var(--r-md);
 }
 
-/* Plotly hover — 박스·말꼬리 path와 텍스트 분리 스타일 (그룹 fill 시 박스 깨짐 방지) */
+/* Plotly hover — 말풍선(path)과 본문(text.nums) 분리 스타일 (폰트는 layout.hoverlabel 사용) */
 .plot-chart .hoverlayer,
-.chart-wrap .hoverlayer {
+.chart-wrap .hoverlayer,
+.plot-chart .hoverlayer .hovertext,
+.chart-wrap .hoverlayer .hovertext {
   pointer-events: none !important;
 }
 
@@ -1539,12 +1541,11 @@ tbody tr:last-child td { border-bottom: none; }
   stroke-width: 1px !important;
 }
 
-.plot-chart .hoverlayer text,
-.plot-chart .hoverlayer tspan,
-.chart-wrap .hoverlayer text,
-.chart-wrap .hoverlayer tspan {
+.plot-chart .hoverlayer .hovertext > text.nums,
+.chart-wrap .hoverlayer .hovertext > text.nums,
+.plot-chart .hoverlayer .hovertext > text.nums tspan,
+.chart-wrap .hoverlayer .hovertext > text.nums tspan {
   fill: #1b1b18 !important;
-  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════
