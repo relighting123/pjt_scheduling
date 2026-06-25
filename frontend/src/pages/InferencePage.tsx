@@ -108,6 +108,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ganttFixed, setGanttFixed]       = useState(false);
   const [ganttStart, setGanttStart]       = useState(0);
   const [ganttEnd, setGanttEnd]           = useState(1440);
+  const [compareShowGantt, setCompareShowGantt] = useState(false);
 
   const folders = useMemo(() =>
     config?.input_folders?.length ? config.input_folders : config ? [config.input_folder] : [],
@@ -232,6 +233,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     );
   }, [result, axis]);
 
+  const compareGanttChart = useMemo(() => {
+    if (!compareShowGantt || compareEntries.length < 2) return null;
+    return buildAlgorithmGanttComparison(compareEntries, axis);
+  }, [compareShowGantt, compareEntries, axis]);
+
   return (
     <div className="detail-page">
       <div className="detail-page-title">
@@ -319,6 +325,10 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               );
             })}
           </div>
+          <label className="check-label">
+            <input type="checkbox" checked={compareShowGantt} onChange={e => setCompareShowGantt(e.target.checked)} disabled={compareLoading} />
+            비교 시 간트 차트 표시
+          </label>
           <button type="button" className={`btn btn-accent${compareLoading ? " loading" : ""}`}
             onClick={runCompare} disabled={compareLoading || loading || compareAlgos.size === 0 || folderLoading}>
             {compareLoading ? "" : `비교 실행 (${compareAlgos.size}개)`}
@@ -472,9 +482,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   <div className="card chart-wrap"><PlotChart {...buildAlgorithmKpiComparison(compareEntries)} /></div>
                   <div className="card chart-wrap"><PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} /></div>
                 </div>
-                <div className="card chart-wrap">
-                  <PlotChart {...buildAlgorithmGanttComparison(compareEntries, axis)} />
-                </div>
+                {compareShowGantt && compareGanttChart && (
+                  <div className="card chart-wrap gantt-chart-panel">
+                    <PlotChart {...compareGanttChart} />
+                  </div>
+                )}
               </div>
             )}
           </>
