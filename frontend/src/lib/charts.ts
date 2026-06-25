@@ -103,7 +103,7 @@ function conversionBarMarker() {
   } as Record<string, unknown>;
 }
 
-/** 간트 X축: 0 미만으로 pan/zoom 되지 않도록 고정 */
+/** 간트 X축: 0 미만으로 pan/zoom 되지 않도록 고정, 눈금은 차트 상단 */
 function ganttXAxisLayout(
   timeStart: number,
   timeEnd: number,
@@ -113,6 +113,7 @@ function ganttXAxisLayout(
   const start = Math.max(0, timeStart);
   const end = Math.max(start + 1, timeEnd);
   return {
+    side: "top",
     showgrid: true,
     gridcolor: GANTT_THEME.gridColor,
     gridwidth: GANTT_THEME.gridWidth,
@@ -125,6 +126,12 @@ function ganttXAxisLayout(
     ...extra,
   };
 }
+
+const GANTT_XAXIS_TITLE = {
+  text: "시뮬레이션 시간 (분)",
+  font: { size: 12, color: GANTT_THEME.axisColor },
+  standoff: 8,
+};
 
 function sortedEqpIds(eqpIds: string[]): string[] {
   return [...eqpIds].sort();
@@ -292,7 +299,7 @@ function buildGanttLayout(
       font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
     },
     xaxis: {
-      title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
+      title: GANTT_XAXIS_TITLE,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange),
     },
     yaxis: {
@@ -312,7 +319,7 @@ function buildGanttLayout(
     height: Math.max(350, 72 * Math.max(eqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 88, r: 20, t: 44, b: 88 },
+    margin: { l: 88, r: 20, t: 56, b: 72 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverlabel: GANTT_HOVERLABEL,
@@ -551,7 +558,7 @@ export function buildProductProductionCharts(
     height: Math.min(Math.max(260 * n, 300), 960),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 72, r: 150, t: 52, b: 48 },
+    margin: { l: 72, r: 150, t: 56, b: 40 },
     showlegend: true,
     legend: { orientation: "v", x: 1.02, y: 1, font: { size: 11 } },
   };
@@ -564,7 +571,7 @@ export function buildProductProductionCharts(
     const prodCode = prodCodeMap[prod] ?? prod;
 
     (layout as Record<string, unknown>)[xKey] = {
-      title: i === n - 1 ? { text: "시뮬레이션 시간 (분)" } : undefined,
+      title: i === 0 ? GANTT_XAXIS_TITLE : undefined,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, options.timeAxis?.fixedRange),
     };
     (layout as Record<string, unknown>)[yKey] = {
@@ -916,7 +923,7 @@ export function buildAlgorithmGanttComparison(
     legend: n === 1 ? { title: { text: "제품 / 공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
-    margin: { l: 72, r: 16, t: 8, b: n === 1 ? 88 : 52 },
+    margin: { l: 72, r: 16, t: 12, b: n === 1 ? 72 : 44 },
   };
 
   entries.forEach((entry, i) => {
@@ -955,7 +962,7 @@ export function buildAlgorithmGanttComparison(
     (layout as Record<string, unknown>)[xKey] = {
       domain: [0, 1],
       anchor: yName,
-      title: i === n - 1 ? { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
+      title: i === 0 ? GANTT_XAXIS_TITLE : undefined,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange),
     };
     (layout as Record<string, unknown>)[yKey] = {
@@ -1501,7 +1508,7 @@ export function buildEnhancedGantt(
     ...GANTT_PAN_LAYOUT,
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
     xaxis: {
-      title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
+      title: GANTT_XAXIS_TITLE,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange),
     },
     yaxis: {
@@ -1521,7 +1528,7 @@ export function buildEnhancedGantt(
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 20, t: 24, b: 64 },
+    margin: { l: 160, r: 20, t: 52, b: 56 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverlabel: GANTT_HOVERLABEL,
