@@ -188,7 +188,7 @@ def _build_tool_capacity_map(
     cap: Dict[Tuple[str, str], int] = {}
     for r in tool_raw:
         lot_cd = str(r["LOT_CD"]).strip()
-        model = str(r["EQP_MODEL"]).strip().upper()
+        model = str(r["EQP_MODEL_CD"]).strip().upper()
         cap[(lot_cd, model)] = coerce_int(r["MAX_TOOL"], field="MAX_TOOL")
     if cap:
         return cap

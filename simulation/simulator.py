@@ -35,7 +35,7 @@ class SimEvent:
 
 
 class ToolTracker:
-    """LOT_CD × EQP_MODEL 동시 가공 상한 추적."""
+    """LOT_CD × EQP_MODEL_CD 동시 가공 상한 추적."""
 
     def __init__(self, capacity: dict, eqp_model_map: dict):
         self._capacity = dict(capacity)

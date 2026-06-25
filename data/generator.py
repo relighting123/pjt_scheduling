@@ -217,7 +217,7 @@ def build_tool_capacity_from_lots(
 ) -> List[dict]:
     lot_cds = sorted({r["LOT_CD"] for r in lot_master})
     return [
-        {"LOT_CD": lc, "EQP_MODEL": model, "MAX_TOOL": max_tool}
+        {"LOT_CD": lc, "EQP_MODEL_CD": model, "MAX_TOOL": max_tool}
         for lc in lot_cds
         for model in models
     ]
