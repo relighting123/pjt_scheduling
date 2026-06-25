@@ -562,6 +562,15 @@
   pointer-events: none;
 }
 
+.compare-chart-panel {
+  min-height: 380px;
+}
+
+.compare-chart-panel .plot-chart,
+.compare-chart-panel .js-plotly-plot {
+  min-height: 380px;
+}
+
 @keyframes tabFade {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }

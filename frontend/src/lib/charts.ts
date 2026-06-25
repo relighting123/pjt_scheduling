@@ -257,12 +257,17 @@ function legendTraces(
 
   prodKeys.forEach((pk) => {
     traces.push({
-      type: "bar",
-      orientation: "h",
-      x: [0],
-      y: [""],
+      type: "scatter",
+      mode: "markers",
+      x: [null],
+      y: [null],
       name: prodCodes?.[pk] ?? pk,
-      marker: { color: prodColorMap[pk] ?? "#94a3b8", cornerradius: GANTT_THEME.barRadius } as Record<string, unknown>,
+      marker: {
+        size: 10,
+        color: prodColorMap[pk] ?? "#94a3b8",
+        symbol: "square",
+        line: { width: 0 },
+      },
       showlegend: true,
       hoverinfo: "skip",
       visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
@@ -337,12 +342,17 @@ function ganttTraces(
 
 function conversionLegendTrace(hasConversion: boolean): Data {
   return {
-    type: "bar",
-    orientation: "h",
-    x: [0],
-    y: [""],
+    type: "scatter",
+    mode: "markers",
+    x: [null],
+    y: [null],
     name: "Conversion",
-    marker: conversionBarMarker(),
+    marker: {
+      size: 10,
+      color: GANTT_THEME.convFill,
+      symbol: "square",
+      line: { color: GANTT_THEME.convBorder, width: 1.25 },
+    },
     showlegend: true,
     hoverinfo: "skip",
     visible: hasConversion ? true : "legendonly",
@@ -481,6 +491,12 @@ const SHARED_DARK: Partial<Layout> = {
   xaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
   yaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
 };
+
+function mergeSharedLayout(extra: Partial<Layout>): Partial<Layout> {
+  const xaxis = { ...SHARED_DARK.xaxis, ...extra.xaxis } as Partial<Layout>["xaxis"];
+  const yaxis = { ...SHARED_DARK.yaxis, ...extra.yaxis } as Partial<Layout>["yaxis"];
+  return { ...SHARED_DARK, ...extra, xaxis, yaxis };
+}
 
 export function buildWipChart(snap: HistorySnap, plan: PlanRecord[]): { data: Data[]; layout: Partial<Layout> } {
   const completed = snap.completed;
@@ -978,26 +994,27 @@ export function buildAlgorithmKpiComparison(
 
   return {
     data,
-    layout: {
+    layout: mergeSharedLayout({
       title: { text: "알고리즘별 KPI 비교" },
       barmode: "group",
-      yaxis: { title: { text: "값" } },
-      ...SHARED_DARK,
+      yaxis: { title: { text: "값" }, automargin: true, rangemode: "tozero" },
+      xaxis: { automargin: true },
       legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
       height: 380,
-      margin: { t: 60, b: 88, l: 48, r: 16 },
-    },
+      margin: { t: 60, b: 88, l: 56, r: 16 },
+    }),
   };
 }
 
 export function buildAlgorithmAchievementComparison(
   entries: AlgoCompareEntry[],
-): { data: Data[]; layout: Partial<Layout> } {
+): { data: Data[]; layout: Partial<Layout> } | null {
   const labelSet = new Set<string>();
   entries.forEach((e) => {
     Object.keys(resultScheduleStats(e.result).achievement).forEach((k) => labelSet.add(k));
   });
   const labels = [...labelSet].sort();
+  if (!labels.length) return null;
   const shortLabels = abbreviateProdOperLabels(labels);
 
   const data: Data[] = entries.map((e) => {
@@ -1015,11 +1032,11 @@ export function buildAlgorithmAchievementComparison(
 
   return {
     data,
-    layout: {
+    layout: mergeSharedLayout({
       title: { text: "알고리즘별 계획 달성률 비교 (%)" },
       barmode: "group",
-      yaxis: { title: { text: "달성률 (%)" }, range: [0, 120] },
-      xaxis: { title: { text: "P / O" } },
+      yaxis: { title: { text: "달성률 (%)" }, range: [0, 120], automargin: true },
+      xaxis: { title: { text: "P / O" }, automargin: true, tickangle: labels.length > 6 ? -35 : 0 },
       shapes: [{
         type: "line",
         x0: 0,
@@ -1027,13 +1044,13 @@ export function buildAlgorithmAchievementComparison(
         y0: 100,
         y1: 100,
         xref: "paper",
+        yref: "y",
         line: { dash: "dash", color: "red", width: 1 },
       }],
-      ...SHARED_DARK,
       legend: { orientation: "h", y: -0.25, x: 0.5, xanchor: "center" },
-      height: 380,
-      margin: { t: 60, b: 100, l: 48, r: 16 },
-    },
+      height: Math.max(380, 48 + labels.length * 8),
+      margin: { t: 60, b: labels.length > 6 ? 120 : 100, l: 56, r: 16 },
+    }),
   };
 }
 
@@ -1060,6 +1077,26 @@ function subplotAxisPair(index: number, total: number): {
     yKey: index === 0 ? "yaxis" : `yaxis${n}`,
     domain: [plotBottom, plotTop],
     titleY: plotTop + 0.008,
+  };
+}
+
+export function buildCompareGanttAxis(
+  entries: AlgoCompareEntry[],
+  compareData: { eqp_ids?: string[]; sim_end_minutes?: number } | null,
+  simBaseTime?: string,
+): GanttAxisOptions {
+  const scheduleEnds = entries.flatMap((e) => e.result.schedule.map((r) => r.END_TM));
+  const maxScheduleEnd = scheduleEnds.length ? Math.max(...scheduleEnds) : 0;
+  const simEnd = Math.max(compareData?.sim_end_minutes ?? 1440, maxScheduleEnd, 1);
+  const eqpFromCompare = compareData?.eqp_ids ?? [];
+  const eqpFromSched = [...new Set(entries.flatMap((e) => e.result.schedule.map((r) => r.EQP_ID)))];
+  const eqpIds = eqpFromCompare.length ? eqpFromCompare : eqpFromSched;
+  return {
+    eqpIds: sortedEqpIds(eqpIds),
+    timeStartMinutes: 0,
+    timeEndMinutes: simEnd,
+    fixedRange: false,
+    simBaseTime,
   };
 }
 
@@ -1091,7 +1128,7 @@ export function buildAlgorithmGanttComparison(
     legend: n === 1 ? { title: { text: "제품 / 공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
-    margin: { l: 72, r: 16, t: 12, b: n === 1 ? 72 : 44 },
+    margin: { l: 72, r: 16, t: 28, b: n === 1 ? 72 : 44 },
   };
 
   entries.forEach((entry, i) => {
