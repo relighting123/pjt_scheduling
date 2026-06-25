@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
-from utils.helpers import build_index_map, coerce_int, effective_proc_time, split_wf_qty
+from utils.helpers import build_index_map, coerce_int, effective_proc_time, normalize_tool_capacity_rows, split_wf_qty
 
 
 def _coerce_proc_time(value) -> Optional[int]:
@@ -187,7 +187,9 @@ def _build_tool_capacity_map(
 ) -> Dict[Tuple[str, str], int]:
     cap: Dict[Tuple[str, str], int] = {}
     for r in tool_raw:
-        cap[(str(r["LOT_CD"]), str(r["EQP_MODEL"]))] = coerce_int(r["MAX_TOOL"], field="MAX_TOOL")
+        lot_cd = str(r["LOT_CD"]).strip()
+        model = str(r["EQP_MODEL"]).strip().upper()
+        cap[(lot_cd, model)] = coerce_int(r["MAX_TOOL"], field="MAX_TOOL")
     if cap:
         return cap
     for lc in lot_cds:
@@ -410,7 +412,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     split_raw = raw.get("split", [])
     lot_master_raw = raw.get("lot_master", [])
     batch_info_raw = raw.get("batch_info", [])
-    tool_capacity_raw = raw.get("tool_capacity", [])
+    tool_capacity_raw = normalize_tool_capacity_rows(raw.get("tool_capacity", []))
 
     abstract_raw = raw.get("abstract_arrange", [])
     if not abstract_raw:
