@@ -639,7 +639,7 @@ def inference(req: InferenceRequest):
     agent = None
     if req.algorithm == "rl":
         try:
-            agent = SchedulingAgent.load()
+            agent = SchedulingAgent.load(env_data=env_data)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(
                 status_code=400,
