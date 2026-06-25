@@ -1479,11 +1479,25 @@ tbody tr:last-child td { border-bottom: none; }
   border-radius: var(--r-md);
 }
 
-/* Plotly hover 레이어 글자색 (inherit 시 안 보이는 경우 보정) */
-.chart-wrap .hoverlayer .hovertext,
-.chart-wrap .hoverlayer text {
-  fill: var(--text) !important;
-  color: var(--text) !important;
+/* Plotly hover — 박스·말꼬리 path와 텍스트 분리 스타일 (그룹 fill 시 박스 깨짐 방지) */
+.plot-chart .hoverlayer,
+.chart-wrap .hoverlayer {
+  pointer-events: none !important;
+}
+
+.plot-chart .hoverlayer .hovertext > path,
+.chart-wrap .hoverlayer .hovertext > path {
+  fill: #ffffff !important;
+  stroke: rgba(15, 23, 42, 0.14) !important;
+  stroke-width: 1px !important;
+}
+
+.plot-chart .hoverlayer text,
+.plot-chart .hoverlayer tspan,
+.chart-wrap .hoverlayer text,
+.chart-wrap .hoverlayer tspan {
+  fill: #1b1b18 !important;
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════

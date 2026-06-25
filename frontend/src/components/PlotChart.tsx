@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import Plot, { Plotly } from "../lib/plotlyComponent";
+import { CHART_HOVERLABEL } from "../lib/charts";
 import type { Data, Layout, Config, PlotMouseEvent, PlotRelayoutEvent } from "plotly.js";
 
 interface PlotChartProps {
@@ -112,7 +113,11 @@ export default function PlotChart({
     <div className={className ?? "plot-chart"}>
       <Plot
         data={data}
-        layout={{ ...layout, autosize: true }}
+        layout={{
+          ...layout,
+          autosize: true,
+          hoverlabel: { ...CHART_HOVERLABEL, ...layout.hoverlabel },
+        }}
         config={plotConfig}
         useResizeHandler
         style={{ width: "100%", height: "100%" }}
