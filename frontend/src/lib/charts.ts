@@ -835,6 +835,29 @@ function computeStats(schedule: ScheduleRecord[], plan: PlanRecord[]): ScheduleS
   return { makespan, idle_total: idleTotal, oper_switches: operSw, prod_switches: prodSw, achievement };
 }
 
+/** achievement 라벨 `PPK/OPER` → `P1/O1` 축약 (차트 X축용) */
+function abbreviateProdOperLabels(labels: string[]): string[] {
+  const prods = new Set<string>();
+  const opers = new Set<string>();
+  for (const label of labels) {
+    const slash = label.indexOf("/");
+    if (slash < 0) continue;
+    prods.add(label.slice(0, slash));
+    opers.add(label.slice(slash + 1));
+  }
+  const prodMap = buildShortCodeMap([...prods], "P").codeByKey;
+  const operMap = buildShortCodeMap([...opers], "O").codeByKey;
+  return labels.map((label) => {
+    const slash = label.indexOf("/");
+    if (slash < 0) return label;
+    const prod = label.slice(0, slash);
+    const oper = label.slice(slash + 1);
+    const p = prodMap[prod] ?? prod;
+    const o = operMap[oper] ?? oper;
+    return `${p}/${o}`;
+  });
+}
+
 export function buildComparisonKpi(
   initial: ScheduleRecord[],
   post: ScheduleRecord[],
@@ -869,17 +892,34 @@ export function buildAchievementComparison(
   const initS = computeStats(initial, plan);
   const postS = computeStats(post, plan);
   const labels = [...new Set([...Object.keys(initS.achievement), ...Object.keys(postS.achievement)])].sort();
+  const shortLabels = abbreviateProdOperLabels(labels);
 
   return {
     data: [
-      { type: "bar", name: "초기 스케줄", x: labels, y: labels.map((l) => initS.achievement[l] ?? 0), marker: { color: "#4C72B0" } },
-      { type: "bar", name: "Scheduling", x: labels, y: labels.map((l) => postS.achievement[l] ?? 0), marker: { color: "#55A868" } },
+      {
+        type: "bar",
+        name: "초기 스케줄",
+        x: shortLabels,
+        y: labels.map((l) => initS.achievement[l] ?? 0),
+        customdata: labels,
+        hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
+        marker: { color: "#4C72B0" },
+      },
+      {
+        type: "bar",
+        name: "Scheduling",
+        x: shortLabels,
+        y: labels.map((l) => postS.achievement[l] ?? 0),
+        customdata: labels,
+        hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
+        marker: { color: "#55A868" },
+      },
     ],
     layout: {
       title: { text: "제품/공정별 계획 달성률 비교 (%)" },
       barmode: "group",
       yaxis: { title: { text: "달성률 (%)" }, range: [0, 120] },
-      xaxis: { title: { text: "제품 / 공정" } },
+      xaxis: { title: { text: "P / O" } },
       shapes: [{ type: "line", x0: 0, x1: 1, y0: 100, y1: 100, xref: "paper", line: { dash: "dash", color: "red", width: 1 } }],
       ...SHARED_DARK,
       legend: { orientation: "h", y: -0.25 },
@@ -950,14 +990,17 @@ export function buildAlgorithmAchievementComparison(
     Object.keys(resultScheduleStats(e.result).achievement).forEach((k) => labelSet.add(k));
   });
   const labels = [...labelSet].sort();
+  const shortLabels = abbreviateProdOperLabels(labels);
 
   const data: Data[] = entries.map((e) => {
     const ach = resultScheduleStats(e.result).achievement;
     return {
       type: "bar" as const,
       name: e.label,
-      x: labels,
+      x: shortLabels,
       y: labels.map((l) => ach[l] ?? 0),
+      customdata: labels,
+      hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
       marker: { color: ALGO_CHART_COLORS[e.algorithm] ?? "#888" },
     };
   });
@@ -968,7 +1011,7 @@ export function buildAlgorithmAchievementComparison(
       title: { text: "알고리즘별 계획 달성률 비교 (%)" },
       barmode: "group",
       yaxis: { title: { text: "달성률 (%)" }, range: [0, 120] },
-      xaxis: { title: { text: "제품 / 공정" } },
+      xaxis: { title: { text: "P / O" } },
       shapes: [{
         type: "line",
         x0: 0,
