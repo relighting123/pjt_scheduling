@@ -100,7 +100,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [fileSource, setFileSource]   = useState<string | null>(null);
   const fileRef                       = useRef<HTMLInputElement>(null);
 
-  const [selectedFolder, setSelectedFolder] = useState("FAC001/infer");
+  const [selectedFolder, setSelectedFolder] = useState("");
   const [decisionLog, setDecisionLog]       = useState(false);
   const [wipInflow, setWipInflow]           = useState(false);
 
@@ -111,13 +111,16 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [compareShowGantt, setCompareShowGantt] = useState(false);
 
   const folders = useMemo(() =>
-    config?.input_folders?.length ? config.input_folders : config ? [config.input_folder] : [],
+    config?.input_folders?.length ? config.input_folders : [],
   [config]);
 
   useEffect(() => {
-    if (!folders.length) return;
+    if (!folders.length) {
+      setSelectedFolder("");
+      return;
+    }
     setSelectedFolder(prev => {
-      if (folders.includes(prev)) return prev;
+      if (prev && folders.includes(prev)) return prev;
       return folders.find(f => f.endsWith("/infer")) ?? folders[0];
     });
   }, [folders]);
@@ -292,11 +295,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
           <div className="gap-row mt-2">
             <button type="button" className={`btn btn-primary${loading ? " loading" : ""}`}
-              onClick={runInference} disabled={loading || compareLoading || !canRun || folderLoading}>
+              onClick={runInference} disabled={loading || compareLoading || !canRun || folderLoading || !selectedFolder}>
               {loading ? "" : "▶ 추론 실행"}
             </button>
             <button type="button" className={`btn btn-ghost btn-sm${loading ? " loading" : ""}`}
-              onClick={loadSaved} disabled={loading || compareLoading || folderLoading}>
+              onClick={loadSaved} disabled={loading || compareLoading || folderLoading || !selectedFolder}>
               저장 로드
             </button>
             <button type="button" className="btn btn-ghost btn-sm"
@@ -330,7 +333,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             비교 시 간트 차트 표시
           </label>
           <button type="button" className={`btn btn-accent${compareLoading ? " loading" : ""}`}
-            onClick={runCompare} disabled={compareLoading || loading || compareAlgos.size === 0 || folderLoading}>
+            onClick={runCompare} disabled={compareLoading || loading || compareAlgos.size === 0 || folderLoading || !selectedFolder}>
             {compareLoading ? "" : `비교 실행 (${compareAlgos.size}개)`}
           </button>
         </div>
