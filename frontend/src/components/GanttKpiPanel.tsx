@@ -41,7 +41,13 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
 
   const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap), [sched, result, eqpModelMap]);
   const models = useMemo(() => computeModelUtil(utils), [utils]);
-  const ach    = useMemo(() => computeAchievement(sched, result.plan), [sched, result.plan]);
+  const ach    = useMemo(
+    () => computeAchievement(sched, result.plan, {
+      prodKeys: result.prod_keys,
+      operIds: result.oper_ids,
+    }),
+    [sched, result.plan, result.prod_keys, result.oper_ids],
+  );
   const tat    = useMemo(() => computeTAT(sched), [sched]);
   const toolSw = countToolSwitches(sched, result.conversion_plans ?? []);
 
