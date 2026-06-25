@@ -123,6 +123,10 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getTrainingStatus: () => request<TrainStatusResponse>("/api/train/status"),
+  stopTraining: () =>
+    request<{ message: string }>("/api/train/stop", {
+      method: "POST",
+    }),
   runInference: (opts: {
     algorithm?: AlgorithmId;
     input_folder?: string;

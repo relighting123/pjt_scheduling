@@ -257,7 +257,7 @@ export interface TrainSeries {
 }
 
 export interface TrainStatusResponse {
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "completed" | "failed" | "stopped";
   progress: number;
   timesteps: number;
   total_timesteps: number;
