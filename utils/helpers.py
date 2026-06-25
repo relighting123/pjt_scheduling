@@ -49,7 +49,7 @@ REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_KEY", "OPER_ID",
 REQUIRED_FLOW_FIELDS         = {"PLAN_PROD_KEY", "OPER_SEQ", "OPER_ID"}
 REQUIRED_SPLIT_FIELDS        = {"PLAN_PROD_KEY", "EQP_MODEL_CD", "SPLIT_QTY"}  # OPER_ID optional (defaults to *)
 REQUIRED_LOT_MASTER_FIELDS   = {"LOT_ID", "LOT_CD", "TEMP"}
-REQUIRED_TOOL_CAPACITY_FIELDS = {"LOT_CD", "EQP_MODEL", "MAX_TOOL"}
+REQUIRED_TOOL_CAPACITY_FIELDS = {"LOT_CD", "EQP_MODEL_CD", "MAX_TOOL"}
 REQUIRED_BATCH_INFO_FIELDS   = {"LOT_CD", "TEMP", "PLAN_PROD_KEY", "OPER_ID"}
 
 
@@ -69,35 +69,29 @@ def _pick_record_field(record: dict, *names: str):
 def normalize_tool_capacity_rows(records: List[dict]) -> List[dict]:
     """
     tool_capacity.json 정규화.
-    Oracle TOOL_CAPACITY.EQP_MODEL → EQP_MODEL (split/discrete의 EQP_MODEL_CD와 별도).
+    split/discrete와 동일하게 EQP_MODEL_CD 사용 (구형 EQP_MODEL 키는 호환).
     """
     out: List[dict] = []
     for record in records:
         lot_cd = _pick_record_field(record, "LOT_CD")
-        model = _pick_record_field(record, "EQP_MODEL")
+        model = _pick_record_field(record, "EQP_MODEL_CD")
+        if model is None:
+            model = _pick_record_field(record, "EQP_MODEL")
         max_tool = _pick_record_field(record, "MAX_TOOL")
         out.append({
             "LOT_CD": str(lot_cd).strip() if lot_cd is not None else "",
-            "EQP_MODEL": str(model).strip().upper() if model is not None else "",
+            "EQP_MODEL_CD": str(model).strip().upper() if model is not None else "",
             "MAX_TOOL": max_tool,
         })
     return out
 
 
 def validate_tool_capacity_records(records: List[dict]) -> List[str]:
-    """tool_capacity 전용 검증 – EQP_MODEL 사용 (EQP_MODEL_CD 아님)."""
+    """tool_capacity 전용 검증 – EQP_MODEL_CD 사용."""
     errors: List[str] = []
     if not records:
         errors.append("tool_capacity: 데이터가 비어 있습니다.")
         return errors
-    for idx, record in enumerate(records, start=1):
-        has_model = _pick_record_field(record, "EQP_MODEL") is not None
-        has_model_cd = _pick_record_field(record, "EQP_MODEL_CD") is not None
-        if not has_model and has_model_cd:
-            errors.append(
-                f"tool_capacity[{idx}]: EQP_MODEL_CD가 아닌 EQP_MODEL 필드를 사용하세요 "
-                "(Oracle TOOL_CAPACITY.EQP_MODEL)"
-            )
     normalized = normalize_tool_capacity_rows(records)
     errors += validate_records(normalized, REQUIRED_TOOL_CAPACITY_FIELDS, "tool_capacity")
     return errors
