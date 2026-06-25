@@ -108,7 +108,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ganttFixed, setGanttFixed]       = useState(false);
   const [ganttStart, setGanttStart]       = useState(0);
   const [ganttEnd, setGanttEnd]           = useState(1440);
-  const [compareShowGantt, setCompareShowGantt] = useState(false);
+  const [compareShowGantt, setCompareShowGantt] = useState(true);
 
   const folders = useMemo(() =>
     config?.input_folders?.length ? config.input_folders : [],
@@ -241,6 +241,24 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     return buildAlgorithmGanttComparison(compareEntries, axis);
   }, [compareShowGantt, compareEntries, axis]);
 
+  const compareKpiChart = useMemo(() => {
+    if (compareEntries.length < 2) return null;
+    return buildAlgorithmKpiComparison(compareEntries);
+  }, [compareEntries]);
+
+  const compareAchievementChart = useMemo(() => {
+    if (compareEntries.length < 2) return null;
+    return buildAlgorithmAchievementComparison(compareEntries);
+  }, [compareEntries]);
+
+  const canShowCompare = compareEntries.length > 1;
+
+  useEffect(() => {
+    if (tab === "compare" && !canShowCompare) {
+      setTab(result ? "gantt" : "table");
+    }
+  }, [tab, canShowCompare, result]);
+
   return (
     <div className="detail-page">
       <div className="detail-page-title">
@@ -359,7 +377,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               <button type="button" className={`tab-btn${tab === "gantt" ? " active" : ""}`} onClick={() => setTab("gantt")} disabled={!result}>간트 차트</button>
               <button type="button" className={`tab-btn${tab === "events" ? " active" : ""}`} onClick={() => setTab("events")} disabled={!result?.event_log?.length}>이벤트 이력</button>
               <button type="button" className={`tab-btn${tab === "table" ? " active" : ""}`} onClick={() => setTab("table")} disabled={!result}>간트 테이블</button>
-              {compareEntries.length > 1 && (
+              {canShowCompare && (
                 <button type="button" className={`tab-btn${tab === "compare" ? " active" : ""}`} onClick={() => setTab("compare")}>알고리즘 비교</button>
               )}
             </div>
@@ -452,7 +470,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             )}
 
             {/* COMPARE TAB */}
-            {tab === "compare" && compareData && compareEntries.length > 1 && (
+            {tab === "compare" && compareData && canShowCompare && (
               <div className="tab-panel">
                 <div className="card mb-2">
                   <div className="card-title">알고리즘 KPI 요약</div>
@@ -481,10 +499,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     </table>
                   </div>
                 </div>
-                <div className="grid-2 mb-2">
-                  <div className="card chart-wrap"><PlotChart {...buildAlgorithmKpiComparison(compareEntries)} /></div>
-                  <div className="card chart-wrap"><PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} /></div>
-                </div>
+                {compareKpiChart && compareAchievementChart && (
+                  <div className="grid-2 mb-2">
+                    <div className="card chart-wrap"><PlotChart {...compareKpiChart} /></div>
+                    <div className="card chart-wrap"><PlotChart {...compareAchievementChart} /></div>
+                  </div>
+                )}
                 {compareShowGantt && compareGanttChart && (
                   <div className="card chart-wrap gantt-chart-panel">
                     <PlotChart {...compareGanttChart} scrollable />

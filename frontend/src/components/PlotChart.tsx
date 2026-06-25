@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import type { CSSProperties } from "react";
 import Plot, { Plotly } from "../lib/plotlyComponent";
 import { CHART_HOVERLABEL } from "../lib/charts";
 import type { Data, Layout, Config, PlotMouseEvent, PlotRelayoutEvent } from "plotly.js";
@@ -127,8 +128,17 @@ function applyStickyXAxis(
   const scrollTop = scrollEl.scrollTop;
   bases.forEach((base, el) => {
     const dy = Math.max(0, scrollTop - base);
-    (el as SVGElement).style.transform = dy > 0 ? `translateY(${dy}px)` : "";
+    const next = dy > 0 ? `translateY(${dy}px)` : "";
+    const svg = el as SVGElement;
+    if (svg.style.transform !== next) {
+      svg.style.transform = next;
+    }
   });
+}
+
+function layoutPixelHeight(layout: Partial<Layout>): number | undefined {
+  const h = layout.height;
+  return typeof h === "number" && Number.isFinite(h) ? h : undefined;
 }
 
 export default function PlotChart({
@@ -143,6 +153,7 @@ export default function PlotChart({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickyBasesRef = useRef<Map<Element, number>>(new Map());
   const paperBg = (layout.paper_bgcolor as string | undefined) ?? "#ffffff";
+  const plotPixelHeight = layoutPixelHeight(layout);
 
   const handleClick = (ev: Readonly<PlotMouseEvent>) => {
     const pt = ev.points?.[0];
@@ -163,8 +174,7 @@ export default function PlotChart({
 
   const handleScroll = useCallback(() => {
     const scrollEl = scrollRef.current;
-    const graphEl = graphDivRef.current;
-    if (!scrollEl || !graphEl) return;
+    if (!scrollEl) return;
     applyStickyXAxis(scrollEl, stickyBasesRef.current);
   }, []);
 
@@ -183,6 +193,11 @@ export default function PlotChart({
     return () => ro.disconnect();
   }, [scrollable, scheduleStickyRefresh]);
 
+  const handleGraphInit = useCallback((_: unknown, graphDiv: HTMLElement) => {
+    graphDivRef.current = graphDiv;
+    if (scrollable) scheduleStickyRefresh();
+  }, [scrollable, scheduleStickyRefresh]);
+
   const clampPanX = useCallback(
     (ev: PlotRelayoutEvent) => {
       if (clampXMin === undefined) return;
@@ -198,26 +213,23 @@ export default function PlotChart({
     ? ({ onRelayouting: clampPanX, onRelayout: clampPanX } as Record<string, unknown>)
     : {};
 
+  const plotStyle: CSSProperties = scrollable && plotPixelHeight
+    ? { width: "100%", height: plotPixelHeight }
+    : { width: "100%", height: "100%" };
+
   const plot = (
     <Plot
       data={data}
       layout={{
         ...layout,
-        autosize: true,
+        autosize: scrollable ? false : true,
         hoverlabel: { ...CHART_HOVERLABEL, ...layout.hoverlabel },
       }}
       config={plotConfig}
-      useResizeHandler
-      style={{ width: "100%", height: "100%" }}
+      useResizeHandler={!scrollable}
+      style={plotStyle}
       onClick={onPointClick ? handleClick : undefined}
-      onInitialized={(_, graphDiv) => {
-        graphDivRef.current = graphDiv;
-        scheduleStickyRefresh();
-      }}
-      onUpdate={(_, graphDiv) => {
-        graphDivRef.current = graphDiv;
-        scheduleStickyRefresh();
-      }}
+      onInitialized={handleGraphInit}
       {...ganttPanHandlers}
     />
   );
