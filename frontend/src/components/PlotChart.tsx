@@ -172,11 +172,18 @@ export default function PlotChart({
     applyStickyXAxis(scrollEl, stickyBasesRef.current);
   }, [scrollable, paperBg]);
 
+  const clearHover = useCallback(() => {
+    const graphEl = graphDivRef.current;
+    if (!graphEl) return;
+    Plotly.Fx.unhover(graphEl);
+  }, []);
+
   const handleScroll = useCallback(() => {
     const scrollEl = scrollRef.current;
     if (!scrollEl) return;
     applyStickyXAxis(scrollEl, stickyBasesRef.current);
-  }, []);
+    clearHover();
+  }, [clearHover]);
 
   const scheduleStickyRefresh = useCallback(() => {
     if (!scrollable) return;
