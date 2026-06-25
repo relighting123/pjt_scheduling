@@ -32,7 +32,7 @@ from api.test_benchmark_store import (
     append_dataset,
     empty_state,
 )
-from api.train_service import train_progress, start_training, is_training
+from api.train_service import train_progress, start_training, stop_training, is_training
 
 app = FastAPI(title="Scheduling RL API", version="1.0.0")
 
@@ -591,6 +591,13 @@ def train_start(req: TrainRequest):
 @app.get("/api/train/status")
 def train_status():
     return train_progress.snapshot()
+
+
+@app.post("/api/train/stop")
+def train_stop():
+    if not stop_training():
+        raise HTTPException(status_code=409, detail="진행 중인 학습이 없습니다.")
+    return {"message": "학습 중지 요청"}
 
 
 @app.post("/api/train")

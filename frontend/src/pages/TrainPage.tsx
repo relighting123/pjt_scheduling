@@ -29,6 +29,7 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
   const [wOper, setWOper]     = useState(config.default_w_same_oper);
   const [wIdle, setWIdle]     = useState(config.default_w_idle_per_min);
   const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [metrics, setMetrics] = useState<TrainMetrics | null>(null);
   const [status, setStatus]   = useState<TrainStatusResponse | null>(null);
   const [error, setError]     = useState<string | null>(null);
@@ -60,11 +61,17 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
 
   const applyStatus = useCallback((s: TrainStatusResponse) => {
     setStatus(s);
-    if (s.status==="completed") { if(s.metrics) setMetrics(s.metrics); setLoading(false); onTrained(); }
-    else if (s.status==="failed") { setError(s.error??"학습 실패"); setLoading(false); }
+    if (s.status==="completed") { if(s.metrics) setMetrics(s.metrics); setLoading(false); setStopping(false); onTrained(); }
+    else if (s.status==="stopped") { setLoading(false); setStopping(false); onTrained(); }
+    else if (s.status==="failed") { setError(s.error??"학습 실패"); setLoading(false); setStopping(false); }
   }, [onTrained]);
 
-  useEffect(() => { api.getTrainingStatus().then(s=>{if(s.status==="running"){setLoading(true);setStatus(s);}}).catch(()=>{}); }, []);
+  useEffect(() => {
+    api.getTrainingStatus().then(s => {
+      if (s.status==="running") { setLoading(true); setStatus(s); }
+      else if (s.status==="stopped") { setStatus(s); }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!loading) return;
@@ -77,8 +84,14 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
 
   useEffect(() => { const el=logRef.current; if(el) el.scrollTop=el.scrollHeight; }, [status?.logs]);
 
+  const stopTrain = async () => {
+    setStopping(true); setError(null);
+    try { await api.stopTraining(); }
+    catch(e) { setError(e instanceof Error?e.message:"학습 중지 실패"); setStopping(false); }
+  };
+
   const train = async () => {
-    setLoading(true); setError(null); setMetrics(null);
+    setLoading(true); setStopping(false); setError(null); setMetrics(null);
     setStatus({ status:"running",progress:0,timesteps:0,total_timesteps:totalTs,episodes:0,total_episodes:nEps,train_budget_mode:budget,logs:[],series:EMPTY,metrics:null,error:null });
     try { await api.startTraining(body()); }
     catch(e) { setError(e instanceof Error?e.message:"학습 시작 실패"); setLoading(false); setStatus(null); }
@@ -169,9 +182,14 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
             </div>
           )}
           <div className="gap-row mt-2">
-            <button type="button" className={`btn btn-primary${loading?" loading":""}`} onClick={train} disabled={loading || !summary}>
-              {loading ? "" : "학습 시작"}
+            <button type="button" className={`btn btn-primary${loading && !stopping?" loading":""}`} onClick={train} disabled={loading || !summary}>
+              {loading && !stopping ? "" : "학습 시작"}
             </button>
+            {loading && (
+              <button type="button" className={`btn btn-ghost${stopping?" loading":""}`} onClick={stopTrain} disabled={stopping}>
+                {stopping ? "" : "학습 중지"}
+              </button>
+            )}
             {!summary && <span className="hint">데이터셋 없음</span>}
           </div>
         </div>
@@ -196,8 +214,8 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"0.65rem" }}>
               <div className="card-title" style={{ marginBottom:0 }}>
                 학습 상태 ·{" "}
-                <span className={`badge ${status?.status==="completed"?"badge-ok":status?.status==="running"?"badge-warn":"badge-err"}`}>
-                  {status?.status==="completed"?"완료":status?.status==="running"?"진행 중":status?.status==="failed"?"실패":"대기"}
+                <span className={`badge ${status?.status==="completed"?"badge-ok":status?.status==="running"?"badge-warn":status?.status==="stopped"?"badge-warn":"badge-err"}`}>
+                  {status?.status==="completed"?"완료":status?.status==="running"?"진행 중":status?.status==="stopped"?"중지됨":status?.status==="failed"?"실패":"대기"}
                 </span>
               </div>
               {convergence && (

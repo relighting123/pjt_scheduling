@@ -56,6 +56,7 @@ class TrainProgressState:
     def reset(self) -> None:
         with self._lock:
             self.status: str = "idle"
+            self.stop_requested: bool = False
             self.progress: float = 0.0
             self.timesteps: int = 0
             self.total_timesteps: int = 0
@@ -120,6 +121,19 @@ class TrainProgressState:
             self.status = "failed"
             self.error = error
 
+    def request_stop(self) -> None:
+        with self._lock:
+            self.stop_requested = True
+
+    def is_stop_requested(self) -> bool:
+        with self._lock:
+            return self.stop_requested
+
+    def set_stopped(self) -> None:
+        with self._lock:
+            self.status = "stopped"
+            self.stop_requested = False
+
     def update_progress(self, timesteps: int, total: int) -> None:
         with self._lock:
             self.timesteps = timesteps
@@ -163,6 +177,20 @@ class TrainProgressState:
                 "error": self.error,
             }
         return _sanitize_json(data)
+
+
+class StopTrainingCallback(BaseCallback):
+    """UI 중지 요청 시 PPO learn 조기 종료."""
+
+    def __init__(self, state: TrainProgressState, verbose: int = 0):
+        super().__init__(verbose)
+        self._state = state
+
+    def _on_step(self) -> bool:
+        if self._state.is_stop_requested():
+            self._state.add_log("사용자 요청으로 학습 중지")
+            return False
+        return True
 
 
 class ProgressCallback(BaseCallback):
