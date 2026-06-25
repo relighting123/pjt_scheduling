@@ -8,6 +8,7 @@ def test_reward_params_dict_has_all_keys():
         "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
         "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
         "w_late_finish", "w_flow_balance", "reward_clip",
+        "flow_balance_starving_cover_min",
         "use_achievable_target", "same_oper_conditional",
     }
 

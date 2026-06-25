@@ -23,7 +23,7 @@ from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snap
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
-from api.serializers import env_data_summary, serialize_inference_result, serialize_compare_response
+from api.serializers import env_data_summary, empty_data_summary, serialize_inference_result, serialize_compare_response
 from api.test_benchmark_store import (
     load_benchmark,
     save_benchmark,
@@ -555,8 +555,8 @@ def fetch_dataset(req: FetchRequest):
 def data_summary():
     try:
         env_data = _load_env_data()
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        return empty_data_summary()
     except HTTPException:
         raise
     except Exception as e:

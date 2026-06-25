@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import PlotChart from "../components/PlotChart";
 import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import { api } from "../lib/api";
+import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey } from "../lib/ganttTime";
 import {
   ALGO_CHART_COLORS,
   benchmarkRowsFromResponse,
@@ -81,12 +82,20 @@ export default function TestPage({ config, modelExists }: Props) {
     })),
   [selectedDataset, algoLabels]);
 
+  const simBaseTime = useMemo(() => {
+    const folder = selectedDataset?.input_folder;
+    if (!folder) return undefined;
+    const rtk = ruleTimekeyFromFolder(folder);
+    return rtk ? simBaseTimeFromRuleTimekey(rtk) : undefined;
+  }, [selectedDataset]);
+
   const ganttAxis = useMemo(() => ({
     eqpIds: selectedDataset?.eqp_ids ?? benchmark?.datasets?.[0]?.eqp_ids ?? [],
     timeStartMinutes: ganttFixed ? ganttStart : 0,
     timeEndMinutes:   ganttFixed ? ganttEnd   : (selectedDataset?.sim_end_minutes ?? 1440),
     fixedRange: ganttFixed,
-  }), [selectedDataset, benchmark, ganttFixed, ganttStart, ganttEnd]);
+    simBaseTime,
+  }), [selectedDataset, benchmark, ganttFixed, ganttStart, ganttEnd, simBaseTime]);
 
   const run = useCallback(async () => {
     const ids = [...compareAlgos].filter(id => available.some(a => a.id === id));
@@ -243,7 +252,7 @@ export default function TestPage({ config, modelExists }: Props) {
                   </div>
                 </div>
                 <div className="chart-wrap gantt-chart-panel">
-                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} clampXMin={0} />
+                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} scrollable />
                 </div>
               </div>
             )}

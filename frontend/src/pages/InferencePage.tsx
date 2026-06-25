@@ -17,6 +17,7 @@ import {
   ALGO_CHART_COLORS,
 } from "../lib/charts";
 import { buildEqpModelMap } from "../lib/metrics";
+import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey } from "../lib/ganttTime";
 import type {
   AlgorithmCompareResponse, AlgorithmId, AlgorithmInfo,
   AppConfig, DataSummary, InferenceResult,
@@ -99,7 +100,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [fileSource, setFileSource]   = useState<string | null>(null);
   const fileRef                       = useRef<HTMLInputElement>(null);
 
-  const [selectedFolder, setSelectedFolder] = useState("FAC001/infer");
+  const [selectedFolder, setSelectedFolder] = useState("");
   const [decisionLog, setDecisionLog]       = useState(false);
   const [wipInflow, setWipInflow]           = useState(false);
 
@@ -107,15 +108,19 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ganttFixed, setGanttFixed]       = useState(false);
   const [ganttStart, setGanttStart]       = useState(0);
   const [ganttEnd, setGanttEnd]           = useState(1440);
+  const [compareShowGantt, setCompareShowGantt] = useState(true);
 
   const folders = useMemo(() =>
-    config?.input_folders?.length ? config.input_folders : config ? [config.input_folder] : [],
+    config?.input_folders?.length ? config.input_folders : [],
   [config]);
 
   useEffect(() => {
-    if (!folders.length) return;
+    if (!folders.length) {
+      setSelectedFolder("");
+      return;
+    }
     setSelectedFolder(prev => {
-      if (folders.includes(prev)) return prev;
+      if (prev && folders.includes(prev)) return prev;
       return folders.find(f => f.endsWith("/infer")) ?? folders[0];
     });
   }, [folders]);
@@ -132,12 +137,19 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const dataEnd = useMemo(() => result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 1440, [result, compareData]);
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
 
+  const simBaseTime = useMemo(() => {
+    if (summary?.sim_base_time) return summary.sim_base_time;
+    const rtk = ruleTimekeyFromFolder(selectedFolder);
+    return rtk ? simBaseTimeFromRuleTimekey(rtk) : undefined;
+  }, [summary, selectedFolder]);
+
   const axis = useMemo(() => ({
     eqpIds: result?.eqp_ids ?? compareData?.eqp_ids ?? [],
     timeStartMinutes: ganttFixed ? ganttStart : 0,
     timeEndMinutes:   ganttFixed ? ganttEnd   : dataEnd,
     fixedRange: ganttFixed,
-  }), [result, compareData, ganttFixed, ganttStart, ganttEnd, dataEnd]);
+    simBaseTime,
+  }), [result, compareData, ganttFixed, ganttStart, ganttEnd, dataEnd, simBaseTime]);
 
   const eqpModelMap = useMemo(() => buildEqpModelMap(result?.event_log ?? []), [result]);
 
@@ -218,10 +230,34 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           timeStartMinutes: axis.timeStartMinutes,
           timeEndMinutes: axis.timeEndMinutes,
           fixedRange: axis.fixedRange,
+          simBaseTime: axis.simBaseTime,
         },
       },
     );
   }, [result, axis]);
+
+  const compareGanttChart = useMemo(() => {
+    if (!compareShowGantt || compareEntries.length < 2) return null;
+    return buildAlgorithmGanttComparison(compareEntries, axis);
+  }, [compareShowGantt, compareEntries, axis]);
+
+  const compareKpiChart = useMemo(() => {
+    if (compareEntries.length < 2) return null;
+    return buildAlgorithmKpiComparison(compareEntries);
+  }, [compareEntries]);
+
+  const compareAchievementChart = useMemo(() => {
+    if (compareEntries.length < 2) return null;
+    return buildAlgorithmAchievementComparison(compareEntries);
+  }, [compareEntries]);
+
+  const canShowCompare = compareEntries.length > 1;
+
+  useEffect(() => {
+    if (tab === "compare" && !canShowCompare) {
+      setTab(result ? "gantt" : "table");
+    }
+  }, [tab, canShowCompare, result]);
 
   return (
     <div className="detail-page">
@@ -277,11 +313,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
           <div className="gap-row mt-2">
             <button type="button" className={`btn btn-primary${loading ? " loading" : ""}`}
-              onClick={runInference} disabled={loading || compareLoading || !canRun || folderLoading}>
+              onClick={runInference} disabled={loading || compareLoading || !canRun || folderLoading || !selectedFolder}>
               {loading ? "" : "▶ 추론 실행"}
             </button>
             <button type="button" className={`btn btn-ghost btn-sm${loading ? " loading" : ""}`}
-              onClick={loadSaved} disabled={loading || compareLoading || folderLoading}>
+              onClick={loadSaved} disabled={loading || compareLoading || folderLoading || !selectedFolder}>
               저장 로드
             </button>
             <button type="button" className="btn btn-ghost btn-sm"
@@ -310,8 +346,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               );
             })}
           </div>
+          <label className="check-label">
+            <input type="checkbox" checked={compareShowGantt} onChange={e => setCompareShowGantt(e.target.checked)} disabled={compareLoading} />
+            비교 시 간트 차트 표시
+          </label>
           <button type="button" className={`btn btn-accent${compareLoading ? " loading" : ""}`}
-            onClick={runCompare} disabled={compareLoading || loading || compareAlgos.size === 0 || folderLoading}>
+            onClick={runCompare} disabled={compareLoading || loading || compareAlgos.size === 0 || folderLoading || !selectedFolder}>
             {compareLoading ? "" : `비교 실행 (${compareAlgos.size}개)`}
           </button>
         </div>
@@ -337,7 +377,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               <button type="button" className={`tab-btn${tab === "gantt" ? " active" : ""}`} onClick={() => setTab("gantt")} disabled={!result}>간트 차트</button>
               <button type="button" className={`tab-btn${tab === "events" ? " active" : ""}`} onClick={() => setTab("events")} disabled={!result?.event_log?.length}>이벤트 이력</button>
               <button type="button" className={`tab-btn${tab === "table" ? " active" : ""}`} onClick={() => setTab("table")} disabled={!result}>간트 테이블</button>
-              {compareEntries.length > 1 && (
+              {canShowCompare && (
                 <button type="button" className={`tab-btn${tab === "compare" ? " active" : ""}`} onClick={() => setTab("compare")}>알고리즘 비교</button>
               )}
             </div>
@@ -387,7 +427,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
                 {ganttChart && (
                   <div className="chart-wrap gantt-chart-panel">
-                    <PlotChart {...ganttChart} clampXMin={0} />
+                    <PlotChart {...ganttChart} scrollable />
                   </div>
                 )}
 
@@ -398,7 +438,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                       제품별 서브플롯에 공정(O) 실적(실선)과 계획(점선)을 표시합니다. X축은 간트 차트와 동일합니다.
                     </p>
                     <div className="chart-wrap gantt-production-chart">
-                      <PlotChart {...productionChart} clampXMin={0} />
+                      <PlotChart {...productionChart} scrollable />
                     </div>
                   </div>
                 )}
@@ -430,7 +470,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             )}
 
             {/* COMPARE TAB */}
-            {tab === "compare" && compareData && compareEntries.length > 1 && (
+            {tab === "compare" && compareData && canShowCompare && (
               <div className="tab-panel">
                 <div className="card mb-2">
                   <div className="card-title">알고리즘 KPI 요약</div>
@@ -459,13 +499,17 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     </table>
                   </div>
                 </div>
-                <div className="grid-2 mb-2">
-                  <div className="card chart-wrap"><PlotChart {...buildAlgorithmKpiComparison(compareEntries)} /></div>
-                  <div className="card chart-wrap"><PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} /></div>
-                </div>
-                <div className="card chart-wrap">
-                  <PlotChart {...buildAlgorithmGanttComparison(compareEntries, axis)} clampXMin={0} />
-                </div>
+                {compareKpiChart && compareAchievementChart && (
+                  <div className="grid-2 mb-2">
+                    <div className="card chart-wrap"><PlotChart {...compareKpiChart} /></div>
+                    <div className="card chart-wrap"><PlotChart {...compareAchievementChart} /></div>
+                  </div>
+                )}
+                {compareShowGantt && compareGanttChart && (
+                  <div className="card chart-wrap gantt-chart-panel">
+                    <PlotChart {...compareGanttChart} scrollable />
+                  </div>
+                )}
               </div>
             )}
           </>
