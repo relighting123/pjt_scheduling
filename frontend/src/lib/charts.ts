@@ -76,16 +76,19 @@ const GANTT_THEME = {
   rowGridColor: "rgba(15, 23, 42, 0.07)",
 } as const;
 
-/** 간트 hover 툴팁 – 글자색 명시 (미설정 시 투명/흰색으로 안 보이는 경우 방지) */
-const GANTT_HOVERLABEL: NonNullable<Layout["hoverlabel"]> = {
+/** Plotly hover 툴팁 공통 스타일 */
+export const CHART_HOVERLABEL: NonNullable<Layout["hoverlabel"]> = {
   bgcolor: "#ffffff",
   bordercolor: "rgba(15, 23, 42, 0.14)",
   font: {
-    family: GANTT_THEME.fontFamily,
+    family: CHART_FONT,
     size: 12,
-    color: GANTT_THEME.titleColor,
+    color: "#1b1b18",
   },
+  align: "left",
 };
+
+const GANTT_HOVERLABEL = CHART_HOVERLABEL;
 
 const GANTT_LAYOUT_FONT: NonNullable<Layout["font"]> = {
   family: GANTT_THEME.fontFamily,
@@ -469,6 +472,7 @@ const SHARED_DARK: Partial<Layout> = {
   plot_bgcolor: "#f8fafc",
   paper_bgcolor: "#ffffff",
   font: { family: CHART_FONT, color: "#1b1b18" },
+  hoverlabel: CHART_HOVERLABEL,
   dragmode: false,
   xaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
   yaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
