@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PlotChart from "../components/PlotChart";
 import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import GanttKpiPanel from "../components/GanttKpiPanel";
+import GanttLegendPanel from "../components/GanttLegendPanel";
 import GanttSummaryPanel from "../components/GanttSummaryPanel";
 import { EventTimeline } from "../components/EventTimeline";
 import { api } from "../lib/api";
 import { loadResultFromFile } from "../lib/resultFile";
 import {
   buildEnhancedGantt,
+  buildGanttLegendItems,
   buildProductProductionCharts,
   buildAlgorithmKpiComparison,
   buildAlgorithmAchievementComparison,
@@ -110,6 +112,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ganttStart, setGanttStart]       = useState(0);
   const [ganttEnd, setGanttEnd]           = useState(1440);
   const [compareShowGantt, setCompareShowGantt] = useState(true);
+  const [hiddenLegendKeys, setHiddenLegendKeys] = useState<Set<string>>(new Set());
+  const [showConversionBars, setShowConversionBars] = useState(true);
 
   const folders = useMemo(() =>
     config?.input_folders?.length ? config.input_folders : [],
@@ -153,6 +157,25 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }), [result, compareData, ganttFixed, ganttStart, ganttEnd, dataEnd, simBaseTime]);
 
   const eqpModelMap = useMemo(() => buildEqpModelMap(result?.event_log ?? []), [result]);
+
+  useEffect(() => {
+    setHiddenLegendKeys(new Set());
+    setShowConversionBars(true);
+  }, [result]);
+
+  const legendItems = useMemo(() => {
+    if (!result) return [];
+    return buildGanttLegendItems(result.schedule, result.prod_keys, result.oper_ids);
+  }, [result]);
+
+  const toggleLegendKey = useCallback((pairKey: string) => {
+    setHiddenLegendKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(pairKey)) next.delete(pairKey);
+      else next.add(pairKey);
+      return next;
+    });
+  }, []);
 
   const compareEntries = useMemo((): AlgoCompareEntry[] =>
     (compareData?.results ?? []).map(r => ({
@@ -214,9 +237,13 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const ganttChart = useMemo(() => {
     if (!result) return null;
     return buildEnhancedGantt(result.schedule, result.prod_keys, result.oper_ids, axis, {
-      labelMode, eqpModelMap, conversionPlans: result.conversion_plans ?? [],
+      labelMode,
+      eqpModelMap,
+      conversionPlans: result.conversion_plans ?? [],
+      hiddenProdOperKeys: hiddenLegendKeys,
+      showConversion: showConversionBars,
     });
-  }, [result, axis, labelMode, eqpModelMap]);
+  }, [result, axis, labelMode, eqpModelMap, hiddenLegendKeys, showConversionBars]);
 
   const productionChart = useMemo(() => {
     if (!result?.schedule.length) return null;
@@ -431,6 +458,19 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   <div className="chart-wrap gantt-chart-panel">
                     <PlotChart {...ganttChart} scrollable />
                   </div>
+                )}
+
+                {result && (legendItems.length > 0 || (result.conversion_plans?.length ?? 0) > 0) && (
+                  <GanttLegendPanel
+                    items={legendItems}
+                    hiddenKeys={hiddenLegendKeys}
+                    onToggle={toggleLegendKey}
+                    onShowAll={() => setHiddenLegendKeys(new Set())}
+                    onHideAll={() => setHiddenLegendKeys(new Set(legendItems.map((item) => item.pairKey)))}
+                    showConversion={(result.conversion_plans?.length ?? 0) > 0}
+                    conversionHidden={!showConversionBars}
+                    onToggleConversion={() => setShowConversionBars((prev) => !prev)}
+                  />
                 )}
 
                 {productionChart && (

@@ -1358,6 +1358,166 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 0.72rem;
 }
 
+.gantt-summary-table .code-text {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gantt-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.gantt-table-search {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 0.38rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.gantt-table-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.gantt-table-count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gantt-table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.gantt-table-sort select {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.gantt-summary-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.gantt-summary-table th.sortable:hover {
+  color: var(--text);
+}
+
+.gantt-summary-table th.sortable.active {
+  color: var(--accent);
+}
+
+.gantt-summary-table .sortable-label {
+  margin-right: 0.2rem;
+}
+
+.gantt-summary-table .sort-indicator {
+  font-size: 0.62rem;
+  opacity: 0.85;
+}
+
+.gantt-table-empty {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.gantt-summary-code-table .col-color {
+  width: 5.5rem;
+}
+
+.gantt-legend-panel {
+  padding: 0.85rem 1rem;
+}
+
+.gantt-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.gantt-legend-head .gantt-summary-section-title {
+  margin-bottom: 0;
+}
+
+.gantt-legend-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.gantt-legend-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.gantt-legend-tag {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--legend-color, var(--border-strong));
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.gantt-legend-tag:hover {
+  border-color: var(--accent);
+}
+
+.gantt-legend-tag.hidden {
+  opacity: 0.42;
+  text-decoration: line-through;
+}
+
+.gantt-legend-tag.unused {
+  opacity: 0.72;
+}
+
+.gantt-legend-tag.conversion {
+  --legend-color: #fbbf24;
+}
+
+.gantt-legend-tag-label {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--legend-color, var(--text));
+}
+
+.gantt-legend-tag-meta {
+  font-size: 0.64rem;
+  color: var(--text-muted);
+}
+
 .gantt-summary-table th.col-code,
 .gantt-summary-table td.col-code {
   width: 4rem;

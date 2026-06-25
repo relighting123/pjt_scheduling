@@ -1636,6 +1636,42 @@ function segmentHoverTemplate(
   );
 }
 
+export interface GanttLegendItem {
+  pairKey: string;
+  prodKey: string;
+  operId: string;
+  label: string;
+  color: string;
+  inSchedule: boolean;
+}
+
+export function buildGanttLegendItems(
+  schedule: ScheduleRecord[],
+  prodKeys: string[],
+  operIds: string[],
+): GanttLegendItem[] {
+  const prodCodeMap = buildShortCodeMap(prodKeys, "P").codeByKey;
+  const operCodeMap = buildShortCodeMap(operIds, "O").codeByKey;
+  const pairs = ganttProdOperPairs(schedule, prodKeys, operIds);
+  const colorMap = ganttProdOperColorMap(pairs);
+
+  return pairs.map((pairKey) => {
+    const sep = pairKey.indexOf("|");
+    const pk = sep >= 0 ? pairKey.slice(0, sep) : pairKey;
+    const op = sep >= 0 ? pairKey.slice(sep + 1) : "";
+    return {
+      pairKey,
+      prodKey: pk,
+      operId: op,
+      label: `${prodCodeMap[pk] ?? pk}/${operCodeMap[op] ?? op}`,
+      color: colorMap[pairKey] ?? "#94a3b8",
+      inSchedule: schedule.some(
+        (r) => ganttProdOperKey(r.PLAN_PROD_KEY, r.OPER_ID ?? "") === pairKey,
+      ),
+    };
+  });
+}
+
 export function buildEnhancedGantt(
   schedule: ScheduleRecord[],
   prodKeys: string[],
@@ -1646,9 +1682,18 @@ export function buildEnhancedGantt(
     eqpModelMap?: Record<string, string>;
     conversionPlans?: ConversionPlan[];
     title?: string;
+    hiddenProdOperKeys?: ReadonlySet<string>;
+    showConversion?: boolean;
   } = {},
 ): PlotChartSpec {
-  const { labelMode = "lot", eqpModelMap = {}, conversionPlans = [], title } = options;
+  const {
+    labelMode = "lot",
+    eqpModelMap = {},
+    conversionPlans = [],
+    title,
+    hiddenProdOperKeys,
+    showConversion = true,
+  } = options;
   const prodCodeMap = buildShortCodeMap(prodKeys, "P").codeByKey;
   const operCodeMap = buildShortCodeMap(operIds, "O").codeByKey;
   const pairs = ganttProdOperPairs(schedule, prodKeys, operIds);
@@ -1664,11 +1709,12 @@ export function buildEnhancedGantt(
 
   barSegments.forEach((segment) => {
     const rec = segment.records[0];
+    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
+    if (hiddenProdOperKeys?.has(pairKey)) return;
     const { start, width } = segmentTimeRange(segment);
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
     const showText = width >= (labelMode === "prod" ? 18 : 24);
     const { base, x } = ganttBarAxisCoords(start, width, baseMs);
-    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
     data.push({
       type: "bar",
       orientation: "h",
@@ -1686,32 +1732,28 @@ export function buildEnhancedGantt(
   });
 
   // Conversion bars
-  conversionPlans.forEach((p) => {
-    const w = Math.max(p.conv_end_min - p.conv_start_min, 0);
-    if (w <= 0) return;
-    const label = getEqpLabel(p.eqp_id, eqpModelMap);
-    const { base, x } = ganttBarAxisCoords(p.conv_start_min, w, baseMs);
-    data.push({
-      type: "bar",
-      orientation: "h",
-      x: [x],
-      y: [label],
-      base: [base],
-      marker: conversionBarMarker(),
-      text: w >= 20 ? "CONV" : "",
-      textposition: "inside",
-      insidetextanchor: "middle",
-      textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
-      hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${p.from_lot_cd}→${p.to_lot_cd}<br>` +
-        `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)} · 종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<extra></extra>`,
-      showlegend: false,
-    } as Data);
-  });
-
-  // Legend traces
-  data.push(...legendTraces(prodKeys, operIds, schedule, prodCodeMap, operCodeMap));
-  if (conversionPlans.length > 0) {
-    data.push(conversionLegendTrace(true));
+  if (showConversion) {
+    conversionPlans.forEach((p) => {
+      const w = Math.max(p.conv_end_min - p.conv_start_min, 0);
+      if (w <= 0) return;
+      const label = getEqpLabel(p.eqp_id, eqpModelMap);
+      const { base, x } = ganttBarAxisCoords(p.conv_start_min, w, baseMs);
+      data.push({
+        type: "bar",
+        orientation: "h",
+        x: [x],
+        y: [label],
+        base: [base],
+        marker: conversionBarMarker(),
+        text: w >= 20 ? "CONV" : "",
+        textposition: "inside",
+        insidetextanchor: "middle",
+        textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
+        hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${p.from_lot_cd}→${p.to_lot_cd}<br>` +
+          `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)} · 종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<extra></extra>`,
+        showlegend: false,
+      } as Data);
+    });
   }
 
   const layout: Partial<Layout> = {
@@ -1728,14 +1770,11 @@ export function buildEnhancedGantt(
     shapes: ganttTableGridShapes(eqpLabels.length),
     barmode: "overlay",
     bargap: 0.28,
-    legend: {
-      title: { text: "제품×공정", font: { size: 11, color: GANTT_THEME.axisColor } },
-      ...GANTT_LEGEND,
-    },
+    showlegend: false,
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 20, t: 52, b: 56 },
+    margin: { l: 160, r: 20, t: 52, b: 40 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverdistance: 30,
