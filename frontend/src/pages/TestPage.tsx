@@ -282,7 +282,10 @@ export default function TestPage({ config, modelExists }: Props) {
                     </table>
                   </div>
                 </div>
-                <div className="chart-wrap"><PlotChart {...buildAlgorithmAchievementComparison(detailEntries)} /></div>
+                {(() => {
+                  const ach = buildAlgorithmAchievementComparison(detailEntries);
+                  return ach ? <div className="chart-wrap"><PlotChart {...ach} /></div> : null;
+                })()}
               </div>
             )}
           </>

@@ -12,6 +12,7 @@ import {
   buildAlgorithmKpiComparison,
   buildAlgorithmAchievementComparison,
   buildAlgorithmGanttComparison,
+  buildCompareGanttAxis,
   type GanttBarLabel,
   type AlgoCompareEntry,
   ALGO_CHART_COLORS,
@@ -238,8 +239,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const compareGanttChart = useMemo(() => {
     if (!compareShowGantt || compareEntries.length < 2) return null;
-    return buildAlgorithmGanttComparison(compareEntries, axis);
-  }, [compareShowGantt, compareEntries, axis]);
+    const compareAxis = buildCompareGanttAxis(compareEntries, compareData, simBaseTime);
+    return buildAlgorithmGanttComparison(compareEntries, compareAxis);
+  }, [compareShowGantt, compareEntries, compareData, simBaseTime]);
 
   const compareKpiChart = useMemo(() => {
     if (compareEntries.length < 2) return null;
@@ -499,10 +501,20 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     </table>
                   </div>
                 </div>
-                {compareKpiChart && compareAchievementChart && (
+                {compareKpiChart && (
                   <div className="grid-2 mb-2">
-                    <div className="card chart-wrap"><PlotChart {...compareKpiChart} /></div>
-                    <div className="card chart-wrap"><PlotChart {...compareAchievementChart} /></div>
+                    <div className="card chart-wrap compare-chart-panel">
+                      <PlotChart {...compareKpiChart} />
+                    </div>
+                    {compareAchievementChart ? (
+                      <div className="card chart-wrap compare-chart-panel">
+                        <PlotChart {...compareAchievementChart} />
+                      </div>
+                    ) : (
+                      <div className="card compare-chart-panel" style={{ display: "grid", placeItems: "center", minHeight: 380, color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                        달성률 비교 데이터 없음
+                      </div>
+                    )}
                   </div>
                 )}
                 {compareShowGantt && compareGanttChart && (
