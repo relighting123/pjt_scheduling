@@ -53,6 +53,56 @@ REQUIRED_TOOL_CAPACITY_FIELDS = {"LOT_CD", "EQP_MODEL", "MAX_TOOL"}
 REQUIRED_BATCH_INFO_FIELDS   = {"LOT_CD", "TEMP", "PLAN_PROD_KEY", "OPER_ID"}
 
 
+def _pick_record_field(record: dict, *names: str):
+    """레코드에서 필드 조회 (대소문자 무시)."""
+    for name in names:
+        if name in record:
+            return record[name]
+    upper_keys = {k.upper(): k for k in record}
+    for name in names:
+        key = upper_keys.get(name.upper())
+        if key is not None:
+            return record[key]
+    return None
+
+
+def normalize_tool_capacity_rows(records: List[dict]) -> List[dict]:
+    """
+    tool_capacity.json 정규화.
+    Oracle TOOL_CAPACITY.EQP_MODEL → EQP_MODEL (split/discrete의 EQP_MODEL_CD와 별도).
+    """
+    out: List[dict] = []
+    for record in records:
+        lot_cd = _pick_record_field(record, "LOT_CD")
+        model = _pick_record_field(record, "EQP_MODEL")
+        max_tool = _pick_record_field(record, "MAX_TOOL")
+        out.append({
+            "LOT_CD": str(lot_cd).strip() if lot_cd is not None else "",
+            "EQP_MODEL": str(model).strip().upper() if model is not None else "",
+            "MAX_TOOL": max_tool,
+        })
+    return out
+
+
+def validate_tool_capacity_records(records: List[dict]) -> List[str]:
+    """tool_capacity 전용 검증 – EQP_MODEL 사용 (EQP_MODEL_CD 아님)."""
+    errors: List[str] = []
+    if not records:
+        errors.append("tool_capacity: 데이터가 비어 있습니다.")
+        return errors
+    for idx, record in enumerate(records, start=1):
+        has_model = _pick_record_field(record, "EQP_MODEL") is not None
+        has_model_cd = _pick_record_field(record, "EQP_MODEL_CD") is not None
+        if not has_model and has_model_cd:
+            errors.append(
+                f"tool_capacity[{idx}]: EQP_MODEL_CD가 아닌 EQP_MODEL 필드를 사용하세요 "
+                "(Oracle TOOL_CAPACITY.EQP_MODEL)"
+            )
+    normalized = normalize_tool_capacity_rows(records)
+    errors += validate_records(normalized, REQUIRED_TOOL_CAPACITY_FIELDS, "tool_capacity")
+    return errors
+
+
 def effective_proc_time(st_per_wafer: int, wf_qty: int) -> int:
     """장당 ST(분/장) × split 이후 wf_qty → LOT 실제 가공 소요시간(분)."""
     return max(int(st_per_wafer), 0) * max(int(wf_qty), 0)
