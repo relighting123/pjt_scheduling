@@ -97,10 +97,6 @@ const GANTT_LAYOUT_FONT: NonNullable<Layout["font"]> = {
   size: 12,
 };
 
-function ganttOperColorMap(operIds: string[]): Record<string, string> {
-  return buildColorMap(operIds, GANTT_OPER_BORDERS);
-}
-
 const GANTT_PROD_OPER_PALETTE = [...GANTT_PROD_COLORS, ...GANTT_OPER_BORDERS];
 
 function ganttProdOperKey(prodKey: string, operId: string): string {
@@ -691,7 +687,10 @@ export function buildProductProductionCharts(
   const [timeStart, timeEnd] = resolveGanttTimeRange(axisOpts);
   const baseMs = resolveGanttBaseMs(axisOpts);
   const timeHover = baseMs == null ? "%{x}분" : "%{x|%H:%M}";
-  const operColorMap = ganttOperColorMap(operOrder);
+  const prodOperPairs = prods.flatMap((prod) =>
+    opersForProduct(plan, prod, schedule, operOrder).map((oper) => ganttProdOperKey(prod, oper)),
+  );
+  const prodOperColorMap = ganttProdOperColorMap([...new Set(prodOperPairs)].sort());
   const data: Data[] = [];
   const layout: Partial<Layout> = {
     title: {
@@ -728,11 +727,13 @@ export function buildProductProductionCharts(
     };
 
     opers.forEach((oper) => {
-      const color = operColorMap[oper] ?? "#64748b";
+      const color = prodOperColorMap[ganttProdOperKey(prod, oper)] ?? "#64748b";
       const planQty = operPlanQty(plan, prod, oper);
       const showInLegend = i === 0;
       const operCode = operCodeMap[oper] ?? oper;
       const pairLabel = `${prodCode}/${operCode}`;
+      const planXStart = ganttAxisValue(timeStart, baseMs);
+      const planXEnd = ganttAxisValue(timeEnd, baseMs);
 
       const actual = cumulativeProductionSeries(schedule, prod, oper, timeEnd, baseMs);
       data.push({
@@ -744,7 +745,7 @@ export function buildProductProductionCharts(
         line: { color, width: 2.5, shape: "hv" },
         xaxis: xAxis,
         yaxis: yAxis,
-        legendgroup: `${oper}-actual`,
+        legendgroup: `${prod}|${oper}-actual`,
         showlegend: showInLegend,
         hovertemplate: `${pairLabel}<br>시간: ${timeHover}<br>누적: %{y}매<extra></extra>`,
       });
@@ -754,14 +755,14 @@ export function buildProductProductionCharts(
           type: "scatter",
           mode: "lines",
           name: `${operCode} 계획`,
-          x: [ganttAxisValue(timeStart, baseMs), ganttAxisValue(timeEnd, baseMs)],
-          y: [0, planQty],
+          x: [planXStart, planXEnd],
+          y: [planQty, planQty],
           line: { color, width: 1.5, dash: "dash" },
           xaxis: xAxis,
           yaxis: yAxis,
-          legendgroup: `${oper}-plan`,
+          legendgroup: `${prod}|${oper}-plan`,
           showlegend: showInLegend,
-          hovertemplate: `${pairLabel} 계획<br>시간: ${timeHover}<br>목표: %{y}매<extra></extra>`,
+          hovertemplate: `${pairLabel} 계획<br>목표: ${planQty}매<extra></extra>`,
         });
       }
 
@@ -776,7 +777,7 @@ export function buildProductProductionCharts(
           line: { color, width: 1.5, dash: "dot", shape: "hv" },
           xaxis: xAxis,
           yaxis: yAxis,
-          legendgroup: `${oper}-overlay`,
+          legendgroup: `${prod}|${oper}-overlay`,
           showlegend: showInLegend,
           hovertemplate: `${pairLabel} 초기<br>시간: ${timeHover}<br>누적: %{y}매<extra></extra>`,
         });
