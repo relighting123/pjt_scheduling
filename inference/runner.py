@@ -11,7 +11,7 @@ from agent.rl_agent import SchedulingAgent, _mask_fn
 from agent.minprogress_agent import MinProgressAgent
 from agent.earliest_st_agent import EarliestSTAgent
 from agent.registry import validate_algorithm, VALID_ALGORITHMS
-from env.scheduling_env import SchedulingEnv
+from env.scheduling_env import SchedulingEnv, validate_obs_shape
 from data.writer import write_inference_result
 from sb3_contrib.common.wrappers import ActionMasker
 from utils.helpers import minutes_to_str
@@ -73,7 +73,7 @@ def run_inference(
 
     if algorithm == "rl":
         if agent is None:
-            agent = SchedulingAgent.load(model_path)
+            agent = SchedulingAgent.load(model_path, env_data=env_data)
 
     heuristic_agent = None
     if algorithm == "minprogress":
@@ -94,6 +94,14 @@ def run_inference(
     )
     sched_env: SchedulingEnv = env.unwrapped
     obs, _ = env.reset()
+    if algorithm == "rl":
+        from agent.rl_agent import _model_obs_dim
+        validate_obs_shape(
+            obs,
+            expected_dim=_model_obs_dim(agent.model),
+            env_data=env_data,
+            source="추론 시작 (환경 obs vs 모델)",
+        )
     done = False
     steps = 0
     terminated = False
@@ -104,7 +112,12 @@ def run_inference(
             action = heuristic_agent.predict(sched_env.sim)
         else:
             mask = env.action_masks()
-            action = agent.predict(obs, deterministic=deterministic, action_masks=mask)
+            action = agent.predict(
+                obs,
+                deterministic=deterministic,
+                action_masks=mask,
+                env_data=env_data,
+            )
 
         obs, _, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
@@ -208,7 +221,7 @@ def run_inference_compare(
     rl_loaded = rl_agent
     if "rl" in algorithms and rl_loaded is None:
         try:
-            rl_loaded = SchedulingAgent.load(model_path)
+            rl_loaded = SchedulingAgent.load(model_path, env_data=env_data)
         except (FileNotFoundError, ValueError) as exc:
             errors.append({
                 "algorithm": "rl",

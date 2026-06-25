@@ -12,7 +12,12 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from config import CONFIG
-from env.scheduling_env import SchedulingEnv, compute_obs_dim
+from env.scheduling_env import (
+    SchedulingEnv,
+    compute_obs_dim,
+    format_obs_dim_mismatch,
+    validate_obs_shape,
+)
 from agent.train_progress import (
     TrainProgressState,
     ProgressCallback,
@@ -54,10 +59,13 @@ def _model_zip_candidates(explicit: Optional[str] = None) -> List[Path]:
     return candidates
 
 
-def _load_compatible_model(explicit: Optional[str] = None) -> tuple[MaskablePPO, Path]:
+def _load_compatible_model(
+    explicit: Optional[str] = None,
+    env_data: Optional[dict] = None,
+) -> tuple[MaskablePPO, Path]:
     """현재 env obs 차원과 맞는 모델 로드 (없으면 예외)."""
     expected = compute_obs_dim()
-    mismatches: List[str] = []
+    mismatches: List[tuple[str, int]] = []
 
     for candidate in _model_zip_candidates(explicit):
         if not candidate.exists():
@@ -66,14 +74,18 @@ def _load_compatible_model(explicit: Optional[str] = None) -> tuple[MaskablePPO,
         dim = _model_obs_dim(model)
         if dim == expected:
             return model, candidate
-        mismatches.append(f"{candidate.name} (obs_dim={dim})")
+        mismatches.append((candidate.name, dim))
 
     if mismatches:
-        raise ValueError(
-            f"현재 환경 obs_dim={expected} 과 맞는 모델이 없습니다. "
-            f"불일치 파일: {', '.join(mismatches)}. "
-            "python main.py train 으로 재학습하세요."
+        model_files = [f"{name} (obs_dim={dim})" for name, dim in mismatches]
+        msg = format_obs_dim_mismatch(
+            expected,
+            mismatches[0][1],
+            env_data=env_data,
+            source="모델 로드",
+            model_files=model_files,
         )
+        raise ValueError(msg)
     raise FileNotFoundError(
         "학습된 모델이 없습니다. python main.py train 을 먼저 실행하세요."
     )
@@ -216,13 +228,14 @@ class SchedulingAgent:
         print(f"[agent] 모델 저장 → {save_path}.zip")
 
     @classmethod
-    def load(cls, path: str = None) -> "SchedulingAgent":
+    def load(cls, path: str = None, env_data: Optional[dict] = None) -> "SchedulingAgent":
         """
         목적: 저장된 모델 파일을 로드하여 에이전트 반환
         Input:  path (str) – 모델 파일 경로 (.zip 포함 또는 미포함)
+                env_data (dict|None) – obs_dim 진단용 입력 데이터 요약
         Output: SchedulingAgent 인스턴스
         """
-        model, load_path = _load_compatible_model(path)
+        model, load_path = _load_compatible_model(path, env_data=env_data)
         print(f"[agent] 모델 로드 ← {load_path} (obs_dim={_model_obs_dim(model)})")
         return cls(model=model)
 
@@ -245,9 +258,16 @@ class SchedulingAgent:
         obs: np.ndarray,
         deterministic: bool = True,
         action_masks: Optional[np.ndarray] = None,
+        env_data: Optional[dict] = None,
     ) -> np.ndarray:
         if self.model is None:
             raise RuntimeError("모델이 로드되지 않았습니다.")
+        validate_obs_shape(
+            obs,
+            expected_dim=_model_obs_dim(self.model),
+            env_data=env_data,
+            source="RL predict",
+        )
         kwargs = {"deterministic": deterministic}
         if action_masks is not None:
             kwargs["action_masks"] = action_masks
