@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 from numbers import Real
 from typing import Any, Literal, Optional
 
+import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
+from stable_baselines3.common.utils import safe_mean
 
 TRAIN_BUDGET_TIMESTEPS = "timesteps"
 TRAIN_BUDGET_EPISODES = "episodes"
@@ -46,6 +48,58 @@ def _sanitize_json(value: Any) -> Any:
     return value
 
 
+def _episode_rewards_from_buffer(ep_info_buffer: Any) -> list[float]:
+    if not ep_info_buffer:
+        return []
+    rewards: list[float] = []
+    for ep_info in ep_info_buffer:
+        if not ep_info or "r" not in ep_info:
+            continue
+        try:
+            rewards.append(float(ep_info["r"]))
+        except (TypeError, ValueError):
+            continue
+    return rewards
+
+
+def read_rollout_ep_rew_mean(model: Any) -> tuple[Optional[float], str]:
+    """
+    rollout 보상 평균.
+    완료된 에피소드가 없으면 rollout buffer step reward 평균으로 대체.
+  """
+    ep_info_buffer = getattr(model, "ep_info_buffer", None)
+    ep_rewards = _episode_rewards_from_buffer(ep_info_buffer)
+    if ep_rewards:
+        return float(safe_mean(ep_rewards)), "episode"
+
+    rollout_buffer = getattr(model, "rollout_buffer", None)
+    if rollout_buffer is None:
+        return None, "none"
+    pos = int(getattr(rollout_buffer, "pos", 0) or 0)
+    if pos <= 0:
+        return None, "none"
+    step_rewards = np.asarray(rollout_buffer.rewards[:pos], dtype=np.float64).reshape(-1)
+    if step_rewards.size == 0:
+        return None, "none"
+    return float(np.mean(step_rewards)), "step_mean"
+
+
+def read_train_logger_values(model: Any) -> dict[str, float]:
+    logger = getattr(model, "logger", None)
+    if logger is None:
+        return {}
+    values = dict(getattr(logger, "name_to_value", {}))
+    out: dict[str, float] = {}
+    for key in (
+        "train/policy_gradient_loss",
+        "train/value_loss",
+        "train/explained_variance",
+    ):
+        if key in values:
+            out[key] = _json_float(values[key])
+    return out
+
+
 class TrainProgressState:
     """스레드 세이프 학습 진행 상태."""
 
@@ -75,6 +129,7 @@ class TrainProgressState:
             }
             self.metrics: Optional[dict] = None
             self.error: Optional[str] = None
+            self._last_ep_source = "episode"
 
     def add_log(self, message: str, level: str = "info") -> None:
         with self._lock:
@@ -142,24 +197,45 @@ class TrainProgressState:
             self.total_timesteps = total
             self.progress = min(1.0, timesteps / max(total, 1))
 
-    def record_rollout_metrics(self, timestep: int, logger_values: dict[str, float]) -> None:
+    def record_rollout_metrics(
+        self,
+        timestep: int,
+        logger_values: Optional[dict[str, float]] = None,
+        *,
+        ep_rew_mean: Optional[float] = None,
+        ep_source: str = "episode",
+    ) -> None:
+        if ep_rew_mean is None and logger_values:
+            ep_rew_mean = logger_values.get("rollout/ep_rew_mean")
+            if ep_rew_mean is not None:
+                ep_rew_mean = _json_float(ep_rew_mean)
+                if ep_rew_mean == 0.0 and ep_source == "none":
+                    ep_rew_mean = None
+        if ep_rew_mean is None:
+            return
+
+        policy_loss = None
+        value_loss = None
+        explained_variance = None
+        if logger_values:
+            policy_loss = logger_values.get("train/policy_gradient_loss")
+            value_loss = logger_values.get("train/value_loss")
+            explained_variance = logger_values.get("train/explained_variance")
+
         with self._lock:
             self.timesteps = timestep
             if self.train_budget_mode == TRAIN_BUDGET_TIMESTEPS and self.total_timesteps:
                 self.progress = min(1.0, timestep / self.total_timesteps)
             self.series["timesteps"].append(timestep)
-            self.series["ep_rew_mean"].append(
-                _json_float(logger_values.get("rollout/ep_rew_mean", 0))
-            )
-            self.series["policy_loss"].append(
-                _json_float(logger_values.get("train/policy_gradient_loss", 0))
-            )
-            self.series["value_loss"].append(
-                _json_float(logger_values.get("train/value_loss", 0))
-            )
-            self.series["explained_variance"].append(
-                _json_float(logger_values.get("train/explained_variance", 0))
-            )
+            self.series["ep_rew_mean"].append(_json_float(ep_rew_mean))
+            self.series["policy_loss"].append(_json_float(policy_loss))
+            self.series["value_loss"].append(_json_float(value_loss))
+            self.series["explained_variance"].append(_json_float(explained_variance))
+            self._last_ep_source = ep_source
+
+    def last_ep_reward_source(self) -> str:
+        with self._lock:
+            return getattr(self, "_last_ep_source", "episode")
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -194,12 +270,18 @@ class StopTrainingCallback(BaseCallback):
 
 
 class ProgressCallback(BaseCallback):
-    """rollout마다 보상·loss 기록."""
+    """rollout마다 보상·loss 기록.
+
+    SB3는 dump_logs()를 on_rollout_end 이후에 호출하므로,
+    에피소드 보상은 ep_info_buffer / rollout_buffer에서 직접 읽고
+    train loss는 다음 rollout 시작 시점(직전 train() 이후)에 flush한다.
+    """
 
     def __init__(self, state: TrainProgressState, verbose: int = 0):
         super().__init__(verbose)
         self._state = state
         self._last_log_step = 0
+        self._pending_rollout: Optional[dict[str, Any]] = None
 
     def _on_training_start(self) -> None:
         if self._state.train_budget_mode == TRAIN_BUDGET_EPISODES:
@@ -212,27 +294,45 @@ class ProgressCallback(BaseCallback):
         self._state.add_log(f"PPO 학습 시작 (total_timesteps={total:,})")
 
     def _on_step(self) -> bool:
-        # rollout 종료 시 record_rollout_metrics에서 progress 갱신 – step마다 lock 방지
         if self.num_timesteps % 512 == 0 and self._state.total_timesteps:
             self._state.update_progress(self.num_timesteps, self._state.total_timesteps)
         return True
 
+    def _flush_pending(self) -> None:
+        pending = self._pending_rollout
+        if pending is None:
+            return
+        train_vals = read_train_logger_values(self.model)
+        self._state.record_rollout_metrics(
+            int(pending["timestep"]),
+            train_vals,
+            ep_rew_mean=pending["ep_rew_mean"],
+            ep_source=str(pending.get("ep_source", "episode")),
+        )
+        ep_rew = pending["ep_rew_mean"]
+        timestep = int(pending["timestep"])
+        source = str(pending.get("ep_source", "episode"))
+        label = "ep_rew_mean" if source == "episode" else "step_rew_mean"
+        if ep_rew is not None and timestep - self._last_log_step >= 2048:
+            self._last_log_step = timestep
+            self._state.add_log(f"step {timestep:,} · {label}={ep_rew:.2f}")
+        self._pending_rollout = None
+
+    def _on_rollout_start(self) -> None:
+        self._flush_pending()
+
     def _on_rollout_end(self) -> None:
-        logger = getattr(self.model, "logger", None)
-        if logger is None:
+        ep_rew, source = read_rollout_ep_rew_mean(self.model)
+        if ep_rew is None:
             return
-        if hasattr(logger, "dump"):
-            logger.dump(self.num_timesteps)
-        values = dict(getattr(logger, "name_to_value", {}))
-        if not values:
-            return
-        self._state.record_rollout_metrics(self.num_timesteps, values)
-        ep_rew = values.get("rollout/ep_rew_mean")
-        if ep_rew is not None and self.num_timesteps - self._last_log_step >= 2048:
-            self._last_log_step = self.num_timesteps
-            self._state.add_log(
-                f"step {self.num_timesteps:,} · ep_rew_mean={ep_rew:.2f}"
-            )
+        self._pending_rollout = {
+            "timestep": self.num_timesteps,
+            "ep_rew_mean": ep_rew,
+            "ep_source": source,
+        }
+
+    def _on_training_end(self) -> None:
+        self._flush_pending()
 
 
 class EvalProgressCallback(EvalCallback):
