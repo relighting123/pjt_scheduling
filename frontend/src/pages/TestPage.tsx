@@ -252,7 +252,7 @@ export default function TestPage({ config, modelExists }: Props) {
                   </div>
                 </div>
                 <div className="chart-wrap gantt-chart-panel">
-                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} />
+                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} scrollable />
                 </div>
               </div>
             )}
