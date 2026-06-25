@@ -59,6 +59,14 @@ def run_inference(
     """
     algorithm = validate_algorithm(algorithm)
 
+    if record_decision_log:
+        import warnings
+        warnings.warn(
+            "record_decision_log=True는 추론 속도를 크게 저하시킵니다. "
+            "디버깅 목적이 아니라면 False(기본값)를 사용하세요.",
+            stacklevel=2,
+        )
+
     if current_wip_only is None:
         current_wip_only = not enable_wip_inflow
     else:

@@ -234,10 +234,36 @@ class SchedulingSimulator:
             pool.get("wip_qty_init", pool.get("wip_qty", 0))
             for pool in self._wip_pool.values()
         )
+
+        # 성능 최적화: 상태 버전 기반 캐시
+        self._state_version: int = 0
+        self._feasible_cache: Dict[str, tuple] = {}          # {eqp_id: (version, List[int])}
+        self._wip_waiting_cache: Optional[Dict[str, int]] = None
+        self._wip_waiting_version: int = -1
+        self._bucket_feats_cache: Optional[np.ndarray] = None
+        self._bucket_feats_state: tuple = (-1, None)         # (version, current_eqp)
+        self._eqps_by_om: Dict[tuple, List[str]] = self._build_eqps_by_om()
+
         self._advance_to_next_decision()
         self._apply_eqp_initial_state(data.get("eqp_initial_state", []))
         if self._record_history:
             self._append_initial_history()
+
+    # --- 성능 최적화 헬퍼 ---
+
+    def _build_eqps_by_om(self) -> Dict[tuple, List[str]]:
+        """(oper, eqp_model) → EQP 목록. reset 시 1회 계산 (정적 구조)."""
+        result: Dict[tuple, List[str]] = {}
+        eqp_oper_cap = self._env_data.get("eqp_oper_cap", {})
+        for eid, model in self._eqp_model_map.items():
+            for op in eqp_oper_cap.get(eid, []):
+                result.setdefault((op, model), []).append(eid)
+        return result
+
+    def _invalidate_caches(self) -> None:
+        """상태 변경 시 버전 증가 → feasible/wip/bucket 캐시 자동 무효화."""
+        self._state_version += 1
+        self._wip_waiting_cache = None
 
     # --- 이벤트 큐 / 로그 ---
 
@@ -299,6 +325,7 @@ class SchedulingSimulator:
         eqp.current_oper = None
         eqp.current_prod = None
         eqp.free_at = self.current_time
+        self._invalidate_caches()
 
     def _on_idle_decision(self, eqp_id: str) -> None:
         """idle EQP → 에이전트 배정 결정 시점 (event_log: IDLE)."""
@@ -600,6 +627,7 @@ class SchedulingSimulator:
             "carrier_id":    meta.get("carrier_id", ""),
             "oper_in_time":  oper_in_time,
         }
+        self._invalidate_caches()
 
     def _consume_wip(self, ppk: str, oper_id: str, lot_id: str) -> None:
         key = self._wip_key(ppk, oper_id)
@@ -609,6 +637,7 @@ class SchedulingSimulator:
         wip["wip_qty"] = max(wip["wip_qty"] - 1, 0)
         if lot_id in wip["lot_ids"]:
             wip["lot_ids"].remove(lot_id)
+        self._invalidate_caches()
 
     def _inject_wip_after_complete(self, lot_id: str, complete_time: int) -> Optional[dict]:
         """한 공정 완료 후 다음 공정 WIP +1. move_out 시점에 호출."""
@@ -744,7 +773,17 @@ class SchedulingSimulator:
         return self._materialize_abstract_rows()
 
     def get_wip_waiting(self) -> Dict[str, int]:
-        """(PPK|OPER)별 대기 WIP 웨이퍼 수. abstract WIP 풀 기준."""
+        """(PPK|OPER)별 대기 WIP 웨이퍼 수. 결과를 버전 기반으로 캐싱."""
+        if (self._wip_waiting_cache is not None
+                and self._wip_waiting_version == self._state_version):
+            return self._wip_waiting_cache
+        result = self._build_wip_waiting()
+        self._wip_waiting_cache = result
+        self._wip_waiting_version = self._state_version
+        return result
+
+    def _build_wip_waiting(self) -> Dict[str, int]:
+        """get_wip_waiting() 실계산 본체."""
         wip: Dict[str, int] = {}
         wf_defaults: Dict[str, int] = {}
         for tmpl in self._abstract_template:
@@ -1112,7 +1151,16 @@ class SchedulingSimulator:
         return ppk, oper_id
 
     def get_feasible_ppk_oper(self, eqp_id: str) -> List[int]:
-        """지정 EQP에서 유효한 ppk_oper_flat_idx 목록."""
+        """지정 EQP에서 유효한 ppk_oper_flat_idx 목록. 버전 기반으로 캐싱."""
+        cached = self._feasible_cache.get(eqp_id)
+        if cached is not None and cached[0] == self._state_version:
+            return cached[1]
+        result = self._compute_feasible_ppk_oper(eqp_id)
+        self._feasible_cache[eqp_id] = (self._state_version, result)
+        return result
+
+    def _compute_feasible_ppk_oper(self, eqp_id: str) -> List[int]:
+        """get_feasible_ppk_oper() 실계산 본체."""
         if self.eqps[eqp_id].status != "idle":
             return []
         lots = self.available_lots(eqp_id)
@@ -1285,6 +1333,7 @@ class SchedulingSimulator:
         eqp.prev_lot_id = lot_id
         eqp.prev_lot_cd = lot_cd
         eqp.prev_temp = temp
+        self._invalidate_caches()
 
         had_conv = pending.get("had_conversion", False)
         if not had_conv and from_lot_cd is None and lot_cd:
@@ -1603,6 +1652,11 @@ class SchedulingSimulator:
               12 needs_conversion(current_eqp), 13 tool_can_assign(current_eqp),
               14 achievable_ratio (Step C: 달성가능 상한/계획량).
         """
+        # 버전 + current_eqp 가 같으면 캐시 반환
+        cache_state = (self._state_version, self._current_eqp)
+        if self._bucket_feats_cache is not None and self._bucket_feats_state == cache_state:
+            return self._bucket_feats_cache
+
         data = self._env_data
         cfg = CONFIG.env
         O, P, K = cfg.max_oper_count, cfg.max_prod_count, cfg.max_model_count
@@ -1610,7 +1664,6 @@ class SchedulingSimulator:
 
         eqp_models = data.get("eqp_models", [])
         eqp_model_map = data.get("eqp_model_map", {})
-        eqp_oper_cap = data.get("eqp_oper_cap", {})
         arrange_map = data.get("abstract_arrange_map", {})
         arranges_by = data.get("abstract_arranges_by_ppk_oper", {})
         plan_meta = data.get("plan_meta", {})
@@ -1628,26 +1681,39 @@ class SchedulingSimulator:
 
         feats = np.zeros((O, P, K, F), dtype=np.float32)
 
-        # (oper, model) 별 처리 가능 EQP 목록 (min_end_time / throughput용)
-        eqps_by_om: Dict[tuple, List[str]] = {}
-        for e, model in eqp_model_map.items():
-            for op in eqp_oper_cap.get(e, []):
-                eqps_by_om.setdefault((op, model), []).append(e)
+        # (oper, model) → min(free_at) 사전 계산: 이전엔 mi 루프 안에서 매번 계산했음
+        # self._eqps_by_om 은 reset() 시 1회 구성 (정적 구조)
+        min_end_by_om: Dict[tuple, int] = {
+            key: min(self.eqps[e].free_at for e in eqp_list)
+            for key, eqp_list in self._eqps_by_om.items()
+        }
+
+        # current_eqp 의 모델/인덱스 (channels 12, 13 처리용)
+        current_eqp_model: Optional[str] = eqp_model_map.get(current_eqp) if current_eqp else None
+        current_mi: int = -1
+        if current_eqp_model:
+            try:
+                idx = eqp_models.index(current_eqp_model)
+                if idx < K:
+                    current_mi = idx
+            except ValueError:
+                pass
 
         # WIP 집계 (ppk, oper)
         wip_po: Dict[tuple, float] = {}
         ppk_wip: Dict[str, float] = {}
         total_wip = 0.0
         for key, q in self.get_wip_waiting().items():
-            ppk, op = key.split("|", 1)
-            wip_po[(ppk, op)] = wip_po.get((ppk, op), 0.0) + q
-            ppk_wip[ppk] = ppk_wip.get(ppk, 0.0) + q
+            ppk_w, op_w = key.split("|", 1)
+            wip_po[(ppk_w, op_w)] = wip_po.get((ppk_w, op_w), 0.0) + q
+            ppk_wip[ppk_w] = ppk_wip.get(ppk_w, 0.0) + q
             total_wip += q
         total_wip = max(total_wip, 1.0)
 
         max_gantt_end = max((r["END_TM"] for r in self.schedule), default=0)
         T_avail = max(self.soft_cutoff - self.current_time, 1)
         max_takt = max(T_avail * wf_unit, 1.0)
+        sim_end_norm = max(self.sim_end, 1)
         last_ppk = (
             self._last_assigned.get("plan_prod_key") if self._last_assigned else None
         )
@@ -1682,6 +1748,13 @@ class SchedulingSimulator:
         prod_keys = data["prod_keys"]
         for oi in range(min(O, len(oper_ids))):
             op = oper_ids[oi]
+            # 이 oper에서 current_eqp가 유효한지 미리 판단 (ch12/13용)
+            curr_eqp_in_om: bool = (
+                current_eqp is not None
+                and current_eqp_model is not None
+                and current_eqp in self._eqps_by_om.get((op, current_eqp_model), [])
+            )
+            ppk_flow_prev_map = flow_prev.get(op, {})  # per-oper 캐시
             for pi in range(min(P, len(prod_keys))):
                 ppk = prod_keys[pi]
                 is_step = (
@@ -1691,6 +1764,7 @@ class SchedulingSimulator:
                 )
                 if not is_step:
                     continue
+
                 wip_q = wip_po.get((ppk, op), 0.0)
                 ppk_total = max(ppk_wip.get(ppk, 0.0), 1.0)
                 urgency = 0.0
@@ -1700,55 +1774,87 @@ class SchedulingSimulator:
                     gap = max(plan_qty - completed.get((ppk, op), 0), 0)
                     urgency = min(gap / T_avail / plan_qty, 1.0)
                 same = 1.0 if ppk == last_ppk else 0.0
-                prev_takt = eff_takt(ppk, flow_prev.get(ppk, {}).get(op)) / max_takt
-                post_takt = eff_takt(ppk, flow_post.get(ppk, {}).get(op)) / max_takt
 
-                # Step C: achievable_ratio = 달성가능 상한 / 계획량
+                # flow_prev/post 는 ppk 키 기준이므로 안쪽에서 추출
+                ppk_fp = flow_prev.get(ppk, {})
+                ppk_fpo = flow_post.get(ppk, {})
+                prev_takt = eff_takt(ppk, ppk_fp.get(op)) / max_takt
+                post_takt = eff_takt(ppk, ppk_fpo.get(op)) / max_takt
+
+                # Step C: achievable_ratio — flow_prev 체인 순회
+                # ppk_fp 를 재사용해 불필요한 dict 접근 제거
                 achievable_ratio = 1.0
                 if pm and pm.get("d0_plan_qty", 0) > 0:
                     plan_qty = max(pm["d0_plan_qty"], 1)
                     done = completed.get((ppk, op), 0)
                     reachable = wip_po.get((ppk, op), 0.0)
                     seen = {op}
-                    prev_op = flow_prev.get(ppk, {}).get(op)
+                    prev_op = ppk_fp.get(op)
                     while prev_op and prev_op not in seen:
                         seen.add(prev_op)
                         reachable += wip_po.get((ppk, prev_op), 0.0)
-                        prev_op = flow_prev.get(ppk, {}).get(prev_op)
+                        prev_op = ppk_fp.get(prev_op)
                     achievable_ratio = min(min(plan_qty, done + reachable) / plan_qty, 1.0)
 
+                # LOT_CD / TEMP: mi 루프 밖으로 이동 (모델에 무관)
+                lc, tp = self._bucket_lot_cd_temp(ppk, op)
+                lc_enc = encode_normalized(lc or None, lot_cd_idx, n_lc)
+                tp_enc = encode_normalized(tp or None, temp_idx, n_tp)
+
+                # 유효 모델 인덱스·값을 수집한 뒤 NumPy 배치 할당
+                valid_mis: List[int] = []
+                valid_ends: List[float] = []
+                valid_sts: List[float] = []
                 for mi in range(min(K, len(eqp_models))):
                     model = eqp_models[mi]
-                    eqp_list = eqps_by_om.get((op, model))
-                    if not eqp_list:
-                        continue  # 이 model로 처리 불가 → invalid 패딩(0)
+                    min_end_val = min_end_by_om.get((op, model))
+                    if min_end_val is None:
+                        continue
                     st = st_per_wafer(ppk, op, model)
-                    min_end = min(self.eqps[e].free_at for e in eqp_list)
-                    proc_full = (st * wf_unit) if st is not None else 0.0
-                    denom = max(max_gantt_end, min_end + proc_full, 1.0)
+                    valid_mis.append(mi)
+                    valid_ends.append(float(min_end_val))
+                    valid_sts.append(float(st) if st is not None else 0.0)
 
-                    feats[oi, pi, mi, 0] = 1.0
-                    feats[oi, pi, mi, 1] = wip_q / total_wip
-                    feats[oi, pi, mi, 2] = wip_q / ppk_total
-                    feats[oi, pi, mi, 3] = min(min_end / max(self.sim_end, 1), 1.0)
-                    feats[oi, pi, mi, 4] = max(wip_q, 0.0) / denom
-                    feats[oi, pi, mi, 5] = same
-                    feats[oi, pi, mi, 6] = min(prev_takt, 1.0)
-                    feats[oi, pi, mi, 7] = min(post_takt, 1.0)
-                    feats[oi, pi, mi, 8] = (st / max_arrange_st) if st is not None else 0.0
-                    feats[oi, pi, mi, 9] = urgency
-                    feats[oi, pi, mi, 14] = achievable_ratio
-                    lc, tp = self._bucket_lot_cd_temp(ppk, op)
-                    feats[oi, pi, mi, 10] = encode_normalized(lc or None, lot_cd_idx, n_lc)
-                    feats[oi, pi, mi, 11] = encode_normalized(tp or None, temp_idx, n_tp)
-                    if current_eqp and current_eqp in eqp_list and lc:
-                        feats[oi, pi, mi, 12] = (
-                            1.0 if self._would_need_conversion(current_eqp, lc, tp) else 0.0
-                        )
-                        feats[oi, pi, mi, 13] = (
-                            1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
-                            or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
-                        )
+                if not valid_mis:
+                    continue
+
+                vmis = np.array(valid_mis, dtype=np.intp)
+                vends = np.array(valid_ends, dtype=np.float32)
+                vsts = np.array(valid_sts, dtype=np.float32)
+
+                # 모델 독립 채널: 한 번에 broadcast 할당
+                feats[oi, pi, vmis, 0] = 1.0
+                feats[oi, pi, vmis, 1] = wip_q / total_wip
+                feats[oi, pi, vmis, 2] = wip_q / ppk_total
+                feats[oi, pi, vmis, 5] = same
+                feats[oi, pi, vmis, 6] = min(prev_takt, 1.0)
+                feats[oi, pi, vmis, 7] = min(post_takt, 1.0)
+                feats[oi, pi, vmis, 9] = urgency
+                feats[oi, pi, vmis, 10] = lc_enc
+                feats[oi, pi, vmis, 11] = tp_enc
+                feats[oi, pi, vmis, 14] = achievable_ratio
+
+                # 모델별 채널: numpy 벡터 연산
+                feats[oi, pi, vmis, 3] = np.minimum(vends / sim_end_norm, 1.0)
+                feats[oi, pi, vmis, 8] = vsts / max_arrange_st
+                proc_full_arr = vsts * wf_unit
+                denom_arr = np.maximum(
+                    np.maximum(float(max_gantt_end), vends + proc_full_arr), 1.0
+                )
+                feats[oi, pi, vmis, 4] = max(wip_q, 0.0) / denom_arr
+
+                # channels 12, 13: current_eqp 가 이 (op, model) 에 속할 때만
+                if curr_eqp_in_om and current_mi >= 0 and current_mi in valid_mis and lc:
+                    feats[oi, pi, current_mi, 12] = (
+                        1.0 if self._would_need_conversion(current_eqp, lc, tp) else 0.0
+                    )
+                    feats[oi, pi, current_mi, 13] = (
+                        1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
+                        or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
+                    )
+
+        self._bucket_feats_cache = feats
+        self._bucket_feats_state = cache_state
         return feats
 
     # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
