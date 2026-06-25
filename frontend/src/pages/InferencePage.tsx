@@ -17,6 +17,7 @@ import {
   ALGO_CHART_COLORS,
 } from "../lib/charts";
 import { buildEqpModelMap } from "../lib/metrics";
+import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey } from "../lib/ganttTime";
 import type {
   AlgorithmCompareResponse, AlgorithmId, AlgorithmInfo,
   AppConfig, DataSummary, InferenceResult,
@@ -132,12 +133,19 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const dataEnd = useMemo(() => result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 1440, [result, compareData]);
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
 
+  const simBaseTime = useMemo(() => {
+    if (summary?.sim_base_time) return summary.sim_base_time;
+    const rtk = ruleTimekeyFromFolder(selectedFolder);
+    return rtk ? simBaseTimeFromRuleTimekey(rtk) : undefined;
+  }, [summary, selectedFolder]);
+
   const axis = useMemo(() => ({
     eqpIds: result?.eqp_ids ?? compareData?.eqp_ids ?? [],
     timeStartMinutes: ganttFixed ? ganttStart : 0,
     timeEndMinutes:   ganttFixed ? ganttEnd   : dataEnd,
     fixedRange: ganttFixed,
-  }), [result, compareData, ganttFixed, ganttStart, ganttEnd, dataEnd]);
+    simBaseTime,
+  }), [result, compareData, ganttFixed, ganttStart, ganttEnd, dataEnd, simBaseTime]);
 
   const eqpModelMap = useMemo(() => buildEqpModelMap(result?.event_log ?? []), [result]);
 
@@ -218,6 +226,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           timeStartMinutes: axis.timeStartMinutes,
           timeEndMinutes: axis.timeEndMinutes,
           fixedRange: axis.fixedRange,
+          simBaseTime: axis.simBaseTime,
         },
       },
     );
@@ -387,7 +396,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
                 {ganttChart && (
                   <div className="chart-wrap gantt-chart-panel">
-                    <PlotChart {...ganttChart} clampXMin={0} />
+                    <PlotChart {...ganttChart} />
                   </div>
                 )}
 
@@ -398,7 +407,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                       제품별 서브플롯에 공정(O) 실적(실선)과 계획(점선)을 표시합니다. X축은 간트 차트와 동일합니다.
                     </p>
                     <div className="chart-wrap gantt-production-chart">
-                      <PlotChart {...productionChart} clampXMin={0} />
+                      <PlotChart {...productionChart} />
                     </div>
                   </div>
                 )}
@@ -464,7 +473,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   <div className="card chart-wrap"><PlotChart {...buildAlgorithmAchievementComparison(compareEntries)} /></div>
                 </div>
                 <div className="card chart-wrap">
-                  <PlotChart {...buildAlgorithmGanttComparison(compareEntries, axis)} clampXMin={0} />
+                  <PlotChart {...buildAlgorithmGanttComparison(compareEntries, axis)} />
                 </div>
               </div>
             )}
