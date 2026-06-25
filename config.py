@@ -335,10 +335,10 @@ def parse_input_folder(folder: str) -> Tuple[str, str, Optional[str]]:
 
 
 def list_input_folders() -> List[str]:
-    """사용 가능한 dataset 입력 경로 키 목록"""
+    """사용 가능한 dataset 입력 경로 키 목록 (실제 input JSON 있는 경로만)"""
     found: List[str] = []
     if not DATASET_DIR.is_dir():
-        return [CONFIG.path.input_folder_key]
+        return found
 
     for fac_path in sorted(DATASET_DIR.iterdir()):
         if not fac_path.is_dir():
@@ -358,9 +358,6 @@ def list_input_folders() -> List[str]:
             ):
                 found.append(f"{fac_id}/{split}")
 
-    current = CONFIG.path.input_folder_key
-    if current not in found:
-        found.append(current)
     return sorted(set(found))
 
 
