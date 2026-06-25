@@ -6,7 +6,7 @@ from typing import Optional, Union
 
 from config import CONFIG, apply_reward_params
 from agent.rl_agent import SchedulingAgent
-from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES
+from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES, TRAIN_BUDGET_TIMESTEPS
 
 train_progress = TrainProgressState()
 _train_lock = threading.Lock()
@@ -77,6 +77,19 @@ def start_training(env_data: Union[dict, list], params: dict) -> bool:
         if _train_thread is not None and _train_thread.is_alive():
             return False
         train_progress.reset()
+        budget_mode = params.get("train_budget_mode", "timesteps")
+        n_episodes = params.get("n_episodes")
+        if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
+            train_progress.set_running(
+                total_episodes=int(n_episodes),
+                budget_mode=TRAIN_BUDGET_EPISODES,
+            )
+        else:
+            train_progress.set_running(
+                total_timesteps=int(params["total_timesteps"]),
+                budget_mode=TRAIN_BUDGET_TIMESTEPS,
+            )
+        train_progress.add_log("학습 스레드 시작…")
         _train_thread = threading.Thread(
             target=_run_train,
             args=(env_data, params),

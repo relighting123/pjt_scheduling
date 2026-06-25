@@ -1,5 +1,10 @@
 """학습 중지 요청 상태 테스트."""
-from agent.train_progress import TrainProgressState, StopTrainingCallback
+from agent.train_progress import (
+    TrainProgressState,
+    StopTrainingCallback,
+    TRAIN_BUDGET_EPISODES,
+    TRAIN_BUDGET_TIMESTEPS,
+)
 
 
 def test_train_progress_stop_flow():
