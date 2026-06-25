@@ -857,6 +857,71 @@ class SchedulingSimulator:
         """같은 PPK의 다음(후속) 공정 OPER (없으면 None)."""
         return self._env_data.get("flow_post", {}).get(ppk, {}).get(oper_id)
 
+    def _ready_wip_qty(self, ppk: str, oper_id: str) -> int:
+        """(PPK, OPER)에서 oper_in_time 도래한 ready 재공 웨이퍼 수."""
+        wip = self._wip_for(ppk, oper_id)
+        if not wip or wip.get("wip_qty", 0) <= 0:
+            return 0
+        total = 0
+        for lid in wip.get("lot_ids", []):
+            meta = self._wip_lot_meta.get(lid, {})
+            lot = self.lot_pool.get(lid)
+            oper_in_time = meta.get("oper_in_time", wip.get("oper_in_time", 0))
+            if not self._lot_ready(lid, oper_in_time):
+                continue
+            wf = int(meta.get("wf_qty", lot.wf_qty if lot else 25))
+            total += wf
+        return total
+
+    def _st_per_wafer_for_eqp(self, eqp_id: str, ppk: str, oper_id: str) -> Optional[float]:
+        """EQP×(PPK, OPER) 장당 ST(분/매)."""
+        model = self._eqp_model_map.get(eqp_id)
+        if not model:
+            return None
+        arrange_map = self._env_data.get("abstract_arrange_map", {})
+        st = arrange_map.get((ppk, oper_id, model))
+        if st is not None:
+            return float(st)
+        row = self._abstract_row_for(eqp_id, ppk, oper_id)
+        if row is not None:
+            return float(row.get("proc_time", row.get("ST", 0)))
+        lst = self._env_data.get("abstract_arranges_by_ppk_oper", {}).get((ppk, oper_id))
+        if lst:
+            return sum(s for _, s in lst) / len(lst)
+        return None
+
+    def _oper_capacity_per_min(self, ppk: str, oper_id: str) -> float:
+        """(PPK, OPER)을 처리 가능한 장비 합산 분당 처리량(매/분)."""
+        total = 0.0
+        for eqp_id in self._env_data.get("eqp_ids", []):
+            if not self._eqp_can_process(eqp_id, ppk, oper_id):
+                continue
+            st = self._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
+            if st is not None and st > 0:
+                total += 1.0 / st
+        return total
+
+    def _downstream_wip_cover_minutes(self, ppk: str, oper_id: str) -> Optional[float]:
+        """
+        후속 공정 ready WIP ÷ 후속 장비 합산 분당 처리량 = 커버 시간(분).
+        후속 공정·계획 없거나 처리 capa 없으면 None.
+        """
+        nxt = self._flow_post(ppk, oper_id)
+        if nxt is None or not self._has_plan(ppk, nxt):
+            return None
+        capa = self._oper_capacity_per_min(ppk, nxt)
+        if capa <= 0:
+            return None
+        return self._ready_wip_qty(ppk, nxt) / capa
+
+    def _downstream_is_starving(self, ppk: str, oper_id: str) -> bool:
+        """후속 ready WIP 커버가 flow_balance_starving_cover_min 이하일 때만 starving."""
+        cover = self._downstream_wip_cover_minutes(ppk, oper_id)
+        if cover is None:
+            return False
+        threshold = self._reward_cfg.flow_balance_starving_cover_min
+        return cover <= threshold
+
     def _flow_prev(self, ppk: str, oper_id: str) -> Optional[str]:
         """같은 PPK의 이전(선행) 공정 OPER (없으면 None)."""
         return self._env_data.get("flow_prev", {}).get(ppk, {}).get(oper_id)
@@ -974,11 +1039,8 @@ class SchedulingSimulator:
         share = here / total
         avg = 1.0 / n
         score = share - avg  # 편중(>avg) → +, 과소 → -
-        nxt = self._flow_post(ppk, oper_id)
-        if nxt is not None and self._has_plan(ppk, nxt):
-            nxt_wip = wips.get(f"{ppk}|{nxt}", 0)
-            if nxt_wip <= here:  # 후속이 굶주림 → 이 공정 가동이 feeding
-                score += 0.5
+        if self._downstream_is_starving(ppk, oper_id):
+            score += 0.5
         return cfg.w_flow_balance * score
 
     def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
