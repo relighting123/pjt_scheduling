@@ -486,12 +486,12 @@ class RewardConfig:
     w_completion:      float = 0.5
     w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
     w_pacing:          float = 2.0       # 선형 takt 추종 (achievable 기준; Step C)
-    w_conversion:      float = -6.0      # LOT_CD/TEMP 전환 1회 패널티 (필요시 허용 수준)
+    w_conversion:      float = -10.0     # LOT_CD/TEMP 전환 1회 패널티
     w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
     # --- Step B: flow-balance shaping (편중 해소·후속 공정 feeding) ---
     w_flow_balance:    float = 1.5       # 적체(편중) 공정 배정·후속 starving 해소 보너스
     # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
-    reward_clip:       float = 5.0
+    reward_clip:       float = 10.0
     # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
     use_achievable_target: bool = True
     # --- Step D: same_oper 보너스를 조건부(과생산 시 억제)로 적용 ---

@@ -109,8 +109,8 @@ run_inference(env_data, algorithm="earliest_st")
 | `w_flow_balance` | 1.5 | WIP 편중 공정 배정·후공정 feeding |
 | `w_same_oper` | 1.0 | 동일 OPER 연속 (과생산 시 억제) |
 | `w_idle_per_min` | -0.1 | idle 패널티 |
-| `w_conversion` | -6.0 | LOT_CD/TEMP 전환 |
-| `reward_clip` | ±5.0 | PPO 안정화 |
+| `w_conversion` | -10.0 | LOT_CD/TEMP 전환 |
+| `reward_clip` | ±10.0 | PPO 안정화 |
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.
 
