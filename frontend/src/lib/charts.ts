@@ -1,6 +1,6 @@
 import type { Data, Layout } from "plotly.js";
 import type { ConversionPlan, HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
-import { buildColorMap, OPER_BORDER_COLORS } from "./colors";
+import { buildColorMap } from "./colors";
 import { buildShortCodeMap } from "./ganttLabels";
 import type { EqpUtil, ModelUtil, TatRow, AchievementRow } from "./metrics";
 
@@ -438,10 +438,27 @@ export function buildAchievementChart(snap: HistorySnap, plan: PlanRecord[]): { 
   };
 }
 
-function opersForProduct(plan: PlanRecord[], prod: string): string[] {
-  return [...new Set(
+function opersForProduct(
+  plan: PlanRecord[],
+  prod: string,
+  schedule: ScheduleRecord[],
+  operOrder: string[],
+): string[] {
+  const fromPlan = [...new Set(
     plan.filter((p) => p.plan_prod_key === prod).map((p) => p.oper_id),
-  )].sort();
+  )];
+  const fromSched = [...new Set(
+    schedule
+      .filter((r) => r.PLAN_PROD_KEY === prod)
+      .map((r) => r.OPER_ID ?? "")
+      .filter(Boolean),
+  )];
+  const merged = [...new Set([...fromPlan, ...fromSched])];
+  const operIdx = Object.fromEntries(operOrder.map((k, i) => [k, i]));
+  return merged.sort(
+    (a, b) => (operIdx[a] ?? operOrder.length) - (operIdx[b] ?? operOrder.length)
+      || a.localeCompare(b),
+  );
 }
 
 function operPlanQty(plan: PlanRecord[], prod: string, operId: string): number {
@@ -503,56 +520,73 @@ export function buildProductProductionCharts(
   prodKeys: string[],
   timeEndMinutes: number,
   options: ProductProductionChartOptions = {},
-): { data: Data[]; layout: Partial<Layout> } {
-  const prods = [...prodKeys].sort();
-  const n = Math.max(prods.length, 1);
+): { data: Data[]; layout: Partial<Layout> } | null {
+  const prods = prodKeys.length
+    ? [...prodKeys]
+    : [...new Set(schedule.map((r) => r.PLAN_PROD_KEY))].sort();
+  if (!prods.length || !schedule.length) return null;
+
+  const operOrder = options.operIds?.length
+    ? options.operIds
+    : [...new Set([...plan.map((p) => p.oper_id), ...schedule.map((r) => r.OPER_ID ?? "").filter(Boolean)])].sort();
+  const prodCodeMap = buildShortCodeMap(prods, "P").codeByKey;
+  const operCodeMap = buildShortCodeMap(operOrder, "O").codeByKey;
+
+  const n = prods.length;
   const [timeStart, timeEnd] = resolveGanttTimeRange({
     eqpIds: [],
     timeStartMinutes: options.timeAxis?.timeStartMinutes,
     timeEndMinutes: options.timeAxis?.timeEndMinutes ?? timeEndMinutes,
     fixedRange: options.timeAxis?.fixedRange,
   });
-  const allOpers = options.operIds ?? [...new Set(plan.map((p) => p.oper_id))].sort();
-  const operColorMap = buildColorMap(allOpers, OPER_BORDER_COLORS);
+  const operColorMap = ganttOperColorMap(operOrder);
   const data: Data[] = [];
   const layout: Partial<Layout> = {
-    title: { text: options.title ?? "제품별 누적 생산량 (공정별)", font: { size: 16 } },
+    title: {
+      text: options.title ?? "시간별 제품·공정 누적 생산",
+      font: { size: 14, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
+    },
+    font: { family: GANTT_THEME.fontFamily, color: GANTT_THEME.axisColor },
     grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
-    height: Math.max(300 * n, 320),
-    plot_bgcolor: "white",
-    paper_bgcolor: "white",
-    margin: { l: 70, r: 160, t: 60, b: 50 },
+    height: Math.min(Math.max(260 * n, 300), 960),
+    plot_bgcolor: GANTT_THEME.plotBg,
+    paper_bgcolor: GANTT_THEME.paperBg,
+    margin: { l: 72, r: 150, t: 52, b: 48 },
     showlegend: true,
-    legend: { orientation: "v", x: 1.02, y: 1 },
+    legend: { orientation: "v", x: 1.02, y: 1, font: { size: 11 } },
   };
 
   prods.forEach((prod, i) => {
     const { x: xAxis, y: yAxis } = subplotAxisNames(i);
     const xKey = (i === 0 ? "xaxis" : `xaxis${i + 1}`) as keyof Layout;
     const yKey = (i === 0 ? "yaxis" : `yaxis${i + 1}`) as keyof Layout;
-    const opers = opersForProduct(plan, prod);
+    const opers = opersForProduct(plan, prod, schedule, operOrder);
+    const prodCode = prodCodeMap[prod] ?? prod;
 
     (layout as Record<string, unknown>)[xKey] = {
       title: i === n - 1 ? { text: "시뮬레이션 시간 (분)" } : undefined,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, options.timeAxis?.fixedRange),
     };
     (layout as Record<string, unknown>)[yKey] = {
-      title: { text: `${prod} 누적 생산 (매)` },
+      title: { text: `${prodCode} 누적 생산 (매)` },
       rangemode: "tozero",
       showgrid: true,
-      gridcolor: "#F0F0F0",
+      gridcolor: GANTT_THEME.gridColor,
+      zerolinecolor: GANTT_THEME.gridColor,
     };
 
     opers.forEach((oper) => {
-      const color = operColorMap[oper] ?? "#888888";
+      const color = operColorMap[oper] ?? "#64748b";
       const planQty = operPlanQty(plan, prod, oper);
       const showInLegend = i === 0;
+      const operCode = operCodeMap[oper] ?? oper;
+      const pairLabel = `${prodCode}/${operCode}`;
 
       const actual = cumulativeProductionSeries(schedule, prod, oper, timeEnd);
       data.push({
         type: "scatter",
         mode: "lines",
-        name: `${oper} 실적`,
+        name: `${operCode} 실적`,
         x: actual.x,
         y: actual.y,
         line: { color, width: 2.5, shape: "hv" },
@@ -560,29 +594,31 @@ export function buildProductProductionCharts(
         yaxis: yAxis,
         legendgroup: `${oper}-actual`,
         showlegend: showInLegend,
-        hovertemplate: `${prod} / ${oper}<br>시간: %{x}분<br>누적: %{y}매<extra></extra>`,
+        hovertemplate: `${pairLabel}<br>시간: %{x}분<br>누적: %{y}매<extra></extra>`,
       });
 
-      data.push({
-        type: "scatter",
-        mode: "lines",
-        name: `${oper} 계획`,
-        x: [0, timeEnd],
-        y: [0, planQty],
-        line: { color, width: 1.5, dash: "dash" },
-        xaxis: xAxis,
-        yaxis: yAxis,
-        legendgroup: `${oper}-plan`,
-        showlegend: showInLegend,
-        hovertemplate: `${prod} / ${oper} 계획<br>시간: %{x}분<br>목표: %{y}매<extra></extra>`,
-      });
+      if (planQty > 0) {
+        data.push({
+          type: "scatter",
+          mode: "lines",
+          name: `${operCode} 계획`,
+          x: [timeStart, timeEnd],
+          y: [0, planQty],
+          line: { color, width: 1.5, dash: "dash" },
+          xaxis: xAxis,
+          yaxis: yAxis,
+          legendgroup: `${oper}-plan`,
+          showlegend: showInLegend,
+          hovertemplate: `${pairLabel} 계획<br>시간: %{x}분<br>목표: %{y}매<extra></extra>`,
+        });
+      }
 
       if (options.overlaySchedule) {
         const overlay = cumulativeProductionSeries(options.overlaySchedule, prod, oper, timeEnd);
         data.push({
           type: "scatter",
           mode: "lines",
-          name: `${oper} ${options.overlayLabel ?? "초기"}`,
+          name: `${operCode} ${options.overlayLabel ?? "초기"}`,
           x: overlay.x,
           y: overlay.y,
           line: { color, width: 1.5, dash: "dot", shape: "hv" },
@@ -590,12 +626,13 @@ export function buildProductProductionCharts(
           yaxis: yAxis,
           legendgroup: `${oper}-overlay`,
           showlegend: showInLegend,
-          hovertemplate: `${prod} / ${oper} 초기<br>시간: %{x}분<br>누적: %{y}매<extra></extra>`,
+          hovertemplate: `${pairLabel} 초기<br>시간: %{x}분<br>누적: %{y}매<extra></extra>`,
         });
       }
     });
   });
 
+  if (!data.length) return null;
   return { data, layout };
 }
 
