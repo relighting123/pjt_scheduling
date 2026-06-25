@@ -97,24 +97,45 @@ const GANTT_LAYOUT_FONT: NonNullable<Layout["font"]> = {
   size: 12,
 };
 
-function ganttProdColorMap(prodKeys: string[]): Record<string, string> {
-  return buildColorMap(prodKeys, GANTT_PROD_COLORS);
-}
-
 function ganttOperColorMap(operIds: string[]): Record<string, string> {
   return buildColorMap(operIds, GANTT_OPER_BORDERS);
 }
 
-function ganttBarMarker(
-  fillColor: string,
-  operColor: string,
-  visible: boolean,
-) {
+const GANTT_PROD_OPER_PALETTE = [...GANTT_PROD_COLORS, ...GANTT_OPER_BORDERS];
+
+function ganttProdOperKey(prodKey: string, operId: string): string {
+  return `${prodKey}|${operId}`;
+}
+
+function ganttProdOperPairs(
+  schedule: ScheduleRecord[],
+  prodKeys: string[],
+  operIds: string[],
+): string[] {
+  const seen = new Set<string>();
+  for (const r of schedule) {
+    seen.add(ganttProdOperKey(r.PLAN_PROD_KEY, r.OPER_ID ?? ""));
+  }
+  if (seen.size > 0) return [...seen].sort();
+  const pairs: string[] = [];
+  for (const pk of prodKeys) {
+    for (const op of operIds) {
+      pairs.push(ganttProdOperKey(pk, op));
+    }
+  }
+  return pairs.sort();
+}
+
+function ganttProdOperColorMap(pairKeys: string[]): Record<string, string> {
+  return buildColorMap(pairKeys, GANTT_PROD_OPER_PALETTE);
+}
+
+function ganttBarMarker(fillColor: string, visible: boolean) {
   return {
     color: fillColor,
     opacity: visible ? GANTT_THEME.barOpacity : 0.14,
     line: {
-      color: visible ? operColor : "rgba(148, 163, 184, 0.2)",
+      color: visible ? "rgba(15, 23, 42, 0.28)" : "rgba(148, 163, 184, 0.2)",
       width: visible ? 1.25 : 0,
     },
     cornerradius: GANTT_THEME.barRadius,
@@ -252,48 +273,35 @@ function legendTraces(
   prodCodes?: Record<string, string>,
   operCodes?: Record<string, string>,
 ): Data[] {
-  const prodColorMap = ganttProdColorMap(prodKeys);
-  const operColorMap = ganttOperColorMap(operIds);
-  const traces: Data[] = [];
+  const pairs = ganttProdOperPairs(schedule, prodKeys, operIds);
+  const colorMap = ganttProdOperColorMap(pairs);
 
-  prodKeys.forEach((pk) => {
-    traces.push({
+  return pairs.map((pairKey) => {
+    const sep = pairKey.indexOf("|");
+    const pk = sep >= 0 ? pairKey.slice(0, sep) : pairKey;
+    const op = sep >= 0 ? pairKey.slice(sep + 1) : "";
+    const prodCode = prodCodes?.[pk] ?? pk;
+    const operCode = operCodes?.[op] ?? op;
+    const inSchedule = schedule.some(
+      (r) => ganttProdOperKey(r.PLAN_PROD_KEY, r.OPER_ID ?? "") === pairKey,
+    );
+    return {
       type: "scatter",
       mode: "markers",
       x: [null],
       y: [null],
-      name: prodCodes?.[pk] ?? pk,
+      name: `${prodCode}/${operCode}`,
       marker: {
         size: 10,
-        color: prodColorMap[pk] ?? "#94a3b8",
+        color: colorMap[pairKey] ?? "#94a3b8",
         symbol: "square",
         line: { width: 0 },
       },
       showlegend: true,
       hoverinfo: "skip",
-      visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
-    });
+      visible: inSchedule ? true : "legendonly",
+    } as Data;
   });
-
-  operIds.forEach((op) => {
-    traces.push({
-      type: "scatter",
-      mode: "markers",
-      x: [null],
-      y: [null],
-      name: operCodes?.[op] ? `${operCodes[op]}` : `[OPER] ${op}`,
-      marker: {
-        size: 10,
-        color: operColorMap[op] ?? "#475569",
-        symbol: "square",
-        line: { width: 1.5, color: "#ffffff" },
-      },
-      showlegend: true,
-      hoverinfo: "skip",
-    });
-  });
-
-  return traces;
 }
 
 function ganttTraces(
@@ -303,25 +311,22 @@ function ganttTraces(
   highlightMax?: number,
   baseMs: number | null = null,
 ): Data[] {
-  const prodColorMap = ganttProdColorMap(prodKeys);
-  const operColorMap = ganttOperColorMap(operIds);
+  const pairs = ganttProdOperPairs(schedule, prodKeys, operIds);
+  const prodOperColorMap = ganttProdOperColorMap(pairs);
   const traces: Data[] = [];
 
   schedule.forEach((rec, idx) => {
     const visible = highlightMax === undefined || idx <= highlightMax;
     const width = rec.END_TM - rec.START_TM;
     const { base, x } = ganttBarAxisCoords(rec.START_TM, width, baseMs);
+    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
     traces.push({
       type: "bar",
       orientation: "h",
       x: [x],
       y: [rec.EQP_ID],
       base: [base],
-      marker: ganttBarMarker(
-        prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
-        operColorMap[rec.OPER_ID ?? ""] ?? "#475569",
-        visible,
-      ),
+      marker: ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", visible),
       text: visible && width >= 20 ? rec.LOT_ID : "",
       textposition: "inside",
       insidetextanchor: "middle",
@@ -435,7 +440,7 @@ function buildGanttLayout(
     barmode: "overlay",
     bargap: 0.35,
     legend: {
-      title: { text: "제품 / 공정", font: { size: 11 } },
+      title: { text: "제품×공정", font: { size: 11 } },
       ...GANTT_LEGEND,
     },
     height: Math.max(350, 72 * Math.max(eqps.length, 1)),
@@ -1126,7 +1131,7 @@ export function buildAlgorithmGanttComparison(
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverdistance: 30,
-    legend: n === 1 ? { title: { text: "제품 / 공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
+    legend: n === 1 ? { title: { text: "제품×공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
     margin: { l: 72, r: 16, t: 28, b: n === 1 ? 72 : 44 },
@@ -1646,8 +1651,8 @@ export function buildEnhancedGantt(
   const { labelMode = "lot", eqpModelMap = {}, conversionPlans = [], title } = options;
   const prodCodeMap = buildShortCodeMap(prodKeys, "P").codeByKey;
   const operCodeMap = buildShortCodeMap(operIds, "O").codeByKey;
-  const prodColorMap = ganttProdColorMap(prodKeys);
-  const operColorMap = ganttOperColorMap(operIds);
+  const pairs = ganttProdOperPairs(schedule, prodKeys, operIds);
+  const prodOperColorMap = ganttProdOperColorMap(pairs);
   const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
   const baseMs = resolveGanttBaseMs(axis);
 
@@ -1663,21 +1668,14 @@ export function buildEnhancedGantt(
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
     const showText = width >= (labelMode === "prod" ? 18 : 24);
     const { base, x } = ganttBarAxisCoords(start, width, baseMs);
+    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
     data.push({
       type: "bar",
       orientation: "h",
       x: [x],
       y: [label],
       base: [base],
-      marker: {
-        color: prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
-        opacity: GANTT_THEME.barOpacity,
-        line: {
-          color: operColorMap[rec.OPER_ID ?? ""] ?? "#475569",
-          width: 1.25,
-        },
-        cornerradius: GANTT_THEME.barRadius,
-      } as Record<string, unknown>,
+      marker: ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", true),
       text: showText ? barText(rec, labelMode, prodCodeMap) : "",
       textposition: "inside",
       insidetextanchor: "middle",
@@ -1731,7 +1729,7 @@ export function buildEnhancedGantt(
     barmode: "overlay",
     bargap: 0.28,
     legend: {
-      title: { text: "P / O 코드", font: { size: 11, color: GANTT_THEME.axisColor } },
+      title: { text: "제품×공정", font: { size: 11, color: GANTT_THEME.axisColor } },
       ...GANTT_LEGEND,
     },
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
