@@ -264,6 +264,7 @@ function legendTraces(
       name: prodCodes?.[pk] ?? pk,
       marker: { color: prodColorMap[pk] ?? "#94a3b8", cornerradius: GANTT_THEME.barRadius } as Record<string, unknown>,
       showlegend: true,
+      hoverinfo: "skip",
       visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
     });
   });
@@ -282,6 +283,7 @@ function legendTraces(
         line: { width: 1.5, color: "#ffffff" },
       },
       showlegend: true,
+      hoverinfo: "skip",
     });
   });
 
@@ -342,6 +344,7 @@ function conversionLegendTrace(hasConversion: boolean): Data {
     name: "Conversion",
     marker: conversionBarMarker(),
     showlegend: true,
+    hoverinfo: "skip",
     visible: hasConversion ? true : "legendonly",
   };
 }
@@ -430,6 +433,7 @@ function buildGanttLayout(
     margin: { l: 88, r: 20, t: 56, b: 72 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
+    hoverdistance: 30,
     hoverlabel: GANTT_HOVERLABEL,
   };
 }
@@ -1083,6 +1087,7 @@ export function buildAlgorithmGanttComparison(
     paper_bgcolor: GANTT_THEME.paperBg,
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
+    hoverdistance: 30,
     legend: n === 1 ? { title: { text: "제품 / 공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
@@ -1697,6 +1702,7 @@ export function buildEnhancedGantt(
     margin: { l: 160, r: 20, t: 52, b: 56 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
+    hoverdistance: 30,
     hoverlabel: GANTT_HOVERLABEL,
   };
 
