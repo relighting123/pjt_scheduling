@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 from typing import Optional, Union
 
-from config import CONFIG
+from config import CONFIG, apply_reward_params
 from agent.rl_agent import SchedulingAgent
 from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES
 
@@ -28,8 +28,7 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
 
         CONFIG.rl.total_timesteps = params["total_timesteps"]
         CONFIG.rl.learning_rate = params["learning_rate"]
-        CONFIG.reward.w_same_oper = params["w_same_oper"]
-        CONFIG.reward.w_idle_per_min = params["w_idle_per_min"]
+        apply_reward_params(params)
 
         agent = SchedulingAgent()
         payload = env_list if len(env_list) > 1 else env_list[0]

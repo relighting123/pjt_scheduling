@@ -501,6 +501,43 @@ class RewardConfig:
     same_oper_conditional: bool = True
 
 
+def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
+    """RewardConfig → API/UI 공유 dict."""
+    r = reward or CONFIG.reward
+    return {
+        "w_same_oper": r.w_same_oper,
+        "w_same_prod": r.w_same_prod,
+        "w_prod_switch": r.w_prod_switch,
+        "w_idle_per_min": r.w_idle_per_min,
+        "w_completion": r.w_completion,
+        "w_plan_hit": r.w_plan_hit,
+        "w_pacing": r.w_pacing,
+        "w_conversion": r.w_conversion,
+        "w_late_finish": r.w_late_finish,
+        "w_flow_balance": r.w_flow_balance,
+        "reward_clip": r.reward_clip,
+        "use_achievable_target": r.use_achievable_target,
+        "same_oper_conditional": r.same_oper_conditional,
+    }
+
+
+def apply_reward_params(params: dict) -> None:
+    """학습 요청 파라미터 → CONFIG.reward 반영."""
+    r = CONFIG.reward
+    float_keys = (
+        "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
+        "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
+        "w_late_finish", "w_flow_balance", "reward_clip",
+    )
+    for key in float_keys:
+        if key in params and params[key] is not None:
+            setattr(r, key, float(params[key]))
+    if "use_achievable_target" in params and params["use_achievable_target"] is not None:
+        r.use_achievable_target = bool(params["use_achievable_target"])
+    if "same_oper_conditional" in params and params["same_oper_conditional"] is not None:
+        r.same_oper_conditional = bool(params["same_oper_conditional"])
+
+
 @dataclass
 class Config:
     path:   PathConfig   = field(default_factory=PathConfig)

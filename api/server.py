@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, format_missing_input_file_error
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, format_missing_input_file_error, reward_params_dict, apply_reward_params
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from agent.rl_agent import SchedulingAgent
@@ -230,11 +230,25 @@ def _prepare_train_env_data(req: "TrainRequest") -> tuple[list[dict], list[str]]
 
 # ── 요청 스키마 ───────────────────────────────────────────────────────────────
 
-class TrainRequest(BaseModel):
+class RewardParams(BaseModel):
+    w_same_oper: float = Field(default=CONFIG.reward.w_same_oper)
+    w_same_prod: float = Field(default=CONFIG.reward.w_same_prod)
+    w_prod_switch: float = Field(default=CONFIG.reward.w_prod_switch)
+    w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
+    w_completion: float = Field(default=CONFIG.reward.w_completion)
+    w_plan_hit: float = Field(default=CONFIG.reward.w_plan_hit)
+    w_pacing: float = Field(default=CONFIG.reward.w_pacing)
+    w_conversion: float = Field(default=CONFIG.reward.w_conversion)
+    w_late_finish: float = Field(default=CONFIG.reward.w_late_finish)
+    w_flow_balance: float = Field(default=CONFIG.reward.w_flow_balance)
+    reward_clip: float = Field(default=CONFIG.reward.reward_clip, ge=0.1)
+    use_achievable_target: bool = Field(default=CONFIG.reward.use_achievable_target)
+    same_oper_conditional: bool = Field(default=CONFIG.reward.same_oper_conditional)
+
+
+class TrainRequest(RewardParams):
     total_timesteps: int = Field(default=CONFIG.rl.total_timesteps, ge=1000)
     learning_rate: float = Field(default=CONFIG.rl.learning_rate, gt=0)
-    w_same_oper: float = Field(default=CONFIG.reward.w_same_oper)
-    w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
     train_budget_mode: Literal["timesteps", "episodes"] = Field(
         default="timesteps",
         description="학습량 기준: timesteps | episodes",
@@ -417,8 +431,7 @@ def get_config():
         "default_timesteps": CONFIG.rl.total_timesteps,
         "default_n_episodes": CONFIG.rl.default_n_episodes,
         "default_learning_rate": CONFIG.rl.learning_rate,
-        "default_w_same_oper": CONFIG.reward.w_same_oper,
-        "default_w_idle_per_min": CONFIG.reward.w_idle_per_min,
+        "default_reward": reward_params_dict(),
     }
 
 
@@ -573,15 +586,8 @@ def train_start(req: TrainRequest):
         raise HTTPException(status_code=404, detail=str(e))
     if is_training():
         raise HTTPException(status_code=409, detail="이미 학습이 진행 중입니다.")
-    params = {
-        "total_timesteps": req.total_timesteps,
-        "learning_rate": req.learning_rate,
-        "w_same_oper": req.w_same_oper,
-        "w_idle_per_min": req.w_idle_per_min,
-        "train_budget_mode": req.train_budget_mode,
-        "n_episodes": req.n_episodes,
-        "input_folders": folders,
-    }
+    params = req.model_dump()
+    params["input_folders"] = folders
     payload = env_list if len(env_list) > 1 else env_list[0]
     if not start_training(payload, params):
         raise HTTPException(status_code=409, detail="학습을 시작할 수 없습니다.")
@@ -602,8 +608,7 @@ def train(req: TrainRequest):
 
     CONFIG.rl.total_timesteps = req.total_timesteps
     CONFIG.rl.learning_rate = req.learning_rate
-    CONFIG.reward.w_same_oper = req.w_same_oper
-    CONFIG.reward.w_idle_per_min = req.w_idle_per_min
+    apply_reward_params(req.model_dump())
 
     agent = SchedulingAgent()
     payload = env_list if len(env_list) > 1 else env_list[0]
