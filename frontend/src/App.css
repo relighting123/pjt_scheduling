@@ -1407,6 +1407,11 @@ tbody tr:last-child td { border-bottom: none; }
   width: 100%;
 }
 
+/* 간트 hover 툴팁이 잘리지 않도록 */
+.gantt-chart-panel.chart-wrap {
+  overflow: visible;
+}
+
 .chart-wrap .plot-chart,
 .chart-wrap .js-plotly-plot,
 .chart-wrap .plot-container {
@@ -1416,6 +1421,13 @@ tbody tr:last-child td { border-bottom: none; }
 
 .chart-wrap .js-plotly-plot {
   border-radius: var(--r-md);
+}
+
+/* Plotly hover 레이어 글자색 (inherit 시 안 보이는 경우 보정) */
+.chart-wrap .hoverlayer .hovertext,
+.chart-wrap .hoverlayer text {
+  fill: var(--text) !important;
+  color: var(--text) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════

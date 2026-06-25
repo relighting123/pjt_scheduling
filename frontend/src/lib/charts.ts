@@ -53,6 +53,23 @@ const GANTT_THEME = {
   convBorder: "#d97706",
 } as const;
 
+/** 간트 hover 툴팁 – 글자색 명시 (미설정 시 투명/흰색으로 안 보이는 경우 방지) */
+const GANTT_HOVERLABEL: NonNullable<Layout["hoverlabel"]> = {
+  bgcolor: "#ffffff",
+  bordercolor: "rgba(15, 23, 42, 0.14)",
+  font: {
+    family: GANTT_THEME.fontFamily,
+    size: 12,
+    color: GANTT_THEME.titleColor,
+  },
+};
+
+const GANTT_LAYOUT_FONT: NonNullable<Layout["font"]> = {
+  family: GANTT_THEME.fontFamily,
+  color: GANTT_THEME.titleColor,
+  size: 12,
+};
+
 function ganttProdColorMap(prodKeys: string[]): Record<string, string> {
   return buildColorMap(prodKeys, GANTT_PROD_COLORS);
 }
@@ -296,11 +313,9 @@ function buildGanttLayout(
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
     margin: { l: 88, r: 20, t: 44, b: 88 },
-    hoverlabel: {
-      bgcolor: "#ffffff",
-      bordercolor: "rgba(148,163,184,0.35)",
-      font: { family: GANTT_THEME.fontFamily, size: 12 },
-    },
+    font: GANTT_LAYOUT_FONT,
+    hovermode: "closest",
+    hoverlabel: GANTT_HOVERLABEL,
   };
 }
 
@@ -859,12 +874,10 @@ export function buildAlgorithmGanttComparison(
     showlegend: n === 1,
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
+    font: GANTT_LAYOUT_FONT,
+    hovermode: "closest",
     legend: n === 1 ? { title: { text: "제품 / 공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
-    hoverlabel: {
-      bgcolor: "#ffffff",
-      bordercolor: "rgba(148,163,184,0.35)",
-      font: { family: GANTT_THEME.fontFamily, size: 12 },
-    },
+    hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
     margin: { l: 72, r: 16, t: 8, b: n === 1 ? 88 : 52 },
   };
@@ -1472,11 +1485,9 @@ export function buildEnhancedGantt(
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
     margin: { l: 160, r: 20, t: 24, b: 64 },
-    hoverlabel: {
-      bgcolor: "#ffffff",
-      bordercolor: "rgba(148,163,184,0.35)",
-      font: { family: GANTT_THEME.fontFamily, size: 12 },
-    },
+    font: GANTT_LAYOUT_FONT,
+    hovermode: "closest",
+    hoverlabel: GANTT_HOVERLABEL,
   };
 
   return { data, layout };
