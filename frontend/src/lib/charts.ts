@@ -259,8 +259,8 @@ function legendTraces(
     traces.push({
       type: "bar",
       orientation: "h",
-      x: [0],
-      y: [""],
+      x: [null],
+      y: [null],
       name: prodCodes?.[pk] ?? pk,
       marker: { color: prodColorMap[pk] ?? "#94a3b8", cornerradius: GANTT_THEME.barRadius } as Record<string, unknown>,
       showlegend: true,
@@ -339,8 +339,8 @@ function conversionLegendTrace(hasConversion: boolean): Data {
   return {
     type: "bar",
     orientation: "h",
-    x: [0],
-    y: [""],
+    x: [null],
+    y: [null],
     name: "Conversion",
     marker: conversionBarMarker(),
     showlegend: true,
