@@ -23,6 +23,7 @@ from agent.train_progress import (
     ProgressCallback,
     EvalProgressCallback,
     EpisodeBudgetCallback,
+    StopTrainingCallback,
     EPISODE_TRAIN_TIMESTEP_CEILING,
     TRAIN_BUDGET_EPISODES,
     TRAIN_BUDGET_TIMESTEPS,
@@ -149,6 +150,7 @@ class SchedulingAgent:
                     total_timesteps=cfg.total_timesteps,
                     budget_mode=TRAIN_BUDGET_TIMESTEPS,
                 )
+            callbacks.append(StopTrainingCallback(progress_state))
             callbacks.append(ProgressCallback(progress_state))
             if use_episode_budget:
                 callbacks.append(EpisodeBudgetCallback(progress_state, n_episodes))
