@@ -1200,7 +1200,7 @@ export function buildTrainRewardChart(
     data.push({
       type: "scatter",
       mode: "lines",
-      name: "Rollout ep_rew_mean",
+      name: "Rollout reward",
       x: series.timesteps,
       y: series.ep_rew_mean,
       line: { color: "#4f6ef7", width: 2 },

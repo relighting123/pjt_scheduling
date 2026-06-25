@@ -1,7 +1,15 @@
 """학습 진행 상태 UI 스냅샷 테스트."""
 import json
+from types import SimpleNamespace
 
-from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES, TRAIN_BUDGET_TIMESTEPS
+import numpy as np
+
+from agent.train_progress import (
+    TrainProgressState,
+    TRAIN_BUDGET_EPISODES,
+    TRAIN_BUDGET_TIMESTEPS,
+    read_rollout_ep_rew_mean,
+)
 
 
 def test_snapshot_completed_with_metrics_is_json_serializable():
@@ -37,3 +45,33 @@ def test_reset_clears_previous_run():
     assert snap["status"] == "idle"
     assert snap["metrics"] is None
     assert snap["logs"] == []
+
+
+def test_read_rollout_ep_rew_mean_from_episode_buffer():
+    model = SimpleNamespace(
+        ep_info_buffer=[{"r": 10.0, "l": 100}, {"r": 20.0, "l": 120}],
+        rollout_buffer=SimpleNamespace(pos=0, rewards=np.zeros(1)),
+    )
+    mean, source = read_rollout_ep_rew_mean(model)
+    assert mean == 15.0
+    assert source == "episode"
+
+
+def test_read_rollout_ep_rew_mean_fallback_to_step_rewards():
+    model = SimpleNamespace(
+        ep_info_buffer=[],
+        rollout_buffer=SimpleNamespace(
+            pos=4,
+            rewards=np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+        ),
+    )
+    mean, source = read_rollout_ep_rew_mean(model)
+    assert mean == 2.5
+    assert source == "step_mean"
+
+
+def test_record_rollout_metrics_skips_missing_reward():
+    state = TrainProgressState()
+    state.record_rollout_metrics(1024, {})
+    snap = state.snapshot()
+    assert snap["series"]["timesteps"] == []
