@@ -8,6 +8,7 @@ import { api } from "../lib/api";
 import { loadResultFromFile } from "../lib/resultFile";
 import {
   buildEnhancedGantt,
+  buildProductProductionCharts,
   buildAlgorithmKpiComparison,
   buildAlgorithmAchievementComparison,
   buildAlgorithmGanttComparison,
@@ -204,6 +205,24 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     });
   }, [result, axis, labelMode, eqpModelMap]);
 
+  const productionChart = useMemo(() => {
+    if (!result?.schedule.length) return null;
+    return buildProductProductionCharts(
+      result.schedule,
+      result.plan,
+      result.prod_keys,
+      result.sim_end_minutes,
+      {
+        operIds: result.oper_ids,
+        timeAxis: {
+          timeStartMinutes: axis.timeStartMinutes,
+          timeEndMinutes: axis.timeEndMinutes,
+          fixedRange: axis.fixedRange,
+        },
+      },
+    );
+  }, [result, axis]);
+
   return (
     <div className="detail-page">
       <div className="detail-page-title">
@@ -369,6 +388,18 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 {ganttChart && (
                   <div className="chart-wrap gantt-chart-panel">
                     <PlotChart {...ganttChart} clampXMin={0} />
+                  </div>
+                )}
+
+                {productionChart && (
+                  <div className="card gantt-production-panel">
+                    <div className="gantt-summary-section-title">시간별 제품·공정 누적 생산</div>
+                    <p className="gantt-production-hint">
+                      제품별 서브플롯에 공정(O) 실적(실선)과 계획(점선)을 표시합니다. X축은 간트 차트와 동일합니다.
+                    </p>
+                    <div className="chart-wrap gantt-production-chart">
+                      <PlotChart {...productionChart} clampXMin={0} />
+                    </div>
                   </div>
                 )}
 
