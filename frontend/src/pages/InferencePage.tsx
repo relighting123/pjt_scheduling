@@ -409,7 +409,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
                 {ganttChart && (
                   <div className="chart-wrap gantt-chart-panel">
-                    <PlotChart {...ganttChart} />
+                    <PlotChart {...ganttChart} scrollable />
                   </div>
                 )}
 
@@ -420,7 +420,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                       제품별 서브플롯에 공정(O) 실적(실선)과 계획(점선)을 표시합니다. X축은 간트 차트와 동일합니다.
                     </p>
                     <div className="chart-wrap gantt-production-chart">
-                      <PlotChart {...productionChart} />
+                      <PlotChart {...productionChart} scrollable />
                     </div>
                   </div>
                 )}
@@ -487,7 +487,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 </div>
                 {compareShowGantt && compareGanttChart && (
                   <div className="card chart-wrap gantt-chart-panel">
-                    <PlotChart {...compareGanttChart} />
+                    <PlotChart {...compareGanttChart} scrollable />
                   </div>
                 )}
               </div>

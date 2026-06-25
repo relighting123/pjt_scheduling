@@ -551,6 +551,17 @@
   background: var(--bg-panel);
 }
 
+.gantt-chart-scroll {
+  max-height: min(72vh, 720px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.gantt-chart-scroll .xaxislayer-above {
+  pointer-events: none;
+}
+
 @keyframes tabFade {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -1381,10 +1392,8 @@ tbody tr:last-child td { border-bottom: none; }
   line-height: 1.45;
 }
 
-.gantt-production-chart {
+.gantt-production-chart .gantt-chart-scroll {
   max-height: min(75vh, 960px);
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 /* ══════════════════════════════════════════════════════════════════
