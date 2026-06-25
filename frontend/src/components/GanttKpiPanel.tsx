@@ -41,7 +41,13 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
 
   const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap), [sched, result, eqpModelMap]);
   const models = useMemo(() => computeModelUtil(utils), [utils]);
-  const ach    = useMemo(() => computeAchievement(sched, result.plan), [sched, result.plan]);
+  const ach    = useMemo(
+    () => computeAchievement(sched, result.plan, {
+      prodKeys: result.prod_keys,
+      operIds: result.oper_ids,
+    }),
+    [sched, result.plan, result.prod_keys, result.oper_ids],
+  );
   const tat    = useMemo(() => computeTAT(sched), [sched]);
   const toolSw = countToolSwitches(sched, result.conversion_plans ?? []);
 
@@ -58,7 +64,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   ];
 
   return (
-    <div>
+    <div className="gantt-kpi-shell">
       <div className="gantt-kpi-strip">
         {kpis.map((k) => (
           <div key={k.label} className="gantt-kpi-item">
@@ -66,15 +72,15 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
             <div className={`gantt-kpi-val ${k.cls}`}>{k.value}</div>
           </div>
         ))}
-        <div className="gantt-kpi-expand">
-          <button
-            type="button"
-            className={`btn btn-xs ${expanded ? "btn-accent" : "btn-ghost"}`}
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded ? "▲ 닫기" : "▼ 세부 지표"}
-          </button>
-        </div>
+      </div>
+      <div className="gantt-kpi-expand">
+        <button
+          type="button"
+          className={`btn btn-xs ${expanded ? "btn-accent" : "btn-ghost"}`}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "세부 지표 닫기" : "세부 지표"}
+        </button>
       </div>
 
       {expanded && (

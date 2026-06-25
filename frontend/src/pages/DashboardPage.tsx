@@ -3,7 +3,6 @@ import PlotChart from "../components/PlotChart";
 import { api } from "../lib/api";
 import {
   buildTrainRewardChart,
-  buildDashboardKpiChart,
   buildAlgorithmKpiComparison,
   hasTrainChartData,
   type AlgoCompareEntry,
@@ -42,16 +41,6 @@ export default function DashboardPage({ onNavigate }: Props) {
   const eqpModelMap = useMemo(() => buildEqpModelMap(infer?.event_log ?? []), [infer]);
   const kpi = useMemo(() => (infer ? computeInferenceKpi(infer, eqpModelMap) : null), [infer, eqpModelMap]);
 
-  const inferChart = useMemo(() => {
-    if (!kpi) return null;
-    return buildDashboardKpiChart([
-      { label: "Makespan", value: kpi.makespan, suffix: "분" },
-      { label: "가동률", value: kpi.avgUtilPct, suffix: "%" },
-      { label: "달성률", value: kpi.avgAchPct, suffix: "%" },
-      { label: "공정전환", value: kpi.operSwitches, suffix: "회" },
-    ]);
-  }, [kpi]);
-
   const testEntries = useMemo((): AlgoCompareEntry[] => {
     if (!testData?.datasets?.length) return [];
     const map: Record<string, InferenceResult> = {};
@@ -77,8 +66,8 @@ export default function DashboardPage({ onNavigate }: Props) {
     <div className="dash-page">
       <div className="dash-header">
         <div>
-          <h1 className="dash-title">스케줄링 <span>대시보드</span></h1>
-          <p className="dash-subtitle">제조 스케줄링 AI 결과 요약</p>
+          <h1 className="dash-title">AI Scheduling <span>Dashboard</span></h1>
+          <p className="dash-subtitle">반도체 설비 AI 스케줄링 인텔리전스</p>
         </div>
         <div className="dash-time">{now}</div>
       </div>
@@ -89,8 +78,13 @@ export default function DashboardPage({ onNavigate }: Props) {
           <div className="dash-card-top inference" />
           <div className="dash-card-header">
             <div className="dash-card-icon inference">▶</div>
-            <div>
+            <div className="dash-card-heading">
               <div className="dash-card-name">추론 결과</div>
+              {infer?.algorithm && (
+                <div className="dash-card-meta">
+                  알고리즘 <span className="mono">{infer.algorithm}</span>
+                </div>
+              )}
             </div>
             {infer && <span className="badge badge-accent" style={{ marginLeft: "auto" }}>최신</span>}
           </div>
@@ -105,31 +99,25 @@ export default function DashboardPage({ onNavigate }: Props) {
                 <button type="button" className="btn btn-accent btn-sm" onClick={() => onNavigate("inference")}>추론 실행 →</button>
               </div>
             )}
-            {!inferLoading && kpi && inferChart && (
-              <>
-                <PlotChart {...inferChart} />
-                <div className="dash-kpis">
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-label">Makespan</div>
-                    <div className="dash-kpi-value">{kpi.makespan}<small style={{ fontSize:"0.7rem", color:"var(--text-muted)", marginLeft:"0.2rem" }}>분</small></div>
-                  </div>
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-label">평균 달성률</div>
-                    <div className="dash-kpi-value" style={{ color: kpi.avgAchPct >= 90 ? "var(--ok)" : kpi.avgAchPct >= 70 ? "var(--warn)" : "var(--err)" }}>{kpi.avgAchPct}%</div>
-                  </div>
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-label">공정 전환</div>
-                    <div className="dash-kpi-value">{kpi.operSwitches}<small style={{ fontSize:"0.7rem", color:"var(--text-muted)", marginLeft:"0.2rem" }}>회</small></div>
-                  </div>
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-label">평균 가동률</div>
-                    <div className="dash-kpi-value" style={{ color: kpi.avgUtilPct >= 80 ? "var(--ok)" : "var(--warn)" }}>{kpi.avgUtilPct}%</div>
-                  </div>
+            {!inferLoading && kpi && (
+              <div className="dash-kpis dash-kpis-4">
+                <div className="dash-kpi">
+                  <div className="dash-kpi-label">Makespan</div>
+                  <div className="dash-kpi-value">{kpi.makespan.toLocaleString()}<small className="dash-kpi-unit">분</small></div>
                 </div>
-                {infer?.algorithm && (
-                  <p className="hint mt-1">알고리즘: <span className="mono" style={{ color: "var(--accent)" }}>{infer.algorithm}</span></p>
-                )}
-              </>
+                <div className="dash-kpi">
+                  <div className="dash-kpi-label">평균 가동률</div>
+                  <div className={`dash-kpi-value ${kpi.avgUtilPct >= 80 ? "good" : "warn"}`}>{kpi.avgUtilPct.toLocaleString()}<small className="dash-kpi-unit">%</small></div>
+                </div>
+                <div className="dash-kpi">
+                  <div className="dash-kpi-label">평균 달성률</div>
+                  <div className={`dash-kpi-value ${kpi.avgAchPct >= 90 ? "good" : kpi.avgAchPct >= 70 ? "warn" : "bad"}`}>{kpi.avgAchPct.toLocaleString()}<small className="dash-kpi-unit">%</small></div>
+                </div>
+                <div className="dash-kpi">
+                  <div className="dash-kpi-label">공정 전환</div>
+                  <div className="dash-kpi-value">{kpi.operSwitches.toLocaleString()}<small className="dash-kpi-unit">회</small></div>
+                </div>
+              </div>
             )}
           </div>
           <div className="dash-card-footer">
@@ -171,7 +159,7 @@ export default function DashboardPage({ onNavigate }: Props) {
                     return (
                       <div key={e.algorithm} className="dash-kpi">
                         <div className="dash-kpi-label">{e.label}</div>
-                        <div className="dash-kpi-value">{ms}<small style={{ fontSize:"0.7rem", color:"var(--text-muted)", marginLeft:"0.2rem" }}>분</small></div>
+                        <div className="dash-kpi-value">{ms.toLocaleString()}<small className="dash-kpi-unit">분</small></div>
                       </div>
                     );
                   })}

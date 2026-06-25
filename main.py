@@ -14,6 +14,11 @@ main.py - 운영 CLI
     python main.py collect --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v --debug
     python main.py db-check
+    python main.py db-load --ddl-only
+    python main.py db-load --facid FAC001 --split infer
+    python main.py infer --facid FAC001 --db-load
+    python main.py sample --facid FAC001 --bootstrap
+    python main.py sample --facid FAC001 --split test --period 20260621070000
     python main.py ui
 """
 import argparse
@@ -45,11 +50,18 @@ from data.collector import (
     run_collector_cli,
 )
 from data.db_registry import diagnose_db_config, print_db_config_report
+from data.generator import generate_sample, list_sample_scenarios
 from data.loader import fetch_from_db, load_data, validate_data, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods
 from data.loader.sql_binds import resolve_lot_cd
 from agent.rl_agent import SchedulingAgent
 from inference.runner import run_inference, save_result
+from data.writer.db_load import (
+    apply_output_ddl,
+    load_output_json,
+    load_output_sql_files,
+    resolve_output_dir,
+)
 from validation.runner import run_validation
 
 
@@ -191,6 +203,54 @@ def cmd_validate(fac_id: str, *, nodb: bool = False):
     print(f"\n[validate] 완료 ({len(payload['results'])}개 test)")
 
 
+def cmd_db_load(
+    *,
+    ddl_only: bool = False,
+    apply_ddl: bool = False,
+    fac_id: str = None,
+    split: str = "infer",
+    period: str = None,
+    output_dir: str = None,
+    db_alias: str = None,
+    json_path: str = None,
+    no_history: bool = False,
+    regenerate_sql: bool = False,
+):
+    if ddl_only or apply_ddl:
+        apply_output_ddl(db_alias=db_alias)
+
+    if ddl_only:
+        return
+
+    include_history = not no_history
+
+    if json_path:
+        load_output_json(
+            json_path,
+            db_alias=db_alias,
+            include_history=include_history,
+        )
+        return
+
+    if not fac_id and not output_dir:
+        raise ValueError(
+            "적재 대상이 필요합니다: --facid/--split, --output-dir, 또는 --json 중 하나"
+        )
+
+    out = resolve_output_dir(
+        fac_id=fac_id or CONFIG.path.fac_id,
+        split=split,
+        period=period,
+        output_dir=Path(output_dir) if output_dir else None,
+    )
+    load_output_sql_files(
+        out,
+        db_alias=db_alias,
+        include_history=include_history,
+        regenerate_sql=regenerate_sql,
+    )
+
+
 def cmd_inference(
     fac_id: str,
     rule_timekey: str = None,
@@ -200,6 +260,9 @@ def cmd_inference(
     decision_log: bool = False,
     enable_wip_inflow: bool = False,
     include_history: bool = False,
+    db_load: bool = False,
+    db_alias: str = None,
+    no_history: bool = False,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
@@ -252,6 +315,15 @@ def cmd_inference(
     if decision_log:
         log = result.get("decision_log", [])
         print(f"  결정 로그:      {len(log)}건 → result_full.json 의 decision_log")
+
+    if db_load:
+        print("=" * 60)
+        print("[inference] Oracle output 적재")
+        load_output_sql_files(
+            CONFIG.path.output_dir,
+            db_alias=db_alias,
+            include_history=not no_history,
+        )
 
 
 def cmd_ui():
@@ -308,6 +380,63 @@ def cmd_ui():
         api_proc.terminate()
         fe_proc.wait(timeout=5)
         api_proc.wait(timeout=5)
+
+
+def cmd_sample(
+    fac_id: str,
+    split: str = "train",
+    scenario: str = "default",
+    *,
+    bootstrap: bool = False,
+    period: str = None,
+    from_key: str = None,
+    to_key: str = None,
+    use_period_count: bool = False,
+):
+    print("=" * 60)
+    print(f"[sample] 샘플 데이터 생성 (FAC: {fac_id}, split: {split}, 시나리오: {scenario})")
+    if bootstrap:
+        print("  모드: bootstrap (train/test/infer 일괄 생성)")
+    elif period:
+        print(f"  기간: {period}")
+    elif from_key and to_key:
+        print(f"  기간 범위: {from_key} ~ {to_key}")
+
+    try:
+        from data.generator import generate_sample_data
+
+        if period and not bootstrap:
+            path = generate_sample_data(
+                scenario=scenario,
+                fac_id=fac_id,
+                split=split,
+                period=period,
+            )
+            set_input_folder(
+                f"{fac_id}/{split}/{period}" if split in ("train", "test") else f"{fac_id}/{split}"
+            )
+            result = {"path": path}
+        else:
+            result = generate_sample(
+                scenario=scenario,
+                fac_id=fac_id,
+                split=split,
+                bootstrap=bootstrap,
+                from_date=from_key,
+                to_date=to_key,
+                use_period_count=use_period_count,
+                verbose=True,
+            )
+    except ValueError as e:
+        print(f"[오류] {e}")
+        scenarios = ", ".join(s["id"] for s in list_sample_scenarios())
+        print(f"  사용 가능 시나리오: {scenarios}")
+        sys.exit(1)
+
+    path = result["path"]
+    print(f"  생성 완료: {path}")
+    print(f"  입력 경로: {CONFIG.path.input_folder_key}")
+    print(f"  input_dir: {CONFIG.path.input_dir}")
 
 
 def cmd_collect(
@@ -418,6 +547,65 @@ def parse_args():
         action="store_true",
         help="공정 완료 시 다음 공정 flow 재공 유입 이벤트를 켭니다. 기본은 현재 재공만 배정.",
     )
+    inf_p.add_argument(
+        "--db-load",
+        action="store_true",
+        help="추론 후 output/sql 을 Oracle RTS 테이블에 적재",
+    )
+    inf_p.add_argument(
+        "--db",
+        default=None,
+        help="db-load 시 DB alias (미지정 시 databases.yaml default)",
+    )
+    inf_p.add_argument(
+        "--no-history",
+        action="store_true",
+        help="db-load 시 HIS 테이블 적재 생략",
+    )
+
+    db_load_p = sub.add_parser(
+        "db-load",
+        help="RTS output.json / sql → Oracle 적재 (추론 결과 DB 반영)",
+    )
+    db_load_p.add_argument(
+        "--ddl-only",
+        action="store_true",
+        help="output 테이블 CREATE 만 실행 (data/sql/rts_output_tables.sql)",
+    )
+    db_load_p.add_argument(
+        "--ddl",
+        action="store_true",
+        help="적재 전 DDL도 실행 (테이블 없을 때)",
+    )
+    db_load_p.add_argument("--facid", help="dataset FAC_ID")
+    db_load_p.add_argument(
+        "--split", default="infer", choices=("train", "test", "infer"),
+    )
+    db_load_p.add_argument("--period", help="RULE_TIMEKEY (train/test)")
+    db_load_p.add_argument(
+        "--output-dir",
+        help="output 폴더 직접 지정 (dataset 경로 대신)",
+    )
+    db_load_p.add_argument(
+        "--json",
+        dest="json_path",
+        help="output.json 경로 (SQL 생성 후 즉시 적재)",
+    )
+    db_load_p.add_argument(
+        "--db",
+        default=None,
+        help="DB alias (미지정 시 SQL @db 또는 default)",
+    )
+    db_load_p.add_argument(
+        "--no-history",
+        action="store_true",
+        help="HIS 테이블 적재 생략",
+    )
+    db_load_p.add_argument(
+        "--regenerate-sql",
+        action="store_true",
+        help="output.json에서 sql/*.sql 재생성 후 적재",
+    )
 
     sub.add_parser("db-check", help="DB alias 설정 진단 (databases.yaml / .env)")
 
@@ -446,6 +634,34 @@ def parse_args():
         help="SQL :LOT_CD 바인드 (discrete_arrange 제외, 기본: COLLECTOR_LOT_CD / SQL_LOT_CD)",
     )
     add_debug_arguments(collect_p)
+
+    sample_p = sub.add_parser(
+        "sample",
+        help="Oracle 없이 샘플 dataset JSON 생성 (train/test/infer)",
+    )
+    sample_p.add_argument("--facid", required=True, help="공장 ID (예: FAC001)")
+    sample_p.add_argument(
+        "--split", default="train", choices=("train", "test", "infer"),
+        help="생성할 split (기본: train)",
+    )
+    sample_p.add_argument(
+        "--scenario", default="default",
+        help="시나리오 ID (default, pacing_steady, random 등)",
+    )
+    sample_p.add_argument(
+        "--bootstrap", action="store_true",
+        help="train 3일 + test 1일 + infer 를 한 번에 생성",
+    )
+    sample_p.add_argument(
+        "--period", metavar="RULE_TIMEKEY",
+        help="특정 RULE_TIMEKEY 폴더에 생성 (예: 20260621070000)",
+    )
+    sample_p.add_argument("--from", dest="from_key", metavar="RULE_TIMEKEY")
+    sample_p.add_argument("--to", dest="to_key", metavar="RULE_TIMEKEY")
+    sample_p.add_argument(
+        "--use-period-count", action="store_true",
+        help="설정된 train/test 기간 수만큼 연속 생성",
+    )
 
     return parser.parse_args()
 
@@ -491,6 +707,23 @@ def main():
                 decision_log=args.decision_log,
                 enable_wip_inflow=args.enable_wip_inflow,
                 include_history=args.include_history,
+                db_load=args.db_load,
+                db_alias=args.db,
+                no_history=args.no_history,
+            )
+
+        elif args.command == "db-load":
+            cmd_db_load(
+                ddl_only=args.ddl_only,
+                apply_ddl=args.ddl,
+                fac_id=args.facid,
+                split=args.split,
+                period=args.period,
+                output_dir=args.output_dir,
+                db_alias=args.db,
+                json_path=args.json_path,
+                no_history=args.no_history,
+                regenerate_sql=args.regenerate_sql,
             )
 
         elif args.command == "collect":
@@ -509,6 +742,18 @@ def main():
                 dry_run=args.dry_run,
                 debug=args.debug,
                 preflight=args.preflight,
+            )
+
+        elif args.command == "sample":
+            cmd_sample(
+                fac_id=args.facid,
+                split=args.split,
+                scenario=args.scenario,
+                bootstrap=args.bootstrap,
+                period=args.period,
+                from_key=args.from_key,
+                to_key=args.to_key,
+                use_period_count=args.use_period_count,
             )
 
         elif args.command == "db-check":

@@ -77,6 +77,24 @@ def serialize_compare_response(payload: dict, *, include_history: bool = False) 
     }
 
 
+def empty_data_summary() -> dict:
+    """입력 dataset 없을 때 UI용 빈 요약."""
+    return {
+        "eqp_count": 0,
+        "lot_count": 0,
+        "prod_count": 0,
+        "oper_count": 0,
+        "batch_info_count": 0,
+        "sim_end_minutes": 0,
+        "sim_base_time": "",
+        "eqp_ids": [],
+        "prod_keys": [],
+        "oper_ids": [],
+        "batch_info": [],
+        "warnings": [],
+    }
+
+
 def env_data_summary(env_data: dict) -> dict:
     base: datetime = env_data["sim_base_time"]
     batch_info_map = env_data.get("batch_info_map", {})

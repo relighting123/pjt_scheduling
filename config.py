@@ -335,10 +335,10 @@ def parse_input_folder(folder: str) -> Tuple[str, str, Optional[str]]:
 
 
 def list_input_folders() -> List[str]:
-    """사용 가능한 dataset 입력 경로 키 목록"""
+    """사용 가능한 dataset 입력 경로 키 목록 (실제 input JSON 있는 경로만)"""
     found: List[str] = []
     if not DATASET_DIR.is_dir():
-        return [CONFIG.path.input_folder_key]
+        return found
 
     for fac_path in sorted(DATASET_DIR.iterdir()):
         if not fac_path.is_dir():
@@ -358,9 +358,6 @@ def list_input_folders() -> List[str]:
             ):
                 found.append(f"{fac_id}/{split}")
 
-    current = CONFIG.path.input_folder_key
-    if current not in found:
-        found.append(current)
     return sorted(set(found))
 
 
@@ -489,16 +486,56 @@ class RewardConfig:
     w_completion:      float = 0.5
     w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
     w_pacing:          float = 2.0       # 선형 takt 추종 (achievable 기준; Step C)
-    w_conversion:      float = -6.0      # LOT_CD/TEMP 전환 1회 패널티 (필요시 허용 수준)
+    w_conversion:      float = -10.0     # LOT_CD/TEMP 전환 1회 패널티
     w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
     # --- Step B: flow-balance shaping (편중 해소·후속 공정 feeding) ---
     w_flow_balance:    float = 1.5       # 적체(편중) 공정 배정·후속 starving 해소 보너스
+    # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
+    flow_balance_starving_cover_min: float = 120.0
     # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
-    reward_clip:       float = 5.0
+    reward_clip:       float = 10.0
     # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
     use_achievable_target: bool = True
     # --- Step D: same_oper 보너스를 조건부(과생산 시 억제)로 적용 ---
     same_oper_conditional: bool = True
+
+
+def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
+    """RewardConfig → API/UI 공유 dict."""
+    r = reward or CONFIG.reward
+    return {
+        "w_same_oper": r.w_same_oper,
+        "w_same_prod": r.w_same_prod,
+        "w_prod_switch": r.w_prod_switch,
+        "w_idle_per_min": r.w_idle_per_min,
+        "w_completion": r.w_completion,
+        "w_plan_hit": r.w_plan_hit,
+        "w_pacing": r.w_pacing,
+        "w_conversion": r.w_conversion,
+        "w_late_finish": r.w_late_finish,
+        "w_flow_balance": r.w_flow_balance,
+        "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
+        "reward_clip": r.reward_clip,
+        "use_achievable_target": r.use_achievable_target,
+        "same_oper_conditional": r.same_oper_conditional,
+    }
+
+
+def apply_reward_params(params: dict) -> None:
+    """학습 요청 파라미터 → CONFIG.reward 반영."""
+    r = CONFIG.reward
+    float_keys = (
+        "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
+        "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
+        "w_late_finish", "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
+    )
+    for key in float_keys:
+        if key in params and params[key] is not None:
+            setattr(r, key, float(params[key]))
+    if "use_achievable_target" in params and params["use_achievable_target"] is not None:
+        r.use_achievable_target = bool(params["use_achievable_target"])
+    if "same_oper_conditional" in params and params["same_oper_conditional"] is not None:
+        r.same_oper_conditional = bool(params["same_oper_conditional"])
 
 
 @dataclass

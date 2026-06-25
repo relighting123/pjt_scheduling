@@ -4,13 +4,13 @@
   --font: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --font-mono: 'JetBrains Mono', 'Pretendard', ui-monospace, 'Consolas', monospace;
 
-  /* Backgrounds — Cursor Usage 톤 */
-  --bg:        #f7f7f5;
+  /* Backgrounds */
+  --bg:        #f3f4f6;
   --bg-panel:  #ffffff;
   --bg-card:   #ffffff;
-  --bg-raised: #f3f3f1;
+  --bg-raised: #f8f9fb;
   --bg-input:  #ffffff;
-  --bg-hover:  #ebebea;
+  --bg-hover:  #eef0f4;
 
   /* Borders */
   --border:        rgba(0, 0, 0, 0.08);
@@ -45,8 +45,8 @@
   --r-lg: 16px;
 
   /* Shadows */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md:   0 8px 24px rgba(15, 23, 42, 0.08);
 
   /* Motion */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);

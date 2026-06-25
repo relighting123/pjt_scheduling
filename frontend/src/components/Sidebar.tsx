@@ -19,8 +19,8 @@ export default function Sidebar({
     <aside className={`sidebar${open ? "" : " is-collapsed"}`}>
       <div className="sidebar-header">
         <div>
-          <h1 className="sidebar-title">Scheduling RL</h1>
-          <p className="sidebar-subtitle">반도체 설비 스케줄링 최적화</p>
+          <h1 className="sidebar-title">AI Scheduling Dashboard</h1>
+          <p className="sidebar-subtitle">반도체 설비 AI 스케줄링</p>
         </div>
         <button
           type="button"

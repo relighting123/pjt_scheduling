@@ -25,13 +25,14 @@ from data.db_registry import DbRegistry, parse_sql_db_alias
 from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
 from utils.helpers import (
     validate_records,
+    validate_tool_capacity_records,
+    normalize_tool_capacity_rows,
     REQUIRED_DISCRETE_ARRANGE_FIELDS,
     REQUIRED_ABSTRACT_ARRANGE_FIELDS,
     REQUIRED_PLAN_FIELDS,
     REQUIRED_FLOW_FIELDS,
     REQUIRED_SPLIT_FIELDS,
     REQUIRED_LOT_MASTER_FIELDS,
-    REQUIRED_TOOL_CAPACITY_FIELDS,
     REQUIRED_BATCH_INFO_FIELDS,
 )
 from data.generator import build_abstract_arrange
@@ -78,6 +79,10 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
     ):
         abstract_arrange = build_abstract_arrange(discrete_arrange, flow)
 
+    tool_capacity = _read_optional(CONFIG.path.tool_capacity_file)
+    if tool_capacity:
+        tool_capacity = normalize_tool_capacity_rows(tool_capacity)
+
     return {
         "discrete_arrange":  discrete_arrange,
         "abstract_arrange":  abstract_arrange,
@@ -85,7 +90,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "flow":              flow,
         "split":             _read_optional(CONFIG.path.split_file),
         "lot_master":        _read_optional(CONFIG.path.lot_master_file),
-        "tool_capacity":     _read_optional(CONFIG.path.tool_capacity_file),
+        "tool_capacity":     tool_capacity,
         "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
         "batch_info":        _read_optional(CONFIG.path.batch_info_file),
     }
@@ -106,7 +111,7 @@ def validate_data(raw: Dict[str, List[dict]]) -> List[str]:
     if raw.get("lot_master"):
         errors += validate_records(raw["lot_master"], REQUIRED_LOT_MASTER_FIELDS, "lot_master")
     if raw.get("tool_capacity"):
-        errors += validate_records(raw["tool_capacity"], REQUIRED_TOOL_CAPACITY_FIELDS, "tool_capacity")
+        errors += validate_tool_capacity_records(raw["tool_capacity"])
     if raw.get("batch_info"):
         errors += validate_records(raw["batch_info"], REQUIRED_BATCH_INFO_FIELDS, "batch_info")
     return errors

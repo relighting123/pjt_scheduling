@@ -57,7 +57,7 @@ export default function App() {
     }
   }, [refreshData]);
 
-  const hasData = summary !== null;
+  const hasData = (summary?.eqp_count ?? 0) > 0;
 
   return (
     <div className="app-shell">

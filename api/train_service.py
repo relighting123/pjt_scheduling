@@ -4,9 +4,9 @@ from __future__ import annotations
 import threading
 from typing import Optional, Union
 
-from config import CONFIG
+from config import CONFIG, apply_reward_params
 from agent.rl_agent import SchedulingAgent
-from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES
+from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES, TRAIN_BUDGET_TIMESTEPS
 
 train_progress = TrainProgressState()
 _train_lock = threading.Lock()
@@ -28,8 +28,7 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
 
         CONFIG.rl.total_timesteps = params["total_timesteps"]
         CONFIG.rl.learning_rate = params["learning_rate"]
-        CONFIG.reward.w_same_oper = params["w_same_oper"]
-        CONFIG.reward.w_idle_per_min = params["w_idle_per_min"]
+        apply_reward_params(params)
 
         agent = SchedulingAgent()
         payload = env_list if len(env_list) > 1 else env_list[0]
@@ -37,6 +36,12 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
         if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
             train_kwargs["n_episodes"] = int(n_episodes)
         agent.train(payload, **train_kwargs)
+        if train_progress.is_stop_requested():
+            train_progress.add_log("학습 중지됨 – 부분 모델 저장 중…")
+            agent.save()
+            train_progress.set_stopped()
+            train_progress.add_log("학습 중지 완료 (부분 모델 저장됨)")
+            return
         train_progress.add_log("모델 저장 중…")
         agent.save()
         eval_eps = int(n_episodes) if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes else 1
@@ -57,12 +62,34 @@ def is_training() -> bool:
         return _train_thread is not None and _train_thread.is_alive()
 
 
+def stop_training() -> bool:
+    """진행 중인 학습에 중지 요청."""
+    if not is_training():
+        return False
+    train_progress.request_stop()
+    train_progress.add_log("학습 중지 요청됨…")
+    return True
+
+
 def start_training(env_data: Union[dict, list], params: dict) -> bool:
     global _train_thread
     with _train_lock:
         if _train_thread is not None and _train_thread.is_alive():
             return False
         train_progress.reset()
+        budget_mode = params.get("train_budget_mode", "timesteps")
+        n_episodes = params.get("n_episodes")
+        if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
+            train_progress.set_running(
+                total_episodes=int(n_episodes),
+                budget_mode=TRAIN_BUDGET_EPISODES,
+            )
+        else:
+            train_progress.set_running(
+                total_timesteps=int(params["total_timesteps"]),
+                budget_mode=TRAIN_BUDGET_TIMESTEPS,
+            )
+        train_progress.add_log("학습 스레드 시작…")
         _train_thread = threading.Thread(
             target=_run_train,
             args=(env_data, params),

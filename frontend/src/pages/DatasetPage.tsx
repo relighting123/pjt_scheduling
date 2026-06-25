@@ -23,8 +23,7 @@ export default function DatasetPage({
   onInputFolderChange,
 }: DatasetPageProps) {
   const datasetFolders = useMemo(
-    () =>
-      (config?.input_folders?.length ? config.input_folders : config ? [config.input_folder] : []),
+    () => (config?.input_folders?.length ? config.input_folders : []),
     [config],
   );
 
@@ -34,7 +33,7 @@ export default function DatasetPage({
     if (!config || datasetFolders.length === 0) return;
     setSelectedFolder((prev) => {
       if (prev && datasetFolders.includes(prev)) return prev;
-      return config.input_folder;
+      return datasetFolders[0] ?? "";
     });
   }, [config, datasetFolders]);
 

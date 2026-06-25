@@ -35,7 +35,7 @@ class SimEvent:
 
 
 class ToolTracker:
-    """LOT_CD × EQP_MODEL 동시 가공 상한 추적."""
+    """LOT_CD × EQP_MODEL_CD 동시 가공 상한 추적."""
 
     def __init__(self, capacity: dict, eqp_model_map: dict):
         self._capacity = dict(capacity)
@@ -229,6 +229,7 @@ class SchedulingSimulator:
         self._last_assigned: Optional[dict] = None
         self._last_decision_assignment: Optional[dict] = None
         self._current_eqp: Optional[str] = None
+        self._earliest_st_pick: Optional[Tuple[str, str]] = None
         self._initial_wip_total: int = sum(
             pool.get("wip_qty_init", pool.get("wip_qty", 0))
             for pool in self._wip_pool.values()
@@ -418,11 +419,61 @@ class SchedulingSimulator:
         return not self._tool_tracker.can_assign(lot_cd, eqp_id)
 
     def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
-        """EQP에서 투입 가능한 LOT 중 최소 소요시간(ST)."""
+        """EQP에서 투입 가능한 LOT 중 최소 소요시간(장수×ST)."""
         lots = self.available_lots(eqp_id)
         if not lots:
             return None
         return min(int(lot.get("processing_time", 10**9)) for lot in lots)
+
+    def estimate_lot_end_time(self, eqp_id: str, lot: dict) -> int:
+        """예상 종료 시각 = 현재 시각 + conversion(필요 시) + 장수×ST."""
+        t = self.current_time
+        lot_cd = lot.get("lot_cd", "")
+        temp = lot.get("temp", "")
+        if self._would_need_conversion(eqp_id, lot_cd, temp):
+            t += self._conversion_minutes
+        return t + int(lot.get("processing_time", 0))
+
+    def earliest_st_combo_score(self, eqp_id: str, lot: dict) -> Tuple[int, str, str]:
+        """
+        EQP×carrier(LOT) 조합 점수: 예상 종료 시각(현재+conversion+장수×ST).
+        lot['processing_time']은 split 이후 wf_qty×ST.
+        """
+        proc = int(lot.get("processing_time", 0))
+        end = self.estimate_lot_end_time(eqp_id, lot)
+        carrier = str(lot.get("carrier_id") or lot.get("lot_id", ""))
+        return (end, carrier, str(lot.get("lot_id", "")))
+
+    def pick_earliest_st_assignment(self) -> Optional[Tuple[str, str, dict]]:
+        """
+        idle EQP × feasible carrier(LOT) 중 예상 종료 시각 최소 조합 1건.
+        PPK/OPER 버킷 없이 실제 재공 단위로 선택.
+        """
+        best: Optional[Tuple[str, str, dict]] = None
+        best_score = (10**9, "", "")
+
+        for eqp_id in self.get_idle_eqps():
+            for lot in self.available_lots(eqp_id):
+                lot_cd = lot.get("lot_cd", "")
+                temp = lot.get("temp", "")
+                if self._tool_cap_blocks(eqp_id, lot_cd, temp):
+                    continue
+                score = self.earliest_st_combo_score(eqp_id, lot)
+                if score < best_score:
+                    best_score = score
+                    best = (eqp_id, str(lot["lot_id"]), lot)
+
+        return best
+
+    def assign_earliest_st_pending(self, eqp_id: str) -> float:
+        """pick_earliest_st_assignment으로 정한 EQP×LOT을 배정."""
+        if not self._earliest_st_pick:
+            return -1.0
+        pick_eqp, lot_id = self._earliest_st_pick
+        self._earliest_st_pick = None
+        if pick_eqp != eqp_id:
+            return -1.0
+        return self.assign_lot(eqp_id, lot_id)
 
     def _idle_eqps_with_work(self) -> List[str]:
         return [
@@ -432,15 +483,17 @@ class SchedulingSimulator:
         ]
 
     def _pick_next_idle_eqp(self) -> Optional[str]:
-        """다음 결정 EQP. order: 목록 순서, min_st: idle EQP 중 최소 ST 우선."""
+        """다음 결정 EQP. min_st: EQP×carrier 조합 점수 최소 설비."""
         candidates = self._idle_eqps_with_work()
         if not candidates:
             return None
         if self._eqp_selection == "min_st":
-            return min(
-                candidates,
-                key=lambda e: (self._eqp_min_proc_time(e) or 10**9, e),
-            )
+            pick = self.pick_earliest_st_assignment()
+            if pick:
+                eqp_id, lot_id, _ = pick
+                self._earliest_st_pick = (eqp_id, lot_id)
+                return eqp_id
+            return candidates[0]
         return candidates[0]
 
     def _next_wip_ready_time(self, after: int) -> Optional[int]:
@@ -482,10 +535,10 @@ class SchedulingSimulator:
         return self._wip_pool.get(self._wip_key(ppk, oper_id))
 
     def _eqp_can_process(self, eqp_id: str, ppk: str, oper_id: str) -> bool:
-        """abstract route(MODEL) 또는 discrete eqp_oper_cap 기준 처리 가능."""
+        """abstract arrange(MODEL) 또는 discrete eqp_oper_cap 기준 처리 가능."""
         model = self._eqp_model_map[eqp_id]
-        route_map = self._env_data.get("abstract_route_map", {})
-        if (ppk, oper_id, model) in route_map:
+        arrange_map = self._env_data.get("abstract_arrange_map", {})
+        if (ppk, oper_id, model) in arrange_map:
             return True
         return oper_id in self._env_data.get("eqp_oper_cap", {}).get(eqp_id, [])
 
@@ -804,6 +857,71 @@ class SchedulingSimulator:
         """같은 PPK의 다음(후속) 공정 OPER (없으면 None)."""
         return self._env_data.get("flow_post", {}).get(ppk, {}).get(oper_id)
 
+    def _ready_wip_qty(self, ppk: str, oper_id: str) -> int:
+        """(PPK, OPER)에서 oper_in_time 도래한 ready 재공 웨이퍼 수."""
+        wip = self._wip_for(ppk, oper_id)
+        if not wip or wip.get("wip_qty", 0) <= 0:
+            return 0
+        total = 0
+        for lid in wip.get("lot_ids", []):
+            meta = self._wip_lot_meta.get(lid, {})
+            lot = self.lot_pool.get(lid)
+            oper_in_time = meta.get("oper_in_time", wip.get("oper_in_time", 0))
+            if not self._lot_ready(lid, oper_in_time):
+                continue
+            wf = int(meta.get("wf_qty", lot.wf_qty if lot else 25))
+            total += wf
+        return total
+
+    def _st_per_wafer_for_eqp(self, eqp_id: str, ppk: str, oper_id: str) -> Optional[float]:
+        """EQP×(PPK, OPER) 장당 ST(분/매)."""
+        model = self._eqp_model_map.get(eqp_id)
+        if not model:
+            return None
+        arrange_map = self._env_data.get("abstract_arrange_map", {})
+        st = arrange_map.get((ppk, oper_id, model))
+        if st is not None:
+            return float(st)
+        row = self._abstract_row_for(eqp_id, ppk, oper_id)
+        if row is not None:
+            return float(row.get("proc_time", row.get("ST", 0)))
+        lst = self._env_data.get("abstract_arranges_by_ppk_oper", {}).get((ppk, oper_id))
+        if lst:
+            return sum(s for _, s in lst) / len(lst)
+        return None
+
+    def _oper_capacity_per_min(self, ppk: str, oper_id: str) -> float:
+        """(PPK, OPER)을 처리 가능한 장비 합산 분당 처리량(매/분)."""
+        total = 0.0
+        for eqp_id in self._env_data.get("eqp_ids", []):
+            if not self._eqp_can_process(eqp_id, ppk, oper_id):
+                continue
+            st = self._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
+            if st is not None and st > 0:
+                total += 1.0 / st
+        return total
+
+    def _downstream_wip_cover_minutes(self, ppk: str, oper_id: str) -> Optional[float]:
+        """
+        후속 공정 ready WIP ÷ 후속 장비 합산 분당 처리량 = 커버 시간(분).
+        후속 공정·계획 없거나 처리 capa 없으면 None.
+        """
+        nxt = self._flow_post(ppk, oper_id)
+        if nxt is None or not self._has_plan(ppk, nxt):
+            return None
+        capa = self._oper_capacity_per_min(ppk, nxt)
+        if capa <= 0:
+            return None
+        return self._ready_wip_qty(ppk, nxt) / capa
+
+    def _downstream_is_starving(self, ppk: str, oper_id: str) -> bool:
+        """후속 ready WIP 커버가 flow_balance_starving_cover_min 이하일 때만 starving."""
+        cover = self._downstream_wip_cover_minutes(ppk, oper_id)
+        if cover is None:
+            return False
+        threshold = self._reward_cfg.flow_balance_starving_cover_min
+        return cover <= threshold
+
     def _flow_prev(self, ppk: str, oper_id: str) -> Optional[str]:
         """같은 PPK의 이전(선행) 공정 OPER (없으면 None)."""
         return self._env_data.get("flow_prev", {}).get(ppk, {}).get(oper_id)
@@ -921,11 +1039,8 @@ class SchedulingSimulator:
         share = here / total
         avg = 1.0 / n
         score = share - avg  # 편중(>avg) → +, 과소 → -
-        nxt = self._flow_post(ppk, oper_id)
-        if nxt is not None and self._has_plan(ppk, nxt):
-            nxt_wip = wips.get(f"{ppk}|{nxt}", 0)
-            if nxt_wip <= here:  # 후속이 굶주림 → 이 공정 가동이 feeding
-                score += 0.5
+        if self._downstream_is_starving(ppk, oper_id):
+            score += 0.5
         return cfg.w_flow_balance * score
 
     def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
@@ -1047,7 +1162,7 @@ class SchedulingSimulator:
         return self._current_eqp
 
     def _lot_candidates_for_eqp(self, eqp_id: str) -> List[dict]:
-        """EQP에 배정 가능한 WIP LOT 후보 (abstract route + WIP 풀)."""
+        """EQP에 배정 가능한 WIP LOT 후보 (abstract arrange + WIP 풀)."""
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
         busy_carriers = {
             v["carrier_id"]
@@ -1084,6 +1199,7 @@ class SchedulingSimulator:
                 )
                 lots.append({
                     "lot_id":          lid,
+                    "carrier_id":      carrier,
                     "plan_prod_key":   meta.get("plan_prod_key", lot.plan_prod_key if lot else ppk),
                     "oper_id":         meta.get("oper_id", lot.oper_id if lot else oper_id),
                     "wf_qty":          wf_qty,
@@ -1106,7 +1222,7 @@ class SchedulingSimulator:
     def available_lots(self, eqp_id: str) -> List[dict]:
         """
         목적: 에이전트 선택을 위한 LOT 상세 정보 리스트 반환.
-        abstract WIP 풀 + MODEL route 기준 (discrete eqp 없어도 가능).
+        abstract WIP 풀 + MODEL arrange 기준 (discrete eqp 없어도 가능).
         """
         lots = self._lot_candidates_for_eqp(eqp_id)
         for item in lots:
@@ -1495,13 +1611,13 @@ class SchedulingSimulator:
         eqp_models = data.get("eqp_models", [])
         eqp_model_map = data.get("eqp_model_map", {})
         eqp_oper_cap = data.get("eqp_oper_cap", {})
-        route_map = data.get("abstract_route_map", {})
-        routes_by = data.get("abstract_routes_by_ppk_oper", {})
+        arrange_map = data.get("abstract_arrange_map", {})
+        arranges_by = data.get("abstract_arranges_by_ppk_oper", {})
         plan_meta = data.get("plan_meta", {})
         n_eqp_per_oper = data.get("n_eqp_per_oper", {})
         flow_prev = data.get("flow_prev", {})
         flow_post = data.get("flow_post", {})
-        max_route_st = max(data.get("max_route_st", 1), 1)
+        max_arrange_st = max(data.get("max_arrange_st", 1), 1)
         wf_unit = max(data.get("max_wf_qty", 1), 1)
         completed = self.stats["completed_qty"]
         lot_cd_idx = data.get("lot_cd_idx", {})
@@ -1539,10 +1655,10 @@ class SchedulingSimulator:
         def st_per_wafer(ppk: str, op: Optional[str], model: str) -> Optional[float]:
             if op is None:
                 return None
-            st = route_map.get((ppk, op, model))
+            st = arrange_map.get((ppk, op, model))
             if st is not None:
                 return float(st)
-            lst = routes_by.get((ppk, op))
+            lst = arranges_by.get((ppk, op))
             if lst:
                 return sum(s for _, s in lst) / len(lst)
             return None
@@ -1551,7 +1667,7 @@ class SchedulingSimulator:
             """수요 페이싱 계획 있을 때 + capacity. per-lot 간격(분)."""
             if op is None:
                 return 0.0
-            lst = routes_by.get((ppk, op))
+            lst = arranges_by.get((ppk, op))
             spw = (sum(s for _, s in lst) / len(lst)) if lst else None
             n = max(n_eqp_per_oper.get(op, 0), 1)
             cap_takt = (spw / n) if spw is not None else 0.0
@@ -1569,7 +1685,7 @@ class SchedulingSimulator:
             for pi in range(min(P, len(prod_keys))):
                 ppk = prod_keys[pi]
                 is_step = (
-                    (ppk, op) in routes_by
+                    (ppk, op) in arranges_by
                     or (ppk, op) in plan_meta
                     or (ppk, op) in wip_po
                 )
@@ -1619,7 +1735,7 @@ class SchedulingSimulator:
                     feats[oi, pi, mi, 5] = same
                     feats[oi, pi, mi, 6] = min(prev_takt, 1.0)
                     feats[oi, pi, mi, 7] = min(post_takt, 1.0)
-                    feats[oi, pi, mi, 8] = (st / max_route_st) if st is not None else 0.0
+                    feats[oi, pi, mi, 8] = (st / max_arrange_st) if st is not None else 0.0
                     feats[oi, pi, mi, 9] = urgency
                     feats[oi, pi, mi, 14] = achievable_ratio
                     lc, tp = self._bucket_lot_cd_temp(ppk, op)

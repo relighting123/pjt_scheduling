@@ -1,6 +1,16 @@
 import type { Data, Layout } from "plotly.js";
 import type { ConversionPlan, HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
-import { buildColorMap, OPER_BORDER_COLORS, PROD_COLORS } from "./colors";
+import { buildColorMap } from "./colors";
+import { buildShortCodeMap } from "./ganttLabels";
+import {
+  formatGanttMinuteLabel,
+  ganttAxisValue,
+  ganttBarAxisCoords,
+  ganttTickFormat,
+  ganttXMinClamp,
+  minutesToTimestamp,
+  parseSimBaseMs,
+} from "./ganttTime";
 import type { EqpUtil, ModelUtil, TatRow, AchievementRow } from "./metrics";
 
 export type GanttBarLabel = "lot" | "car" | "prod";
@@ -11,25 +21,238 @@ export interface GanttAxisOptions {
   timeEndMinutes: number;
   /** true면 timeStartMinutes~timeEndMinutes 구간으로 X축 고정 */
   fixedRange?: boolean;
+  /** 시뮬 기준 시각 (RULE_TIMEKEY, API summary.sim_base_time) */
+  simBaseTime?: string;
+}
+
+export interface PlotChartSpec {
+  data: Data[];
+  layout: Partial<Layout>;
+  clampXMin?: number;
+}
+
+function resolveGanttBaseMs(axis: GanttAxisOptions): number | null {
+  return parseSimBaseMs(axis.simBaseTime);
 }
 
 export function resolveGanttTimeRange(axis: GanttAxisOptions): [number, number] {
+  const start = Math.max(0, axis.timeStartMinutes ?? 0);
   if (axis.fixedRange) {
-    const start = Math.max(0, axis.timeStartMinutes ?? 0);
     const end = Math.max(start + 1, axis.timeEndMinutes ?? 1);
     return [start, end];
   }
-  const end = Math.max(axis.timeEndMinutes ?? 0, 1);
+  const end = Math.max(axis.timeEndMinutes ?? 0, start + 1, 1);
   return [0, end];
+}
+
+/** 간트 전용 팔레트 — 앱 UI accent 톤 */
+const GANTT_PROD_COLORS = [
+  "#3b6ef0", "#6366f1", "#0ea5e9", "#14b8a6", "#22c55e",
+  "#84cc16", "#d97706", "#f97316", "#ef4444", "#ec4899",
+];
+
+const GANTT_OPER_BORDERS = [
+  "#1d4ed8", "#4338ca", "#0369a1", "#0f766e", "#15803d",
+  "#4d7c0f", "#b45309", "#c2410c", "#b91c1c", "#be185d",
+];
+
+/** 간트·차트 공통 폰트 (한글 지원) */
+export const CHART_FONT = "'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif";
+
+/** 간트 공통 스타일 — 앱 UI 톤 */
+const GANTT_THEME = {
+  plotBg: "#f8f9fb",
+  paperBg: "#ffffff",
+  gridColor: "rgba(15, 23, 42, 0.06)",
+  gridWidth: 1,
+  fontFamily: CHART_FONT,
+  titleColor: "#1b1b18",
+  axisColor: "#5c5c58",
+  barRadius: 0,
+  barOpacity: 0.94,
+  convFill: "#fbbf24",
+  convBorder: "#d97706",
+  rowBorderColor: "rgba(15, 23, 42, 0.12)",
+  rowGridColor: "rgba(15, 23, 42, 0.07)",
+} as const;
+
+/** Plotly hover 툴팁 공통 스타일 */
+export const CHART_HOVERLABEL: NonNullable<Layout["hoverlabel"]> = {
+  bgcolor: "#ffffff",
+  bordercolor: "rgba(15, 23, 42, 0.14)",
+  font: {
+    family: CHART_FONT,
+    size: 12,
+    color: "#1b1b18",
+  },
+  align: "left",
+};
+
+const GANTT_HOVERLABEL = CHART_HOVERLABEL;
+
+const GANTT_LAYOUT_FONT: NonNullable<Layout["font"]> = {
+  family: GANTT_THEME.fontFamily,
+  color: GANTT_THEME.titleColor,
+  size: 12,
+};
+
+function ganttProdColorMap(prodKeys: string[]): Record<string, string> {
+  return buildColorMap(prodKeys, GANTT_PROD_COLORS);
+}
+
+function ganttOperColorMap(operIds: string[]): Record<string, string> {
+  return buildColorMap(operIds, GANTT_OPER_BORDERS);
+}
+
+function ganttBarMarker(
+  fillColor: string,
+  operColor: string,
+  visible: boolean,
+) {
+  return {
+    color: fillColor,
+    opacity: visible ? GANTT_THEME.barOpacity : 0.14,
+    line: {
+      color: visible ? operColor : "rgba(148, 163, 184, 0.2)",
+      width: visible ? 1.25 : 0,
+    },
+    cornerradius: GANTT_THEME.barRadius,
+  };
+}
+
+function conversionBarMarker() {
+  return {
+    color: GANTT_THEME.convFill,
+    opacity: 0.9,
+    line: { color: GANTT_THEME.convBorder, width: 1.25 },
+    cornerradius: GANTT_THEME.barRadius,
+  } as Record<string, unknown>;
+}
+
+/** 간트 X축: 0 미만 pan 방지, 상단 눈금, sim base 있으면 시각(HH:mm) */
+function ganttXAxisLayout(
+  timeStart: number,
+  timeEnd: number,
+  extra: Record<string, unknown> = {},
+  fixedRange?: boolean,
+  baseMs: number | null = null,
+): Record<string, unknown> {
+  const start = Math.max(0, timeStart);
+  const end = Math.max(start + 1, timeEnd);
+
+  if (baseMs != null) {
+    return {
+      side: "top",
+      type: "date",
+      showgrid: true,
+      gridcolor: GANTT_THEME.gridColor,
+      gridwidth: GANTT_THEME.gridWidth,
+      zeroline: false,
+      range: [minutesToTimestamp(start, baseMs), minutesToTimestamp(end, baseMs)],
+      tickformat: ganttTickFormat(end - start),
+      hoverformat: "%H:%M",
+      tickfont: { size: 11, color: GANTT_THEME.axisColor },
+      ...(fixedRange ? { fixedrange: true } : {}),
+      ...extra,
+    };
+  }
+
+  return {
+    side: "top",
+    showgrid: true,
+    gridcolor: GANTT_THEME.gridColor,
+    gridwidth: GANTT_THEME.gridWidth,
+    zeroline: false,
+    range: [start, end],
+    rangemode: "nonnegative",
+    minallowed: 0,
+    tickfont: { size: 11, color: GANTT_THEME.axisColor },
+    ...(fixedRange ? { fixedrange: true } : {}),
+    ...extra,
+  };
+}
+
+function ganttXAxisTitle(baseMs: number | null) {
+  return {
+    text: baseMs != null ? "시각" : "시뮬레이션 시간 (분)",
+    font: { size: 12, color: GANTT_THEME.axisColor },
+    standoff: 8,
+  };
+}
+
+/** 간트 Y축 + 장비|바 구분선·행 구분선(표 느낌) */
+function ganttYAxisLayout(
+  categoryarray: string[],
+  title?: { text: string; font?: { size: number; color: string } },
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    categoryorder: "array",
+    categoryarray,
+    title,
+    tickfont: { size: 11, color: GANTT_THEME.axisColor },
+    showgrid: false,
+    showline: true,
+    linecolor: GANTT_THEME.rowBorderColor,
+    linewidth: 1,
+    zeroline: false,
+    fixedrange: true,
+    ...extra,
+  };
+}
+
+function ganttEqpBarDividerShape(): NonNullable<Layout["shapes"]>[number] {
+  return {
+    type: "line",
+    xref: "paper",
+    yref: "paper",
+    x0: 0,
+    x1: 0,
+    y0: 0,
+    y1: 1,
+    line: { color: GANTT_THEME.rowBorderColor, width: 1.25 },
+    layer: "below",
+  };
+}
+
+function ganttRowDividerShapes(rowCount: number, yAxis = "y"): NonNullable<Layout["shapes"]> {
+  if (rowCount <= 0) return [];
+  const line = { color: GANTT_THEME.rowGridColor, width: 1 };
+  const yref = yAxis as NonNullable<NonNullable<Layout["shapes"]>[number]["yref"]>;
+  const shapes: NonNullable<Layout["shapes"]> = [];
+  for (let i = 0; i <= rowCount; i++) {
+    shapes.push({
+      type: "line",
+      xref: "paper",
+      yref,
+      x0: 0,
+      x1: 1,
+      y0: i - 0.5,
+      y1: i - 0.5,
+      line,
+      layer: "below",
+    });
+  }
+  return shapes;
+}
+
+function ganttTableGridShapes(rowCount: number, yAxis = "y"): NonNullable<Layout["shapes"]> {
+  return [ganttEqpBarDividerShape(), ...ganttRowDividerShapes(rowCount, yAxis)];
 }
 
 function sortedEqpIds(eqpIds: string[]): string[] {
   return [...eqpIds].sort();
 }
 
-function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleRecord[]): Data[] {
-  const prodColorMap = buildColorMap(prodKeys, PROD_COLORS);
-  const operColorMap = buildColorMap(operIds, OPER_BORDER_COLORS);
+function legendTraces(
+  prodKeys: string[],
+  operIds: string[],
+  schedule: ScheduleRecord[],
+  prodCodes?: Record<string, string>,
+  operCodes?: Record<string, string>,
+): Data[] {
+  const prodColorMap = ganttProdColorMap(prodKeys);
+  const operColorMap = ganttOperColorMap(operIds);
   const traces: Data[] = [];
 
   prodKeys.forEach((pk) => {
@@ -38,8 +261,8 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
       orientation: "h",
       x: [0],
       y: [""],
-      name: pk,
-      marker: { color: prodColorMap[pk] ?? "#888888" },
+      name: prodCodes?.[pk] ?? pk,
+      marker: { color: prodColorMap[pk] ?? "#94a3b8", cornerradius: GANTT_THEME.barRadius } as Record<string, unknown>,
       showlegend: true,
       visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
     });
@@ -51,12 +274,12 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
       mode: "markers",
       x: [null],
       y: [null],
-      name: `[OPER] ${op}`,
+      name: operCodes?.[op] ? `${operCodes[op]}` : `[OPER] ${op}`,
       marker: {
-        size: 12,
-        color: operColorMap[op] ?? "#222222",
+        size: 10,
+        color: operColorMap[op] ?? "#475569",
         symbol: "square",
-        line: { width: 2, color: "white" },
+        line: { width: 1.5, color: "#ffffff" },
       },
       showlegend: true,
     });
@@ -65,73 +288,43 @@ function legendTraces(prodKeys: string[], operIds: string[], schedule: ScheduleR
   return traces;
 }
 
-/** 간트·차트 공통 폰트 (한글 지원) */
-export const CHART_FONT = "'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif";
-
-/** 간트 공통 스타일 — Cursor Usage 톤 */
-const GANTT_THEME = {
-  plotBg: "#f7f7f5",
-  paperBg: "#ffffff",
-  gridColor: "rgba(0, 0, 0, 0.06)",
-  gridWidth: 1,
-  fontFamily: CHART_FONT,
-  titleColor: "#1b1b18",
-  axisColor: "#5c5c58",
-  barRadius: 6,
-  barOpacity: 0.88,
-} as const;
-
-function ganttBarMarker(
-  fillColor: string,
-  operColor: string,
-  visible: boolean,
-) {
-  return {
-    color: fillColor,
-    opacity: visible ? GANTT_THEME.barOpacity : 0.12,
-    line: {
-      color: operColor,
-      width: visible ? 2 : 0,
-    },
-    cornerradius: GANTT_THEME.barRadius,
-  };
-}
-
 function ganttTraces(
   schedule: ScheduleRecord[],
   prodKeys: string[],
   operIds: string[],
   highlightMax?: number,
+  baseMs: number | null = null,
 ): Data[] {
-  const prodColorMap = buildColorMap(prodKeys, PROD_COLORS);
-  const operColorMap = buildColorMap(operIds, OPER_BORDER_COLORS);
+  const prodColorMap = ganttProdColorMap(prodKeys);
+  const operColorMap = ganttOperColorMap(operIds);
   const traces: Data[] = [];
 
   schedule.forEach((rec, idx) => {
     const visible = highlightMax === undefined || idx <= highlightMax;
     const width = rec.END_TM - rec.START_TM;
+    const { base, x } = ganttBarAxisCoords(rec.START_TM, width, baseMs);
     traces.push({
       type: "bar",
       orientation: "h",
-      x: [width],
+      x: [x],
       y: [rec.EQP_ID],
-      base: [rec.START_TM],
+      base: [base],
       marker: ganttBarMarker(
         prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
         operColorMap[rec.OPER_ID ?? ""] ?? "#475569",
         visible,
       ),
-      text: visible ? rec.LOT_ID : "",
+      text: visible && width >= 20 ? rec.LOT_ID : "",
       textposition: "inside",
       insidetextanchor: "middle",
-      textfont: { size: 11, color: "#ffffff", family: GANTT_THEME.fontFamily },
+      textfont: { size: 10, color: "#ffffff", family: GANTT_THEME.fontFamily },
       hovertemplate:
         `<b>LOT: ${rec.LOT_ID}</b><br>` +
         `EQP: ${rec.EQP_ID}<br>` +
         `제품: ${rec.PLAN_PROD_KEY}<br>` +
         `공정: ${rec.OPER_ID ?? "N/A"}<br>` +
-        `시작: ${rec.START_TM}분<br>` +
-        `종료: ${rec.END_TM}분<br>` +
+        `시작: ${formatGanttMinuteLabel(rec.START_TM, baseMs)}<br>` +
+        `종료: ${formatGanttMinuteLabel(rec.END_TM, baseMs)}<br>` +
         `소요: ${width}분<extra></extra>`,
       showlegend: false,
     } as Data);
@@ -147,12 +340,7 @@ function conversionLegendTrace(hasConversion: boolean): Data {
     x: [0],
     y: [""],
     name: "Conversion",
-    marker: {
-      color: "#f59e0b",
-      opacity: 0.88,
-      line: { color: "#b45309", width: 2 },
-      cornerradius: 6,
-    } as Record<string, unknown>,
+    marker: conversionBarMarker(),
     showlegend: true,
     visible: hasConversion ? true : "legendonly",
   };
@@ -161,6 +349,7 @@ function conversionLegendTrace(hasConversion: boolean): Data {
 function conversionTraces(
   plans: ConversionPlan[],
   visibleUntilTime: number,
+  baseMs: number | null = null,
 ): Data[] {
   return plans
     .filter((p) => p.conv_start_min < visibleUntilTime)
@@ -168,19 +357,15 @@ function conversionTraces(
       const end = Math.min(p.conv_end_min, visibleUntilTime);
       const width = Math.max(end - p.conv_start_min, 0);
       if (width <= 0) return null;
+      const { base, x } = ganttBarAxisCoords(p.conv_start_min, width, baseMs);
       return {
         type: "bar",
         orientation: "h",
-        x: [width],
+        x: [x],
         y: [p.eqp_id],
-        base: [p.conv_start_min],
-        marker: {
-          color: "#f59e0b",
-          opacity: 0.88,
-          line: { color: "#b45309", width: 2 },
-          cornerradius: 6,
-        } as Record<string, unknown>,
-        text: `CONV ${p.from_lot_cd}→${p.to_lot_cd}`,
+        base: [base],
+        marker: conversionBarMarker(),
+        text: `CONV`,
         textposition: "inside",
         insidetextanchor: "middle",
         textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
@@ -188,8 +373,8 @@ function conversionTraces(
           `<b>Conversion</b><br>` +
           `EQP: ${p.eqp_id}<br>` +
           `${p.from_lot_cd} → ${p.to_lot_cd}<br>` +
-          `시작: ${p.conv_start_min}분<br>` +
-          `종료: ${p.conv_end_min}분<br>` +
+          `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)}<br>` +
+          `종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<br>` +
           `소요: ${p.conv_end_min - p.conv_start_min}분<extra></extra>`,
         showlegend: false,
       } as Data;
@@ -197,54 +382,55 @@ function conversionTraces(
     .filter((t): t is Data => t !== null);
 }
 
+const GANTT_PAN_LAYOUT: Pick<Layout, "dragmode"> = { dragmode: "pan" };
+
+const GANTT_LEGEND: Partial<Layout>["legend"] = {
+  orientation: "h",
+  x: 0.5,
+  xanchor: "center",
+  y: -0.14,
+  yanchor: "top",
+  bgcolor: "rgba(255,255,255,0.96)",
+  bordercolor: "rgba(15, 23, 42, 0.08)",
+  borderwidth: 1,
+  font: { size: 11, color: "#5c5c58", family: CHART_FONT },
+};
+
 function buildGanttLayout(
   title: string,
   axis: GanttAxisOptions,
 ): Partial<Layout> {
   const eqps = sortedEqpIds(axis.eqpIds);
   const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
+  const baseMs = resolveGanttBaseMs(axis);
 
   return {
+    ...GANTT_PAN_LAYOUT,
     title: {
       text: title,
       font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
     },
     xaxis: {
-      title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
-      showgrid: true,
-      gridcolor: GANTT_THEME.gridColor,
-      gridwidth: GANTT_THEME.gridWidth,
-      zeroline: false,
-      range: [timeStart, timeEnd],
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      ...(axis.fixedRange ? { fixedrange: true } : {}),
+      title: ganttXAxisTitle(baseMs),
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     },
-    yaxis: {
-      categoryorder: "array",
-      categoryarray: eqps,
-      title: { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } },
+    yaxis: ganttYAxisLayout(eqps, { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } }, {
       tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      showgrid: false,
-    },
+    }),
+    shapes: ganttTableGridShapes(eqps.length),
     barmode: "overlay",
     bargap: 0.35,
     legend: {
       title: { text: "제품 / 공정", font: { size: 11 } },
-      orientation: "v",
-      x: 1.02,
-      bgcolor: "rgba(255,255,255,0.85)",
-      bordercolor: "rgba(148,163,184,0.25)",
-      borderwidth: 1,
+      ...GANTT_LEGEND,
     },
     height: Math.max(350, 72 * Math.max(eqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 88, r: 188, t: 56, b: 52 },
-    hoverlabel: {
-      bgcolor: "#ffffff",
-      bordercolor: "rgba(148,163,184,0.35)",
-      font: { family: GANTT_THEME.fontFamily, size: 12 },
-    },
+    margin: { l: 88, r: 20, t: 56, b: 72 },
+    font: GANTT_LAYOUT_FONT,
+    hovermode: "closest",
+    hoverlabel: GANTT_HOVERLABEL,
   };
 }
 
@@ -255,20 +441,22 @@ export function buildStepGantt(
   operIds: string[],
   axis: GanttAxisOptions,
   conversionPlans: ConversionPlan[] = [],
-): { data: Data[]; layout: Partial<Layout> } {
+): PlotChartSpec {
+  const baseMs = resolveGanttBaseMs(axis);
   if (!history.length) {
     return {
       data: legendTraces(prodKeys, operIds, []),
       layout: buildGanttLayout("스케줄 간트 차트", axis),
+      clampXMin: ganttXMinClamp(baseMs),
     };
   }
   const snap = history[Math.min(step, history.length - 1)];
   const schedule = snap.schedule;
-  const convBars = conversionTraces(conversionPlans, snap.time + 1);
+  const convBars = conversionTraces(conversionPlans, snap.time + 1, baseMs);
   const hasConv = convBars.length > 0;
   return {
     data: [
-      ...ganttTraces(schedule, prodKeys, operIds, schedule.length - 1),
+      ...ganttTraces(schedule, prodKeys, operIds, schedule.length - 1, baseMs),
       ...convBars,
       conversionLegendTrace(hasConv),
     ],
@@ -276,6 +464,7 @@ export function buildStepGantt(
       `Scheduling 간트 (스텝 ${snap.step} / 시각 ${snap.time}분)`,
       axis,
     ),
+    clampXMin: ganttXMinClamp(baseMs),
   };
 }
 
@@ -283,6 +472,8 @@ const SHARED_DARK: Partial<Layout> = {
   plot_bgcolor: "#f8fafc",
   paper_bgcolor: "#ffffff",
   font: { family: CHART_FONT, color: "#1b1b18" },
+  hoverlabel: CHART_HOVERLABEL,
+  dragmode: false,
   xaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
   yaxis: { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" },
 };
@@ -366,10 +557,27 @@ export function buildAchievementChart(snap: HistorySnap, plan: PlanRecord[]): { 
   };
 }
 
-function opersForProduct(plan: PlanRecord[], prod: string): string[] {
-  return [...new Set(
+function opersForProduct(
+  plan: PlanRecord[],
+  prod: string,
+  schedule: ScheduleRecord[],
+  operOrder: string[],
+): string[] {
+  const fromPlan = [...new Set(
     plan.filter((p) => p.plan_prod_key === prod).map((p) => p.oper_id),
-  )].sort();
+  )];
+  const fromSched = [...new Set(
+    schedule
+      .filter((r) => r.PLAN_PROD_KEY === prod)
+      .map((r) => r.OPER_ID ?? "")
+      .filter(Boolean),
+  )];
+  const merged = [...new Set([...fromPlan, ...fromSched])];
+  const operIdx = Object.fromEntries(operOrder.map((k, i) => [k, i]));
+  return merged.sort(
+    (a, b) => (operIdx[a] ?? operOrder.length) - (operIdx[b] ?? operOrder.length)
+      || a.localeCompare(b),
+  );
 }
 
 function operPlanQty(plan: PlanRecord[], prod: string, operId: string): number {
@@ -382,6 +590,7 @@ function cumulativeProductionSeries(
   prod: string,
   operId: string,
   timeEnd: number,
+  baseMs: number | null = null,
 ): { x: number[]; y: number[] } {
   const events = schedule
     .filter((r) => r.PLAN_PROD_KEY === prod && (r.OPER_ID ?? "") === operId)
@@ -389,21 +598,23 @@ function cumulativeProductionSeries(
     .sort((a, b) => a.t - b.t || a.q - b.q);
 
   let cum = 0;
-  const x: number[] = [0];
+  const x: number[] = [ganttAxisValue(0, baseMs)];
   const y: number[] = [0];
 
   for (const e of events) {
-    if (e.t > x[x.length - 1]) {
-      x.push(e.t);
+    const tx = ganttAxisValue(e.t, baseMs);
+    if (tx > x[x.length - 1]) {
+      x.push(tx);
       y.push(cum);
     }
     cum += e.q;
-    x.push(e.t);
+    x.push(tx);
     y.push(cum);
   }
 
-  if (x[x.length - 1] < timeEnd) {
-    x.push(timeEnd);
+  const endX = ganttAxisValue(timeEnd, baseMs);
+  if (x[x.length - 1] < endX) {
+    x.push(endX);
     y.push(cum);
   }
 
@@ -422,7 +633,7 @@ export interface ProductProductionChartOptions {
   overlayLabel?: string;
   operIds?: string[];
   /** 간트 X축과 동일한 시간 범위를 쓸 때 전달 */
-  timeAxis?: Pick<GanttAxisOptions, "timeStartMinutes" | "timeEndMinutes" | "fixedRange">;
+  timeAxis?: Pick<GanttAxisOptions, "timeStartMinutes" | "timeEndMinutes" | "fixedRange" | "simBaseTime">;
 }
 
 export function buildProductProductionCharts(
@@ -431,59 +642,77 @@ export function buildProductProductionCharts(
   prodKeys: string[],
   timeEndMinutes: number,
   options: ProductProductionChartOptions = {},
-): { data: Data[]; layout: Partial<Layout> } {
-  const prods = [...prodKeys].sort();
-  const n = Math.max(prods.length, 1);
-  const [timeStart, timeEnd] = resolveGanttTimeRange({
+): PlotChartSpec | null {
+  const prods = prodKeys.length
+    ? [...prodKeys]
+    : [...new Set(schedule.map((r) => r.PLAN_PROD_KEY))].sort();
+  if (!prods.length || !schedule.length) return null;
+
+  const operOrder = options.operIds?.length
+    ? options.operIds
+    : [...new Set([...plan.map((p) => p.oper_id), ...schedule.map((r) => r.OPER_ID ?? "").filter(Boolean)])].sort();
+  const prodCodeMap = buildShortCodeMap(prods, "P").codeByKey;
+  const operCodeMap = buildShortCodeMap(operOrder, "O").codeByKey;
+
+  const n = prods.length;
+  const axisOpts: GanttAxisOptions = {
     eqpIds: [],
     timeStartMinutes: options.timeAxis?.timeStartMinutes,
     timeEndMinutes: options.timeAxis?.timeEndMinutes ?? timeEndMinutes,
     fixedRange: options.timeAxis?.fixedRange,
-  });
-  const allOpers = options.operIds ?? [...new Set(plan.map((p) => p.oper_id))].sort();
-  const operColorMap = buildColorMap(allOpers, OPER_BORDER_COLORS);
+    simBaseTime: options.timeAxis?.simBaseTime,
+  };
+  const [timeStart, timeEnd] = resolveGanttTimeRange(axisOpts);
+  const baseMs = resolveGanttBaseMs(axisOpts);
+  const timeHover = baseMs == null ? "%{x}분" : "%{x|%H:%M}";
+  const operColorMap = ganttOperColorMap(operOrder);
   const data: Data[] = [];
   const layout: Partial<Layout> = {
-    title: { text: options.title ?? "제품별 누적 생산량 (공정별)", font: { size: 16 } },
+    title: {
+      text: options.title ?? "시간별 제품·공정 누적 생산",
+      font: { size: 14, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
+    },
+    font: { family: GANTT_THEME.fontFamily, color: GANTT_THEME.axisColor },
     grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
-    height: Math.max(300 * n, 320),
-    plot_bgcolor: "white",
-    paper_bgcolor: "white",
-    margin: { l: 70, r: 160, t: 60, b: 50 },
+    height: Math.min(Math.max(260 * n, 300), 960),
+    plot_bgcolor: GANTT_THEME.plotBg,
+    paper_bgcolor: GANTT_THEME.paperBg,
+    margin: { l: 72, r: 150, t: 56, b: 40 },
     showlegend: true,
-    legend: { orientation: "v", x: 1.02, y: 1 },
+    legend: { orientation: "v", x: 1.02, y: 1, font: { size: 11 } },
   };
 
   prods.forEach((prod, i) => {
     const { x: xAxis, y: yAxis } = subplotAxisNames(i);
     const xKey = (i === 0 ? "xaxis" : `xaxis${i + 1}`) as keyof Layout;
     const yKey = (i === 0 ? "yaxis" : `yaxis${i + 1}`) as keyof Layout;
-    const opers = opersForProduct(plan, prod);
+    const opers = opersForProduct(plan, prod, schedule, operOrder);
+    const prodCode = prodCodeMap[prod] ?? prod;
 
     (layout as Record<string, unknown>)[xKey] = {
-      title: i === n - 1 ? { text: "시뮬레이션 시간 (분)" } : undefined,
-      range: [timeStart, timeEnd],
-      showgrid: true,
-      gridcolor: "#E5E5E5",
-      ...(options.timeAxis?.fixedRange ? { fixedrange: true } : {}),
+      title: i === 0 ? ganttXAxisTitle(baseMs) : undefined,
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, options.timeAxis?.fixedRange, baseMs),
     };
     (layout as Record<string, unknown>)[yKey] = {
-      title: { text: `${prod} 누적 생산 (매)` },
+      title: { text: `${prodCode} 누적 생산 (매)` },
       rangemode: "tozero",
       showgrid: true,
-      gridcolor: "#F0F0F0",
+      gridcolor: GANTT_THEME.gridColor,
+      zerolinecolor: GANTT_THEME.gridColor,
     };
 
     opers.forEach((oper) => {
-      const color = operColorMap[oper] ?? "#888888";
+      const color = operColorMap[oper] ?? "#64748b";
       const planQty = operPlanQty(plan, prod, oper);
       const showInLegend = i === 0;
+      const operCode = operCodeMap[oper] ?? oper;
+      const pairLabel = `${prodCode}/${operCode}`;
 
-      const actual = cumulativeProductionSeries(schedule, prod, oper, timeEnd);
+      const actual = cumulativeProductionSeries(schedule, prod, oper, timeEnd, baseMs);
       data.push({
         type: "scatter",
         mode: "lines",
-        name: `${oper} 실적`,
+        name: `${operCode} 실적`,
         x: actual.x,
         y: actual.y,
         line: { color, width: 2.5, shape: "hv" },
@@ -491,29 +720,31 @@ export function buildProductProductionCharts(
         yaxis: yAxis,
         legendgroup: `${oper}-actual`,
         showlegend: showInLegend,
-        hovertemplate: `${prod} / ${oper}<br>시간: %{x}분<br>누적: %{y}매<extra></extra>`,
+        hovertemplate: `${pairLabel}<br>시간: ${timeHover}<br>누적: %{y}매<extra></extra>`,
       });
 
-      data.push({
-        type: "scatter",
-        mode: "lines",
-        name: `${oper} 계획`,
-        x: [0, timeEnd],
-        y: [0, planQty],
-        line: { color, width: 1.5, dash: "dash" },
-        xaxis: xAxis,
-        yaxis: yAxis,
-        legendgroup: `${oper}-plan`,
-        showlegend: showInLegend,
-        hovertemplate: `${prod} / ${oper} 계획<br>시간: %{x}분<br>목표: %{y}매<extra></extra>`,
-      });
-
-      if (options.overlaySchedule) {
-        const overlay = cumulativeProductionSeries(options.overlaySchedule, prod, oper, timeEnd);
+      if (planQty > 0) {
         data.push({
           type: "scatter",
           mode: "lines",
-          name: `${oper} ${options.overlayLabel ?? "초기"}`,
+          name: `${operCode} 계획`,
+          x: [ganttAxisValue(timeStart, baseMs), ganttAxisValue(timeEnd, baseMs)],
+          y: [0, planQty],
+          line: { color, width: 1.5, dash: "dash" },
+          xaxis: xAxis,
+          yaxis: yAxis,
+          legendgroup: `${oper}-plan`,
+          showlegend: showInLegend,
+          hovertemplate: `${pairLabel} 계획<br>시간: ${timeHover}<br>목표: %{y}매<extra></extra>`,
+        });
+      }
+
+      if (options.overlaySchedule) {
+        const overlay = cumulativeProductionSeries(options.overlaySchedule, prod, oper, timeEnd, baseMs);
+        data.push({
+          type: "scatter",
+          mode: "lines",
+          name: `${operCode} ${options.overlayLabel ?? "초기"}`,
           x: overlay.x,
           y: overlay.y,
           line: { color, width: 1.5, dash: "dot", shape: "hv" },
@@ -521,13 +752,14 @@ export function buildProductProductionCharts(
           yaxis: yAxis,
           legendgroup: `${oper}-overlay`,
           showlegend: showInLegend,
-          hovertemplate: `${prod} / ${oper} 초기<br>시간: %{x}분<br>누적: %{y}매<extra></extra>`,
+          hovertemplate: `${pairLabel} 초기<br>시간: ${timeHover}<br>누적: %{y}매<extra></extra>`,
         });
       }
     });
   });
 
-  return { data, layout };
+  if (!data.length) return null;
+  return { data, layout, clampXMin: ganttXMinClamp(baseMs) };
 }
 
 export function buildSwitchMetrics(snap: HistorySnap): { data: Data[]; layout: Partial<Layout> } {
@@ -607,6 +839,29 @@ function computeStats(schedule: ScheduleRecord[], plan: PlanRecord[]): ScheduleS
   return { makespan, idle_total: idleTotal, oper_switches: operSw, prod_switches: prodSw, achievement };
 }
 
+/** achievement 라벨 `PPK/OPER` → `P1/O1` 축약 (차트 X축용) */
+function abbreviateProdOperLabels(labels: string[]): string[] {
+  const prods = new Set<string>();
+  const opers = new Set<string>();
+  for (const label of labels) {
+    const slash = label.indexOf("/");
+    if (slash < 0) continue;
+    prods.add(label.slice(0, slash));
+    opers.add(label.slice(slash + 1));
+  }
+  const prodMap = buildShortCodeMap([...prods], "P").codeByKey;
+  const operMap = buildShortCodeMap([...opers], "O").codeByKey;
+  return labels.map((label) => {
+    const slash = label.indexOf("/");
+    if (slash < 0) return label;
+    const prod = label.slice(0, slash);
+    const oper = label.slice(slash + 1);
+    const p = prodMap[prod] ?? prod;
+    const o = operMap[oper] ?? oper;
+    return `${p}/${o}`;
+  });
+}
+
 export function buildComparisonKpi(
   initial: ScheduleRecord[],
   post: ScheduleRecord[],
@@ -641,17 +896,34 @@ export function buildAchievementComparison(
   const initS = computeStats(initial, plan);
   const postS = computeStats(post, plan);
   const labels = [...new Set([...Object.keys(initS.achievement), ...Object.keys(postS.achievement)])].sort();
+  const shortLabels = abbreviateProdOperLabels(labels);
 
   return {
     data: [
-      { type: "bar", name: "초기 스케줄", x: labels, y: labels.map((l) => initS.achievement[l] ?? 0), marker: { color: "#4C72B0" } },
-      { type: "bar", name: "Scheduling", x: labels, y: labels.map((l) => postS.achievement[l] ?? 0), marker: { color: "#55A868" } },
+      {
+        type: "bar",
+        name: "초기 스케줄",
+        x: shortLabels,
+        y: labels.map((l) => initS.achievement[l] ?? 0),
+        customdata: labels,
+        hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
+        marker: { color: "#4C72B0" },
+      },
+      {
+        type: "bar",
+        name: "Scheduling",
+        x: shortLabels,
+        y: labels.map((l) => postS.achievement[l] ?? 0),
+        customdata: labels,
+        hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
+        marker: { color: "#55A868" },
+      },
     ],
     layout: {
       title: { text: "제품/공정별 계획 달성률 비교 (%)" },
       barmode: "group",
       yaxis: { title: { text: "달성률 (%)" }, range: [0, 120] },
-      xaxis: { title: { text: "제품 / 공정" } },
+      xaxis: { title: { text: "P / O" } },
       shapes: [{ type: "line", x0: 0, x1: 1, y0: 100, y1: 100, xref: "paper", line: { dash: "dash", color: "red", width: 1 } }],
       ...SHARED_DARK,
       legend: { orientation: "h", y: -0.25 },
@@ -707,9 +979,9 @@ export function buildAlgorithmKpiComparison(
       barmode: "group",
       yaxis: { title: { text: "값" } },
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.2 },
+      legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
       height: 380,
-      margin: { t: 60, b: 80 },
+      margin: { t: 60, b: 88, l: 48, r: 16 },
     },
   };
 }
@@ -722,14 +994,17 @@ export function buildAlgorithmAchievementComparison(
     Object.keys(resultScheduleStats(e.result).achievement).forEach((k) => labelSet.add(k));
   });
   const labels = [...labelSet].sort();
+  const shortLabels = abbreviateProdOperLabels(labels);
 
   const data: Data[] = entries.map((e) => {
     const ach = resultScheduleStats(e.result).achievement;
     return {
       type: "bar" as const,
       name: e.label,
-      x: labels,
+      x: shortLabels,
       y: labels.map((l) => ach[l] ?? 0),
+      customdata: labels,
+      hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
       marker: { color: ALGO_CHART_COLORS[e.algorithm] ?? "#888" },
     };
   });
@@ -740,7 +1015,7 @@ export function buildAlgorithmAchievementComparison(
       title: { text: "알고리즘별 계획 달성률 비교 (%)" },
       barmode: "group",
       yaxis: { title: { text: "달성률 (%)" }, range: [0, 120] },
-      xaxis: { title: { text: "제품 / 공정" } },
+      xaxis: { title: { text: "P / O" } },
       shapes: [{
         type: "line",
         x0: 0,
@@ -751,9 +1026,9 @@ export function buildAlgorithmAchievementComparison(
         line: { dash: "dash", color: "red", width: 1 },
       }],
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.25 },
+      legend: { orientation: "h", y: -0.25, x: 0.5, xanchor: "center" },
       height: 380,
-      margin: { t: 60, b: 100 },
+      margin: { t: 60, b: 100, l: 48, r: 16 },
     },
   };
 }
@@ -764,61 +1039,61 @@ function subplotAxisPair(index: number, total: number): {
   xKey: string;
   yKey: string;
   domain: [number, number];
+  titleY: number;
 } {
+  const titleBand = total > 1 ? 0.034 : 0;
+  const rowGap = total > 1 ? 0.04 : 0;
   const rowH = 1 / total;
-  const gap = 0.04;
-  const top = 1 - index * rowH;
-  const bottom = top - rowH + (index < total - 1 ? gap : 0);
+  const rowTop = 1 - index * rowH;
+  const rowBottom = rowTop - rowH;
+  const plotTop = rowTop - titleBand;
+  const plotBottom = rowBottom + (index < total - 1 ? rowGap : 0);
   const n = index + 1;
   return {
     xName: index === 0 ? "x" : `x${n}`,
     yName: index === 0 ? "y" : `y${n}`,
     xKey: index === 0 ? "xaxis" : `xaxis${n}`,
     yKey: index === 0 ? "yaxis" : `yaxis${n}`,
-    domain: [bottom, top - gap * 0.5] as [number, number],
+    domain: [plotBottom, plotTop],
+    titleY: plotTop + 0.008,
   };
 }
 
 export function buildAlgorithmGanttComparison(
   entries: AlgoCompareEntry[],
   axis: GanttAxisOptions,
-): { data: Data[]; layout: Partial<Layout> } {
+): PlotChartSpec {
   if (!entries.length) {
     return { data: [], layout: { height: 300 } };
   }
 
   const eqps = sortedEqpIds(axis.eqpIds);
   const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
+  const baseMs = resolveGanttBaseMs(axis);
   const n = entries.length;
   const data: Data[] = [];
   const layout: Partial<Layout> = {
+    ...GANTT_PAN_LAYOUT,
     grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
-    height: Math.max(300 * n, 420),
+    height: Math.max(280 * n + 40, 420),
     barmode: "overlay",
     bargap: 0.35,
     showlegend: n === 1,
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    legend: {
-      x: 1.02,
-      bgcolor: "rgba(255,255,255,0.85)",
-      bordercolor: "rgba(148,163,184,0.25)",
-      borderwidth: 1,
-    },
-    hoverlabel: {
-      bgcolor: "#ffffff",
-      bordercolor: "rgba(148,163,184,0.35)",
-      font: { family: GANTT_THEME.fontFamily, size: 12 },
-    },
+    font: GANTT_LAYOUT_FONT,
+    hovermode: "closest",
+    legend: n === 1 ? { title: { text: "제품 / 공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
+    hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
-    margin: { l: 88, r: 188, t: 44, b: 52 },
+    margin: { l: 72, r: 16, t: 12, b: n === 1 ? 72 : 44 },
   };
 
   entries.forEach((entry, i) => {
-    const { xName, yName, xKey, yKey, domain } = subplotAxisPair(i, n);
+    const { xName, yName, xKey, yKey, domain, titleY } = subplotAxisPair(i, n);
     const prodKeys = entry.result.prod_keys;
     const operIds = entry.result.oper_ids;
-    const traces = ganttTraces(entry.result.schedule, prodKeys, operIds).map((t) => ({
+    const traces = ganttTraces(entry.result.schedule, prodKeys, operIds, undefined, baseMs).map((t) => ({
       ...t,
       xaxis: xName,
       yaxis: yName,
@@ -832,7 +1107,7 @@ export function buildAlgorithmGanttComparison(
       ...convPlans.map((p) => p.conv_end_min),
       1,
     );
-    const convTraces = conversionTraces(convPlans, maxEnd + 1).map((t) => ({
+    const convTraces = conversionTraces(convPlans, maxEnd + 1, baseMs).map((t) => ({
       ...t,
       xaxis: xName,
       yaxis: yName,
@@ -850,43 +1125,37 @@ export function buildAlgorithmGanttComparison(
     (layout as Record<string, unknown>)[xKey] = {
       domain: [0, 1],
       anchor: yName,
-      title: i === n - 1 ? { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
-      showgrid: true,
-      gridcolor: GANTT_THEME.gridColor,
-      gridwidth: GANTT_THEME.gridWidth,
-      zeroline: false,
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      range: [timeStart, timeEnd],
-      ...(axis.fixedRange ? { fixedrange: true } : {}),
+      title: i === 0 ? ganttXAxisTitle(baseMs) : undefined,
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     };
-    (layout as Record<string, unknown>)[yKey] = {
-      domain,
-      anchor: xName,
-      title: { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } },
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      categoryorder: "array",
-      categoryarray: eqps,
-      showgrid: false,
-    };
+    (layout as Record<string, unknown>)[yKey] = ganttYAxisLayout(eqps,
+      i === 0 ? { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
+      { domain, anchor: xName },
+    );
 
-    const yMid = (domain[0] + domain[1]) / 2;
+    layout.shapes = [
+      ...(layout.shapes ?? []),
+      ...(i === 0 ? [ganttEqpBarDividerShape()] : []),
+      ...ganttRowDividerShapes(eqps.length, yName),
+    ];
+
     layout.annotations = [
       ...(layout.annotations ?? []),
       {
-        text: entry.label,
+        text: `<b>${entry.label}</b>`,
         xref: "paper",
         yref: "paper",
-        x: 0,
-        y: yMid,
+        x: 0.01,
+        y: titleY,
         xanchor: "left",
-        yanchor: "middle",
+        yanchor: "bottom",
         showarrow: false,
         font: { size: 13, color: ALGO_CHART_COLORS[entry.algorithm] ?? "#333" },
       },
     ];
   });
 
-  return { data, layout };
+  return { data, layout, clampXMin: ganttXMinClamp(baseMs) };
 }
 
 export type TestMetricKey =
@@ -1101,7 +1370,7 @@ export function buildTrainRewardChart(
     data.push({
       type: "scatter",
       mode: "lines",
-      name: "Rollout ep_rew_mean",
+      name: "Rollout reward",
       x: series.timesteps,
       y: series.ep_rew_mean,
       line: { color: "#4f6ef7", width: 2 },
@@ -1209,12 +1478,114 @@ function getEqpLabel(id: string, modelMap: Record<string, string>): string {
   return model ? `${model} / ${id}` : id;
 }
 
-function barText(rec: ScheduleRecord, mode: GanttBarLabel): string {
+function barText(
+  rec: ScheduleRecord,
+  mode: GanttBarLabel,
+  prodCodes: Record<string, string>,
+): string {
   switch (mode) {
     case "car": return rec.CARRIER_ID ?? rec.LOT_ID;
-    case "prod": return rec.PLAN_PROD_KEY;
+    case "prod": return prodCodes[rec.PLAN_PROD_KEY] ?? rec.PLAN_PROD_KEY;
     default: return rec.LOT_ID;
   }
+}
+
+interface GanttBarSegment {
+  records: ScheduleRecord[];
+}
+
+function canMergeProdOperSegment(prev: ScheduleRecord, next: ScheduleRecord): boolean {
+  return (
+    prev.EQP_ID === next.EQP_ID
+    && prev.PLAN_PROD_KEY === next.PLAN_PROD_KEY
+    && (prev.OPER_ID ?? "") === (next.OPER_ID ?? "")
+    && prev.END_TM === next.START_TM
+  );
+}
+
+/** 제품 모드: 동일 EQP에서 연속된 동일 제품·공정 스케줄을 하나의 bar로 묶음 */
+function buildGanttBarSegments(
+  schedule: ScheduleRecord[],
+  labelMode: GanttBarLabel,
+): GanttBarSegment[] {
+  if (labelMode !== "prod" || schedule.length === 0) {
+    return schedule.map((rec) => ({ records: [rec] }));
+  }
+
+  const byEqp = new Map<string, ScheduleRecord[]>();
+  for (const rec of schedule) {
+    const list = byEqp.get(rec.EQP_ID) ?? [];
+    list.push(rec);
+    byEqp.set(rec.EQP_ID, list);
+  }
+
+  const segments: GanttBarSegment[] = [];
+  for (const recs of byEqp.values()) {
+    const sorted = [...recs].sort(
+      (a, b) => a.START_TM - b.START_TM || a.END_TM - b.END_TM,
+    );
+    let current: ScheduleRecord[] = [];
+    for (const rec of sorted) {
+      const prev = current[current.length - 1];
+      if (prev && canMergeProdOperSegment(prev, rec)) {
+        current.push(rec);
+      } else {
+        if (current.length) segments.push({ records: current });
+        current = [rec];
+      }
+    }
+    if (current.length) segments.push({ records: current });
+  }
+
+  return segments;
+}
+
+function segmentTimeRange(segment: GanttBarSegment): { start: number; end: number; width: number } {
+  const first = segment.records[0];
+  const last = segment.records[segment.records.length - 1];
+  const start = first.START_TM;
+  const end = last.END_TM;
+  return { start, end, width: end - start };
+}
+
+function segmentHoverTemplate(
+  segment: GanttBarSegment,
+  prodCodes: Record<string, string>,
+  operCodes: Record<string, string>,
+  baseMs: number | null,
+): string {
+  const { records } = segment;
+  const first = records[0];
+  const { start, end, width } = segmentTimeRange(segment);
+  const oper = first.OPER_ID ?? "N/A";
+  const prodLabel = prodCodes[first.PLAN_PROD_KEY] ?? first.PLAN_PROD_KEY;
+  const operLabel = operCodes[oper] ?? oper;
+  const startLabel = formatGanttMinuteLabel(start, baseMs);
+  const endLabel = formatGanttMinuteLabel(end, baseMs);
+
+  if (records.length === 1) {
+    const rec = first;
+    return (
+      `<b>LOT: ${rec.LOT_ID}</b><br>` +
+      (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
+      `EQP: ${rec.EQP_ID}<br>` +
+      `제품: ${prodLabel} (${rec.PLAN_PROD_KEY})<br>` +
+      `공정: ${operLabel}<br>` +
+      `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<extra></extra>`
+    );
+  }
+
+  const lotSummary = records.length <= 5
+    ? records.map((r) => r.LOT_ID).join(", ")
+    : `${records.slice(0, 3).map((r) => r.LOT_ID).join(", ")} 외 ${records.length - 3}건`;
+
+  return (
+    `<b>제품: ${prodLabel}</b> (${first.PLAN_PROD_KEY})<br>` +
+    `공정: ${operLabel}<br>` +
+    `EQP: ${first.EQP_ID}<br>` +
+    `병합 LOT ${records.length}건: ${lotSummary}<br>` +
+    `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<extra></extra>`
+  );
 }
 
 export function buildEnhancedGantt(
@@ -1228,43 +1599,47 @@ export function buildEnhancedGantt(
     conversionPlans?: ConversionPlan[];
     title?: string;
   } = {},
-): { data: Data[]; layout: Partial<Layout> } {
+): PlotChartSpec {
   const { labelMode = "lot", eqpModelMap = {}, conversionPlans = [], title } = options;
-  const prodColorMap = buildColorMap(prodKeys, PROD_COLORS);
-  const operColorMap = buildColorMap(operIds, OPER_BORDER_COLORS);
+  const prodCodeMap = buildShortCodeMap(prodKeys, "P").codeByKey;
+  const operCodeMap = buildShortCodeMap(operIds, "O").codeByKey;
+  const prodColorMap = ganttProdColorMap(prodKeys);
+  const operColorMap = ganttOperColorMap(operIds);
   const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
+  const baseMs = resolveGanttBaseMs(axis);
 
   const sortedEqps = sortedEqpIds(axis.eqpIds);
   const eqpLabels = sortedEqps.map((id) => getEqpLabel(id, eqpModelMap));
 
   const data: Data[] = [];
+  const barSegments = buildGanttBarSegments(schedule, labelMode);
 
-  schedule.forEach((rec) => {
-    const width = rec.END_TM - rec.START_TM;
+  barSegments.forEach((segment) => {
+    const rec = segment.records[0];
+    const { start, width } = segmentTimeRange(segment);
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
+    const showText = width >= (labelMode === "prod" ? 18 : 24);
+    const { base, x } = ganttBarAxisCoords(start, width, baseMs);
     data.push({
       type: "bar",
       orientation: "h",
-      x: [width],
+      x: [x],
       y: [label],
-      base: [rec.START_TM],
+      base: [base],
       marker: {
         color: prodColorMap[rec.PLAN_PROD_KEY] ?? "#94a3b8",
         opacity: GANTT_THEME.barOpacity,
-        line: { color: operColorMap[rec.OPER_ID ?? ""] ?? "#475569", width: 2 },
+        line: {
+          color: operColorMap[rec.OPER_ID ?? ""] ?? "#475569",
+          width: 1.25,
+        },
         cornerradius: GANTT_THEME.barRadius,
       } as Record<string, unknown>,
-      text: barText(rec, labelMode),
+      text: showText ? barText(rec, labelMode, prodCodeMap) : "",
       textposition: "inside",
       insidetextanchor: "middle",
-      textfont: { size: 11, color: "#ffffff", family: GANTT_THEME.fontFamily },
-      hovertemplate:
-        `<b>LOT: ${rec.LOT_ID}</b><br>` +
-        (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
-        `EQP: ${rec.EQP_ID}<br>` +
-        `제품: ${rec.PLAN_PROD_KEY}<br>` +
-        `공정: ${rec.OPER_ID ?? "N/A"}<br>` +
-        `시작: ${rec.START_TM}분 · 종료: ${rec.END_TM}분 · 소요: ${width}분<extra></extra>`,
+      textfont: { size: 10, color: "#ffffff", family: GANTT_THEME.fontFamily },
+      hovertemplate: segmentHoverTemplate(segment, prodCodeMap, operCodeMap, baseMs),
       showlegend: false,
     } as Data);
   });
@@ -1274,97 +1649,59 @@ export function buildEnhancedGantt(
     const w = Math.max(p.conv_end_min - p.conv_start_min, 0);
     if (w <= 0) return;
     const label = getEqpLabel(p.eqp_id, eqpModelMap);
+    const { base, x } = ganttBarAxisCoords(p.conv_start_min, w, baseMs);
     data.push({
       type: "bar",
       orientation: "h",
-      x: [w],
+      x: [x],
       y: [label],
-      base: [p.conv_start_min],
-      marker: {
-        color: "#f59e0b",
-        opacity: 0.88,
-        line: { color: "#b45309", width: 2 },
-        cornerradius: 6,
-      } as Record<string, unknown>,
-      text: `CONV ${p.from_lot_cd}→${p.to_lot_cd}`,
+      base: [base],
+      marker: conversionBarMarker(),
+      text: w >= 20 ? "CONV" : "",
       textposition: "inside",
       insidetextanchor: "middle",
       textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
       hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${p.from_lot_cd}→${p.to_lot_cd}<br>` +
-        `시작: ${p.conv_start_min}분 · 종료: ${p.conv_end_min}분<extra></extra>`,
+        `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)} · 종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<extra></extra>`,
       showlegend: false,
     } as Data);
   });
 
   // Legend traces
-  prodKeys.forEach((pk) => {
-    data.push({
-      type: "bar",
-      orientation: "h",
-      x: [0],
-      y: [""],
-      name: pk,
-      marker: { color: prodColorMap[pk] ?? "#888888" },
-      showlegend: true,
-      visible: schedule.some((r) => r.PLAN_PROD_KEY === pk) ? true : "legendonly",
-    });
-  });
-  operIds.forEach((op) => {
-    data.push({
-      type: "scatter",
-      mode: "markers",
-      x: [null],
-      y: [null],
-      name: `[OPER] ${op}`,
-      marker: { size: 12, color: operColorMap[op] ?? "#222222", symbol: "square", line: { width: 2, color: "white" } },
-      showlegend: true,
-    });
-  });
+  data.push(...legendTraces(prodKeys, operIds, schedule, prodCodeMap, operCodeMap));
+  if (conversionPlans.length > 0) {
+    data.push(conversionLegendTrace(true));
+  }
 
   const layout: Partial<Layout> = {
+    ...GANTT_PAN_LAYOUT,
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
     xaxis: {
-      title: { text: "시뮬레이션 시간 (분)", font: { size: 12, color: GANTT_THEME.axisColor } },
-      showgrid: true,
-      gridcolor: GANTT_THEME.gridColor,
-      gridwidth: GANTT_THEME.gridWidth,
-      zeroline: false,
-      range: [timeStart, timeEnd],
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      ...(axis.fixedRange ? { fixedrange: true } : {}),
+      title: ganttXAxisTitle(baseMs),
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     },
-    yaxis: {
-      categoryorder: "array",
-      categoryarray: eqpLabels,
-      title: { text: "설비 (모델 / 호기)", font: { size: 12, color: GANTT_THEME.axisColor } },
-      tickfont: { size: 10, color: GANTT_THEME.axisColor },
-      showgrid: false,
-    },
+    yaxis: ganttYAxisLayout(eqpLabels, {
+      text: "설비 (모델 / 호기)",
+      font: { size: 12, color: GANTT_THEME.axisColor },
+    }, { tickfont: { size: 10, color: GANTT_THEME.axisColor } }),
+    shapes: ganttTableGridShapes(eqpLabels.length),
     barmode: "overlay",
-    bargap: 0.35,
+    bargap: 0.28,
     legend: {
-      title: { text: "제품 / 공정", font: { size: 11 } },
-      orientation: "v",
-      x: 1.02,
-      bgcolor: "rgba(255,255,255,0.85)",
-      bordercolor: "rgba(148,163,184,0.25)",
-      borderwidth: 1,
+      title: { text: "P / O 코드", font: { size: 11, color: GANTT_THEME.axisColor } },
+      ...GANTT_LEGEND,
     },
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 188, t: 40, b: 52 },
-    hoverlabel: {
-      bgcolor: "#ffffff",
-      bordercolor: "rgba(148,163,184,0.35)",
-      font: { family: GANTT_THEME.fontFamily, size: 12 },
-    },
+    margin: { l: 160, r: 20, t: 52, b: 56 },
+    font: GANTT_LAYOUT_FONT,
+    hovermode: "closest",
+    hoverlabel: GANTT_HOVERLABEL,
   };
 
-  return { data, layout };
+  return { data, layout, clampXMin: ganttXMinClamp(baseMs) };
 }
-
-// ── Utilization charts ────────────────────────────────────────────────────
 
 export function buildEqpUtilChart(utils: EqpUtil[]): { data: Data[]; layout: Partial<Layout> } {
   const sorted = [...utils].sort((a, b) => b.utilPct - a.utilPct);
@@ -1450,33 +1787,6 @@ export function buildTatChart(rows: TatRow[]): { data: Data[]; layout: Partial<L
       margin: { t: 44, b: 60, l: 55, r: 20 },
       ...SHARED_DARK,
       legend: { orientation: "h", y: -0.25 },
-    },
-  };
-}
-
-export function buildDashboardKpiChart(
-  kpis: { label: string; value: number; suffix?: string }[],
-): { data: Data[]; layout: Partial<Layout> } {
-  const n = kpis.length;
-  const colW = 1 / n;
-  const data: Data[] = kpis.map((k, i) => ({
-    type: "indicator",
-    mode: "number",
-    value: k.value,
-    number: {
-      suffix: k.suffix ?? "",
-      font: { size: 28, color: "#141824" },
-    },
-    title: { text: k.label, font: { size: 11, color: "#5c6478" } },
-    domain: { x: [i * colW, (i + 1) * colW - 0.01], y: [0, 1] },
-  }));
-
-  return {
-    data,
-    layout: {
-      height: 120,
-      margin: { t: 20, b: 10, l: 10, r: 10 },
-      paper_bgcolor: "white",
     },
   };
 }
