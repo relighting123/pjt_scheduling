@@ -8,6 +8,9 @@ SQL 템플릿: data/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 :LOT_CD (--lotcd, discrete_arrange 제외)
 """
 import json
+import logging
+import logging.handlers
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -36,6 +39,74 @@ from utils.helpers import (
     REQUIRED_BATCH_INFO_FIELDS,
 )
 from data.generator import build_abstract_arrange
+
+# ---------------------------------------------------------------------------
+# SQL 실행 파일 로거
+# ---------------------------------------------------------------------------
+_sql_logger: logging.Logger | None = None
+
+
+def _get_sql_logger() -> logging.Logger:
+    """logs/sql_fetch_YYYYMMDD.log 에 기록하는 파일 로거 (호출 시 1회 초기화)."""
+    global _sql_logger
+    if _sql_logger is not None:
+        return _sql_logger
+
+    from config import BASE_DIR  # 순환 import 방지용 지연 import
+
+    log_dir = BASE_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    today = datetime.now().strftime("%Y%m%d")
+    log_path = log_dir / f"sql_fetch_{today}.log"
+
+    logger = logging.getLogger("sql_fetch")
+    logger.setLevel(logging.DEBUG)
+
+    if not logger.handlers:
+        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s [%(levelname)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(fh)
+
+    _sql_logger = logger
+    return logger
+
+
+def _log_sql_execute(
+    sql_file: str,
+    alias: str,
+    period: str | None,
+    binds: dict,
+    sql_text: str,
+    row_count: int,
+) -> None:
+    """SQL 실행 1건을 로그 파일에 기록."""
+    log = _get_sql_logger()
+
+    per_str = period or "(없음)"
+    binds_str = ", ".join(f"{k}={v!r}" for k, v in sorted(binds.items()))
+    # SQL 앞뒤 공백·연속 줄바꿈 정리 (로그 가독성)
+    sql_compact = " ".join(sql_text.split())
+
+    level = logging.WARNING if row_count == 0 else logging.INFO
+    log.log(
+        level,
+        "[%s] @%s  period=%s  rows=%d\n"
+        "  binds : %s\n"
+        "  sql   : %s",
+        sql_file,
+        alias,
+        per_str,
+        row_count,
+        binds_str,
+        sql_compact,
+    )
 
 
 def _read_json_file(path: Path) -> List[dict]:
@@ -232,10 +303,12 @@ def fetch_from_db(
                     continue
                 conn = registry.connect(alias)
                 rows = _execute_query(conn, sql, binds)
+                _log_sql_execute(sql_file, alias, per, binds, sql, len(rows))
                 with open(out_path, "w", encoding="utf-8") as f:
                     json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
+                row_warn = " ⚠ 0건" if not rows else ""
                 print(
-                    f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows)",
+                    f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows{row_warn})",
                 )
             except Exception as exc:
                 alias_guess = registry.default_alias
