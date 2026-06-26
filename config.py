@@ -482,17 +482,17 @@ class RLConfig:
 @dataclass
 class RewardConfig:
     # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
-    w_same_oper:       float = 1.0       # 같은 공정 연속 (Step D: 조건부 적용)
+    w_same_oper:       float = 0.4       # 같은 공정 연속 (Step D: 조건부 적용) ↓독점 억제
     w_same_prod:       float = 0.5       # 같은 PPK 재공이 남아 있을 때만 (조건부)
     w_prod_switch:     float = 0.5       # 이전 PPK 재공 고갈 시 전환 보너스
     w_idle_per_min:    float = -0.1      # idle 분당 (clip으로 폭주 방지)
     w_completion:      float = 0.5
     w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
-    w_pacing:          float = 2.0       # 선형 takt 추종 (achievable 기준; Step C)
+    w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     w_conversion:      float = -10.0     # LOT_CD/TEMP 전환 1회 패널티
     w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
-    # --- Step B: flow-balance shaping (편중 해소·후속 공정 feeding) ---
-    w_flow_balance:    float = 1.5       # 적체(편중) 공정 배정·후속 starving 해소 보너스
+    # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
+    w_flow_balance:    float = 2.5       # 계획 비중 대비 WIP 적체 공정 배정 보너스 ↑
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
     flow_balance_starving_cover_min: float = 120.0
     # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---

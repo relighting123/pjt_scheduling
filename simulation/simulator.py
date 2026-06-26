@@ -1065,22 +1065,34 @@ class SchedulingSimulator:
 
     def _flow_balance_reward(self, ppk: str, oper_id: str) -> float:
         """
-        Step B: flow-balance shaping. 편중(WIP 적체)된 공정을 배정하면 +,
-        후속 공정이 starving(계획 남고 WIP 적음)인데 이 공정을 돌려 재공을
-        흘려보내면 추가 +. 균형 잡힌/과소 공정은 약한 -. (clip으로 bound)
+        Step B: flow-balance shaping.
+        기준을 균등(1/n)이 아닌 계획 비중(plan_qty 기준)으로 비교.
+        - WIP 비중 > 계획 비중 → 이 공정에 적체, 더 돌려야 함 → +
+        - WIP 비중 < 계획 비중 → 이 공정은 충분, 다른 공정 우선 → -
+        - 후속 공정 starving 시 추가 +
         """
         cfg = self._reward_cfg
         if cfg.w_flow_balance <= 0:
             return 0.0
         wips = self.get_wip_waiting()
-        total = sum(wips.values())
-        if total <= 0:
+        total_wip = sum(wips.values())
+        if total_wip <= 0:
             return 0.0
         here = wips.get(f"{ppk}|{oper_id}", 0)
-        n = max(len(wips), 1)
-        share = here / total
-        avg = 1.0 / n
-        score = share - avg  # 편중(>avg) → +, 과소 → -
+        wip_share = here / total_wip
+
+        # 계획 비중: 현재 WIP가 있는 (ppk, oper) 중 plan_qty 합 대비 이 공정의 비중
+        plan_meta = self._env_data.get("plan_meta", {})
+        total_plan = sum(
+            plan_meta[(p, o)]["d0_plan_qty"]
+            for key in wips
+            for p, o in [key.split("|", 1)]
+            if (p, o) in plan_meta and plan_meta[(p, o)].get("d0_plan_qty", 0) > 0
+        )
+        plan_here = plan_meta.get((ppk, oper_id), {}).get("d0_plan_qty", 0)
+        plan_share = plan_here / max(total_plan, 1)
+
+        score = wip_share - plan_share  # 적체(WIP>계획비중) → +, 여유 → -
         if self._downstream_is_starving(ppk, oper_id):
             score += 0.5
         return cfg.w_flow_balance * score
