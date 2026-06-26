@@ -855,6 +855,12 @@ class SchedulingSimulator:
         )
         if needs_conv:
             reward += self._reward_cfg.w_conversion
+            if self._reward_cfg.w_avoidable_conversion < 0:
+                avoidable = self._conversion_avoidable_fraction(
+                    eqp.eqp_id, ppk, oper_id, lot_cd, temp,
+                )
+                if avoidable > 0:
+                    reward += self._reward_cfg.w_avoidable_conversion * avoidable
             eqp.conversion_count += 1
             self.stats["conversions"] += 1
             conv_end = start_time + self._conversion_minutes
@@ -950,6 +956,86 @@ class SchedulingSimulator:
             if st is not None and st > 0:
                 total += 1.0 / st
         return total
+
+    def _setup_demand_wafers(self, lot_cd: str, temp: str) -> int:
+        """이 (LOT_CD, TEMP) 세팅으로 처리해야 할 ready 재공 매수 합.
+        같은 세팅을 공유하는 모든 (PPK, OPER) 버킷을 합산한다(변환 1회로 함께 열림)."""
+        total = 0
+        for (ppk, oper_id), pool in self._wip_pool.items():
+            if pool.get("wip_qty", 0) <= 0:
+                continue
+            lc, tp = self._bucket_lot_cd_temp(ppk, oper_id)
+            if lc == lot_cd and (tp or "") == (temp or ""):
+                total += self._ready_wip_qty(ppk, oper_id)
+        return total
+
+    def _matched_no_conv_cover_wafers(
+        self, exclude_eqp: str, lot_cd: str, temp: str,
+    ) -> float:
+        """이미 (LOT_CD, TEMP)로 세팅돼 '변환 없이' 이 세팅 재공을 처리 가능한
+        '다른' 장비들이 soft_cutoff까지 남은 시간 안에 처리 가능한 매수 합.
+        장비가 바쁠수록(free_at 큼) 기여 capa가 줄어 부하가 반영된다."""
+        horizon = max(self.soft_cutoff - self.current_time, 0)
+        if horizon <= 0:
+            return 0.0
+        total = 0.0
+        for other in self._env_data.get("eqp_ids", []):
+            if other == exclude_eqp:
+                continue
+            oe = self.eqps.get(other)
+            if oe is None or oe.prev_lot_cd is None:
+                continue
+            if oe.prev_lot_cd != lot_cd or (oe.prev_temp or "") != (temp or ""):
+                continue  # 변환 필요 → 무변환 대안 아님
+            if self._tool_cap_blocks(other, lot_cd, temp):
+                continue
+            # 이 장비가 처리 가능한 (이 세팅의) 공정 중 가장 빠른 장당 ST
+            best_st: Optional[float] = None
+            for (ppk, oper_id), pool in self._wip_pool.items():
+                if pool.get("wip_qty", 0) <= 0:
+                    continue
+                lc, tp = self._bucket_lot_cd_temp(ppk, oper_id)
+                if lc != lot_cd or (tp or "") != (temp or ""):
+                    continue
+                if not self._eqp_can_process(other, ppk, oper_id):
+                    continue
+                st = self._st_per_wafer_for_eqp(other, ppk, oper_id)
+                if st and st > 0 and (best_st is None or st < best_st):
+                    best_st = st
+            if best_st is None:
+                continue
+            avail = max(horizon - max(oe.free_at - self.current_time, 0), 0)
+            total += avail / best_st
+        return total
+
+    def _conversion_avoidable_fraction(
+        self, eqp_id: str, ppk: str, oper_id: str, lot_cd: str, temp: str,
+    ) -> float:
+        """이 장비가 (lot_cd, temp)로 변환하는 것이 '회피 가능한' 정도 [0,1].
+
+        1에 가까울수록: 다른 장비가 시간 내 재공을 커버할 수 있거나, 변환해도
+        내가 무변환으로 돌 가동시간이 너무 짧아 변환 비용을 amortize 못함
+        → 다른 장비에 맡기는 게 낫다.
+        0: 변환이 정당(대안 부하 심함 + 내가 충분히 길게 가동).
+        """
+        cfg = self._reward_cfg
+        demand = self._setup_demand_wafers(lot_cd, temp)
+        if demand <= 0:
+            return 0.0
+        alt_cap = self._matched_no_conv_cover_wafers(eqp_id, lot_cd, temp)
+        coverage_frac = min(alt_cap / demand, 1.0)  # 대안이 커버하는 비율
+
+        # 내가 변환 후 무변환으로 처리할 잔여 재공/가동시간
+        residual = max(demand - alt_cap, 0.0)
+        horizon = max(self.soft_cutoff - self.current_time, 0)
+        my_st = self._st_per_wafer_for_eqp(eqp_id, ppk, oper_id) or 0.0
+        my_cap = (horizon / my_st) if my_st > 0 else 0.0
+        my_run_min = min(my_cap, residual) * my_st
+        need = cfg.conversion_amortize_factor * self._conversion_minutes
+        short_run_frac = (
+            max(0.0, 1.0 - my_run_min / need) if need > 0 else 0.0
+        )
+        return max(coverage_frac, short_run_frac)
 
     def _downstream_wip_cover_minutes(self, ppk: str, oper_id: str) -> Optional[float]:
         """
@@ -1883,7 +1969,7 @@ class SchedulingSimulator:
     # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(6) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(7) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P = cfg.max_oper_count, cfg.max_prod_count
@@ -1900,7 +1986,7 @@ class SchedulingSimulator:
 
         bucket = self.get_bucket_features().flatten()
 
-        eqp_local = np.zeros(6, dtype=np.float32)
+        eqp_local = np.zeros(7, dtype=np.float32)
         current_eqp_id = self._current_eqp
         if current_eqp_id and current_eqp_id in self.eqps:
             eqp = self.eqps[current_eqp_id]
@@ -1910,12 +1996,21 @@ class SchedulingSimulator:
             eqp_local[3] = encode_normalized(eqp.prev_temp, temp_idx, max(len(temp_idx), 1))
             rem = max(eqp.free_at - self.current_time, 0)
             eqp_local[4] = min(rem / max(self.sim_end, 1), 1.0)
+            # [5] 변환이 필요한 feasible 버킷 존재 여부
+            # [6] 그 변환의 '회피 가능' 정도(0~1): 이미 같은 LOT_CD/TEMP로 세팅된
+            #     다른 장비가 시간 내 재공을 커버 가능할수록 1 → 맡겨두는 게 나음
+            max_avoidable = 0.0
             for flat in self.get_feasible_ppk_oper(current_eqp_id):
                 ppk_f, oper_f = self.ppk_oper_from_flat(flat)
                 lc, tp = self._bucket_lot_cd_temp(ppk_f, oper_f)
                 if self._would_need_conversion(current_eqp_id, lc, tp):
                     eqp_local[5] = 1.0
-                    break
+                    av = self._conversion_avoidable_fraction(
+                        current_eqp_id, ppk_f, oper_f, lc, tp,
+                    )
+                    if av > max_avoidable:
+                        max_avoidable = av
+            eqp_local[6] = max_avoidable
 
         group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)

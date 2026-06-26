@@ -490,6 +490,12 @@ class RewardConfig:
     w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     w_conversion:      float = -10.0     # LOT_CD/TEMP 전환 1회 패널티
+    # 회피 가능한 conversion(이미 같은 LOT_CD/TEMP로 세팅된 다른 장비가 시간 내
+    # 재공을 커버 가능)일 때 w_conversion에 더해지는 추가 패널티. 0이면 비활성.
+    w_avoidable_conversion: float = -8.0
+    # 변환 후 무변환으로 돌 가동시간이 (이 배수 × conversion_minutes) 이상이면
+    # 변환을 정당한 것으로 보고 회피 패널티를 면제. 짧으면 패널티↑.
+    conversion_amortize_factor: float = 1.0
     w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
     # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
     w_flow_balance:    float = 2.5       # 계획 비중 대비 WIP 적체 공정 배정 보너스 ↑
@@ -515,6 +521,8 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_plan_hit": r.w_plan_hit,
         "w_pacing": r.w_pacing,
         "w_conversion": r.w_conversion,
+        "w_avoidable_conversion": r.w_avoidable_conversion,
+        "conversion_amortize_factor": r.conversion_amortize_factor,
         "w_late_finish": r.w_late_finish,
         "w_flow_balance": r.w_flow_balance,
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
@@ -530,6 +538,7 @@ def apply_reward_params(params: dict) -> None:
     float_keys = (
         "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
         "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
+        "w_avoidable_conversion", "conversion_amortize_factor",
         "w_late_finish", "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
     )
     for key in float_keys:

@@ -10,6 +10,9 @@ from env.scheduling_env import (
     validate_obs_shape,
     _opk_product_from_obs_dim,
     _factor_opk_triples,
+    _OBS_GLOBAL_DIM,
+    _OBS_EQP_LOCAL_DIM,
+    _OBS_CONTEXT_DIM,
 )
 from simulation.simulator import SchedulingSimulator
 
@@ -17,7 +20,12 @@ from simulation.simulator import SchedulingSimulator
 def test_obs_dim_components_formula():
     comp = obs_dim_components()
     F = SchedulingSimulator.BUCKET_FEATURES
-    assert comp["total"] == 6 + comp["O"] * comp["P"] * comp["K"] * F + 6 + 4
+    assert comp["total"] == (
+        _OBS_GLOBAL_DIM
+        + comp["O"] * comp["P"] * comp["K"] * F
+        + _OBS_EQP_LOCAL_DIM
+        + _OBS_CONTEXT_DIM
+    )
     assert comp["total"] == compute_obs_dim()
 
 
