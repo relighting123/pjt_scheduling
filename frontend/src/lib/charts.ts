@@ -424,6 +424,7 @@ function buildGanttLayout(
     title: {
       text: title,
       font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
+      pad: { t: 4 },
     },
     xaxis: {
       title: ganttXAxisTitle(baseMs),
@@ -442,7 +443,7 @@ function buildGanttLayout(
     height: Math.max(350, 72 * Math.max(eqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 88, r: 20, t: 56, b: 72 },
+    margin: { l: 88, r: 20, t: 88, b: 72 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverdistance: 30,
@@ -531,9 +532,9 @@ export function buildWipChart(snap: HistorySnap, plan: PlanRecord[]): { data: Da
       yaxis: { title: { text: "웨이퍼 수량 (매)" } },
       barmode: "stack",
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.25 },
+      legend: { orientation: "h", y: -0.3 },
       height: 320,
-      margin: { t: 50, b: 80 },
+      margin: { t: 50, b: 100 },
     },
   };
 }
@@ -574,7 +575,7 @@ export function buildAchievementChart(snap: HistorySnap, plan: PlanRecord[]): { 
       shapes: [{ type: "line", x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper", line: { dash: "dash", color: "#4C72B0", width: 1.5 } }],
       ...SHARED_DARK,
       height: 320,
-      margin: { l: 150, r: 120, t: 50, b: 40 },
+      margin: { l: 150, r: 120, t: 50, b: 56 },
     },
   };
 }
@@ -702,7 +703,7 @@ export function buildProductProductionCharts(
     height: Math.min(Math.max(260 * n, 300), 960),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 72, r: 150, t: 56, b: 40 },
+    margin: { l: 72, r: 150, t: 88, b: 40 },
     showlegend: true,
     legend: { orientation: "v", x: 1.02, y: 1, font: { size: 11 } },
   };
@@ -908,9 +909,9 @@ export function buildComparisonKpi(
       barmode: "group",
       yaxis: { title: { text: "값" } },
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.2 },
+      legend: { orientation: "h", y: -0.25 },
       height: 360,
-      margin: { t: 60, b: 80 },
+      margin: { t: 60, b: 96 },
     },
   };
 }
@@ -953,9 +954,9 @@ export function buildAchievementComparison(
       xaxis: { title: { text: "P / O" } },
       shapes: [{ type: "line", x0: 0, x1: 1, y0: 100, y1: 100, xref: "paper", line: { dash: "dash", color: "red", width: 1 } }],
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.25 },
+      legend: { orientation: "h", y: -0.3 },
       height: 360,
-      margin: { t: 60, b: 80 },
+      margin: { t: 60, b: 100 },
     },
   };
 }
@@ -1135,7 +1136,7 @@ export function buildAlgorithmGanttComparison(
     legend: n === 1 ? { title: { text: "제품×공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
-    margin: { l: 72, r: 16, t: 28, b: n === 1 ? 72 : 44 },
+    margin: { l: 72, r: 16, t: 52, b: n === 1 ? 72 : 44 },
   };
 
   entries.forEach((entry, i) => {
@@ -1299,7 +1300,7 @@ function buildTestMetricSingleDatasetChart(
       yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
       ...SHARED_DARK,
       height: 340,
-      margin: { t: 50, b: 60, l: 55, r: 20 },
+      margin: { t: 50, b: 72, l: 55, r: 20 },
     },
   };
 }
@@ -1360,9 +1361,9 @@ function buildTestMetricLineChart(
       },
       yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.35 },
+      legend: { orientation: "h", y: -0.44 },
       height: 340,
-      margin: { t: 50, b: 90, l: 55, r: 20 },
+      margin: { t: 50, b: 120, l: 55, r: 20 },
       ...(selectedCategory
         ? {
             shapes: [{
@@ -1406,7 +1407,7 @@ const CHART_LIGHT = { plot_bgcolor: "#f8fafc", paper_bgcolor: "#ffffff" } as con
 const TRAIN_CHART_BASE: Partial<Layout> = {
   ...CHART_LIGHT,
   height: 300,
-  margin: { t: 44, b: 48, l: 55, r: 20 },
+  margin: { t: 60, b: 48, l: 55, r: 20 },
   xaxis: { title: { text: "Timesteps" }, color: "#475569", gridcolor: "rgba(15,23,42,0.07)" },
   font: { family: CHART_FONT, color: "#1b1b18" },
 };
@@ -1445,7 +1446,7 @@ export function buildTrainRewardChart(
       title: { text: "보상 수렴", font: { size: 14 } },
       yaxis: { title: { text: "Reward" } },
       showlegend: data.length > 1,
-      legend: { orientation: "h", y: 1.12, x: 0 },
+      legend: { orientation: "h", y: 1.18, x: 0 },
     },
   };
 }
@@ -1481,7 +1482,7 @@ export function buildTrainLossChart(
       title: { text: "Loss", font: { size: 14 } },
       yaxis: { title: { text: "Loss" } },
       showlegend: data.length > 1,
-      legend: { orientation: "h", y: 1.12, x: 0 },
+      legend: { orientation: "h", y: 1.18, x: 0 },
     },
   };
 }
@@ -1775,7 +1776,7 @@ export function buildEnhancedGantt(
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 20, t: 52, b: 40 },
+    margin: { l: 160, r: 20, t: 80, b: 40 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverdistance: 30,
@@ -1807,7 +1808,7 @@ export function buildEqpUtilChart(utils: EqpUtil[]): { data: Data[]; layout: Par
       title: { text: "장비별 가동률 (%)", font: { size: 13 } },
       xaxis: { range: [0, 115], title: { text: "가동률 (%)" } },
       height: Math.max(300, 28 * Math.max(utils.length, 6)),
-      margin: { l: 140, r: 60, t: 40, b: 40 },
+      margin: { l: 140, r: 60, t: 40, b: 56 },
       ...SHARED_DARK,
     },
   };
@@ -1834,7 +1835,7 @@ export function buildModelUtilChart(utils: ModelUtil[]): { data: Data[]; layout:
       title: { text: "장비모델별 평균 가동률 (%)", font: { size: 13 } },
       xaxis: { range: [0, 115], title: { text: "평균 가동률 (%)" } },
       height: Math.max(260, 40 * Math.max(utils.length, 4)),
-      margin: { l: 120, r: 60, t: 40, b: 40 },
+      margin: { l: 120, r: 60, t: 40, b: 56 },
       ...SHARED_DARK,
     },
   };
@@ -1866,9 +1867,9 @@ export function buildTatChart(rows: TatRow[]): { data: Data[]; layout: Partial<L
       xaxis: { title: { text: "제품" } },
       yaxis: { title: { text: "TAT (분)" } },
       height: 300,
-      margin: { t: 44, b: 60, l: 55, r: 20 },
+      margin: { t: 44, b: 80, l: 55, r: 20 },
       ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.25 },
+      legend: { orientation: "h", y: -0.32 },
     },
   };
 }
@@ -1894,7 +1895,7 @@ export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data
       xaxis: { range: [0, 130], title: { text: "달성률 (%)" } },
       shapes: [{ type: "line" as const, x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper" as const, line: { dash: "dash" as const, color: "#4C72B0", width: 1.5 } }],
       height: Math.max(260, 28 * Math.max(rows.length, 6)),
-      margin: { l: 140, r: 100, t: 40, b: 40 },
+      margin: { l: 140, r: 100, t: 40, b: 56 },
       ...SHARED_DARK,
     },
   };
