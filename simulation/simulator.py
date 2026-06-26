@@ -222,7 +222,7 @@ class SchedulingSimulator:
             "oper_switches": 0,
             "prod_switches": 0,
             "conversions":   0,
-            "completed_qty": {},   # {(prod, oper): qty}
+            "completed_qty": {},   # {(prod, oper): qty} — 배정 시점 증가(완료+처리중 포함)
         }
 
         self.history:    List[dict] = []
@@ -702,6 +702,14 @@ class SchedulingSimulator:
             key = f"{ppk}|{oper_id}"
             remaining[key] = remaining.get(key, 0) + wf
         return remaining
+
+    def get_in_flight_qty(self, ppk: str, oper_id: str) -> int:
+        """(PPK, OPER) 기준 현재 장비에서 처리 중(배정됐지만 미완료)인 lot 수."""
+        return sum(
+            1
+            for meta in self._in_flight.values()
+            if meta.get("plan_prod_key") == ppk and meta.get("oper_id") == oper_id
+        )
 
     def _abstract_assignable_on_eqp(self, eqp_id: str) -> List[dict]:
         model = self._eqp_model_map.get(eqp_id)

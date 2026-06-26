@@ -31,22 +31,18 @@ class MinProgressAgent:
         max_end = max((rec["END_TM"] for rec in sim.schedule), default=0)
         return max(sim.current_time, max_end, 1)
 
-    def _cumulative_qty_at(
-        self, sim: SchedulingSimulator, prod: str, oper_id: str, t_end: int,
+    def _in_flight_qty(
+        self, sim: SchedulingSimulator, prod: str, oper_id: str,
     ) -> int:
-        total = 0
-        for rec in sim.schedule:
-            if rec["PLAN_PROD_KEY"] != prod or rec["OPER_ID"] != oper_id:
-                continue
-            if rec["START_TM"] <= t_end:
-                total += rec.get("WF_QTY", 0)
-        return total
+        """현재 장비에서 처리 중(배정됐지만 완료 전)인 lot 수."""
+        return sim.get_in_flight_qty(prod, oper_id)
 
     def _normalized_slope(
         self, sim: SchedulingSimulator, prod: str, oper_id: str,
     ) -> float:
+        # completed_qty는 배정 시점에 증가하므로 처리 중(in-flight) 포함
+        cum = sim.stats["completed_qty"].get((prod, oper_id), 0)
         t_end = self._chart_max_x(sim)
-        cum = self._cumulative_qty_at(sim, prod, oper_id, t_end)
         row = self._plan_row(prod, oper_id)
         if row and row.get("d0_plan_qty", 0) > 0:
             return (cum / max(row["d0_plan_qty"], 1)) / t_end
@@ -64,9 +60,12 @@ class MinProgressAgent:
 
     def _score_assignment(self, sim: SchedulingSimulator, flat: int) -> Tuple:
         ppk, oper_id = sim.ppk_oper_from_flat(flat)
+        # in_flight: 이미 다른 EQP가 처리 중인 (ppk, oper) → 추가 배정 후순위
+        in_flight = self._in_flight_qty(sim, ppk, oper_id)
         return (
             self._plan_priority(ppk, oper_id),
             self._normalized_slope(sim, ppk, oper_id),
+            in_flight,
             -self._remaining_work(sim, ppk, oper_id),
             flat,
         )
@@ -80,5 +79,5 @@ class MinProgressAgent:
         if not feasible:
             return np.array([0], dtype=np.int64)
 
-        flat = min(feasible, key=lambda f: self._score_assignment(sim, f)[:3])
+        flat = min(feasible, key=lambda f: self._score_assignment(sim, f))
         return np.array([flat], dtype=np.int64)
