@@ -191,21 +191,12 @@ def ensure_train_folders(
         return paths_to_folder_keys(fac_id, "train", paths)
 
     if nodb:
-        if from_key and to_key:
-            start_key, end_key = resolve_train_period_range(
-                from_key=from_key, to_key=to_key,
-            )
-            return resolve_train_folders(fac_id, start_key, end_key)
-        periods, _ = resolve_collect_periods(
-            fac_id,
+        # DB 연결 없이 로컬 폴더만 탐색 (rule_timekey_*.sql 이 있어도 쿼리하지 않음)
+        start_key, end_key = resolve_train_period_range(
             prevdays=prevdays or 1,
             from_key=from_key,
             to_key=to_key,
-            require_db=False,
         )
-        if periods:
-            return train_folders_for_periods(fac_id, periods)
-        start_key, end_key = resolve_train_period_range(prevdays=prevdays or 1)
         return resolve_train_folders(fac_id, start_key, end_key)
 
     periods, _ = resolve_collect_periods(
