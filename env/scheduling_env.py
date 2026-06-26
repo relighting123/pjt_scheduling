@@ -245,6 +245,7 @@ class SchedulingEnv(gym.Env):
         render_mode: Optional[str] = None,
         record_history: bool = True,
         record_decision_log: bool = False,
+        record_event_log: bool = True,
         max_episode_steps: Optional[int] = None,
         truncate_on_time: bool = True,
     ):
@@ -252,6 +253,7 @@ class SchedulingEnv(gym.Env):
         self._env_data = env_data
         self._record_history = record_history
         self._record_decision_log = record_decision_log
+        self._record_event_log = record_event_log
         self._decision_log: List[dict] = []
         self._max_episode_steps_override = max_episode_steps
         self._max_episode_steps = 0
@@ -277,7 +279,9 @@ class SchedulingEnv(gym.Env):
     def reset(self, *, seed=None, options=None) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
         self.sim = SchedulingSimulator(
-            self._env_data, CONFIG.reward, record_history=self._record_history,
+            self._env_data, CONFIG.reward,
+            record_history=self._record_history,
+            record_event_log=self._record_event_log,
         )
         self._total_reward = 0.0
         sim_end = int(self._env_data.get("sim_end_minutes", CONFIG.env.hard_horizon_minutes))

@@ -125,7 +125,7 @@ class SchedulingAgent:
         def make_env(data: dict):
             def _init():
                 env = ActionMasker(
-                    SchedulingEnv(data, record_history=False),
+                    SchedulingEnv(data, record_history=False, record_event_log=False),
                     _mask_fn,
                 )
                 return Monitor(env)
@@ -193,12 +193,20 @@ class SchedulingAgent:
                 ),
             ])
 
+        # n_envs > 1이면 롤아웃 버퍼(n_steps × total_envs)가 커지므로 batch_size도 비례 확장
+        total_envs = len(datasets) * n_envs
+        effective_batch = cfg.batch_size * max(total_envs, 1)
+        # batch_size는 rollout buffer(n_steps × total_envs)의 약수여야 함
+        rollout_size = cfg.n_steps * total_envs
+        while rollout_size % effective_batch != 0:
+            effective_batch -= 1
+
         self.model = MaskablePPO(
             "MlpPolicy",
             train_env,
             learning_rate=cfg.learning_rate,
             n_steps=cfg.n_steps,
-            batch_size=cfg.batch_size,
+            batch_size=effective_batch,
             n_epochs=cfg.n_epochs,
             gamma=cfg.gamma,
             verbose=verbose,
@@ -219,7 +227,7 @@ class SchedulingAgent:
             )
             progress_state.add_log(
                 f"하이퍼파라미터: {budget_label}, lr={cfg.learning_rate}, "
-                f"n_steps={cfg.n_steps}, batch={cfg.batch_size}, "
+                f"n_steps={cfg.n_steps}, batch={effective_batch}(base={cfg.batch_size}×{total_envs}envs), "
                 f"eval_freq={cfg.eval_freq}, device={cfg.device}, n_envs={n_envs}"
             )
         self.model.learn(

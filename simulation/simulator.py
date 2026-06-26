@@ -130,10 +130,11 @@ class SchedulingSimulator:
             sim.save_history_step()
     """
 
-    def __init__(self, env_data: dict, reward_cfg: RewardConfig = None, record_history: bool = True):
+    def __init__(self, env_data: dict, reward_cfg: RewardConfig = None, record_history: bool = True, record_event_log: bool = True):
         self._env_data   = env_data
         self._reward_cfg = reward_cfg or CONFIG.reward
         self._record_history = record_history
+        self._record_event_log = record_event_log
         self.reset()
 
     # --- 초기화 ---
@@ -276,6 +277,8 @@ class SchedulingSimulator:
         self._event_seq += 1
 
     def _emit_event(self, kind: str, eqp_id: str = "", *, event_time: Optional[int] = None, **payload: Any) -> None:
+        if not self._record_event_log:
+            return
         record = {
             "time": self.current_time if event_time is None else event_time,
             "kind": kind,
