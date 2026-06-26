@@ -1,5 +1,5 @@
 import type { Data, Layout } from "plotly.js";
-import type { ConversionPlan, HistorySnap, InferenceResult, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
+import type { ConversionPlan, HistorySnap, InferenceResult, InferenceStats, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
 import { buildColorMap } from "./colors";
 import { buildShortCodeMap } from "./ganttLabels";
 import {
@@ -1897,6 +1897,93 @@ export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data
       height: Math.max(260, 28 * Math.max(rows.length, 6)),
       margin: { l: 140, r: 100, t: 40, b: 56 },
       ...SHARED_DARK,
+    },
+  };
+}
+
+export function buildInferenceWipChart(
+  stats: InferenceStats,
+  plan: PlanRecord[],
+): { data: Data[]; layout: Partial<Layout> } {
+  const completed = stats.completed_qty ?? {};
+  const remaining = stats.remaining_wip ?? {};
+
+  const labels: string[] = [];
+  const done: number[] = [];
+  const wipLeft: number[] = [];
+  const planGap: number[] = [];
+  const planQtys: number[] = [];
+
+  plan.forEach((p) => {
+    const key = `${p.plan_prod_key}|${p.oper_id}`;
+    const fin = completed[key] ?? 0;
+    const rem = (remaining as Record<string, number>)[key] ?? 0;
+    const planQty = p.d0_plan_qty;
+    labels.push(`${p.plan_prod_key}/${p.oper_id}`);
+    done.push(fin);
+    wipLeft.push(rem);
+    planQtys.push(planQty);
+    planGap.push(Math.max(planQty - fin - rem, 0));
+  });
+
+  const shortLbls = abbreviateProdOperLabels(labels);
+
+  return {
+    data: [
+      {
+        type: "bar",
+        orientation: "h",
+        name: "완료",
+        x: done,
+        y: shortLbls,
+        customdata: labels.map((l, i) => `${l}<br>완료: ${done[i]}매 / 계획: ${planQtys[i]}매`),
+        hovertemplate: "%{customdata}<extra></extra>",
+        marker: { color: "#55A868" },
+      } as Data,
+      {
+        type: "bar",
+        orientation: "h",
+        name: "잔여 재공",
+        x: wipLeft,
+        y: shortLbls,
+        customdata: labels.map((l, i) => `${l}<br>잔여 재공: ${wipLeft[i]}매`),
+        hovertemplate: "%{customdata}<extra></extra>",
+        marker: { color: "#DD8452" },
+      } as Data,
+      {
+        type: "bar",
+        orientation: "h",
+        name: "계획 미달",
+        x: planGap,
+        y: shortLbls,
+        customdata: labels.map((l, i) => `${l}<br>계획 미달: ${planGap[i]}매`),
+        hovertemplate: "%{customdata}<extra></extra>",
+        marker: { color: "#C44E52", opacity: 0.65 },
+      } as Data,
+      {
+        type: "scatter",
+        mode: "markers",
+        name: "계획 목표",
+        x: planQtys,
+        y: shortLbls,
+        customdata: labels.map((l, i) => `${l}<br>계획: ${planQtys[i]}매`),
+        hovertemplate: "%{customdata}<extra></extra>",
+        marker: {
+          symbol: "line-ns",
+          size: 18,
+          color: "#4C72B0",
+          line: { width: 2.5, color: "#4C72B0" },
+        },
+      } as Data,
+    ],
+    layout: {
+      title: { text: "재공 처리 현황 (완료 / 잔여 재공 / 계획 미달)", font: { size: 13 } },
+      barmode: "stack",
+      xaxis: { title: { text: "수량 (매)" }, automargin: true },
+      height: Math.max(300, 40 * Math.max(plan.length, 4)),
+      margin: { l: 80, r: 24, t: 56, b: 64 },
+      ...SHARED_DARK,
+      legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
     },
   };
 }

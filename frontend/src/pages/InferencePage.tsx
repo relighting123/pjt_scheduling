@@ -11,6 +11,7 @@ import {
   buildEnhancedGantt,
   buildGanttLegendItems,
   buildProductProductionCharts,
+  buildInferenceWipChart,
   buildAlgorithmKpiComparison,
   buildAlgorithmAchievementComparison,
   buildAlgorithmGanttComparison,
@@ -264,6 +265,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     );
   }, [result, axis]);
 
+  const wipChart = useMemo(() => {
+    if (!result) return null;
+    return buildInferenceWipChart(result.stats, result.plan);
+  }, [result]);
+
   const compareGanttChart = useMemo(() => {
     if (!compareShowGantt || compareEntries.length < 2) return null;
     const compareAxis = buildCompareGanttAxis(compareEntries, compareData, simBaseTime);
@@ -481,6 +487,18 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     </p>
                     <div className="chart-wrap gantt-production-chart">
                       <PlotChart {...productionChart} scrollable />
+                    </div>
+                  </div>
+                )}
+
+                {wipChart && (
+                  <div className="card gantt-production-panel">
+                    <div className="gantt-summary-section-title">재공 처리 현황</div>
+                    <p className="gantt-production-hint">
+                      제품/공정별 완료 수량, 잔여 재공(미처리 대기), 계획 미달을 표시합니다. 세로 점선이 계획 목표입니다.
+                    </p>
+                    <div className="chart-wrap">
+                      <PlotChart {...wipChart} />
                     </div>
                   </div>
                 )}
