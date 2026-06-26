@@ -78,6 +78,25 @@ def _get_sql_logger() -> logging.Logger:
     return logger
 
 
+def _inline_binds(sql_text: str, binds: dict) -> str:
+    """Oracle :PARAM 바인드 변수를 리터럴 값으로 치환해 바로 실행 가능한 SQL 반환."""
+    import re
+
+    result = sql_text
+    # 긴 키 먼저 치환해 부분 치환 오류 방지 (예: :RULE_TIMEKEY vs :RULE)
+    for key in sorted(binds, key=len, reverse=True):
+        val = binds[key]
+        if val is None:
+            literal = "NULL"
+        elif isinstance(val, str):
+            escaped = val.replace("'", "''")
+            literal = f"'{escaped}'"
+        else:
+            literal = str(val)
+        result = re.sub(rf":{re.escape(key)}\b", literal, result)
+    return result
+
+
 def _log_sql_execute(
     sql_file: str,
     alias: str,
@@ -86,26 +105,21 @@ def _log_sql_execute(
     sql_text: str,
     row_count: int,
 ) -> None:
-    """SQL 실행 1건을 로그 파일에 기록."""
+    """SQL 실행 1건을 로그 파일에 기록 (바인드 값 인라인된 실행 가능 SQL 포함)."""
     log = _get_sql_logger()
 
     per_str = period or "(없음)"
-    binds_str = ", ".join(f"{k}={v!r}" for k, v in sorted(binds.items()))
-    # SQL 앞뒤 공백·연속 줄바꿈 정리 (로그 가독성)
-    sql_compact = " ".join(sql_text.split())
+    runnable_sql = _inline_binds(sql_text, binds)
 
     level = logging.WARNING if row_count == 0 else logging.INFO
     log.log(
         level,
-        "[%s] @%s  period=%s  rows=%d\n"
-        "  binds : %s\n"
-        "  sql   : %s",
+        "[%s] @%s  period=%s  rows=%d\n%s",
         sql_file,
         alias,
         per_str,
         row_count,
-        binds_str,
-        sql_compact,
+        runnable_sql,
     )
 
 
