@@ -183,48 +183,61 @@ def cmd_train(
     *,
     nodb: bool = False,
     lot_cd: str = None,
+    all_folders: bool = False,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
-    if rule_timekey:
-        key = normalize_rule_timekey(rule_timekey)
-        start_key = end_key = key
-        range_source = "cli"
-    elif nodb:
-        start_key, end_key = resolve_train_period_range(
-            prevdays=prevdays, from_key=from_key, to_key=to_key,
-        )
-        range_source = "local"
+
+    if all_folders:
+        train_folders = list_split_folders(fac_id, "train")
+        print("=" * 60)
+        print(f"[train] FAC={fac_id}  --all: train 폴더 전체 {len(train_folders)}개")
+        if nodb:
+            print("[train] --nodb: 기존 JSON만 사용 (자동 수집 없음)")
+        if not train_folders:
+            print("[오류] train 폴더가 없습니다. collect 로 데이터를 먼저 수집하세요.")
+            sys.exit(1)
     else:
-        periods, range_source = resolve_collect_periods(
+        if rule_timekey:
+            key = normalize_rule_timekey(rule_timekey)
+            start_key = end_key = key
+            range_source = "cli"
+        elif nodb:
+            start_key, end_key = resolve_train_period_range(
+                prevdays=prevdays, from_key=from_key, to_key=to_key,
+            )
+            range_source = "local"
+        else:
+            periods, range_source = resolve_collect_periods(
+                fac_id,
+                prevdays=prevdays or 1,
+                from_key=from_key,
+                to_key=to_key,
+                require_db=True,
+            )
+            start_key, end_key = periods[0], periods[-1]
+
+        print("=" * 60)
+        print(
+            f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}"
+            f" ({range_source})",
+        )
+        if nodb:
+            print("[train] --nodb: 기존 JSON만 사용 (자동 수집 없음)")
+
+        train_folders = ensure_train_folders(
             fac_id,
-            prevdays=prevdays or 1,
+            prevdays=prevdays,
             from_key=from_key,
             to_key=to_key,
-            require_db=True,
+            period=rule_timekey,
+            lot_cd=lot_cd,
+            nodb=nodb,
         )
-        start_key, end_key = periods[0], periods[-1]
-
-    print("=" * 60)
-    print(
-        f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}"
-        f" ({range_source})",
-    )
-    if nodb:
-        print("[train] --nodb: 기존 JSON만 사용 (자동 수집 없음)")
-
-    train_folders = ensure_train_folders(
-        fac_id,
-        prevdays=prevdays,
-        from_key=from_key,
-        to_key=to_key,
-        period=rule_timekey,
-        lot_cd=lot_cd,
-        nodb=nodb,
-    )
     if not train_folders:
         available = list_split_folders(fac_id, "train")
         print("[오류] 학습용 train 폴더가 없습니다.")
-        print(f"  요청 구간: {start_key} ~ {end_key}")
+        if not all_folders:
+            print(f"  요청 구간: {start_key} ~ {end_key}")
         if available:
             print(f"  사용 가능한 train 폴더: {', '.join(available)}")
         else:
@@ -580,6 +593,10 @@ def parse_args():
         help="자동 수집·validation DB 조회 생략, dataset 기존 JSON만 사용",
     )
     train_p.add_argument(
+        "--all", dest="all_folders", action="store_true",
+        help="train 폴더 전체 학습 (--prevdays/--from/--to/--ruletimekey 불필요)",
+    )
+    train_p.add_argument(
         "--lotcd",
         default=None,
         help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
@@ -743,21 +760,22 @@ def main():
     args = parse_args()
     try:
         if args.command == "train":
-            if args.ruletimekey and (
-                args.prevdays is not None or args.from_key or args.to_key
-            ):
-                print("[오류] --ruletimekey 는 --prevdays, --from/--to 와 함께 쓸 수 없습니다.")
-                sys.exit(1)
-            if (
-                args.ruletimekey is None
-                and args.prevdays is None
-                and not (args.from_key and args.to_key)
-            ):
-                print("[오류] --ruletimekey, --prevdays 또는 --from/--to 가 필요합니다.")
-                sys.exit(1)
-            if args.prevdays is not None and (args.from_key or args.to_key):
-                print("[오류] --prevdays 와 --from/--to 는 함께 쓸 수 없습니다.")
-                sys.exit(1)
+            if not args.all_folders:
+                if args.ruletimekey and (
+                    args.prevdays is not None or args.from_key or args.to_key
+                ):
+                    print("[오류] --ruletimekey 는 --prevdays, --from/--to 와 함께 쓸 수 없습니다.")
+                    sys.exit(1)
+                if (
+                    args.ruletimekey is None
+                    and args.prevdays is None
+                    and not (args.from_key and args.to_key)
+                ):
+                    print("[오류] --ruletimekey, --prevdays, --from/--to, --all 중 하나가 필요합니다.")
+                    sys.exit(1)
+                if args.prevdays is not None and (args.from_key or args.to_key):
+                    print("[오류] --prevdays 와 --from/--to 는 함께 쓸 수 없습니다.")
+                    sys.exit(1)
             cmd_train(
                 fac_id=args.facid,
                 prevdays=args.prevdays,
@@ -766,6 +784,7 @@ def main():
                 rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
+                all_folders=args.all_folders,
             )
 
         elif args.command == "validate":
