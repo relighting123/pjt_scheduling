@@ -9,7 +9,7 @@ from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from config import CONFIG
 from env.scheduling_env import (
@@ -120,6 +120,7 @@ class SchedulingAgent:
         model_dir.mkdir(parents=True, exist_ok=True)
 
         datasets: List[dict] = env_data if isinstance(env_data, list) else [env_data]
+        n_envs = max(cfg.n_envs, 1)
 
         def make_env(data: dict):
             def _init():
@@ -130,7 +131,13 @@ class SchedulingAgent:
                 return Monitor(env)
             return _init
 
-        train_env = DummyVecEnv([make_env(d) for d in datasets])
+        # n_envs > 1 이면 같은 데이터를 n_envs 개 프로세스에서 병렬 롤아웃
+        # 기간이 여러 개면 기간 × n_envs 조합으로 확장
+        train_fns = [make_env(d) for d in datasets for _ in range(n_envs)]
+        if n_envs > 1:
+            train_env = SubprocVecEnv(train_fns, start_method="fork")
+        else:
+            train_env = DummyVecEnv(train_fns)
         eval_env = DummyVecEnv([make_env(datasets[0])])
 
         callbacks = []
@@ -195,10 +202,16 @@ class SchedulingAgent:
             n_epochs=cfg.n_epochs,
             gamma=cfg.gamma,
             verbose=verbose,
+            device=cfg.device,
         )
         if progress_state is not None:
-            if len(datasets) > 1:
-                progress_state.add_log(f"VecEnv {len(datasets)}개 기간 병렬 학습")
+            n_total_envs = len(datasets) * n_envs
+            if n_total_envs > 1:
+                progress_state.add_log(
+                    f"VecEnv {n_total_envs}개 "
+                    f"({'SubprocVecEnv' if n_envs > 1 else 'DummyVecEnv'}, "
+                    f"기간 {len(datasets)}개 × n_envs {n_envs})"
+                )
             budget_label = (
                 f"n_episodes={n_episodes:,}"
                 if use_episode_budget
@@ -206,7 +219,8 @@ class SchedulingAgent:
             )
             progress_state.add_log(
                 f"하이퍼파라미터: {budget_label}, lr={cfg.learning_rate}, "
-                f"n_steps={cfg.n_steps}, batch={cfg.batch_size}, eval_freq={cfg.eval_freq}"
+                f"n_steps={cfg.n_steps}, batch={cfg.batch_size}, "
+                f"eval_freq={cfg.eval_freq}, device={cfg.device}, n_envs={n_envs}"
             )
         self.model.learn(
             total_timesteps=learn_timesteps,
