@@ -474,6 +474,9 @@ class RLConfig:
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
     eval_freq:       int   = 10_000
+    # GPU / 병렬 환경 설정
+    device:          str   = "auto"         # "auto" | "cuda" | "cpu"
+    n_envs:          int   = 1              # SubprocVecEnv 병렬 환경 수 (1=DummyVecEnv)
 
 
 @dataclass
