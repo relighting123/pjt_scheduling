@@ -65,6 +65,72 @@ from data.writer.db_load import (
 from validation.runner import run_validation
 
 
+def _refresh_invalid_folders(
+    fac_id: str,
+    folders: List[str],
+    lot_cd: str | None = None,
+) -> List[str]:
+    """
+    폴더별 validate_data() 검사 → 실패한 폴더만 DB 재수집 후 유효 폴더 목록 반환.
+    유효한 폴더는 기존 JSON을 그대로 사용하고 재수집하지 않는다.
+    """
+    from config import parse_input_folder, resolve_dataset_path
+
+    valid: List[str] = []
+    to_refetch: List[str] = []
+
+    print("[train] 폴더별 데이터 유효성 검사")
+    for folder in folders:
+        set_input_folder(folder)
+        try:
+            raw = load_data()
+            errors = validate_data(raw)
+        except Exception as exc:
+            errors = [str(exc)]
+
+        if errors:
+            print(f"  [재수집 필요] {folder}")
+            for e in errors:
+                print(f"    · {e}")
+            to_refetch.append(folder)
+        else:
+            print(f"  [OK] {folder}")
+            valid.append(folder)
+
+    if not to_refetch:
+        print("[train] 모든 폴더 유효 – 재수집 없음")
+        return valid
+
+    print(f"\n[train] {len(to_refetch)}개 폴더 재수집 시작")
+    for folder in to_refetch:
+        _, split, period = parse_input_folder(folder)
+        out_dir, _ = resolve_dataset_path(fac_id, split, period)
+        try:
+            fetch_from_db(
+                fac_id=fac_id,
+                split=split,
+                period=period,
+                lot_cd=lot_cd,
+                output_dir=out_dir,
+                verbose=True,
+            )
+            # 재수집 후 재검증
+            set_input_folder(folder)
+            raw = load_data()
+            errors = validate_data(raw)
+            if errors:
+                print(f"  [경고] 재수집 후에도 오류 – 학습에서 제외: {folder}")
+                for e in errors:
+                    print(f"    · {e}")
+            else:
+                print(f"  [재수집 완료] {folder}")
+                valid.append(folder)
+        except Exception as exc:
+            print(f"  [오류] 재수집 실패 – 학습에서 제외: {folder}\n    {exc}")
+
+    return valid
+
+
 def _load_env_data(folder: str) -> dict:
     set_input_folder(folder)
     raw = load_data()
@@ -168,6 +234,13 @@ def cmd_train(
     print(f"[train] train 폴더 {len(train_folders)}개 사용")
     for f in train_folders:
         print(f"  · {f}")
+
+    print("=" * 60)
+    if not nodb:
+        train_folders = _refresh_invalid_folders(fac_id, train_folders, lot_cd=lot_cd)
+        if not train_folders:
+            print("[오류] 유효한 train 폴더가 없습니다. 재수집 결과를 확인하세요.")
+            sys.exit(1)
 
     print("=" * 60)
     print("[train] 데이터 로드 및 전처리")
