@@ -849,10 +849,8 @@ class SchedulingSimulator:
         """LOT_CD/TEMP 변경 시 conversion 필요 여부·시작 시각·보상."""
         start_time = max(self.current_time, eqp.free_at)
         reward = self._accumulate_idle(eqp, reward, start_time)
-        needs_conv = (
-            eqp.prev_lot_cd is not None
-            and (eqp.prev_lot_cd != lot_cd or eqp.prev_temp != temp)
-        )
+        # 변환 필요 판단은 _would_need_conversion 하나로 일원화 (중복 제거)
+        needs_conv = self._would_need_conversion(eqp.eqp_id, lot_cd, temp)
         if needs_conv:
             reward += self._reward_cfg.w_conversion
             if self._reward_cfg.w_avoidable_conversion < 0:
@@ -1037,21 +1035,44 @@ class SchedulingSimulator:
         )
         return max(coverage_frac, short_run_frac)
 
+    def _oper_supply_rate(self, ppk: str, oper_id: str) -> float:
+        """(PPK, OPER)에 재공을 공급하는 선행 공정의 유효 처리율(매/분).
+
+        선행 공정이 흘려보내는 율 ≈ 선행 capa, 단 선행에 ready 재공이 있을 때만.
+        선행이 없으면(첫 공정·외부 유입) 0 (소진 관점). 선행도 굶으면 0."""
+        prev = self._flow_prev(ppk, oper_id)
+        if prev is None:
+            return 0.0
+        if self._ready_wip_qty(ppk, prev) <= 0:
+            return 0.0
+        return self._oper_capacity_per_min(ppk, prev)
+
     def _downstream_wip_cover_minutes(self, ppk: str, oper_id: str) -> Optional[float]:
         """
-        후속 공정 ready WIP ÷ 후속 장비 합산 분당 처리량 = 커버 시간(분).
+        후속 공정 ready WIP ÷ '순감소율'(소비 − 공급) = 굶을 때까지 커버 시간(분).
+
+        소비 = 후속 장비 합산 처리율, 공급 = 현재 공정(=후속의 선행)이 후속으로
+        흘려보내는 율. 공급 ≥ 소비면 후속이 적체되므로 안 굶음(None).
         후속 공정·계획 없거나 처리 capa 없으면 None.
         """
         nxt = self._flow_post(ppk, oper_id)
         if nxt is None or not self._has_plan(ppk, nxt):
             return None
-        capa = self._oper_capacity_per_min(ppk, nxt)
-        if capa <= 0:
+        consume = self._oper_capacity_per_min(ppk, nxt)
+        if consume <= 0:
             return None
-        return self._ready_wip_qty(ppk, nxt) / capa
+        # 후속(nxt)의 선행은 곧 현재 공정(oper_id) → 그 공급율을 차감
+        supply = self._oper_supply_rate(ppk, nxt)
+        net = consume - supply
+        if net <= 1e-9:
+            return None  # 공급 ≥ 소비 → 후속 적체, 안 굶음
+        return self._ready_wip_qty(ppk, nxt) / net
 
     def _downstream_is_starving(self, ppk: str, oper_id: str) -> bool:
-        """후속 ready WIP 커버가 flow_balance_starving_cover_min 이하일 때만 starving."""
+        """후속 net-rate 커버가 flow_balance_starving_cover_min 이하일 때만 starving.
+
+        커버 시간은 소비−공급 순감소율 기준이므로, 현재 공정이 후속을 충분히
+        먹이고 있으면(공급 ≥ 소비) starving이 아니다(과잉 feeding 억제)."""
         cover = self._downstream_wip_cover_minutes(ppk, oper_id)
         if cover is None:
             return False
