@@ -503,6 +503,15 @@ class RewardConfig:
     # 변환 후 무변환으로 돌 가동시간이 (이 배수 × conversion_minutes) 이상이면
     # 변환을 정당한 것으로 보고 회피 패널티를 면제. 짧으면 패널티↑.
     conversion_amortize_factor: float = 1.0
+    # --- 벌크 점유(Bulk-Fill) 전용 보상항 (BulkFillEnv에서만 사용; 0이면 비활성) ---
+    # ① 블록 크기 보너스: 같은 제품군을 큰 블록으로 커밋할수록 보상(전담 커밋 유도).
+    w_bulk_block_bonus:   float = 0.0
+    # ② 전용 오용 페널티(<0): 범용 장비가 더 전용적인 idle 장비도 가능한 버킷을
+    #    잡을 때 감점 → 전용 장비가 놀지 않게.
+    w_dedication_misuse:  float = 0.0
+    # ③ 중복 커버 페널티(<0): 이미 다른 셋업 장비가 horizon 내 충분히 덮는 버킷을
+    #    잡으면 감점 → 다른 제품으로 전환할 '용기'.
+    w_redundant_cover:    float = 0.0
     w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
     # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
     w_flow_balance:    float = 2.5       # 계획 비중 대비 WIP 적체 공정 배정 보너스 ↑
@@ -532,6 +541,9 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_conversion": r.w_conversion,
         "w_avoidable_conversion": r.w_avoidable_conversion,
         "conversion_amortize_factor": r.conversion_amortize_factor,
+        "w_bulk_block_bonus": r.w_bulk_block_bonus,
+        "w_dedication_misuse": r.w_dedication_misuse,
+        "w_redundant_cover": r.w_redundant_cover,
         "w_late_finish": r.w_late_finish,
         "w_flow_balance": r.w_flow_balance,
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
@@ -548,6 +560,7 @@ def apply_reward_params(params: dict) -> None:
         "w_same_setup", "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
         "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
+        "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
         "w_late_finish", "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
     )
     for key in float_keys:

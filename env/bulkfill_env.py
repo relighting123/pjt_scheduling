@@ -174,10 +174,13 @@ class BulkFillEnv(gym.Env):
                 ppk, oper_id = self.sim.ppk_oper_from_flat(flat)
                 reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
                 if active is None:
-                    # 새 블록 시작 — 크기 산출 후 remaining 설정
+                    # 새 블록 시작 — 크기 산출 후 벌크 shaping + remaining 설정
                     if reward >= 0:
                         n = self.sim.bulk_block_size(
                             eqp_id, ppk, oper_id, size_level, self._L,
+                        )
+                        reward += self.sim.bulk_decision_shaping(
+                            eqp_id, ppk, oper_id, n,
                         )
                         if n > 1:
                             self._block[eqp_id] = [flat, n - 1]

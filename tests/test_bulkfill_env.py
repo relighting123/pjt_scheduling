@@ -185,6 +185,48 @@ def test_initial_setup_does_not_consume_tool_net(tmp_path):
     assert sim._tool_tracker.can_assign("LC001", "EQP002") is True
 
 
+def test_bulk_decision_shaping_terms(tmp_path):
+    """벌크 보상항: 블록보너스(+), 중복커버 페널티(−), 비활성(0) 검증."""
+    from config import CONFIG
+
+    ed = _build_s1(tmp_path, n_lots=8, plan=200)
+    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env.reset()
+    sim = env.sim
+    eqp = sim.current_idle_eqp()
+    feasible = sim.get_feasible_ppk_oper(eqp)
+    ppk, oper = sim.ppk_oper_from_flat(feasible[0])
+
+    saved = (CONFIG.reward.w_bulk_block_bonus, CONFIG.reward.w_dedication_misuse,
+             CONFIG.reward.w_redundant_cover)
+    try:
+        # 모두 0 → shaping 0 (기본/per-carrier 무영향)
+        CONFIG.reward.w_bulk_block_bonus = 0.0
+        CONFIG.reward.w_dedication_misuse = 0.0
+        CONFIG.reward.w_redundant_cover = 0.0
+        assert sim.bulk_decision_shaping(eqp, ppk, oper, block_size=10) == 0.0
+
+        # ① 블록 보너스 > 0 → 큰 블록일수록 양수
+        CONFIG.reward.w_bulk_block_bonus = 2.0
+        s_small = sim.bulk_decision_shaping(eqp, ppk, oper, block_size=2)
+        s_big = sim.bulk_decision_shaping(eqp, ppk, oper, block_size=40)
+        assert 0 < s_small <= s_big
+
+        # ③ 중복 커버 페널티 < 0 → 다른 장비가 이 버킷에 셋업돼 있으면 음수
+        CONFIG.reward.w_bulk_block_bonus = 0.0
+        CONFIG.reward.w_redundant_cover = -3.0
+        # 다른 장비 하나를 이 버킷으로 셋업 처리 중으로 만들기
+        others = [x for x in ed["eqp_ids"] if x != eqp]
+        sim.eqps[others[0]].prev_prod = ppk
+        sim.eqps[others[0]].prev_oper = oper
+        sim._invalidate_caches() if hasattr(sim, "_invalidate_caches") else None
+        s_redun = sim.bulk_decision_shaping(eqp, ppk, oper, block_size=5)
+        assert s_redun < 0
+    finally:
+        (CONFIG.reward.w_bulk_block_bonus, CONFIG.reward.w_dedication_misuse,
+         CONFIG.reward.w_redundant_cover) = saved
+
+
 def test_model_breadth_and_dedication(tmp_path):
     ed = _build_s1(tmp_path)
     env = BulkFillEnv(ed, record_history=False, record_event_log=False)

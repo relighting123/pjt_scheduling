@@ -1446,6 +1446,42 @@ class SchedulingSimulator:
         target = max(int(round(frac * budget)), 1)
         return max(min(target, cap), 1)
 
+    def bulk_decision_shaping(
+        self, eqp_id: str, ppk: str, oper_id: str, block_size: int,
+    ) -> float:
+        """벌크 블록 '시작' 결정에 대한 추가 보상 shaping (BulkFillEnv 전용).
+
+        세 항(모두 가중치 0이면 비활성):
+          ① 블록 크기 보너스(+): 같은 제품군을 큰 블록으로 커밋할수록 보상.
+          ② 전용 오용 페널티(−): 범용 장비가 더 전용적인 idle 장비도 가능한
+             버킷을 잡으면 감점(전용 장비가 놀지 않게).
+          ③ 중복 커버 페널티(−): 이미 다른 셋업 장비가 horizon 내 충분히
+             덮는 버킷을 잡으면 감점(다른 제품으로 전환할 '용기').
+        """
+        cfg = self._reward_cfg
+        shaping = 0.0
+
+        # ① 블록 크기 보너스 (takt 예산 대비 블록 비율)
+        if cfg.w_bulk_block_bonus > 0 and block_size > 1:
+            budget = max(self._takt_budget_carriers(ppk, oper_id), 1)
+            shaping += cfg.w_bulk_block_bonus * min(block_size / budget, 1.0)
+
+        # ② 전용 오용
+        if cfg.w_dedication_misuse < 0 and self.narrower_idle_specialist_exists(
+            eqp_id, ppk, oper_id,
+        ):
+            shaping += cfg.w_dedication_misuse
+
+        # ③ 중복 커버 (다른 셋업 장비의 투영 커버 / 잔여 필요량)
+        if cfg.w_redundant_cover < 0:
+            done = self.stats["completed_qty"].get((ppk, oper_id), 0)
+            target = max(self._achievable_qty(ppk, oper_id), 1)
+            need = max(target - done, 1)
+            cover = self._bucket_projected_cover(ppk, oper_id, exclude_eqp=eqp_id)
+            shaping += cfg.w_redundant_cover * min(cover / need, 2.0)
+
+        return shaping
+
     def ppk_oper_flat_index(self, oper_id: str, ppk: str) -> int:
         data = self._env_data
         O = CONFIG.env.max_oper_count
