@@ -404,7 +404,13 @@ class SchedulingSimulator:
     # --- 결정 시점 / 내부 헬퍼 ---
 
     def _apply_eqp_initial_state(self, rows: List[dict]) -> None:
-        """JSON eqp_initial_state → Equipment prev_lot_cd/temp/prod."""
+        """JSON eqp_initial_state → Equipment prev_lot_cd/temp/prod.
+
+        tool_capacity(MAX_TOOL)는 '현재 장착된 것을 제외한 추가 가용 수(net)'로
+        해석한다. 따라서 초기 셋업으로 이미 장착된 장비는 occupy하지 않는다
+        (이미 MAX_TOOL 밖에 있으므로 차감하면 이중 차감이 된다). prev_lot_cd 등은
+        전환(conversion) 판단을 위해 설정한다.
+        """
         for row in rows:
             eid = row.get("eqp_id")
             if not eid or eid not in self.eqps:
@@ -414,7 +420,6 @@ class SchedulingSimulator:
             temp = row.get("temp") or None
             if lot_cd:
                 eqp.prev_lot_cd = lot_cd
-                self._tool_tracker.occupy(lot_cd, eid)
             if temp:
                 eqp.prev_temp = temp
             if row.get("plan_prod_key"):

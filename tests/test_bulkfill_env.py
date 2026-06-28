@@ -154,6 +154,37 @@ def test_bulk_block_size_bounded_by_plan_and_wip(tmp_path):
     assert n > 2  # 동시성 한도(2)보다 큰 블록이 가능해야 함
 
 
+def test_initial_setup_does_not_consume_tool_net(tmp_path):
+    """MAX_TOOL은 '추가 가용분(net)' — 초기 셋업으로 장착된 장비는 차감 안 됨.
+
+    tool_capacity LC001=1(추가 1대)이고 EQP001이 초기에 LC001 장착됐어도,
+    그 1대 여분은 EQP002가 그대로 쓸 수 있어야 한다(초기장착 무차감).
+    """
+    from simulation.simulator import SchedulingSimulator
+    from config import CONFIG
+
+    disc, pl, flow = [], [], []
+    flow.append({"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"})
+    pl.append({"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001",
+               "D0_PLAN_QTY": 100, "D1_PLAN_QTY": 100, "PLAN_PRIORITY": 1})
+    lc = 0
+    for _ in range(4):
+        lc += 1
+        for e in ("EQP001", "EQP002"):
+            disc.append(_disc(e, f"L{lc:03d}", "PPK001", "OPER001", 1, f"C{lc:03d}"))
+    tc = build_tool_capacity_from_lots(build_lot_master_from_discrete(disc), max_tool=1)
+    eqp_init = [{"EQP_ID": "EQP001", "LOT_CD": "LC001", "TEMP": "T700",
+                 "PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001"}]
+    out = tmp_path / "init"
+    write_json_bundle(out, disc, pl, flow, tool_capacity=tc, eqp_initial_state=eqp_init)
+    ed = preprocess(load_data(out))
+
+    sim = SchedulingSimulator(ed, CONFIG.reward, record_history=False, record_event_log=False)
+    # 초기 장착(EQP001=LC001)이 tool을 점유하지 않음 → 추가 가용 그대로 1
+    assert sim._tool_tracker.remaining("LC001", "EQP001") == 1
+    assert sim._tool_tracker.can_assign("LC001", "EQP002") is True
+
+
 def test_model_breadth_and_dedication(tmp_path):
     ed = _build_s1(tmp_path)
     env = BulkFillEnv(ed, record_history=False, record_event_log=False)
