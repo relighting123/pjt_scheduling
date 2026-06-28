@@ -1329,6 +1329,121 @@ class SchedulingSimulator:
             return -1.0
         return self.assign_lot(eqp_id, lot_id)
 
+    # ── 벌크(블록) 점유 지원 ───────────────────────────────────────────────
+
+    def _carrier_takt_minutes(self, ppk: str, oper_id: str) -> float:
+        """(PPK,OPER) carrier당 takt(분) = max(수요takt, capa_takt).
+
+        get_observation()의 eff_takt와 동일 정의. 블록 크기 상한 산출용.
+        """
+        data = self._env_data
+        arranges_by = data.get("abstract_arranges_by_ppk_oper", {})
+        n_eqp_per_oper = data.get("n_eqp_per_oper", {})
+        plan_meta = data.get("plan_meta", {})
+        wf_unit = max(data.get("max_wf_qty", 1), 1)
+        completed = self.stats["completed_qty"]
+        T_avail = max(self.soft_cutoff - self.current_time, 1)
+
+        lst = arranges_by.get((ppk, oper_id))
+        spw = (sum(s for _, s in lst) / len(lst)) if lst else None
+        n = max(n_eqp_per_oper.get(oper_id, 0), 1)
+        cap_takt = (spw / n) if spw is not None else 0.0
+        pm = plan_meta.get((ppk, oper_id))
+        if pm and pm.get("d0_plan_qty", 0) > 0:
+            q_plan = max(pm["d0_plan_qty"] - completed.get((ppk, oper_id), 0), 1)
+            demand_takt = T_avail / q_plan
+            return max(demand_takt, cap_takt) * wf_unit
+        return cap_takt * wf_unit
+
+    def _takt_budget_carriers(self, ppk: str, oper_id: str) -> int:
+        """이번 horizon에서 takt상 허용되는 carrier 수 = floor(T_avail / takt)."""
+        takt = self._carrier_takt_minutes(ppk, oper_id)
+        T_avail = max(self.soft_cutoff - self.current_time, 1)
+        if takt <= 0:
+            return 10 ** 6  # takt 미정의 → 사실상 무제한(다른 상한이 묶음)
+        return max(int(T_avail // takt), 1)
+
+    def model_breadth(self, eqp_id: str) -> int:
+        """이 장비 모델이 가공 가능한 (PPK,OPER) 조합 수 = 범용성(클수록 범용)."""
+        model = self._eqp_model_map.get(eqp_id)
+        arrange_map = self._env_data.get("abstract_arrange_map", {})
+        n = sum(1 for (_p, _o, m) in arrange_map if m == model)
+        if n > 0:
+            return n
+        return len(self._env_data.get("eqp_oper_cap", {}).get(eqp_id, []))
+
+    def bucket_eligible_models(self, ppk: str, oper_id: str) -> int:
+        """이 (PPK,OPER)를 가공 가능한 서로 다른 장비모델 수."""
+        arrange_map = self._env_data.get("abstract_arrange_map", {})
+        models = {m for (p, o, m) in arrange_map if p == ppk and o == oper_id}
+        return max(len(models), 1)
+
+    def bucket_dedication(self, ppk: str, oper_id: str) -> float:
+        """전용도 = 1/가능모델수. 1.0이면 단일 모델 전용, 작을수록 범용."""
+        return 1.0 / self.bucket_eligible_models(ppk, oper_id)
+
+    def narrower_idle_specialist_exists(
+        self, eqp_id: str, ppk: str, oper_id: str,
+    ) -> bool:
+        """이 버킷을 처리 가능한 '더 전용적인(breadth 작은)' 장비가 현재 idle인가.
+
+        True면 범용 장비 eqp_id가 이 버킷을 잡을 때 전용 장비가 놀게 되므로
+        벌크 보상에서 '전용 오용' 페널티 신호로 사용.
+        """
+        my_breadth = self.model_breadth(eqp_id)
+        for other in self._env_data["eqp_ids"]:
+            if other == eqp_id:
+                continue
+            if self.eqps[other].status != "idle":
+                continue
+            if not self._eqp_can_process(other, ppk, oper_id):
+                continue
+            if self.model_breadth(other) < my_breadth:
+                return True
+        return False
+
+    def bulk_block_size(
+        self, eqp_id: str, ppk: str, oper_id: str, level: int, n_levels: int,
+    ) -> int:
+        """size_level(0..n_levels-1) → 블록 carrier 수.
+
+        상한 = min(takt 예산, 가용 WIP, 잔여 계획, tool 잔여(추가 가용)).
+        tool은 MAX_TOOL 총량이 아니라 현재 사용 중을 제외한 잔여만 사용한다.
+        """
+        lots = [
+            l for l in self.available_lots(eqp_id)
+            if l["plan_prod_key"] == ppk and l["oper_id"] == oper_id
+        ]
+        wip_carriers = len(lots)
+        if wip_carriers == 0:
+            return 0
+
+        data = self._env_data
+        wf_unit = max(data.get("max_wf_qty", 1), 1)
+        pm = data.get("plan_meta", {}).get((ppk, oper_id))
+        if pm and pm.get("d0_plan_qty", 0) > 0:
+            done = self.stats["completed_qty"].get((ppk, oper_id), 0)
+            plan_carriers = int(np.ceil(max(pm["d0_plan_qty"] - done, 0) / wf_unit))
+        else:
+            plan_carriers = wip_carriers  # 계획 없으면 WIP 한도
+
+        lot_id = self._auto_select_lot(eqp_id, lots)
+        if lot_id is None:
+            return 0
+        lot_cd, _temp = self._lot_cd_temp(
+            lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
+        )
+        tool_rem = self._tool_tracker.remaining(lot_cd, eqp_id)
+
+        cap = min(wip_carriers, plan_carriers, tool_rem)
+        if cap <= 0:
+            return 0
+
+        budget = self._takt_budget_carriers(ppk, oper_id)
+        frac = (level + 1) / max(n_levels, 1)        # level0→작게 … 마지막→budget 전량
+        target = max(int(round(frac * budget)), 1)
+        return max(min(target, cap), 1)
+
     def ppk_oper_flat_index(self, oper_id: str, ppk: str) -> int:
         data = self._env_data
         O = CONFIG.env.max_oper_count

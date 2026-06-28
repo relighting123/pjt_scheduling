@@ -106,6 +106,7 @@ class SchedulingAgent:
         verbose: int = 1,
         progress_state: Optional[TrainProgressState] = None,
         n_episodes: Optional[int] = None,
+        env_cls: type = SchedulingEnv,
     ) -> "SchedulingAgent":
         """
         목적: 주어진 환경 데이터로 PPO 에이전트 학습
@@ -125,7 +126,7 @@ class SchedulingAgent:
         def make_env(data: dict):
             def _init():
                 env = ActionMasker(
-                    SchedulingEnv(data, record_history=False, record_event_log=False),
+                    env_cls(data, record_history=False, record_event_log=False),
                     _mask_fn,
                 )
                 return Monitor(env)
