@@ -5,6 +5,7 @@ from config import CONFIG, apply_reward_params, reward_params_dict
 def test_reward_params_dict_has_all_keys():
     params = reward_params_dict()
     assert set(params) == {
+        "w_same_setup",
         "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
         "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",

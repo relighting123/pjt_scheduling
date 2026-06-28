@@ -482,9 +482,12 @@ class RLConfig:
 @dataclass
 class RewardConfig:
     # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
-    w_same_oper:       float = 0.4       # 같은 공정 연속 (Step D: 조건부 적용) ↓독점 억제
-    w_same_prod:       float = 0.5       # 같은 PPK 재공이 남아 있을 때만 (조건부)
-    w_prod_switch:     float = 0.5       # 이전 PPK 재공 고갈 시 전환 보너스
+    # 제품·공정이 '모두' 직전과 동일할 때만 주는 연속 보너스 (전환 회피와 정렬).
+    # >0 이면 아래 분리형(same_oper/same_prod/prod_switch)을 대체해 적용.
+    w_same_setup:      float = 1.0
+    w_same_oper:       float = 0.4       # (legacy) 같은 공정 연속 — w_same_setup>0이면 미사용
+    w_same_prod:       float = 0.5       # (legacy) 같은 PPK 연속 — w_same_setup>0이면 미사용
+    w_prod_switch:     float = 0.5       # (legacy) 이전 PPK 재공 고갈 시 전환 보너스 — 미사용
     w_idle_per_min:    float = -0.1      # idle 분당 (clip으로 폭주 방지)
     w_completion:      float = 0.5
     w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
@@ -513,6 +516,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
     """RewardConfig → API/UI 공유 dict."""
     r = reward or CONFIG.reward
     return {
+        "w_same_setup": r.w_same_setup,
         "w_same_oper": r.w_same_oper,
         "w_same_prod": r.w_same_prod,
         "w_prod_switch": r.w_prod_switch,
@@ -536,7 +540,7 @@ def apply_reward_params(params: dict) -> None:
     """학습 요청 파라미터 → CONFIG.reward 반영."""
     r = CONFIG.reward
     float_keys = (
-        "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
+        "w_same_setup", "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
         "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_late_finish", "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",

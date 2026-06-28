@@ -1178,6 +1178,30 @@ class SchedulingSimulator:
             self.stats["oper_switches"] += 1
         return 0.0
 
+    def _same_setup_reward(self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int) -> float:
+        """제품·공정이 '모두' 직전과 동일할 때만 연속 보너스.
+
+        공정 전환·제품 전환을 따로 보상하지 않고, 둘 다 같은 경우(=전환 없음,
+        동일 라우트 단계 유지)에만 +를 준다. switch 통계는 그대로 집계.
+        과생산(takt 앞섬) 또는 해당 PPK 재공 고갈 시에는 보너스를 죽인다.
+        """
+        cfg = self._reward_cfg
+        same_oper = (eqp.prev_oper == oper_id)
+        same_prod = (eqp.prev_prod == ppk)
+        if eqp.prev_oper is not None and not same_oper:
+            eqp.oper_switches += 1
+            self.stats["oper_switches"] += 1
+        if eqp.prev_prod is not None and not same_prod:
+            eqp.prod_switches += 1
+            self.stats["prod_switches"] += 1
+        if not (same_oper and same_prod):
+            return 0.0
+        if cfg.same_oper_conditional and self._is_ahead_of_pace(ppk, oper_id, wf_qty):
+            return 0.0
+        if not self._ppk_has_feasible_assignment(ppk):
+            return 0.0
+        return cfg.w_same_setup
+
     def _flow_balance_reward(self, ppk: str, oper_id: str) -> float:
         """
         Step B: flow-balance shaping.
@@ -1552,8 +1576,13 @@ class SchedulingSimulator:
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
 
-        reward += self._same_oper_reward(eqp, ppk, oper_id, wf_qty)  # Step D
-        reward += self._same_prod_reward(eqp, ppk)
+        if cfg.w_same_setup > 0:
+            # 제품·공정 모두 동일할 때만 연속 보너스 (전환 회피와 정렬)
+            reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
+        else:
+            # legacy: 공정·제품 연속을 따로 보상
+            reward += self._same_oper_reward(eqp, ppk, oper_id, wf_qty)
+            reward += self._same_prod_reward(eqp, ppk)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty)
         reward += self._flow_balance_reward(ppk, oper_id)            # Step B
         reward += cfg.w_completion * wf_qty / 25.0
