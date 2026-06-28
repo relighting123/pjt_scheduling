@@ -53,6 +53,16 @@ class ToolTracker:
         cap = self._capacity.get((lot_cd, model), 999)
         return self._busy.get((lot_cd, model), 0) < cap
 
+    def remaining(self, lot_cd: str, eqp_id: str) -> int:
+        """추가로 점유 가능한 tool 수 = MAX_TOOL − 현재 사용 중(busy).
+
+        벌크 배정 시 블록 크기를 '잔여(추가 가용)' 슬롯으로만 제한하기 위함.
+        총량(MAX_TOOL)이 아니라 이미 사용 중인 분을 제외한 여분만 반환한다.
+        """
+        model = self._model_for(eqp_id)
+        cap = self._capacity.get((lot_cd, model), 999)
+        return max(cap - self._busy.get((lot_cd, model), 0), 0)
+
     def occupy(self, lot_cd: str, eqp_id: str) -> None:
         model = self._model_for(eqp_id)
         key = (lot_cd, model)

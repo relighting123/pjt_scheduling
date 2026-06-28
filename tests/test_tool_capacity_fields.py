@@ -73,3 +73,34 @@ def test_normalize_tool_capacity_legacy_eqp_model_maps_to_cd():
 
 def test_validate_tool_capacity_records_empty():
     assert validate_tool_capacity_records([]) == ["tool_capacity: 데이터가 비어 있습니다."]
+
+
+def test_tool_tracker_remaining_excludes_busy():
+    """remaining()은 총량이 아니라 추가 가용(잔여) 슬롯만 반환한다."""
+    from simulation.simulator import ToolTracker
+
+    tracker = ToolTracker(
+        capacity={("LC01", "A"): 2},
+        eqp_model_map={"EQP001": "A", "EQP002": "A"},
+    )
+    # 초기: 2슬롯 전부 잔여
+    assert tracker.remaining("LC01", "EQP001") == 2
+    # 1대 점유 → 잔여 1
+    tracker.occupy("LC01", "EQP001")
+    assert tracker.remaining("LC01", "EQP001") == 1
+    assert tracker.can_assign("LC01", "EQP002") is True
+    # 2대 점유 → 잔여 0, 추가 배정 불가
+    tracker.occupy("LC01", "EQP002")
+    assert tracker.remaining("LC01", "EQP001") == 0
+    assert tracker.can_assign("LC01", "EQP001") is False
+    # 해제 → 잔여 복원
+    tracker.release("LC01", "EQP001")
+    assert tracker.remaining("LC01", "EQP001") == 1
+
+
+def test_tool_tracker_remaining_defaults_unbounded():
+    """capacity 미정의 키는 사실상 무제한(잔여 큰 값)."""
+    from simulation.simulator import ToolTracker
+
+    tracker = ToolTracker(capacity={}, eqp_model_map={"EQP001": "A"})
+    assert tracker.remaining("LCX", "EQP001") == 999
