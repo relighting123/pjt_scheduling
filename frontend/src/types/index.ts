@@ -25,6 +25,13 @@ export interface ScheduleRecord {
   START_TM_STR?: string;
   END_TM_STR?: string;
   WF_QTY?: number;
+  /** 유입 재공(abstract arrange) 여부 */
+  ABSTRACT?: boolean;
+  /** 유입 재공 투입 가능 시각 (분). 0이면 초기 재공. */
+  OPER_IN_TIME?: number;
+  LOT_CD?: string;
+  TEMP?: string;
+  CONVERSION?: boolean;
 }
 
 export interface PlanRecord {

@@ -1598,6 +1598,28 @@ function segmentTimeRange(segment: GanttBarSegment): { start: number; end: numbe
   return { start, end, width: end - start };
 }
 
+function inflowHoverLines(records: GanttBarSegment["records"], baseMs: number | null): string {
+  const isAbstract = records.some((r) => r.ABSTRACT === true);
+  const inflowTimes = records
+    .map((r) => r.OPER_IN_TIME ?? 0)
+    .filter((t) => t > 0);
+  if (!isAbstract && inflowTimes.length === 0) return "";
+
+  const lines: string[] = ["─────────────────"];
+  if (isAbstract) lines.push("유형: 유입 재공 (Abstract)");
+  if (inflowTimes.length > 0) {
+    const minT = Math.min(...inflowTimes);
+    const maxT = Math.max(...inflowTimes);
+    const minLabel = formatGanttMinuteLabel(minT, baseMs);
+    lines.push(minT === maxT
+      ? `유입 가능 시각: ${minLabel}`
+      : `유입 시각 범위: ${minLabel} ~ ${formatGanttMinuteLabel(maxT, baseMs)}`);
+  }
+  const totalWf = records.reduce((s, r) => s + (r.WF_QTY ?? 0), 0);
+  if (totalWf > 0) lines.push(`유입 재공량: ${totalWf}매`);
+  return lines.join("<br>") + "<br>";
+}
+
 function segmentHoverTemplate(
   segment: GanttBarSegment,
   prodCodes: Record<string, string>,
@@ -1612,6 +1634,7 @@ function segmentHoverTemplate(
   const operLabel = operCodes[oper] ?? oper;
   const startLabel = formatGanttMinuteLabel(start, baseMs);
   const endLabel = formatGanttMinuteLabel(end, baseMs);
+  const inflowLines = inflowHoverLines(records, baseMs);
 
   if (records.length === 1) {
     const rec = first;
@@ -1621,7 +1644,9 @@ function segmentHoverTemplate(
       `EQP: ${rec.EQP_ID}<br>` +
       `제품: ${prodLabel} (${rec.PLAN_PROD_KEY})<br>` +
       `공정: ${operLabel}<br>` +
-      `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<extra></extra>`
+      `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
+      inflowLines +
+      `<extra></extra>`
     );
   }
 
@@ -1634,7 +1659,9 @@ function segmentHoverTemplate(
     `공정: ${operLabel}<br>` +
     `EQP: ${first.EQP_ID}<br>` +
     `병합 LOT ${records.length}건: ${lotSummary}<br>` +
-    `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<extra></extra>`
+    `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
+    inflowLines +
+    `<extra></extra>`
   );
 }
 
@@ -1672,6 +1699,69 @@ export function buildGanttLegendItems(
       ),
     };
   });
+}
+
+const ENHANCED_GANTT_BARGAP = 0.28;
+
+function inflowBarShapes(
+  barSegments: GanttBarSegment[],
+  eqpLabels: string[],
+  eqpModelMap: Record<string, string>,
+  baseMs: number | null,
+  hiddenProdOperKeys?: ReadonlySet<string>,
+): NonNullable<Layout["shapes"]> {
+  const halfBar = (1 - ENHANCED_GANTT_BARGAP) / 2 - 0.02;
+  const labelToIdx = new Map(eqpLabels.map((l, i) => [l, i]));
+  const shapes: NonNullable<Layout["shapes"]> = [];
+
+  for (const segment of barSegments) {
+    const rec = segment.records[0];
+    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
+    if (hiddenProdOperKeys?.has(pairKey)) continue;
+
+    const isAbstract = segment.records.some((r) => r.ABSTRACT === true);
+    const isInflow = segment.records.some((r) => (r.OPER_IN_TIME ?? 0) > 0);
+    if (!isAbstract && !isInflow) continue;
+
+    const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
+    const idx = labelToIdx.get(label);
+    if (idx === undefined) continue;
+
+    const { start, end } = segmentTimeRange(segment);
+    shapes.push({
+      type: "rect",
+      xref: "x",
+      yref: "y",
+      x0: ganttAxisValue(start, baseMs),
+      x1: ganttAxisValue(end, baseMs),
+      y0: idx - halfBar,
+      y1: idx + halfBar,
+      fillcolor: "transparent",
+      line: { dash: "dash", color: "rgba(15, 23, 42, 0.72)", width: 1.8 },
+      layer: "above",
+    } as NonNullable<Layout["shapes"]>[number]);
+  }
+
+  return shapes;
+}
+
+function inflowLegendTrace(hasInflow: boolean): Data {
+  return {
+    type: "scatter",
+    mode: "markers",
+    x: [null],
+    y: [null],
+    name: "유입 재공",
+    marker: {
+      size: 12,
+      color: "rgba(255,255,255,0)",
+      symbol: "square",
+      line: { color: "rgba(15,23,42,0.72)", width: 2 },
+    },
+    showlegend: hasInflow,
+    hoverinfo: "skip",
+    visible: hasInflow ? true : "legendonly",
+  } as Data;
 }
 
 export function buildEnhancedGantt(
@@ -1717,13 +1807,18 @@ export function buildEnhancedGantt(
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
     const showText = width >= (labelMode === "prod" ? 18 : 24);
     const { base, x } = ganttBarAxisCoords(start, width, baseMs);
+    const isInflowSeg = segment.records.some((r) => r.ABSTRACT || (r.OPER_IN_TIME ?? 0) > 0);
+    const baseMarker = ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", true);
+    const marker = isInflowSeg
+      ? { ...baseMarker, opacity: 0.72, line: { ...(baseMarker.line as object), width: 0 } }
+      : baseMarker;
     data.push({
       type: "bar",
       orientation: "h",
       x: [x],
       y: [label],
       base: [base],
-      marker: ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", true),
+      marker,
       text: showText ? barText(rec, labelMode, prodCodeMap) : "",
       textposition: "inside",
       insidetextanchor: "middle",
@@ -1758,6 +1853,15 @@ export function buildEnhancedGantt(
     });
   }
 
+  // 유입 재공 범례
+  const hasInflow = barSegments.some((seg) =>
+    seg.records.some((r) => r.ABSTRACT || (r.OPER_IN_TIME ?? 0) > 0),
+  );
+  data.push(inflowLegendTrace(hasInflow));
+
+  // 유입 재공 점선 테두리 shapes
+  const inflowShapes = inflowBarShapes(barSegments, eqpLabels, eqpModelMap, baseMs, hiddenProdOperKeys);
+
   const layout: Partial<Layout> = {
     ...GANTT_PAN_LAYOUT,
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
@@ -1769,14 +1873,18 @@ export function buildEnhancedGantt(
       text: "설비 (모델 / 호기)",
       font: { size: 12, color: GANTT_THEME.axisColor },
     }, { tickfont: { size: 10, color: GANTT_THEME.axisColor } }),
-    shapes: ganttTableGridShapes(eqpLabels.length),
+    shapes: [...ganttTableGridShapes(eqpLabels.length), ...inflowShapes],
     barmode: "overlay",
-    bargap: 0.28,
-    showlegend: false,
+    bargap: ENHANCED_GANTT_BARGAP,
+    showlegend: hasInflow,
+    legend: hasInflow ? {
+      title: { text: "범례", font: { size: 11 } },
+      ...GANTT_LEGEND,
+    } : undefined,
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 20, t: 80, b: 40 },
+    margin: { l: 160, r: 20, t: 80, b: hasInflow ? 72 : 40 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverdistance: 30,
