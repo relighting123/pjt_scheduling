@@ -125,9 +125,13 @@ def test_bulkfill_respects_tool_cap(tmp_path):
             assert cur <= max_tool, f"tool cap 위반: {lc} 동시 {cur} > {max_tool}"
 
 
-def test_bulk_block_size_clamped_by_tool_remaining(tmp_path):
-    """bulk_block_size는 tool '잔여'로 묶인다 (사용 중 제외)."""
-    ed = _build_s1(tmp_path, max_tool=2)
+def test_bulk_block_size_bounded_by_plan_and_wip(tmp_path):
+    """bulk_block_size는 min(takt예산, 가용WIP, 잔여계획)로 묶인다.
+
+    tool capacity(동시성)는 블록 '길이'를 깎지 않는다 — 동시성은 매 carrier
+    _tool_cap_blocks가 별도로 보장. 계획 200매/25 = 8 carrier가 상한.
+    """
+    ed = _build_s1(tmp_path, n_lots=8, plan=200, max_tool=2)
     env = BulkFillEnv(ed, record_history=False, record_event_log=False)
     env.reset()
     sim = env.sim
@@ -135,15 +139,19 @@ def test_bulk_block_size_clamped_by_tool_remaining(tmp_path):
     assert eqp is not None
     feasible = sim.get_feasible_ppk_oper(eqp)
     ppk, oper = sim.ppk_oper_from_flat(feasible[0])
-    # 최대 레벨이라도 잔여(=2)와 WIP/계획 상한을 넘지 않음
+
+    lots = [l for l in sim.available_lots(eqp)
+            if l["plan_prod_key"] == ppk and l["oper_id"] == oper]
+    wip = len(lots)
+    wf_unit = max(ed.get("max_wf_qty", 1), 1)
+    plan_carriers = int(np.ceil(200 / wf_unit))  # = 8
+    budget = sim._takt_budget_carriers(ppk, oper)
+    expected = max(min(wip, plan_carriers, budget), 1)
+
     n = sim.bulk_block_size(eqp, ppk, oper, level=env._L - 1, n_levels=env._L)
-    lot_id = sim._auto_select_lot(eqp, [
-        l for l in sim.available_lots(eqp)
-        if l["plan_prod_key"] == ppk and l["oper_id"] == oper
-    ])
-    lot_cd, _ = sim._lot_cd_temp(lot_id, sim.lot_pool.get(lot_id), ppk=ppk, oper_id=oper)
-    tool_rem = sim._tool_tracker.remaining(lot_cd, eqp)
-    assert 1 <= n <= tool_rem
+    # tool(=2)에 깎이지 않고 계획/WIP/takt 한도까지 허용
+    assert n == expected
+    assert n > 2  # 동시성 한도(2)보다 큰 블록이 가능해야 함
 
 
 def test_model_breadth_and_dedication(tmp_path):

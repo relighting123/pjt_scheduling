@@ -1405,10 +1405,15 @@ class SchedulingSimulator:
     def bulk_block_size(
         self, eqp_id: str, ppk: str, oper_id: str, level: int, n_levels: int,
     ) -> int:
-        """size_level(0..n_levels-1) → 블록 carrier 수.
+        """size_level(0..n_levels-1) → 한 번에 커밋할 블록 carrier 수.
 
-        상한 = min(takt 예산, 가용 WIP, 잔여 계획, tool 잔여(추가 가용)).
-        tool은 MAX_TOOL 총량이 아니라 현재 사용 중을 제외한 잔여만 사용한다.
+        상한 = min(takt 예산, 가용 WIP, 잔여 계획).
+
+        주의: tool capacity는 '동시에 같은 LOT_CD를 돌리는 장비 수' 제한(동시성)
+        이지, 한 장비가 순차 처리하는 블록 길이 제한이 아니다. 한 장비는 블록
+        내내 tool 슬롯을 1개만(그것도 carrier 사이 점유/해제) 쓰므로 블록 길이를
+        tool 잔여로 깎으면 안 된다. 동시성은 블록 재생 중 매 carrier마다
+        _tool_cap_blocks(can_assign, 잔여 기준)가 검사해 초과 시 블록을 끊는다.
         """
         lots = [
             l for l in self.available_lots(eqp_id)
@@ -1427,15 +1432,7 @@ class SchedulingSimulator:
         else:
             plan_carriers = wip_carriers  # 계획 없으면 WIP 한도
 
-        lot_id = self._auto_select_lot(eqp_id, lots)
-        if lot_id is None:
-            return 0
-        lot_cd, _temp = self._lot_cd_temp(
-            lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
-        )
-        tool_rem = self._tool_tracker.remaining(lot_cd, eqp_id)
-
-        cap = min(wip_carriers, plan_carriers, tool_rem)
+        cap = min(wip_carriers, plan_carriers)
         if cap <= 0:
             return 0
 
