@@ -7,7 +7,7 @@ def test_reward_params_dict_has_all_keys():
     assert set(params) == {
         "w_same_setup",
         "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
-        "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
+        "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_late_finish", "w_flow_balance", "reward_clip",
         "flow_balance_starving_cover_min",

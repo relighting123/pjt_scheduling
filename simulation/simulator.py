@@ -1125,10 +1125,39 @@ class SchedulingSimulator:
         reward += cfg.w_plan_hit * (gap_before - gap_after) / target
         return reward
 
-    def _pacing_shaping_reward(
-        self, ppk: str, oper_id: str, wf_qty: int, at_time: Optional[int] = None,
+    def _bucket_projected_cover(
+        self, ppk: str, oper_id: str, exclude_eqp: Optional[str],
     ) -> float:
-        """계획이 있는 (PPK, OPER)만 페이싱 shaping."""
+        """(PPK, OPER)에 커밋된 '다른' 장비가 하루 끝까지 쭉 돌 때의 예상 생산(매).
+
+        - 본인(exclude_eqp)은 제외 → 결정 장비가 자기 제품을 회피하는 버그 방지.
+        - in-flight가 아니라 setup(prev_prod/prev_oper) 기준 → idle 핸드오프 구멍 방지
+          (방금 끝내고 idle인 전담 장비도 커버로 계속 카운트).
+        """
+        remaining = max(self.soft_cutoff - self.current_time, 0)
+        if remaining <= 0:
+            return 0.0
+        total = 0.0
+        for eid in self._env_data.get("eqp_ids", []):
+            if eid == exclude_eqp:
+                continue
+            e = self.eqps.get(eid)
+            if e is None or e.prev_prod != ppk or e.prev_oper != oper_id:
+                continue
+            st = self._st_per_wafer_for_eqp(eid, ppk, oper_id)
+            if st and st > 0:
+                total += remaining / st
+        return total
+
+    def _pacing_shaping_reward(
+        self, ppk: str, oper_id: str, wf_qty: int,
+        at_time: Optional[int] = None, eqp_id: Optional[str] = None,
+    ) -> float:
+        """계획이 있는 (PPK, OPER)만 페이싱 shaping.
+
+        진척 기준을 'done'이 아니라 'done + 다른 장비의 투영 커버(pacing_coverage_scale)'
+        로 봐서, 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주(lockstep 억제).
+        """
         cfg = self._reward_cfg
         if cfg.w_pacing <= 0 or not self._has_plan(ppk, oper_id):
             return 0.0
@@ -1139,9 +1168,16 @@ class SchedulingSimulator:
         ideal = target * min(max(t, 0), horizon) / horizon
         key = (ppk, oper_id)
         done_before = self.stats["completed_qty"].get(key, 0)
-        done_after = done_before + wf_qty
-        err_before = abs(ideal - done_before)
-        err_after = abs(ideal - done_after)
+        # 다른 장비(본인 제외)의 투영 커버를 진척에 가산 → coverage-aware pacing
+        cover = 0.0
+        if cfg.pacing_coverage_scale > 0:
+            cover = cfg.pacing_coverage_scale * self._bucket_projected_cover(
+                ppk, oper_id, exclude_eqp=eqp_id,
+            )
+        eff_before = done_before + cover
+        eff_after = eff_before + wf_qty
+        err_before = abs(ideal - eff_before)
+        err_after = abs(ideal - eff_after)
         return cfg.w_pacing * (err_before - err_after) / target
 
     def _ppk_has_feasible_assignment(self, ppk: str) -> bool:
@@ -1583,7 +1619,7 @@ class SchedulingSimulator:
             # legacy: 공정·제품 연속을 따로 보상
             reward += self._same_oper_reward(eqp, ppk, oper_id, wf_qty)
             reward += self._same_prod_reward(eqp, ppk)
-        reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty)
+        reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
         reward += self._flow_balance_reward(ppk, oper_id)            # Step B
         reward += cfg.w_completion * wf_qty / 25.0
 
@@ -1799,7 +1835,7 @@ class SchedulingSimulator:
         self._pending_step_events = []
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
-    BUCKET_FEATURES = 15
+    BUCKET_FEATURES = 16
 
     def get_bucket_features(self) -> np.ndarray:
         """
@@ -1809,7 +1845,8 @@ class SchedulingSimulator:
               8 self_st(per-wafer), 9 plan_urgency,
               10 wip_lot_cd, 11 wip_temp,
               12 needs_conversion(current_eqp), 13 tool_can_assign(current_eqp),
-              14 achievable_ratio (Step C: 달성가능 상한/계획량).
+              14 achievable_ratio (Step C: 달성가능 상한/계획량),
+              15 projected_cover_ratio (다른 장비(current_eqp 제외)의 하루 투영 커버/남은 필요량).
         """
         # 버전 + current_eqp 가 같으면 캐시 반환
         cache_state = (self._state_version, self._current_eqp)
@@ -1992,6 +2029,12 @@ class SchedulingSimulator:
                 feats[oi, pi, vmis, 10] = lc_enc
                 feats[oi, pi, vmis, 11] = tp_enc
                 feats[oi, pi, vmis, 14] = achievable_ratio
+                # 채널 15: 투영 커버 비율 — 다른 장비(current_eqp 제외)가 이 버킷을
+                # 하루 끝까지 덮는 양 / 남은 필요량. 1에 가까울수록 '이미 덮임' → 회피 유도.
+                done15 = completed.get((ppk, op), 0)
+                need15 = max(self._achievable_qty(ppk, op) - done15, 1.0)
+                cov15 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
+                feats[oi, pi, vmis, 15] = min(cov15 / need15, 2.0) / 2.0
 
                 # 모델별 채널: numpy 벡터 연산
                 feats[oi, pi, vmis, 3] = np.minimum(vends / sim_end_norm, 1.0)

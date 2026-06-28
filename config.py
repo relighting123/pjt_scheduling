@@ -492,6 +492,10 @@ class RewardConfig:
     w_completion:      float = 0.5
     w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
+    # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
+    # 생산(coverage)'으로 봄 → 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주해
+    # 추가 몰림(lockstep)을 억제. 0이면 done-only(기존 동작). 작게 시작 권장.
+    pacing_coverage_scale: float = 1.0
     w_conversion:      float = -10.0     # LOT_CD/TEMP 전환 1회 패널티
     # 회피 가능한 conversion(이미 같은 LOT_CD/TEMP로 세팅된 다른 장비가 시간 내
     # 재공을 커버 가능)일 때 w_conversion에 더해지는 추가 패널티. 0이면 비활성.
@@ -524,6 +528,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_completion": r.w_completion,
         "w_plan_hit": r.w_plan_hit,
         "w_pacing": r.w_pacing,
+        "pacing_coverage_scale": r.pacing_coverage_scale,
         "w_conversion": r.w_conversion,
         "w_avoidable_conversion": r.w_avoidable_conversion,
         "conversion_amortize_factor": r.conversion_amortize_factor,
@@ -541,7 +546,7 @@ def apply_reward_params(params: dict) -> None:
     r = CONFIG.reward
     float_keys = (
         "w_same_setup", "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
-        "w_completion", "w_plan_hit", "w_pacing", "w_conversion",
+        "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_late_finish", "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
     )
