@@ -488,9 +488,9 @@ class RewardConfig:
     w_same_oper:       float = 0.4       # (legacy) 같은 공정 연속 — w_same_setup>0이면 미사용
     w_same_prod:       float = 0.5       # (legacy) 같은 PPK 연속 — w_same_setup>0이면 미사용
     w_prod_switch:     float = 0.5       # (legacy) 이전 PPK 재공 고갈 시 전환 보너스 — 미사용
-    w_idle_per_min:    float = -0.1      # idle 분당 (clip으로 폭주 방지)
-    w_completion:      float = 0.5
-    w_plan_hit:        float = 3.0       # 달성 진척 (achievable 기준; Step C)
+    w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
+    w_completion:      float = 0.0       # [제거] 완료 보너스
+    w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
     # 생산(coverage)'으로 봄 → 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주해
@@ -512,9 +512,9 @@ class RewardConfig:
     # ③ 중복 커버 페널티(<0): 이미 다른 셋업 장비가 horizon 내 충분히 덮는 버킷을
     #    잡으면 감점 → 다른 제품으로 전환할 '용기'.
     w_redundant_cover:    float = 0.0
-    w_late_finish:     float = -1.0      # soft cutoff(05:00) 이후 END_TM
+    w_late_finish:     float = 0.0       # [제거] soft cutoff 이후 END_TM 패널티
     # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
-    w_flow_balance:    float = 2.5       # 계획 비중 대비 WIP 적체 공정 배정 보너스 ↑
+    w_flow_balance:    float = 0.0       # [제거] cover 무시 → 전담 방해 2위라 제거
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
     flow_balance_starving_cover_min: float = 120.0
     # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
