@@ -68,7 +68,7 @@ def test_format_obs_dim_mismatch_contains_config_and_formula():
     assert "OP01" in msg
     assert "PPK_A" in msg
     assert "old_model.zip" in msg
-    assert "O×P×K×15" in msg
+    assert f"O×P×K×{SchedulingSimulator.BUCKET_FEATURES}" in msg
 
 
 def test_validate_obs_shape_raises_detailed_error():
