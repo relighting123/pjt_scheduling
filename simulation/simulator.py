@@ -2062,7 +2062,7 @@ class SchedulingSimulator:
     # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(7) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(2) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P = cfg.max_oper_count, cfg.max_prod_count
@@ -2079,31 +2079,22 @@ class SchedulingSimulator:
 
         bucket = self.get_bucket_features().flatten()
 
-        eqp_local = np.zeros(7, dtype=np.float32)
+        # EQP local: [0] 변환 필요 feasible 존재, [1] 회피 가능 정도(0~1)
+        eqp_local = np.zeros(2, dtype=np.float32)
         current_eqp_id = self._current_eqp
         if current_eqp_id and current_eqp_id in self.eqps:
-            eqp = self.eqps[current_eqp_id]
-            eqp_local[0] = float(eqp.status == "idle")
-            eqp_local[1] = float(eqp.status == "busy")
-            eqp_local[2] = encode_normalized(eqp.prev_lot_cd, lot_cd_idx, max(len(lot_cd_idx), 1))
-            eqp_local[3] = encode_normalized(eqp.prev_temp, temp_idx, max(len(temp_idx), 1))
-            rem = max(eqp.free_at - self.current_time, 0)
-            eqp_local[4] = min(rem / max(self.sim_end, 1), 1.0)
-            # [5] 변환이 필요한 feasible 버킷 존재 여부
-            # [6] 그 변환의 '회피 가능' 정도(0~1): 이미 같은 LOT_CD/TEMP로 세팅된
-            #     다른 장비가 시간 내 재공을 커버 가능할수록 1 → 맡겨두는 게 나음
             max_avoidable = 0.0
             for flat in self.get_feasible_ppk_oper(current_eqp_id):
                 ppk_f, oper_f = self.ppk_oper_from_flat(flat)
                 lc, tp = self._bucket_lot_cd_temp(ppk_f, oper_f)
                 if self._would_need_conversion(current_eqp_id, lc, tp):
-                    eqp_local[5] = 1.0
+                    eqp_local[0] = 1.0
                     av = self._conversion_avoidable_fraction(
                         current_eqp_id, ppk_f, oper_f, lc, tp,
                     )
                     if av > max_avoidable:
                         max_avoidable = av
-            eqp_local[6] = max_avoidable
+            eqp_local[1] = max_avoidable
 
         group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)

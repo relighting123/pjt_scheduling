@@ -556,6 +556,12 @@ SAMPLE_SCENARIOS: Dict[str, dict] = {
 }
 
 try:
+    from data.dedicated_scenarios import DEDICATED_SCENARIOS  # noqa: E402
+    SAMPLE_SCENARIOS.update(DEDICATED_SCENARIOS)
+except ImportError:
+    pass
+
+try:
     from data.pacing_scenarios import TAKT_SCENARIOS  # noqa: E402
     SAMPLE_SCENARIOS.update(TAKT_SCENARIOS)
 except ImportError:
