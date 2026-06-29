@@ -912,11 +912,6 @@ class SchedulingSimulator:
             return start_time, conv_end, reward, True
         return start_time, start_time, reward, False
 
-    def _late_finish_penalty(self, end_time: int) -> float:
-        if end_time > self.soft_cutoff:
-            return self._reward_cfg.w_late_finish * (end_time - self.soft_cutoff) / 60.0
-        return 0.0
-
     def _has_plan(self, ppk: str, oper_id: str) -> bool:
         """(PPK, OPER)에 유효 계획량이 있으면 True."""
         pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
@@ -1124,7 +1119,7 @@ class SchedulingSimulator:
         return min(plan_qty, done + reachable)
 
     def _plan_hit_reward(self, ppk: str, oper_id: str, wf_qty: int, end_time: int) -> float:
-        reward = self._late_finish_penalty(end_time)
+        reward = 0.0
         if end_time > self.soft_cutoff or not self._has_plan(ppk, oper_id):
             return reward
         cfg = self._reward_cfg
@@ -1246,8 +1241,6 @@ class SchedulingSimulator:
             eqp.prod_switches += 1
             self.stats["prod_switches"] += 1
         if not (same_oper and same_prod):
-            return 0.0
-        if cfg.same_oper_conditional and self._is_ahead_of_pace(ppk, oper_id, wf_qty):
             return 0.0
         if not self._ppk_has_feasible_assignment(ppk):
             return 0.0
@@ -1776,7 +1769,8 @@ class SchedulingSimulator:
         reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
         reward += self._flow_balance_reward(ppk, oper_id)            # Step B
-        reward += cfg.w_completion * wf_qty / 25.0
+        if cfg.w_completion != 0.0 and eqp.prev_lot_cd is not None and lot_cd == eqp.prev_lot_cd:
+            reward += cfg.w_completion
 
         self._emit_event(
             EVENT_JOB_ASSIGNED, eqp_id,

@@ -489,7 +489,7 @@ class RewardConfig:
     w_same_prod:       float = 0.5       # (legacy) 같은 PPK 연속 — w_same_setup>0이면 미사용
     w_prod_switch:     float = 0.5       # (legacy) 이전 PPK 재공 고갈 시 전환 보너스 — 미사용
     w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
-    w_completion:      float = 0.0       # [제거] 완료 보너스
+    w_completion:      float = 0.0       # 동일 LOT 연속 배정 보너스 (lot_cd 일치 시 +)
     w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
@@ -512,7 +512,6 @@ class RewardConfig:
     # ③ 중복 커버 페널티(<0): 이미 다른 셋업 장비가 horizon 내 충분히 덮는 버킷을
     #    잡으면 감점 → 다른 제품으로 전환할 '용기'.
     w_redundant_cover:    float = 0.0
-    w_late_finish:     float = 0.0       # [제거] soft cutoff 이후 END_TM 패널티
     # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
     w_flow_balance:    float = 0.0       # [제거] cover 무시 → 전담 방해 2위라 제거
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
@@ -544,7 +543,6 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_bulk_block_bonus": r.w_bulk_block_bonus,
         "w_dedication_misuse": r.w_dedication_misuse,
         "w_redundant_cover": r.w_redundant_cover,
-        "w_late_finish": r.w_late_finish,
         "w_flow_balance": r.w_flow_balance,
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
         "reward_clip": r.reward_clip,
@@ -561,7 +559,7 @@ def apply_reward_params(params: dict) -> None:
         "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
-        "w_late_finish", "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
+        "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
     )
     for key in float_keys:
         if key in params and params[key] is not None:
