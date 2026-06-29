@@ -42,15 +42,16 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
         train_kwargs = {"verbose": 0, "progress_state": train_progress, "env_cls": env_cls}
         if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
             train_kwargs["n_episodes"] = int(n_episodes)
+        algorithm = params.get("algorithm", "rl")
         agent.train(payload, **train_kwargs)
         if train_progress.is_stop_requested():
             train_progress.add_log("학습 중지됨 – 부분 모델 저장 중…")
-            agent.save()
+            agent.save(algorithm=algorithm)
             train_progress.set_stopped()
             train_progress.add_log("학습 중지 완료 (부분 모델 저장됨)")
             return
         train_progress.add_log("모델 저장 중…")
-        agent.save()
+        agent.save(algorithm=algorithm)
         eval_eps = int(n_episodes) if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes else 1
         train_progress.add_log(f"학습 후 평가 ({eval_eps} 에피소드)…")
         metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)

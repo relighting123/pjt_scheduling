@@ -632,7 +632,7 @@ def train(req: TrainRequest):
     if req.train_budget_mode == "episodes" and req.n_episodes:
         train_kwargs["n_episodes"] = req.n_episodes
     agent.train(payload, **train_kwargs)
-    agent.save()
+    agent.save(algorithm=req.algorithm)
     eval_eps = req.n_episodes if req.train_budget_mode == "episodes" and req.n_episodes else 3
     metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
     return {"message": "학습 완료", "metrics": metrics, "input_folders": folders}
@@ -660,7 +660,7 @@ def inference(req: InferenceRequest):
     agent = None
     if req.algorithm in ("rl", "bulkfill"):
         try:
-            agent = SchedulingAgent.load(env_data=env_data)
+            agent = SchedulingAgent.load(env_data=env_data, algorithm=req.algorithm)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(
                 status_code=400,

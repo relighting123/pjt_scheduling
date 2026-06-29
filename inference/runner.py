@@ -81,7 +81,7 @@ def run_inference(
 
     if algorithm in ("rl", "bulkfill"):
         if agent is None:
-            agent = SchedulingAgent.load(model_path, env_data=env_data)
+            agent = SchedulingAgent.load(model_path, env_data=env_data, algorithm=algorithm)
 
     heuristic_agent = None
     if algorithm == "minprogress":
@@ -312,23 +312,27 @@ def run_inference_compare(
     errors: list[dict] = []
 
     rl_loaded = rl_agent
-    needs_model = [a for a in algorithms if a in ("rl", "bulkfill")]
-    if needs_model and rl_loaded is None:
+    # algorithm별 모델 개별 로드 (rl/bulkfill 파일 분리)
+    loaded_agents: dict = {}
+    if rl_loaded is not None:
+        loaded_agents["rl"] = rl_loaded
+    for algo in [a for a in algorithms if a in ("rl", "bulkfill")]:
+        if algo in loaded_agents:
+            continue
         try:
-            rl_loaded = SchedulingAgent.load(model_path, env_data=env_data)
+            loaded_agents[algo] = SchedulingAgent.load(model_path, env_data=env_data, algorithm=algo)
         except (FileNotFoundError, ValueError) as exc:
-            for algo in needs_model:
-                errors.append({"algorithm": algo, "message": str(exc)})
+            errors.append({"algorithm": algo, "message": str(exc)})
 
     for algo in algorithms:
-        if algo in ("rl", "bulkfill") and rl_loaded is None:
+        if algo in ("rl", "bulkfill") and algo not in loaded_agents:
             continue
         try:
             validate_algorithm(algo)
             result = run_inference(
                 env_data,
                 algorithm=algo,
-                agent=rl_loaded if algo in ("rl", "bulkfill") else None,
+                agent=loaded_agents.get(algo),
                 record_history=record_history,
                 record_decision_log=record_decision_log,
                 enable_wip_inflow=enable_wip_inflow,

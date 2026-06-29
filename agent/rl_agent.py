@@ -30,8 +30,18 @@ from agent.train_progress import (
 )
 
 
+BULKFILL_MODEL_NAME = "bulkfill_model"
+
+
 def _mask_fn(env: SchedulingEnv) -> np.ndarray:
     return env.action_masks()
+
+
+def _model_name_for_algorithm(algorithm: str) -> str:
+    """알고리즘별 모델 파일명 반환 (확장자 없음)."""
+    if algorithm == "bulkfill":
+        return BULKFILL_MODEL_NAME
+    return CONFIG.rl.model_name
 
 
 def _model_obs_dim(model: MaskablePPO) -> int:
@@ -240,26 +250,34 @@ class SchedulingAgent:
 
     # ── 저장 / 로드 ──────────────────────────────────────────────────────────
 
-    def save(self, path: str = None):
+    def save(self, path: str = None, algorithm: str = "rl"):
         """
         목적: 학습된 모델을 파일로 저장
-        Input:  path (str) – 저장 경로 (확장자 없이). None이면 config 기본값 사용
+        Input:  path (str) – 저장 경로 (확장자 없이). None이면 알고리즘별 기본값 사용
+                algorithm   – "rl" | "bulkfill" (파일명 결정)
         Output: 없음
         """
         if self.model is None:
             raise RuntimeError("학습된 모델이 없습니다. train()을 먼저 실행하세요.")
-        save_path = path or str(CONFIG.path.model_dir / CONFIG.rl.model_name)
+        save_path = path or str(CONFIG.path.model_dir / _model_name_for_algorithm(algorithm))
         self.model.save(save_path)
         print(f"[agent] 모델 저장 → {save_path}.zip")
 
     @classmethod
-    def load(cls, path: str = None, env_data: Optional[dict] = None) -> "SchedulingAgent":
+    def load(cls, path: str = None, env_data: Optional[dict] = None,
+             algorithm: str = "rl") -> "SchedulingAgent":
         """
         목적: 저장된 모델 파일을 로드하여 에이전트 반환
-        Input:  path (str) – 모델 파일 경로 (.zip 포함 또는 미포함)
-                env_data (dict|None) – obs_dim 진단용 입력 데이터 요약
+        Input:  path (str)       – 명시적 경로. None이면 알고리즘별 기본값 탐색
+                env_data (dict)  – obs_dim 진단용
+                algorithm (str)  – "rl" | "bulkfill"
         Output: SchedulingAgent 인스턴스
         """
+        # algorithm별 기본 파일명 우선, 없으면 기존 후보군 탐색
+        if path is None and algorithm != "rl":
+            algo_path = CONFIG.path.model_dir / _model_name_for_algorithm(algorithm)
+            if (algo_path.with_suffix(".zip")).exists():
+                path = str(algo_path)
         model, load_path = _load_compatible_model(path, env_data=env_data)
         print(f"[agent] 모델 로드 ← {load_path} (obs_dim={_model_obs_dim(model)})")
         return cls(model=model)
