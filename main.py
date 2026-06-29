@@ -267,6 +267,7 @@ def cmd_train(
         print(f"  학습 기간: {len(datasets)}개 (VecEnv)")
     print(f"  Total Timesteps: {CONFIG.rl.total_timesteps:,}")
 
+    from env.scheduling_env import SchedulingEnv
     env_cls = SchedulingEnv
     if algorithm == "bulkfill":
         from env.bulkfill_env import BulkFillEnv
