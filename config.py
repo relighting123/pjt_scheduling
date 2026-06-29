@@ -489,7 +489,7 @@ class RewardConfig:
     w_same_prod:       float = 0.5       # (legacy) 같은 PPK 연속 — w_same_setup>0이면 미사용
     w_prod_switch:     float = 0.5       # (legacy) 이전 PPK 재공 고갈 시 전환 보너스 — 미사용
     w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
-    w_completion:      float = 0.0       # 동일 LOT 연속 배정 보너스 (lot_cd 일치 시 +)
+    w_completion:      float = 0.0       # 미사용
     w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영

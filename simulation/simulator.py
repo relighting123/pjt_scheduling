@@ -1769,8 +1769,6 @@ class SchedulingSimulator:
         reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
         reward += self._flow_balance_reward(ppk, oper_id)            # Step B
-        if cfg.w_completion != 0.0 and eqp.prev_lot_cd is not None and lot_cd == eqp.prev_lot_cd:
-            reward += cfg.w_completion
 
         self._emit_event(
             EVENT_JOB_ASSIGNED, eqp_id,
