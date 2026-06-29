@@ -1773,13 +1773,7 @@ class SchedulingSimulator:
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
 
-        if cfg.w_same_setup > 0:
-            # 제품·공정 모두 동일할 때만 연속 보너스 (전환 회피와 정렬)
-            reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
-        else:
-            # legacy: 공정·제품 연속을 따로 보상
-            reward += self._same_oper_reward(eqp, ppk, oper_id, wf_qty)
-            reward += self._same_prod_reward(eqp, ppk)
+        reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
         reward += self._flow_balance_reward(ppk, oper_id)            # Step B
         reward += cfg.w_completion * wf_qty / 25.0
