@@ -649,7 +649,7 @@ def inference(req: InferenceRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     agent = None
-    if req.algorithm == "rl":
+    if req.algorithm in ("rl", "bulkfill"):
         try:
             agent = SchedulingAgent.load(env_data=env_data)
         except (FileNotFoundError, ValueError) as exc:

@@ -79,7 +79,7 @@ def run_inference(
     if algorithm == "earliest_st":
         run_data["eqp_selection"] = "min_st"
 
-    if algorithm == "rl":
+    if algorithm in ("rl", "bulkfill"):
         if agent is None:
             agent = SchedulingAgent.load(model_path, env_data=env_data)
 
@@ -90,6 +90,14 @@ def run_inference(
         heuristic_agent = EarliestSTAgent()
 
     max_steps = _inference_max_steps(env_data)
+
+    # BulkFillEnv는 MultiDiscrete action space — ActionMasker 래퍼 없이 직접 실행
+    if algorithm == "bulkfill":
+        return _run_bulkfill_inference(
+            run_data, env_data, agent, max_steps, deterministic,
+            record_history, record_decision_log, algorithm,
+        )
+
     env = ActionMasker(
         SchedulingEnv(
             run_data,
@@ -169,6 +177,83 @@ def run_inference(
     }
 
 
+def _run_bulkfill_inference(
+    run_data: dict,
+    env_data: dict,
+    agent,
+    max_steps: int,
+    deterministic: bool,
+    record_history: bool,
+    record_decision_log: bool,
+    algorithm: str,
+) -> dict:
+    """BulkFillEnv(MultiDiscrete) 전용 추론 루프."""
+    import numpy as np
+    from env.bulkfill_env import BulkFillEnv
+
+    env = BulkFillEnv(
+        run_data,
+        record_history=record_history,
+        record_event_log=record_history,
+        truncate_on_time=False,
+    )
+    obs, _ = env.reset()
+    done = False
+    steps = 0
+    terminated = False
+    truncated = False
+
+    while not done:
+        mask = env.action_masks()
+        action = agent.predict(
+            obs,
+            deterministic=deterministic,
+            action_masks=mask,
+            env_data=env_data,
+        )
+        obs, _, terminated, truncated, _ = env.step(action)
+        done = terminated or truncated
+        steps += 1
+        if steps >= max_steps:
+            break
+
+    sched_env = env
+    schedule = sched_env.get_schedule()
+    history = sched_env.get_history()
+    stats = sched_env.sim.stats
+    base_time = env_data["sim_base_time"]
+
+    for rec in schedule:
+        rec["START_TM_STR"] = minutes_to_str(rec["START_TM"], base_time)
+        rec["END_TM_STR"] = minutes_to_str(rec["END_TM"], base_time)
+
+    return {
+        "schedule":         schedule,
+        "history":          history,
+        "event_log":        list(sched_env.sim.event_log),
+        "decision_log":     [],
+        "conversion_plans": list(sched_env.sim.conversion_plans),
+        "stats": {
+            "idle_total":    stats["idle_total"],
+            "oper_switches": stats["oper_switches"],
+            "prod_switches": stats["prod_switches"],
+            "conversions":   stats.get("conversions", 0),
+            "completed_qty": {str(k): v for k, v in stats["completed_qty"].items()},
+            "remaining_wip":  sched_env.sim.get_wip_waiting(),
+            "remaining_current_wip": sched_env.sim.get_remaining_current_wip(),
+            "steps":          steps,
+            "terminated":     terminated,
+            "truncated":      truncated,
+            "current_time":   sched_env.sim.current_time,
+            "sim_end_minutes": sched_env.sim.sim_end,
+            "termination_mode": sched_env.sim._termination_mode,
+            "enable_wip_inflow": sched_env.sim._enable_wip_inflow,
+        },
+        "plan":      env_data["plan"],
+        "algorithm": algorithm,
+    }
+
+
 def save_result(
     result: dict,
     output_dir: Path = None,
@@ -227,24 +312,23 @@ def run_inference_compare(
     errors: list[dict] = []
 
     rl_loaded = rl_agent
-    if "rl" in algorithms and rl_loaded is None:
+    needs_model = [a for a in algorithms if a in ("rl", "bulkfill")]
+    if needs_model and rl_loaded is None:
         try:
             rl_loaded = SchedulingAgent.load(model_path, env_data=env_data)
         except (FileNotFoundError, ValueError) as exc:
-            errors.append({
-                "algorithm": "rl",
-                "message": str(exc),
-            })
+            for algo in needs_model:
+                errors.append({"algorithm": algo, "message": str(exc)})
 
     for algo in algorithms:
-        if algo == "rl" and rl_loaded is None:
+        if algo in ("rl", "bulkfill") and rl_loaded is None:
             continue
         try:
             validate_algorithm(algo)
             result = run_inference(
                 env_data,
                 algorithm=algo,
-                agent=rl_loaded if algo == "rl" else None,
+                agent=rl_loaded if algo in ("rl", "bulkfill") else None,
                 record_history=record_history,
                 record_decision_log=record_decision_log,
                 enable_wip_inflow=enable_wip_inflow,
