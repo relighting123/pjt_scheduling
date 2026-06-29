@@ -184,6 +184,7 @@ def cmd_train(
     nodb: bool = False,
     lot_cd: str = None,
     all_folders: bool = False,
+    algorithm: str = "rl",
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
 
@@ -266,10 +267,19 @@ def cmd_train(
         print(f"  학습 기간: {len(datasets)}개 (VecEnv)")
     print(f"  Total Timesteps: {CONFIG.rl.total_timesteps:,}")
 
+    env_cls = SchedulingEnv
+    if algorithm == "bulkfill":
+        from env.bulkfill_env import BulkFillEnv
+        env_cls = BulkFillEnv
+        print(f"  알고리즘: bulkfill (BulkFillEnv)")
+    else:
+        print(f"  알고리즘: rl (SchedulingEnv)")
+
+    from agent.rl_agent import _model_name_for_algorithm
     agent = SchedulingAgent()
-    agent.train(env_data, verbose=1)
-    agent.save()
-    print(f"  모델 저장: {CONFIG.path.model_dir / CONFIG.rl.model_name}.zip")
+    agent.train(env_data, verbose=1, env_cls=env_cls)
+    agent.save(algorithm=algorithm)
+    print(f"  모델 저장: {CONFIG.path.model_dir / _model_name_for_algorithm(algorithm)}.zip")
 
     print("=" * 60)
     print("[train] validation (test 전체)")
@@ -601,6 +611,10 @@ def parse_args():
         default=None,
         help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
     )
+    train_p.add_argument(
+        "--algorithm", default="rl", choices=["rl", "bulkfill"],
+        help="학습 환경: rl (기본, SchedulingEnv) | bulkfill (BulkFillEnv)",
+    )
     val_p = sub.add_parser("validate", help="test 데이터 전체 검증")
     val_p.add_argument("--facid", required=True, help="공장 ID")
     val_p.add_argument(
@@ -785,6 +799,7 @@ def main():
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
                 all_folders=args.all_folders,
+                algorithm=getattr(args, "algorithm", "rl"),
             )
 
         elif args.command == "validate":
