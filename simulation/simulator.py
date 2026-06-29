@@ -1288,7 +1288,7 @@ class SchedulingSimulator:
         return cfg.w_flow_balance * score
 
     def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
-        """같은 PPK의 재공이 남으면 보너스. 관련 PPK에서 전환 시 페널티 보너스."""
+        """같은 PPK의 재공이 남으면 보너스. PPK 전환 시 전환 카운트만."""
         cfg = self._reward_cfg
         if eqp.prev_prod == ppk:
             if self._ppk_has_feasible_assignment(ppk):
@@ -1297,8 +1297,6 @@ class SchedulingSimulator:
         if eqp.prev_prod is not None:
             eqp.prod_switches += 1
             self.stats["prod_switches"] += 1
-            if not self._ppk_has_feasible_assignment(eqp.prev_prod):
-                return cfg.w_prod_switch
         return 0.0
 
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
