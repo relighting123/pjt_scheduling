@@ -30,9 +30,16 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
         CONFIG.rl.learning_rate = params["learning_rate"]
         apply_reward_params(params)
 
+        from env.scheduling_env import SchedulingEnv
+        env_cls = SchedulingEnv
+        if params.get("algorithm") == "bulkfill":
+            from env.bulkfill_env import BulkFillEnv
+            env_cls = BulkFillEnv
+            train_progress.add_log("BulkFillEnv 모드로 학습")
+
         agent = SchedulingAgent()
         payload = env_list if len(env_list) > 1 else env_list[0]
-        train_kwargs = {"verbose": 0, "progress_state": train_progress}
+        train_kwargs = {"verbose": 0, "progress_state": train_progress, "env_cls": env_cls}
         if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
             train_kwargs["n_episodes"] = int(n_episodes)
         agent.train(payload, **train_kwargs)

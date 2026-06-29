@@ -247,6 +247,10 @@ class RewardParams(BaseModel):
 
 
 class TrainRequest(RewardParams):
+    algorithm: str = Field(
+        default="rl",
+        description="학습 환경 유형: rl (SchedulingEnv) | bulkfill (BulkFillEnv)",
+    )
     total_timesteps: int = Field(default=CONFIG.rl.total_timesteps, ge=1000)
     learning_rate: float = Field(default=CONFIG.rl.learning_rate, gt=0)
     train_budget_mode: Literal["timesteps", "episodes"] = Field(
@@ -617,9 +621,14 @@ def train(req: TrainRequest):
     CONFIG.rl.learning_rate = req.learning_rate
     apply_reward_params(req.model_dump())
 
+    env_cls = SchedulingEnv
+    if req.algorithm == "bulkfill":
+        from env.bulkfill_env import BulkFillEnv
+        env_cls = BulkFillEnv
+
     agent = SchedulingAgent()
     payload = env_list if len(env_list) > 1 else env_list[0]
-    train_kwargs: dict = {"verbose": 0}
+    train_kwargs: dict = {"verbose": 0, "env_cls": env_cls}
     if req.train_budget_mode == "episodes" and req.n_episodes:
         train_kwargs["n_episodes"] = req.n_episodes
     agent.train(payload, **train_kwargs)
