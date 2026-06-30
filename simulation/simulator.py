@@ -161,6 +161,9 @@ class SchedulingSimulator:
         self.sim_end:       int = data["sim_end_minutes"]
         self.soft_cutoff:   int = data.get("soft_cutoff_minutes", CONFIG.env.soft_cutoff_minutes)
         self._conversion_minutes: int = data.get("conversion_minutes", CONFIG.env.conversion_minutes)
+        # 전환 그룹 제약: (lot_cd, temp) → group_id. 같은 그룹끼리만 전환 허용.
+        self._conv_group_map: Dict[Tuple[str, str], str] = dict(data.get("conv_group_map", {}))
+        self._conv_groups_active: bool = bool(self._conv_group_map)
         self._lot_attrs: Dict[str, dict] = dict(data.get("lot_attrs", {}))
         self._initial_start: Dict[str, int] = {}
 
@@ -463,6 +466,35 @@ class SchedulingSimulator:
             return False
         return not self._tool_tracker.can_assign(lot_cd, eqp_id)
 
+    def _conversion_group_blocks(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
+        """전환 그룹 제약: 현재 셋업과 '다른 그룹'으로의 전환이면 배정 차단.
+
+        규칙(conversion_group.json이 있을 때만 활성):
+          - 전환이 필요 없으면(동일 셋업) 절대 차단하지 않음
+          - 첫 배정(prev_lot_cd=None)은 _would_need_conversion=False → 차단 안 함
+          - from·to 둘 다 그룹에 속할 때만, 두 그룹이 다르면 차단
+          - 어느 한쪽이라도 미지정(ungrouped)이면 제약 없음(차단 안 함)
+        """
+        if not self._conv_groups_active:
+            return False
+        if not self._would_need_conversion(eqp_id, lot_cd, temp):
+            return False
+        eqp = self.eqps.get(eqp_id)
+        if eqp is None:
+            return False
+        from_g = self._conv_group_map.get((eqp.prev_lot_cd, eqp.prev_temp or ""))
+        to_g = self._conv_group_map.get((lot_cd, temp or ""))
+        if from_g is None or to_g is None:
+            return False
+        return from_g != to_g
+
+    def _assign_blocked(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
+        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 제약."""
+        return (
+            self._tool_cap_blocks(eqp_id, lot_cd, temp)
+            or self._conversion_group_blocks(eqp_id, lot_cd, temp)
+        )
+
     def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
         """EQP에서 투입 가능한 LOT 중 최소 소요시간(장수×ST)."""
         lots = self.available_lots(eqp_id)
@@ -501,7 +533,7 @@ class SchedulingSimulator:
             for lot in self.available_lots(eqp_id):
                 lot_cd = lot.get("lot_cd", "")
                 temp = lot.get("temp", "")
-                if self._tool_cap_blocks(eqp_id, lot_cd, temp):
+                if self._assign_blocked(eqp_id, lot_cd, temp):
                     continue
                 score = self.earliest_st_combo_score(eqp_id, lot)
                 if score < best_score:
@@ -1336,7 +1368,7 @@ class SchedulingSimulator:
         lot_cd, temp = self._lot_cd_temp(
             lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
         )
-        if self._tool_cap_blocks(eqp_id, lot_cd, temp):
+        if self._assign_blocked(eqp_id, lot_cd, temp):
             return -1.0
         return self.assign_lot(eqp_id, lot_id)
 
@@ -1541,7 +1573,7 @@ class SchedulingSimulator:
             lot_cd, temp = self._lot_cd_temp(
                 lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
             )
-            if self._tool_cap_blocks(eqp_id, lot_cd, temp):
+            if self._assign_blocked(eqp_id, lot_cd, temp):
                 continue
             feasible.append(self.ppk_oper_flat_index(oper_id, ppk))
         return feasible
@@ -1779,7 +1811,7 @@ class SchedulingSimulator:
         proc_time = effective_proc_time(st_per_wafer, wf_qty)
 
         lot_cd, temp = self._lot_cd_temp(lot_id, ppk=ppk, oper_id=oper_id)
-        if self._tool_cap_blocks(eqp_id, lot_cd, temp):
+        if self._assign_blocked(eqp_id, lot_cd, temp):
             return -1.0
 
         wip = self._wip_for(ppk, oper_id)

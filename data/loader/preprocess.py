@@ -123,6 +123,25 @@ def _build_batch_info_map(
     return out
 
 
+def _build_conversion_group_map(
+    conv_group_raw: List[dict],
+) -> Dict[Tuple[str, str], str]:
+    """(LOT_CD, TEMP) → GROUP_ID. 같은 그룹끼리만 전환 허용(시뮬레이터에서 사용).
+
+    입력 conversion_group.json 행: {GROUP_ID, LOT_CD, TEMP}.
+    파일이 없거나 비면 빈 dict → 전환 그룹 제약 비활성(기존 동작 유지).
+    """
+    out: Dict[Tuple[str, str], str] = {}
+    for r in conv_group_raw:
+        gid = r.get("GROUP_ID")
+        lot_cd = r.get("LOT_CD")
+        if gid is None or lot_cd is None:
+            continue
+        temp = r.get("TEMP", "")
+        out[(str(lot_cd), str(temp or ""))] = str(gid)
+    return out
+
+
 def _build_lot_attributes(
     lot_ids: List[str],
     lot_info: Dict[str, dict],
@@ -616,6 +635,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     eqp_idx = build_index_map(eqp_ids)
 
     batch_info_map = _build_batch_info_map(batch_info_raw)
+    conv_group_map = _build_conversion_group_map(raw.get("conversion_group", []))
 
     lot_ids = sorted(lot_info.keys())
     lot_attrs, lot_cd_ids, temp_ids = _build_lot_attributes(
@@ -681,6 +701,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "temp_idx":         temp_idx,
         "lot_attrs":        lot_attrs,
         "batch_info_map":   batch_info_map,
+        "conv_group_map":   conv_group_map,
         "tool_capacity":    tool_capacity,
         "lots":             list(lot_info.values()),
         "eqp_lot_map":      eqp_lot_map,
