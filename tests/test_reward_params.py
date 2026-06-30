@@ -10,7 +10,7 @@ def test_reward_params_dict_has_all_keys():
         "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
-        "w_late_finish", "w_flow_balance", "reward_clip",
+        "w_flow_balance", "reward_clip",
         "flow_balance_starving_cover_min",
         "use_achievable_target", "same_oper_conditional",
     }

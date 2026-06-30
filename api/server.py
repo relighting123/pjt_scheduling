@@ -239,7 +239,6 @@ class RewardParams(BaseModel):
     w_plan_hit: float = Field(default=CONFIG.reward.w_plan_hit)
     w_pacing: float = Field(default=CONFIG.reward.w_pacing)
     w_conversion: float = Field(default=CONFIG.reward.w_conversion)
-    w_late_finish: float = Field(default=CONFIG.reward.w_late_finish)
     w_flow_balance: float = Field(default=CONFIG.reward.w_flow_balance)
     reward_clip: float = Field(default=CONFIG.reward.reward_clip, ge=0.1)
     use_achievable_target: bool = Field(default=CONFIG.reward.use_achievable_target)
