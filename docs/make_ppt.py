@@ -30,6 +30,7 @@ import os
 _HERE = os.path.dirname(os.path.abspath(__file__))
 KPI = json.load(open(os.path.join(_HERE, "kpi_conv_bench.json"), encoding="utf-8"))
 SUITE = json.load(open(os.path.join(_HERE, "bench_suite_results.json"), encoding="utf-8"))
+TRACE = json.load(open(os.path.join(_HERE, "trace_steps.json"), encoding="utf-8"))
 
 prs = Presentation()
 prs.slide_width  = Inches(13.333)
@@ -540,9 +541,92 @@ txt(s, 1.15, 6.25, 11.1, 0.7, [[
 ]], anchor=MSO_ANCHOR.MIDDLE)
 
 # ════════════════════════════════════════════════════════════════════════════
-# 11. 검증 설계
+# 11. 스텝별 상태·보상 변화 추적 (실제 트레이스)
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "검증 설계 — CONV_BENCH 데이터셋", 11)
+s = content_slide("03  보상 산출 로직 예시", "스텝별 상태·보상 변화 추적 (실제 추론 트레이스)", 11)
+txt(s, 0.62, 1.28, 12.1, 0.42, [[
+    R("학습 모델을 ", 11.5, INK), R("SYM_3x3", 11.5, NAVY, True),
+    R("(3설비·각 8캐리어, takt 예산 8)에 결정론적 추론한 ", 11.5, INK),
+    R("실제 첫 8스텝", 11.5, NAVY, True),
+    R("의 상태·보상 변화입니다.", 11.5, INK),
+]])
+trows = TRACE["rows"][:8]
+tot = TRACE["total_plan"]
+thead = ["스텝", "t(분)", "결정 (EQP → PPK)", "행동 유형", "달성률", "보상 r", "누적 Σr"]
+tcw = [0.85, 1.0, 2.95, 1.85, 1.55, 1.9, 1.9]
+y = 1.78; x0 = 0.62
+xx = x0
+for j, h in enumerate(thead):
+    cell = box(s, xx, y, tcw[j], 0.46, NAVY, line_color=WHITE, line_w=1.0)
+    tf = cell.text_frame; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+    rr = p.add_run(); rr.text = h; rr.font.size = Pt(10.5); rr.font.bold = True
+    rr.font.color.rgb = WHITE; rr.font.name = FONT
+    xx += tcw[j]
+y += 0.46
+rh = 0.39
+for i, r in enumerate(trows):
+    is_start = (r["block_lv"] >= 1 and i < 3)
+    typ = "블록 시작 (N=8)" if is_start else "블록 연속"
+    typ_col = ACCENT if is_start else STEEL
+    vals = [
+        (str(r["step"]), GRAY, False),
+        (str(r["t"]), GRAY, False),
+        (f"{r['eqp']} → {r['ppk']}", NAVY, True),
+        (typ, typ_col, True),
+        (f"{r['prog']*100:.0f}%", GRAY, False),
+        (f"+{r['reward']:.2f}", GREEN, True),
+        (f"{r['cum']:.2f}", NAVY, True),
+    ]
+    fill = RGBColor(0xEC,0xF1,0xF7) if is_start else (WHITE if i % 2 == 0 else LIGHT)
+    xx = x0
+    for j, (v, col, bd) in enumerate(vals):
+        cell = box(s, xx, y, tcw[j], rh, fill, line_color=LINE, line_w=0.6)
+        tf = cell.text_frame; tf.vertical_anchor = MSO_ANCHOR.MIDDLE; tf.margin_left = Inches(0.08)
+        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.LEFT if j == 2 else PP_ALIGN.CENTER
+        rn = p.add_run(); rn.text = v; rn.font.size = Pt(10.5); rn.font.bold = bd
+        rn.font.color.rgb = col; rn.font.name = FONT
+        xx += tcw[j]
+    y += rh
+txt(s, 0.62, y+0.04, 12.1, 0.3, [[
+    R("관찰  ", 10.5, ACCENT, True),
+    R("스텝 1~3은 각 설비가 전담 블록을 시작(보상 큼), 4~8은 같은 셋업으로 연속 처리. 전환 0회로 달성률이 단조 증가하고 누적 보상이 꾸준히 쌓입니다.", 10.5, GRAY),
+]])
+
+# 하단: 보상 수식 + 스텝 분해
+fy = 5.18
+box(s, 0.62, fy, 12.1, 0.46, ACCENT)
+txt(s, 0.62, fy, 12.1, 0.46, [[
+    R("스텝 보상 식    r_t  =  w_same_setup·1[동일셋업]  +  w_pacing·(|ideal−eff_before| − |ideal−eff_after|)/target  +  w_plan_hit·(gap_before − gap_after)/target  +  [블록 시작 시] Δblock", 11.5, WHITE, True)
+]], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+box(s, 0.62, fy+0.5, 12.1, 0.4, LIGHT)
+txt(s, 0.75, fy+0.5, 12.0, 0.4, [[
+    R("Δblock = w_bulk_block_bonus·min(N/예산,1)  +  w_dedication_misuse·1[전용오용]  +  w_redundant_cover·min(cover/need, 2)        |        전환 발생 시  + w_conversion  + w_avoidable_conversion·avoidable", 10.3, INK)
+]], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+
+# 두 스텝 분해 카드
+box(s, 0.62, fy+1.02, 5.95, 1.18, RGBColor(0xEC,0xF1,0xF7), line_color=LINE, line_w=1.0)
+box(s, 0.62, fy+1.02, 0.09, 1.18, ACCENT)
+txt(s, 0.82, fy+1.1, 5.7, 0.32, [[R("스텝 1 · 블록 시작 (EQP001→PPK001, N=8)", 11, NAVY, True)]])
+txt(s, 0.82, fy+1.42, 5.7, 0.72, [[
+    R("블록보너스 3.0·(8/8)=+3.00 ", 10.3, GREEN, True),
+    R("· 페이싱 −0.31 · 계획 +0.13", 10.3, GRAY),
+    R("  →  r = +2.83", 11, NAVY, True),
+]], line_spacing=1.15)
+
+box(s, 6.77, fy+1.02, 5.95, 1.18, LIGHT, line_color=LINE, line_w=1.0)
+box(s, 6.77, fy+1.02, 0.09, 1.18, STEEL)
+txt(s, 6.97, fy+1.1, 5.7, 0.32, [[R("스텝 4 · 블록 연속 (EQP001→PPK001)", 11, NAVY, True)]])
+txt(s, 6.97, fy+1.42, 5.7, 0.72, [[
+    R("동일셋업 +1.00 ", 10.3, GREEN, True),
+    R("· 페이싱 −0.30 · 계획 +0.13 (블록보너스 없음)", 10.3, GRAY),
+    R("  →  r = +0.83", 11, NAVY, True),
+]], line_spacing=1.15)
+
+# ════════════════════════════════════════════════════════════════════════════
+# 12. 검증 설계
+# ════════════════════════════════════════════════════════════════════════════
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "검증 설계 — CONV_BENCH 데이터셋", 12)
 txt(s, 0.9, 1.4, 11.6, 0.5, [[
     R("전환 비용이 ", 13.5, INK), R("생산 수량 손실로 1:1 환산", 13.5, NAVY, True),
     R("되도록 설계한 직관형 검증 데이터셋입니다.", 13.5, INK),
@@ -602,7 +686,7 @@ txt(s, 0.9, 6.7, 11.5, 0.4, [[
 # ════════════════════════════════════════════════════════════════════════════
 # 12. KPI 비교 표
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "KPI 비교 결과 (CONV_BENCH)", 12)
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "KPI 비교 결과 (CONV_BENCH)", 13)
 mp, es, bf = KPI["minprogress"], KPI["earliest_st"], KPI["bulkfill"]
 header = ["KPI 지표", "Earliest-ST\n(단순 규칙)", "Min-Progress\n(휴리스틱)", "Bulk-Fill PPO\n(학습 모델)"]
 data_rows = [
@@ -670,7 +754,7 @@ txt(s, 0.9, 6.7, 11.6, 0.45, [[
 # ════════════════════════════════════════════════════════════════════════════
 # 13. 효과성 차트
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "효과성 검증 — 정량 비교", 13)
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "효과성 검증 — 정량 비교", 14)
 
 # 차트 1: 생산 수량
 cd1 = CategoryChartData()
@@ -753,7 +837,7 @@ txt(s, 1.0, 5.98, 11.5, 0.75, [[
 # ════════════════════════════════════════════════════════════════════════════
 # 14. 대표 벤치마크 카탈로그
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "대표 벤치마크 8종 — 무엇을 검증하는가", 14)
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "대표 벤치마크 8종 — 무엇을 검증하는가", 15)
 txt(s, 0.9, 1.3, 11.6, 0.45, [[
     R("단순 휴리스틱이 ", 12, INK),
     R("쉽게 풀 수 없는 비대칭·제약 시나리오", 12, NAVY, True),
@@ -788,7 +872,7 @@ txt(s, 0.62, 6.78, 12.1, 0.35, [[
 # ════════════════════════════════════════════════════════════════════════════
 # 15. 8종 KPI 비교표
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "벤치마크 8종 KPI 비교 — 난이도별 결과", 15)
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "벤치마크 8종 KPI 비교 — 난이도별 결과", 16)
 txt(s, 0.9, 1.3, 11.6, 0.42, [[
     R("8종 데이터셋에 ", 12, INK), R("단일 Bulk-Fill 모델을 공동 학습", 12, NAVY, True),
     R(" 후 평가. 표기 = 생산 / 전환 (생산 많고 전환 적을수록 우수).", 12, GRAY),
@@ -844,7 +928,7 @@ txt(s, 0.62, 6.45, 12.1, 0.7, [[
 # ════════════════════════════════════════════════════════════════════════════
 # 16. 종합 집계 + 핵심 발견
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "종합 집계 — 어려운 케이스일수록 학습 모델이 우위", 16)
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "종합 집계 — 어려운 케이스일수록 학습 모델이 우위", 17)
 sm = SUITE["summary"]; es = sm["earliest_st"]; mp = sm["minprogress"]; bf = sm["bulkfill"]
 cd = CategoryChartData()
 cd.categories = ["Earliest-ST", "Min-Progress", "Bulk-Fill"]
@@ -928,7 +1012,7 @@ def gantt_slide(idx, name, title, cap_runs):
     return s
 
 # 17. 제품 과잉
-gantt_slide(17, "OVER_5p3", "간트 비교 ① 제품 과잉 (3설비·5제품)", [
+gantt_slide(18, "OVER_5p3", "간트 비교 ① 제품 과잉 (3설비·5제품)", [
     [R("3설비가 5제품을 처리해 전환이 불가피한 케이스.", 11, INK)],
     [R("Earliest·Min-Progress", 11, RED, True),
      R("는 제품을 자주 바꿔 ", 11, GRAY),
@@ -941,7 +1025,7 @@ gantt_slide(17, "OVER_5p3", "간트 비교 ① 제품 과잉 (3설비·5제품)"
 ])
 
 # 18. 부하 불균등
-gantt_slide(18, "LOAD_skew", "간트 비교 ② 부하 불균등 (계획 14·8·4·4)", [
+gantt_slide(19, "LOAD_skew", "간트 비교 ② 부하 불균등 (계획 14·8·4·4)", [
     [R("제품별 물량이 14·8·4·4로 편중된 케이스.", 11, INK)],
     [R("휴리스틱", 11, RED, True),
      R("은 진행률만 보고 분배해 ", 11, GRAY),
@@ -956,7 +1040,7 @@ gantt_slide(18, "LOAD_skew", "간트 비교 ② 부하 불균등 (계획 14·8·
 # ════════════════════════════════════════════════════════════════════════════
 # 19. 결론
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("CONCLUSION", "결론 및 기대 효과", 19)
+s = content_slide("CONCLUSION", "결론 및 기대 효과", 20)
 bf = SUITE["summary"]["bulkfill"]; mp = SUITE["summary"]["minprogress"]
 left = [
     ("검증된 성과", f"8종 벤치마크 종합 생산률 {bf['prod_pct']:.0f}%로 휴리스틱({mp['prod_pct']:.0f}%)을 능가, 전환 {mp['conv']}→{bf['conv']}회 감소."),

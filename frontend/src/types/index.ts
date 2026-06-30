@@ -206,6 +206,7 @@ export interface DataSummary {
 }
 
 export interface RewardConfig {
+  w_same_setup: number;
   w_same_oper: number;
   w_same_prod: number;
   w_prod_switch: number;
@@ -213,8 +214,15 @@ export interface RewardConfig {
   w_completion: number;
   w_plan_hit: number;
   w_pacing: number;
+  pacing_coverage_scale: number;
   w_conversion: number;
+  w_avoidable_conversion: number;
+  conversion_amortize_factor: number;
+  w_bulk_block_bonus: number;
+  w_dedication_misuse: number;
+  w_redundant_cover: number;
   w_flow_balance: number;
+  flow_balance_starving_cover_min: number;
   reward_clip: number;
   use_achievable_target: boolean;
   same_oper_conditional: boolean;
