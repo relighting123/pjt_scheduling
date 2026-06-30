@@ -178,6 +178,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "tool_capacity":     tool_capacity,
         "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
         "batch_info":        _read_optional(CONFIG.path.batch_info_file),
+        "conversion_group":  _read_optional(CONFIG.path.conversion_group_file),
     }
 
 

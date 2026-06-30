@@ -387,6 +387,7 @@ class PathConfig:
     tool_capacity_file: str = "tool_capacity.json"
     eqp_initial_state_file: str = "eqp_initial_state.json"
     batch_info_file:   str = "batch_info.json"
+    conversion_group_file: str = "conversion_group.json"
     output_file:       str = "output.json"
 
     @property

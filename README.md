@@ -51,7 +51,26 @@ pjt_scheduling/
 | `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿 |
 | Runtime WIP | `(PPK, OPER)` + LOT list | 현재/유입 재공, `oper_in_time` |
 
-부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`
+부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`
+
+#### 전환 그룹 제약 (`conversion_group.json`, 선택)
+
+같은 그룹 안의 `(LOT_CD, TEMP)`로만 전환을 허용하고 **다른 그룹으로의 전환은 배정 후보에서 제외**합니다(행동 공간 축소 → 문제 단순화). 파일이 없으면 제약은 비활성(기존 동작).
+
+```json
+[
+  {"GROUP_ID": "G1", "LOT_CD": "LC_A", "TEMP": "T600"},
+  {"GROUP_ID": "G1", "LOT_CD": "LC_B", "TEMP": "T600"},
+  {"GROUP_ID": "G2", "LOT_CD": "LC_C", "TEMP": "T600"}
+]
+```
+
+규칙:
+- 동일 셋업(전환 없음)·첫 배정(EQP 셋업 미지정)은 항상 허용
+- `from`·`to`가 **둘 다 그룹에 속할 때만**, 두 그룹이 다르면 차단
+- 그룹에 없는 `(LOT_CD, TEMP)`는 제약 없음(미지정 = 와일드카드)
+
+> 효과: EQP가 처음 잡은 그룹에 고정되어 그룹 내에서만 전환합니다. 도달 불가능한 제품이 생길 수 있으나(생산량 소폭 감소), 불필요한 교차 그룹 전환이 사라집니다.
 
 ### arrange vs discrete (런타임)
 
