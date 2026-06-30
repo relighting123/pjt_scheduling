@@ -237,22 +237,14 @@ def build_step_decision_entry(
     failure_code: Optional[str] = None
     failure_detail: Optional[str] = None
 
+    # 이번 step에 배정이 성사됐으면(=selected_matches_eqp) 사후 진단(EQP busy 등)보다
+    # '배정' 사유를 우선 표기한다. 진단은 배정 직후 호출돼 EQP가 busy로 보이기 때문.
     if terminated and eqp_id is None:
         status = "sim_done"
         reason = REASON_LABELS["sim_done"]
     elif eqp_id is None:
         status = "no_idle_eqp"
         reason = REASON_LABELS["no_idle_eqp"]
-    elif diagnosis and diagnosis.get("eqp_status") != "idle":
-        status = "eqp_not_idle"
-        reason = f"EQP {eqp_id} 상태: {diagnosis['eqp_status']}"
-    elif not feasible:
-        status = "no_feasible"
-        reason = diagnosis["summary"] if diagnosis else REASON_LABELS["no_feasible"]
-        if diagnosis and diagnosis.get("blocked_buckets"):
-            top = diagnosis["blocked_buckets"][0]
-            failure_code = top["reason"]
-            failure_detail = top["detail"]
     elif selected_matches_eqp and action_corrected:
         status = "action_corrected"
         reason = (
@@ -265,6 +257,16 @@ def build_step_decision_entry(
             f"{eqp_id} ← {selected_ppk}/{selected_oper}"
             + (f" · LOT {assigned_lot_id}" if assigned_lot_id else "")
         )
+    elif diagnosis and diagnosis.get("eqp_status") != "idle":
+        status = "eqp_not_idle"
+        reason = f"EQP {eqp_id} 상태: {diagnosis['eqp_status']}"
+    elif not feasible:
+        status = "no_feasible"
+        reason = diagnosis["summary"] if diagnosis else REASON_LABELS["no_feasible"]
+        if diagnosis and diagnosis.get("blocked_buckets"):
+            top = diagnosis["blocked_buckets"][0]
+            failure_code = top["reason"]
+            failure_detail = top["detail"]
     elif reward < 0:
         status = "assign_failed"
         failure_code, failure_detail = diagnose_assign_failure(sim, eqp_id, res_ppk or "", res_oper or "")
@@ -301,8 +303,12 @@ def build_step_decision_entry(
             dict(selected.get("reward_breakdown", {})) if selected_matches_eqp else {}
         ),
         "assigned_lot_id": assigned_lot_id,
-        "feasible_options": feasible,
-        "blocked_buckets": diagnosis.get("blocked_buckets", []) if diagnosis else [],
+        # 배정 성사 step의 사후 진단(EQP busy 기준 feasible/blocked)은 노이즈라 비움
+        "feasible_options": [] if selected_matches_eqp else feasible,
+        "blocked_buckets": (
+            [] if selected_matches_eqp
+            else (diagnosis.get("blocked_buckets", []) if diagnosis else [])
+        ),
     }
     if failure_code:
         entry["failure_code"] = failure_code
