@@ -23,15 +23,17 @@ const REWARD_SLIDERS: {
   max: number;
   step: number;
 }[] = [
+  { key: "w_same_setup", label: "동일 셋업 연속", min: 0, max: 5, step: 0.5 },
   { key: "w_plan_hit", label: "계획 달성", min: 0, max: 8, step: 0.5 },
   { key: "w_pacing", label: "Pacing 추종", min: 0, max: 8, step: 0.5 },
+  { key: "pacing_coverage_scale", label: "Pacing 커버 스케일", min: 0, max: 2, step: 0.1 },
   { key: "w_flow_balance", label: "Flow balance", min: 0, max: 5, step: 0.5 },
-  { key: "w_same_oper", label: "동일 OPER", min: 0, max: 5, step: 0.5 },
-  { key: "w_same_prod", label: "동일 PPK", min: 0, max: 5, step: 0.5 },
-  { key: "w_prod_switch", label: "PPK 전환", min: 0, max: 5, step: 0.5 },
-  { key: "w_completion", label: "완료 보너스", min: 0, max: 5, step: 0.5 },
-  { key: "w_idle_per_min", label: "Idle/분", min: -3, max: 3, step: 0.1 },
   { key: "w_conversion", label: "전환 패널티", min: -15, max: 0, step: 0.5 },
+  { key: "w_avoidable_conversion", label: "회피가능 전환", min: -15, max: 0, step: 0.5 },
+  { key: "w_bulk_block_bonus", label: "벌크 블록 보너스", min: 0, max: 6, step: 0.5 },
+  { key: "w_dedication_misuse", label: "전용 오용", min: -8, max: 0, step: 0.5 },
+  { key: "w_redundant_cover", label: "중복 커버", min: -8, max: 0, step: 0.5 },
+  { key: "w_idle_per_min", label: "Idle/분", min: -3, max: 3, step: 0.1 },
   { key: "reward_clip", label: "Reward clip", min: 1, max: 10, step: 0.5 },
 ];
 

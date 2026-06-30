@@ -231,6 +231,7 @@ def _prepare_train_env_data(req: "TrainRequest") -> tuple[list[dict], list[str]]
 # ── 요청 스키마 ───────────────────────────────────────────────────────────────
 
 class RewardParams(BaseModel):
+    w_same_setup: float = Field(default=CONFIG.reward.w_same_setup)
     w_same_oper: float = Field(default=CONFIG.reward.w_same_oper)
     w_same_prod: float = Field(default=CONFIG.reward.w_same_prod)
     w_prod_switch: float = Field(default=CONFIG.reward.w_prod_switch)
@@ -238,8 +239,16 @@ class RewardParams(BaseModel):
     w_completion: float = Field(default=CONFIG.reward.w_completion)
     w_plan_hit: float = Field(default=CONFIG.reward.w_plan_hit)
     w_pacing: float = Field(default=CONFIG.reward.w_pacing)
+    pacing_coverage_scale: float = Field(default=CONFIG.reward.pacing_coverage_scale)
     w_conversion: float = Field(default=CONFIG.reward.w_conversion)
+    w_avoidable_conversion: float = Field(default=CONFIG.reward.w_avoidable_conversion)
+    conversion_amortize_factor: float = Field(default=CONFIG.reward.conversion_amortize_factor)
+    # 벌크 점유(Bulk-Fill) 전용 보상항
+    w_bulk_block_bonus: float = Field(default=CONFIG.reward.w_bulk_block_bonus)
+    w_dedication_misuse: float = Field(default=CONFIG.reward.w_dedication_misuse)
+    w_redundant_cover: float = Field(default=CONFIG.reward.w_redundant_cover)
     w_flow_balance: float = Field(default=CONFIG.reward.w_flow_balance)
+    flow_balance_starving_cover_min: float = Field(default=CONFIG.reward.flow_balance_starving_cover_min)
     reward_clip: float = Field(default=CONFIG.reward.reward_clip, ge=0.1)
     use_achievable_target: bool = Field(default=CONFIG.reward.use_achievable_target)
     same_oper_conditional: bool = Field(default=CONFIG.reward.same_oper_conditional)
