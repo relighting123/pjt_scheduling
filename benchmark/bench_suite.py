@@ -38,18 +38,21 @@ def load_ed(m):
 def kpi(result, m):
     stats = result["stats"]
     sched = result["schedule"]
-    sim = m["sim"]; st = m["st"]; n = m["n_eqp"]; maxp = m["total"]
+    sim = m["sim"]; n = m["n_eqp"]; maxp = m["total"]
     in_time = [r for r in sched if r.get("END_TM", 0) <= sim]
     by_eqp = defaultdict(lambda: defaultdict(int))
+    busy_by_eqp = defaultdict(int)
     for r in in_time:
         by_eqp[r["EQP_ID"]][r.get("PLAN_PROD_KEY", "?")] += 1
+        busy_by_eqp[r["EQP_ID"]] += int(r.get("PROC_TIME") or (r["END_TM"] - r["START_TM"]))
     eqp_ids = sorted(by_eqp.keys()) or sorted({r["EQP_ID"] for r in sched})
     carriers = [sum(by_eqp[e].values()) for e in eqp_ids]
     ded = sum(1 for e in eqp_ids if by_eqp[e]
               and max(by_eqp[e].values()) / max(sum(by_eqp[e].values()), 1) >= 0.8)
     prod = sum(carriers)
     conv = stats.get("conversions", 0)
-    util = round(100 * sum(c * st for c in carriers) / max(n * sim, 1), 1)
+    # 가동률 = 실제 처리시간 합 / (설비수 × 시뮬시간)
+    util = round(100 * sum(busy_by_eqp.values()) / max(n * sim, 1), 1)
     return {
         "prod": prod, "max": maxp, "conv": conv, "loss": maxp - prod,
         "ded": ded, "n_eqp": len(eqp_ids), "util": util,
@@ -87,21 +90,32 @@ def main():
             print(f"[경고] 저장된 bulkfill 모델 없음 → bulkfill 생략 ({e})")
 
     results = []
+    schedules = {}  # name -> {algo: {schedule, conversion_plans, sim, eqp_ids}}
     algos = [("earliest_st", "Earliest-ST"), ("minprogress", "Min-Progress")]
     print(f"{'dataset':<20}{'algo':<14}{'prod':>9}{'conv':>6}{'util':>7}{'전담':>7}")
     for m, ed in zip(META, eds):
-        row = {"name": m["name"], "n": m["n_eqp"], "carriers": m["carriers"],
-               "st": m["st"], "conv_min": m["conv"], "total": m["total"], "algos": {}}
-        for algo, label in algos:
-            k = kpi(run_inference(ed, algorithm=algo), m)
-            row["algos"][algo] = k
-            print(f"{m['name']:<20}{label:<14}{k['prod']:>4}/{k['max']:<4}{k['conv']:>6}{k['util']:>6.0f}%{k['ded']:>4}/{k['n_eqp']}")
-        if agent is not None:
-            k = kpi(run_inference(ed, algorithm="bulkfill", agent=agent), m)
-            row["algos"]["bulkfill"] = k
-            print(f"{m['name']:<20}{'Bulk-Fill':<14}{k['prod']:>4}/{k['max']:<4}{k['conv']:>6}{k['util']:>6.0f}%{k['ded']:>4}/{k['n_eqp']}")
+        row = {"name": m["id"], "cat": m["cat"], "n": m["n_eqp"], "n_ppk": m["n_ppk"],
+               "carriers": m["carriers"], "st": m["st"], "conv_min": m["conv"],
+               "sim": m["sim"], "total": m["total"], "min_conv": m["min_conv"],
+               "desc": m["desc"], "tests": m["tests"], "algos": {}}
+        sched_row = {}
+        run_algos = list(algos) + ([("bulkfill", "Bulk-Fill")] if agent is not None else [])
+        for algo, label in run_algos:
+            res = run_inference(ed, algorithm=algo, agent=agent if algo == "bulkfill" else None)
+            row["algos"][algo] = kpi(res, m)
+            k = row["algos"][algo]
+            sched_row[algo] = {
+                "schedule": [r for r in res["schedule"] if r.get("END_TM", 0) <= m["sim"]],
+                "conversion_plans": [c for c in res.get("conversion_plans", [])
+                                     if c.get("conv_start_min", 0) < m["sim"]],
+                "sim": m["sim"], "eqp_ids": sorted({r["EQP_ID"] for r in res["schedule"]}),
+            }
+            print(f"{m['id']:<20}{label:<14}{k['prod']:>4}/{k['max']:<4}{k['conv']:>6}{k['util']:>6.0f}%{k['ded']:>4}/{k['n_eqp']}")
+        schedules[m["id"]] = sched_row
         results.append(row)
         print("")
+    with open(SUITE_ROOT / "bench_suite_schedules.json", "w", encoding="utf-8") as f:
+        json.dump(schedules, f, ensure_ascii=False)
 
     # 집계
     def agg(algo):
@@ -121,6 +135,7 @@ def main():
             "ded": tot_ded, "neqp": tot_neqp,
             "ded_pct": round(100 * tot_ded / max(tot_neqp, 1), 1),
             "optimal": sum(1 for r in rows if r["conv"] == 0 and r["prod"] == r["max"]),
+            "full_prod": sum(1 for r in rows if r["prod"] == r["max"]),
             "n_sets": len(rows),
         }
 
