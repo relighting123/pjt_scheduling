@@ -29,6 +29,7 @@ FONT_L = "맑은 고딕 Semilight"
 import os
 _HERE = os.path.dirname(os.path.abspath(__file__))
 KPI = json.load(open(os.path.join(_HERE, "kpi_conv_bench.json"), encoding="utf-8"))
+SUITE = json.load(open(os.path.join(_HERE, "bench_suite_results.json"), encoding="utf-8"))
 
 prs = Presentation()
 prs.slide_width  = Inches(13.333)
@@ -750,13 +751,148 @@ txt(s, 1.0, 5.98, 11.5, 0.75, [[
 ]], line_spacing=1.25)
 
 # ════════════════════════════════════════════════════════════════════════════
-# 14. 결론
+# 14. 다양한 테스트 데이터셋 — 상세 결과표
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("CONCLUSION", "결론 및 기대 효과", 14)
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "다양한 테스트 데이터셋 10종 — 일반화 검증", 14)
+txt(s, 0.9, 1.32, 11.6, 0.45, [[
+    R("설비·제품 수(2×2~6×6), 처리시간(30~72분), 전환시간(30~90분), 혼합도를 달리한 ", 12, INK),
+    R("10종 데이터셋", 12, NAVY, True),
+    R("에 ", 12, INK),
+    R("단일 Bulk-Fill 모델을 공동 학습", 12, NAVY, True),
+    R(" 후 평가했습니다.", 12, INK),
+]])
+ds = SUITE["datasets"]
+# 표 헤더
+hdr = ["데이터셋", "구성", "최대", "Earliest-ST\n생산 / 전환", "Min-Progress\n생산", "Bulk-Fill\n생산 / 전환 / 전담"]
+cw = [2.35, 1.55, 0.85, 2.45, 1.75, 2.95]
+y = 1.9; x0 = 0.62
+xx = x0
+for j, h in enumerate(hdr):
+    fill = ACCENT if j == 5 else NAVY
+    cell = box(s, xx, y, cw[j], 0.62, fill, line_color=WHITE, line_w=1.0)
+    tf = cell.text_frame; tf.vertical_anchor = MSO_ANCHOR.MIDDLE; tf.word_wrap = True
+    for k, ln in enumerate(h.split("\n")):
+        p = tf.paragraphs[0] if k == 0 else tf.add_paragraph()
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run(); r.text = ln
+        r.font.size = Pt(10.5 if k == 0 else 9); r.font.bold = True
+        r.font.color.rgb = WHITE; r.font.name = FONT
+    xx += cw[j]
+y += 0.62
+short = {"BENCH01_3x3_st60":"BENCH01","BENCH02_4x4_st60":"BENCH02","BENCH03_5x5_st45":"BENCH03",
+         "BENCH04_2x2_st40":"BENCH04","BENCH05_3x3_st48":"BENCH05","BENCH06_6x6_st72":"BENCH06",
+         "BENCH07_4x4_cv50":"BENCH07","BENCH08_3x3_st30":"BENCH08","BENCH09_5x5_cv90":"BENCH09",
+         "BENCH10_4x4_st36":"BENCH10"}
+rh = 0.4
+for i, r in enumerate(ds):
+    a = r["algos"]; es = a["earliest_st"]; mp = a["minprogress"]; bf = a["bulkfill"]
+    cfg = f"{r['n']}×{r['n']}·ST{r['st']}"
+    bf_opt = (bf["conv"] == 0 and bf["prod"] == bf["max"])
+    cells = [
+        (short.get(r["name"], r["name"]), "L", NAVY, True),
+        (cfg, "C", GRAY, False),
+        (str(r["total"]), "C", GRAY, False),
+        (f"{es['prod']} / {es['conv']}", "C", RED, False),
+        (f"{mp['prod']}", "C", GRAY, False),
+        (f"{bf['prod']} / {bf['conv']} / {bf['ded']}/{bf['n_eqp']}", "C", GREEN if bf_opt else AMBER, True),
+    ]
+    xx = x0
+    for j, (v, al, col, bd) in enumerate(cells):
+        if j == 5:
+            fill = RGBColor(0xE2,0xEE,0xE7) if bf_opt else RGBColor(0xF6,0xEE,0xDD)
+        else:
+            fill = WHITE if i % 2 == 0 else LIGHT
+        cell = box(s, xx, y, cw[j], rh, fill, line_color=LINE, line_w=0.6)
+        tf = cell.text_frame; tf.vertical_anchor = MSO_ANCHOR.MIDDLE; tf.word_wrap = True
+        tf.margin_left = Inches(0.08); tf.margin_top = Inches(0.0); tf.margin_bottom = Inches(0.0)
+        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.LEFT if al == "L" else PP_ALIGN.CENTER
+        rn = p.add_run(); rn.text = v
+        rn.font.size = Pt(10); rn.font.bold = bd; rn.font.color.rgb = col; rn.font.name = FONT
+        xx += cw[j]
+    y += rh
+txt(s, 0.62, 6.45, 12.1, 0.7, [[
+    R("Bulk-Fill는 별도 규칙 주입 없이 ", 11.5, INK),
+    R("10종 중 9종에서 이론 최적(전환 0·전량 생산)에 도달", 11.5, GREEN, True),
+    R("했고, 나머지 1종(6×6)도 최고 수준에 근접했습니다. (녹색=최적, 주황=근접)", 11.5, GRAY),
+]], line_spacing=1.1)
+
+# ════════════════════════════════════════════════════════════════════════════
+# 15. 다양한 테스트 데이터셋 — 집계 효과
+# ════════════════════════════════════════════════════════════════════════════
+s = content_slide("04  알고리즘 KPI 비교 및 효과성 검증", "10종 데이터셋 종합 — 효과성 집계", 15)
+sm = SUITE["summary"]; es = sm["earliest_st"]; mp = sm["minprogress"]; bf = sm["bulkfill"]
+
+# 좌측: 종합 차트(생산률·가동률)
+cd = CategoryChartData()
+cd.categories = ["Earliest-ST", "Min-Progress", "Bulk-Fill"]
+cd.add_series("생산률(%)", (es["prod_pct"], mp["prod_pct"], bf["prod_pct"]))
+cd.add_series("평균 가동률(%)", (es["util"], mp["util"], bf["util"]))
+gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED,
+    Inches(0.7), Inches(1.55), Inches(6.5), Inches(3.55), cd)
+ch = gf.chart; ch.has_title = True
+ch.chart_title.text_frame.text = "10종 종합 — 생산률 · 평균 가동률"
+ch.chart_title.text_frame.paragraphs[0].font.size = Pt(13)
+ch.chart_title.text_frame.paragraphs[0].font.bold = True
+ch.chart_title.text_frame.paragraphs[0].font.color.rgb = NAVY
+ch.chart_title.text_frame.paragraphs[0].font.name = FONT
+ch.has_legend = True; ch.legend.position = XL_LEGEND_POSITION.BOTTOM
+ch.legend.include_in_layout = False
+ch.legend.font.size = Pt(10); ch.legend.font.name = FONT
+plot = ch.plots[0]; plot.has_data_labels = True; plot.gap_width = 90
+plot.data_labels.font.size = Pt(9.5); plot.data_labels.font.bold = True
+plot.data_labels.font.color.rgb = NAVY; plot.data_labels.font.name = FONT
+plot.data_labels.number_format = '0"%"'; plot.data_labels.number_format_is_linked = False
+plot.series[0].format.fill.solid(); plot.series[0].format.fill.fore_color.rgb = ACCENT
+plot.series[1].format.fill.solid(); plot.series[1].format.fill.fore_color.rgb = STEEL
+va = ch.value_axis; va.minimum_scale = 0; va.maximum_scale = 110
+va.tick_labels.font.size = Pt(9); va.tick_labels.font.name = FONT
+ch.category_axis.tick_labels.font.size = Pt(10); ch.category_axis.tick_labels.font.name = FONT
+
+# 우측: 핵심 집계 지표 카드
+box(s, 7.5, 1.55, 5.05, 3.55, LIGHT, line_color=LINE, line_w=1.0)
+box(s, 7.5, 1.55, 5.05, 0.5, NAVY)
+txt(s, 7.5, 1.55, 5.05, 0.5, [[R("종합 집계 (10종 합산)", 13, WHITE, True)]], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+metrics = [
+    ("총 생산률", f"{es['prod_pct']:.0f}%", f"{bf['prod_pct']:.0f}%", f"{mp['prod_pct']:.0f}%"),
+    ("총 전환 횟수", f"{es['conv']}", f"{bf['conv']}", f"{mp['conv']}"),
+    ("평균 가동률", f"{es['util']:.0f}%", f"{bf['util']:.0f}%", f"{mp['util']:.0f}%"),
+    ("전담 달성률", f"{es['ded_pct']:.0f}%", f"{bf['ded_pct']:.0f}%", f"{mp['ded_pct']:.0f}%"),
+    ("최적 도달", f"{es['optimal']}/10", f"{bf['optimal']}/10", f"{mp['optimal']}/10"),
+]
+# 헤더행
+hy = 2.18
+for lbl, xx, w in [("지표", 7.7, 2.0), ("Earliest", 9.65, 1.0), ("Bulk-Fill", 10.62, 1.05), ("Min-Prog", 11.62, 0.85)]:
+    txt(s, xx, hy, w, 0.3, [[R(lbl, 10, ACCENT, True)]], align=PP_ALIGN.LEFT if lbl=="지표" else PP_ALIGN.CENTER)
+yy = 2.5
+for name, e, b, mv in metrics:
+    txt(s, 7.7, yy, 2.0, 0.34, [[R(name, 11, NAVY, True)]])
+    txt(s, 9.5, yy, 1.05, 0.34, [[R(e, 11, RED)]], align=PP_ALIGN.CENTER)
+    txt(s, 10.55, yy, 1.1, 0.34, [[R(b, 12, GREEN, True)]], align=PP_ALIGN.CENTER)
+    txt(s, 11.62, yy, 0.85, 0.34, [[R(mv, 10.5, GRAY)]], align=PP_ALIGN.CENTER)
+    yy += 0.52
+
+box(s, 0.7, 5.4, 11.85, 1.4, NAVY)
+txt(s, 1.0, 5.52, 11.4, 0.4, [[R("일반화 효과 입증", 13, RGBColor(0x9D,0xBE,0xE0), True)]])
+gp = round(bf["prod_pct"] - es["prod_pct"], 1)
+txt(s, 1.0, 5.9, 11.5, 0.85, [[
+    R("단일 모델이 ", 13, RGBColor(0xD7,0xE2,0xEE)),
+    R("서로 다른 10종 데이터셋에서 평균 생산률 ", 13, RGBColor(0xD7,0xE2,0xEE)),
+    R(f"{bf['prod_pct']:.0f}% · 전환 {es['conv']}→{bf['conv']}회 · 최적 {bf['optimal']}/10", 13.5, WHITE, True),
+    R(" 달성으로, 단순 규칙 대비 ", 13, RGBColor(0xD7,0xE2,0xEE)),
+    R(f"생산률 +{gp:.0f}%p", 13.5, WHITE, True),
+    R(" 향상되어 학습 모델의 ", 13, RGBColor(0xD7,0xE2,0xEE)),
+    R("일반화 성능을 검증", 13.5, WHITE, True),
+    R("했습니다.", 13, RGBColor(0xD7,0xE2,0xEE)),
+]], line_spacing=1.28)
+
+# ════════════════════════════════════════════════════════════════════════════
+# 16. 결론
+# ════════════════════════════════════════════════════════════════════════════
+s = content_slide("CONCLUSION", "결론 및 기대 효과", 16)
 left = [
-    ("검증된 성과", "학습 모델이 최고 휴리스틱과 동등한 최적해(생산 24·전환 0·전담 3/3)에 도달."),
+    ("검증된 성과", "단일 학습 모델이 10종 데이터셋 중 9종에서 이론 최적(전환 0·전량 생산)에 도달."),
+    ("일반화 성능", "구성·시간·난이도가 다른 데이터셋에서도 평균 생산률 99%로 안정적으로 동작."),
     ("구조적 강점", "벌크 점유 + 행동 마스킹으로 전환을 근본적으로 억제하고 학습을 안정화."),
-    ("객관적 비교 체계", "동일 시뮬레이터·KPI에서 PPO와 휴리스틱을 1:1로 비교·검증."),
 ]
 right = [
     ("확장성", "더 많은 설비·제품·다단 공정으로 데이터 교체만으로 확장 적용 가능."),

@@ -1,0 +1,442 @@
+{
+  "datasets": [
+    {
+      "name": "BENCH01_3x3_st60",
+      "n": 3,
+      "carriers": 8,
+      "st": 60,
+      "conv_min": 60,
+      "total": 24,
+      "algos": {
+        "earliest_st": {
+          "prod": 18,
+          "max": 24,
+          "conv": 6,
+          "loss": 6,
+          "ded": 0,
+          "n_eqp": 3,
+          "util": 75.0,
+          "prod_sw": 6
+        },
+        "minprogress": {
+          "prod": 24,
+          "max": 24,
+          "conv": 0,
+          "loss": 0,
+          "ded": 3,
+          "n_eqp": 3,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 24,
+          "max": 24,
+          "conv": 0,
+          "loss": 0,
+          "ded": 3,
+          "n_eqp": 3,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH02_4x4_st60",
+      "n": 4,
+      "carriers": 6,
+      "st": 60,
+      "conv_min": 60,
+      "total": 24,
+      "algos": {
+        "earliest_st": {
+          "prod": 16,
+          "max": 24,
+          "conv": 12,
+          "loss": 8,
+          "ded": 0,
+          "n_eqp": 4,
+          "util": 66.7,
+          "prod_sw": 12
+        },
+        "minprogress": {
+          "prod": 24,
+          "max": 24,
+          "conv": 0,
+          "loss": 0,
+          "ded": 4,
+          "n_eqp": 4,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 24,
+          "max": 24,
+          "conv": 0,
+          "loss": 0,
+          "ded": 4,
+          "n_eqp": 4,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH03_5x5_st45",
+      "n": 5,
+      "carriers": 8,
+      "st": 45,
+      "conv_min": 45,
+      "total": 40,
+      "algos": {
+        "earliest_st": {
+          "prod": 25,
+          "max": 40,
+          "conv": 20,
+          "loss": 15,
+          "ded": 0,
+          "n_eqp": 5,
+          "util": 62.5,
+          "prod_sw": 20
+        },
+        "minprogress": {
+          "prod": 40,
+          "max": 40,
+          "conv": 0,
+          "loss": 0,
+          "ded": 5,
+          "n_eqp": 5,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 40,
+          "max": 40,
+          "conv": 0,
+          "loss": 0,
+          "ded": 5,
+          "n_eqp": 5,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH04_2x2_st40",
+      "n": 2,
+      "carriers": 12,
+      "st": 40,
+      "conv_min": 40,
+      "total": 24,
+      "algos": {
+        "earliest_st": {
+          "prod": 22,
+          "max": 24,
+          "conv": 2,
+          "loss": 2,
+          "ded": 0,
+          "n_eqp": 2,
+          "util": 91.7,
+          "prod_sw": 2
+        },
+        "minprogress": {
+          "prod": 24,
+          "max": 24,
+          "conv": 0,
+          "loss": 0,
+          "ded": 2,
+          "n_eqp": 2,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 24,
+          "max": 24,
+          "conv": 0,
+          "loss": 0,
+          "ded": 2,
+          "n_eqp": 2,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH05_3x3_st48",
+      "n": 3,
+      "carriers": 10,
+      "st": 48,
+      "conv_min": 48,
+      "total": 30,
+      "algos": {
+        "earliest_st": {
+          "prod": 24,
+          "max": 30,
+          "conv": 6,
+          "loss": 6,
+          "ded": 0,
+          "n_eqp": 3,
+          "util": 80.0,
+          "prod_sw": 6
+        },
+        "minprogress": {
+          "prod": 30,
+          "max": 30,
+          "conv": 0,
+          "loss": 0,
+          "ded": 3,
+          "n_eqp": 3,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 30,
+          "max": 30,
+          "conv": 0,
+          "loss": 0,
+          "ded": 3,
+          "n_eqp": 3,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH06_6x6_st72",
+      "n": 6,
+      "carriers": 5,
+      "st": 72,
+      "conv_min": 72,
+      "total": 30,
+      "algos": {
+        "earliest_st": {
+          "prod": 18,
+          "max": 30,
+          "conv": 20,
+          "loss": 12,
+          "ded": 0,
+          "n_eqp": 6,
+          "util": 60.0,
+          "prod_sw": 20
+        },
+        "minprogress": {
+          "prod": 30,
+          "max": 30,
+          "conv": 0,
+          "loss": 0,
+          "ded": 6,
+          "n_eqp": 6,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 26,
+          "max": 30,
+          "conv": 6,
+          "loss": 4,
+          "ded": 4,
+          "n_eqp": 6,
+          "util": 86.7,
+          "prod_sw": 6
+        }
+      }
+    },
+    {
+      "name": "BENCH07_4x4_cv50",
+      "n": 4,
+      "carriers": 8,
+      "st": 50,
+      "conv_min": 50,
+      "total": 32,
+      "algos": {
+        "earliest_st": {
+          "prod": 24,
+          "max": 32,
+          "conv": 12,
+          "loss": 8,
+          "ded": 0,
+          "n_eqp": 4,
+          "util": 75.0,
+          "prod_sw": 12
+        },
+        "minprogress": {
+          "prod": 32,
+          "max": 32,
+          "conv": 0,
+          "loss": 0,
+          "ded": 4,
+          "n_eqp": 4,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 32,
+          "max": 32,
+          "conv": 0,
+          "loss": 0,
+          "ded": 4,
+          "n_eqp": 4,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH08_3x3_st30",
+      "n": 3,
+      "carriers": 16,
+      "st": 30,
+      "conv_min": 30,
+      "total": 48,
+      "algos": {
+        "earliest_st": {
+          "prod": 42,
+          "max": 48,
+          "conv": 6,
+          "loss": 6,
+          "ded": 0,
+          "n_eqp": 3,
+          "util": 87.5,
+          "prod_sw": 6
+        },
+        "minprogress": {
+          "prod": 48,
+          "max": 48,
+          "conv": 0,
+          "loss": 0,
+          "ded": 3,
+          "n_eqp": 3,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 48,
+          "max": 48,
+          "conv": 0,
+          "loss": 0,
+          "ded": 3,
+          "n_eqp": 3,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH09_5x5_cv90",
+      "n": 5,
+      "carriers": 6,
+      "st": 60,
+      "conv_min": 90,
+      "total": 30,
+      "algos": {
+        "earliest_st": {
+          "prod": 15,
+          "max": 30,
+          "conv": 20,
+          "loss": 15,
+          "ded": 0,
+          "n_eqp": 5,
+          "util": 50.0,
+          "prod_sw": 20
+        },
+        "minprogress": {
+          "prod": 30,
+          "max": 30,
+          "conv": 0,
+          "loss": 0,
+          "ded": 5,
+          "n_eqp": 5,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 30,
+          "max": 30,
+          "conv": 0,
+          "loss": 0,
+          "ded": 5,
+          "n_eqp": 5,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    },
+    {
+      "name": "BENCH10_4x4_st36",
+      "n": 4,
+      "carriers": 10,
+      "st": 36,
+      "conv_min": 36,
+      "total": 40,
+      "algos": {
+        "earliest_st": {
+          "prod": 30,
+          "max": 40,
+          "conv": 12,
+          "loss": 10,
+          "ded": 0,
+          "n_eqp": 4,
+          "util": 75.0,
+          "prod_sw": 12
+        },
+        "minprogress": {
+          "prod": 40,
+          "max": 40,
+          "conv": 0,
+          "loss": 0,
+          "ded": 4,
+          "n_eqp": 4,
+          "util": 100.0,
+          "prod_sw": 0
+        },
+        "bulkfill": {
+          "prod": 40,
+          "max": 40,
+          "conv": 0,
+          "loss": 0,
+          "ded": 4,
+          "n_eqp": 4,
+          "util": 100.0,
+          "prod_sw": 0
+        }
+      }
+    }
+  ],
+  "summary": {
+    "earliest_st": {
+      "prod": 234,
+      "max": 322,
+      "prod_pct": 72.7,
+      "conv": 116,
+      "util": 72.3,
+      "ded": 0,
+      "neqp": 39,
+      "ded_pct": 0.0,
+      "optimal": 0,
+      "n_sets": 10
+    },
+    "minprogress": {
+      "prod": 322,
+      "max": 322,
+      "prod_pct": 100.0,
+      "conv": 0,
+      "util": 100.0,
+      "ded": 39,
+      "neqp": 39,
+      "ded_pct": 100.0,
+      "optimal": 10,
+      "n_sets": 10
+    },
+    "bulkfill": {
+      "prod": 318,
+      "max": 322,
+      "prod_pct": 98.8,
+      "conv": 6,
+      "util": 98.7,
+      "ded": 37,
+      "neqp": 39,
+      "ded_pct": 94.9,
+      "optimal": 9,
+      "n_sets": 10
+    }
+  }
+}
