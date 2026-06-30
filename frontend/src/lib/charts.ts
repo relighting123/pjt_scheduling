@@ -61,19 +61,19 @@ export const CHART_FONT = "'Pretendard', -apple-system, BlinkMacSystemFont, 'Seg
 
 /** 간트 공통 스타일 — 앱 UI 톤 */
 const GANTT_THEME = {
-  plotBg: "#f8f9fb",
+  plotBg: "#eef2f7",
   paperBg: "#ffffff",
-  gridColor: "rgba(15, 23, 42, 0.06)",
+  gridColor: "rgba(15, 23, 42, 0.12)",
   gridWidth: 1,
   fontFamily: CHART_FONT,
   titleColor: "#1b1b18",
-  axisColor: "#5c5c58",
+  axisColor: "#3d3d38",
   barRadius: 0,
-  barOpacity: 0.94,
+  barOpacity: 1.0,
   convFill: "#fbbf24",
-  convBorder: "#d97706",
-  rowBorderColor: "rgba(15, 23, 42, 0.12)",
-  rowGridColor: "rgba(15, 23, 42, 0.07)",
+  convBorder: "#b45309",
+  rowBorderColor: "rgba(15, 23, 42, 0.22)",
+  rowGridColor: "rgba(15, 23, 42, 0.13)",
 } as const;
 
 /** Plotly hover 툴팁 공통 스타일 */
@@ -131,8 +131,8 @@ function ganttBarMarker(fillColor: string, visible: boolean) {
     color: fillColor,
     opacity: visible ? GANTT_THEME.barOpacity : 0.14,
     line: {
-      color: visible ? "rgba(15, 23, 42, 0.28)" : "rgba(148, 163, 184, 0.2)",
-      width: visible ? 1.25 : 0,
+      color: visible ? "rgba(0, 0, 0, 0.50)" : "rgba(148, 163, 184, 0.2)",
+      width: visible ? 1.5 : 0,
     },
     cornerradius: GANTT_THEME.barRadius,
   };
@@ -435,7 +435,7 @@ function buildGanttLayout(
     }),
     shapes: ganttTableGridShapes(eqps.length),
     barmode: "overlay",
-    bargap: 0.35,
+    bargap: 0.20,
     legend: {
       title: { text: "제품×공정", font: { size: 11 } },
       ...GANTT_LEGEND,
@@ -1126,7 +1126,7 @@ export function buildAlgorithmGanttComparison(
     grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
     height: Math.max(280 * n + 40, 420),
     barmode: "overlay",
-    bargap: 0.35,
+    bargap: 0.20,
     showlegend: n === 1,
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
@@ -1701,7 +1701,7 @@ export function buildGanttLegendItems(
   });
 }
 
-const ENHANCED_GANTT_BARGAP = 0.28;
+const ENHANCED_GANTT_BARGAP = 0.18;
 
 function inflowBarShapes(
   barSegments: GanttBarSegment[],
@@ -1810,7 +1810,7 @@ export function buildEnhancedGantt(
     const isInflowSeg = segment.records.some((r) => r.ABSTRACT || (r.OPER_IN_TIME ?? 0) > 0);
     const baseMarker = ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", true);
     const marker = isInflowSeg
-      ? { ...baseMarker, opacity: 0.72, line: { ...(baseMarker.line as object), width: 0 } }
+      ? { ...baseMarker, opacity: 0.82, line: { ...(baseMarker.line as object), width: 0 } }
       : baseMarker;
     data.push({
       type: "bar",
