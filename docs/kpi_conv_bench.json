@@ -1,0 +1,82 @@
+{
+  "minprogress": {
+    "label": "Min-Progress",
+    "prod": 24,
+    "conv": 0,
+    "loss": 0,
+    "ded": 3,
+    "n_eqp": 3,
+    "cv": 0.0,
+    "makespan": 480,
+    "idle": 0,
+    "util": 100.0,
+    "oper_sw": 0,
+    "prod_sw": 0,
+    "dist": {
+      "EQP001": {
+        "PPK001": 8
+      },
+      "EQP002": {
+        "PPK002": 8
+      },
+      "EQP003": {
+        "PPK003": 8
+      }
+    }
+  },
+  "earliest_st": {
+    "label": "Earliest-ST",
+    "prod": 18,
+    "conv": 6,
+    "loss": 6,
+    "ded": 0,
+    "n_eqp": 3,
+    "cv": 0.0,
+    "makespan": 480,
+    "idle": 0,
+    "util": 75.0,
+    "oper_sw": 0,
+    "prod_sw": 6,
+    "dist": {
+      "EQP001": {
+        "PPK001": 3,
+        "PPK002": 3
+      },
+      "EQP002": {
+        "PPK001": 3,
+        "PPK002": 2,
+        "PPK003": 1
+      },
+      "EQP003": {
+        "PPK001": 2,
+        "PPK002": 3,
+        "PPK003": 1
+      }
+    }
+  },
+  "bulkfill": {
+    "label": "Bulk-Fill PPO",
+    "prod": 24,
+    "conv": 0,
+    "loss": 0,
+    "ded": 3,
+    "n_eqp": 3,
+    "cv": 0.0,
+    "makespan": 480,
+    "idle": 0,
+    "util": 100.0,
+    "oper_sw": 0,
+    "prod_sw": 0,
+    "dist": {
+      "EQP001": {
+        "PPK001": 8
+      },
+      "EQP002": {
+        "PPK003": 8
+      },
+      "EQP003": {
+        "PPK002": 8
+      }
+    }
+  }
+}
