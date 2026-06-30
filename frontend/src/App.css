@@ -2034,3 +2034,16 @@ tbody tr:last-child td { border-bottom: none; }
 .reward-neg { color: var(--err); }
 .reward-table tfoot td { border-top: 2px solid var(--border); padding-top: 0.5rem; }
 .reward-note { margin-top: 0.6rem; }
+
+/* 차트 동적 로딩 placeholder */
+.chart-loading {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  width: 100%; color: var(--text-muted); font-size: 0.86rem;
+  background: #f8fafc; border-radius: var(--r-md);
+}
+.chart-loading-spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.12); border-top-color: var(--accent);
+  animation: chart-spin 0.7s linear infinite; display: inline-block;
+}
+@keyframes chart-spin { to { transform: rotate(360deg); } }

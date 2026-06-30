@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import Plot, { Plotly } from "../lib/plotlyComponent";
+import { loadPlotly, type PlotlyBundle } from "../lib/plotlyComponent";
 import { CHART_HOVERLABEL } from "../lib/charts";
 import type { Data, Layout, Config, PlotMouseEvent, PlotRelayoutEvent } from "plotly.js";
 
@@ -155,6 +155,19 @@ export default function PlotChart({
   const paperBg = (layout.paper_bgcolor as string | undefined) ?? "#ffffff";
   const plotPixelHeight = layoutPixelHeight(layout);
 
+  // Plotly(약 5MB)는 첫 차트 렌더 때 동적 로드 → 초기 번들 분리
+  const [bundle, setBundle] = useState<PlotlyBundle | null>(null);
+  const plotlyRef = useRef<PlotlyBundle["Plotly"] | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    loadPlotly().then((b) => {
+      if (!mounted) return;
+      plotlyRef.current = b.Plotly;
+      setBundle(b);
+    });
+    return () => { mounted = false; };
+  }, []);
+
   const handleClick = (ev: Readonly<PlotMouseEvent>) => {
     const pt = ev.points?.[0];
     if (pt && typeof pt.pointIndex === "number" && onPointClick) {
@@ -175,7 +188,7 @@ export default function PlotChart({
   const clearHover = useCallback(() => {
     const graphEl = graphDivRef.current;
     if (!graphEl) return;
-    Plotly.Fx.unhover(graphEl);
+    plotlyRef.current?.Fx.unhover(graphEl);
   }, []);
 
   const handleScroll = useCallback(() => {
@@ -209,8 +222,8 @@ export default function PlotChart({
     (ev: PlotRelayoutEvent) => {
       if (clampXMin === undefined) return;
       const updates = relayoutClampXMin(ev, clampXMin);
-      if (!updates || !graphDivRef.current) return;
-      void Plotly.relayout(graphDivRef.current, updates).then(() => scheduleStickyRefresh());
+      if (!updates || !graphDivRef.current || !plotlyRef.current) return;
+      void plotlyRef.current.relayout(graphDivRef.current, updates).then(() => scheduleStickyRefresh());
     },
     [clampXMin, scheduleStickyRefresh],
   );
@@ -225,21 +238,31 @@ export default function PlotChart({
     ? { width: "100%", height: plotPixelHeight }
     : { width: "100%", height: "100%" };
 
-  const plot = (
+  const Plot = bundle?.Plot;
+  const loadingStyle: CSSProperties = plotPixelHeight
+    ? { height: plotPixelHeight }
+    : { minHeight: 220 };
+  const plot = Plot ? (
     <Plot
-      data={data}
-      layout={{
-        ...layout,
-        autosize: scrollable ? false : true,
-        hoverlabel: { ...CHART_HOVERLABEL, ...layout.hoverlabel },
-      }}
-      config={plotConfig}
-      useResizeHandler={!scrollable}
-      style={plotStyle}
-      onClick={onPointClick ? handleClick : undefined}
-      onInitialized={handleGraphInit}
-      {...ganttPanHandlers}
+      {...({
+        data,
+        layout: {
+          ...layout,
+          autosize: scrollable ? false : true,
+          hoverlabel: { ...CHART_HOVERLABEL, ...layout.hoverlabel },
+        },
+        config: plotConfig,
+        useResizeHandler: !scrollable,
+        style: plotStyle,
+        onClick: onPointClick ? handleClick : undefined,
+        onInitialized: handleGraphInit,
+        ...ganttPanHandlers,
+      } as Record<string, unknown>)}
     />
+  ) : (
+    <div className="chart-loading" style={loadingStyle}>
+      <span className="chart-loading-spinner" /> 차트 로딩…
+    </div>
   );
 
   return (

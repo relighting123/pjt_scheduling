@@ -12,4 +12,18 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 6000,
+    rollupOptions: {
+      output: {
+        // Plotly를 별도 청크로 분리 → 초기 앱 청크 경량화, 캐시 분리
+        manualChunks(id: string) {
+          if (id.includes("node_modules/plotly.js") || id.includes("node_modules/react-plotly.js")) {
+            return "plotly";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 });
