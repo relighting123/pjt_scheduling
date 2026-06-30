@@ -1859,9 +1859,6 @@ export function buildEnhancedGantt(
   );
   data.push(inflowLegendTrace(hasInflow));
 
-  // 유입 재공 점선 테두리 shapes
-  const inflowShapes = inflowBarShapes(barSegments, eqpLabels, eqpModelMap, baseMs, hiddenProdOperKeys);
-
   const layout: Partial<Layout> = {
     ...GANTT_PAN_LAYOUT,
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
@@ -1873,7 +1870,7 @@ export function buildEnhancedGantt(
       text: "설비 (모델 / 호기)",
       font: { size: 12, color: GANTT_THEME.axisColor },
     }, { tickfont: { size: 10, color: GANTT_THEME.axisColor } }),
-    shapes: [...ganttTableGridShapes(eqpLabels.length), ...inflowShapes],
+    shapes: ganttTableGridShapes(eqpLabels.length),
     barmode: "overlay",
     bargap: ENHANCED_GANTT_BARGAP,
     showlegend: hasInflow,
