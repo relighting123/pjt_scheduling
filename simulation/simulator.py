@@ -867,8 +867,12 @@ class SchedulingSimulator:
         # 변환 필요 판단은 _would_need_conversion 하나로 일원화 (중복 제거)
         needs_conv = self._would_need_conversion(eqp.eqp_id, lot_cd, temp)
         if needs_conv:
+            # 전환 1회당 고정 패널티
             reward += self._reward_cfg.w_conversion
             if self._reward_cfg.w_avoidable_conversion < 0:
+                # 회피 가능했던 전환이면 추가 패널티 (식: w_avoidable_conversion * avoidable[0,1])
+                # avoidable: 다른 무변환 장비가 커버 가능한 비율 또는 변환 후 가동시간이
+                # 너무 짧아 비용을 못 메우는 비율 중 큰 값 (_conversion_avoidable_fraction)
                 avoidable = self._conversion_avoidable_fraction(
                     eqp.eqp_id, ppk, oper_id, lot_cd, temp,
                 )
@@ -911,11 +915,6 @@ class SchedulingSimulator:
             })
             return start_time, conv_end, reward, True
         return start_time, start_time, reward, False
-
-    def _late_finish_penalty(self, end_time: int) -> float:
-        if end_time > self.soft_cutoff:
-            return self._reward_cfg.w_late_finish * (end_time - self.soft_cutoff) / 60.0
-        return 0.0
 
     def _has_plan(self, ppk: str, oper_id: str) -> bool:
         """(PPK, OPER)에 유효 계획량이 있으면 True."""
@@ -1124,7 +1123,13 @@ class SchedulingSimulator:
         return min(plan_qty, done + reachable)
 
     def _plan_hit_reward(self, ppk: str, oper_id: str, wf_qty: int, end_time: int) -> float:
-        reward = self._late_finish_penalty(end_time)
+        """계획 달성 진척 보너스.
+
+        식: gap = max(target - done, 0)   # achievable_qty 기준 잔여 목표
+            reward = w_plan_hit * (gap_before - gap_after) / target
+            → gap이 줄수록(목표에 가까워질수록) +. 이미 달성(gap=0)이면 추가 보상 없음.
+        """
+        reward = 0.0
         if end_time > self.soft_cutoff or not self._has_plan(ppk, oper_id):
             return reward
         cfg = self._reward_cfg
@@ -1172,6 +1177,10 @@ class SchedulingSimulator:
 
         진척 기준을 'done'이 아니라 'done + 다른 장비의 투영 커버(pacing_coverage_scale)'
         로 봐서, 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주(lockstep 억제).
+        식: ideal = target * (t/horizon)   # 선형 takt 목표선
+            eff   = done + coverage_scale * 다른장비_투영커버
+            reward = w_pacing * (|ideal-eff_before| - |ideal-eff_after|) / target
+            → 오차가 줄면 +, 늘면 -(이미 앞선 제품을 더 만들면 감점)
         """
         cfg = self._reward_cfg
         if cfg.w_pacing <= 0 or not self._has_plan(ppk, oper_id):
@@ -1234,7 +1243,8 @@ class SchedulingSimulator:
 
         공정 전환·제품 전환을 따로 보상하지 않고, 둘 다 같은 경우(=전환 없음,
         동일 라우트 단계 유지)에만 +를 준다. switch 통계는 그대로 집계.
-        과생산(takt 앞섬) 또는 해당 PPK 재공 고갈 시에는 보너스를 죽인다.
+        해당 PPK 재공 고갈(투입 불가) 시에는 보너스를 죽인다.
+        식: same_oper AND same_prod AND ppk_has_feasible_assignment → +w_same_setup, 아니면 0
         """
         cfg = self._reward_cfg
         same_oper = (eqp.prev_oper == oper_id)
@@ -1246,8 +1256,6 @@ class SchedulingSimulator:
             eqp.prod_switches += 1
             self.stats["prod_switches"] += 1
         if not (same_oper and same_prod):
-            return 0.0
-        if cfg.same_oper_conditional and self._is_ahead_of_pace(ppk, oper_id, wf_qty):
             return 0.0
         if not self._ppk_has_feasible_assignment(ppk):
             return 0.0
@@ -1288,7 +1296,7 @@ class SchedulingSimulator:
         return cfg.w_flow_balance * score
 
     def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
-        """같은 PPK의 재공이 남으면 보너스. 관련 PPK에서 전환 시 페널티 보너스."""
+        """같은 PPK의 재공이 남으면 보너스. PPK 전환 시 전환 카운트만."""
         cfg = self._reward_cfg
         if eqp.prev_prod == ppk:
             if self._ppk_has_feasible_assignment(ppk):
@@ -1297,8 +1305,6 @@ class SchedulingSimulator:
         if eqp.prev_prod is not None:
             eqp.prod_switches += 1
             self.stats["prod_switches"] += 1
-            if not self._ppk_has_feasible_assignment(eqp.prev_prod):
-                return cfg.w_prod_switch
         return 0.0
 
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
@@ -1461,18 +1467,23 @@ class SchedulingSimulator:
         cfg = self._reward_cfg
         shaping = 0.0
 
-        # ① 블록 크기 보너스 (takt 예산 대비 블록 비율)
+        # ① 블록 크기 보너스: takt 예산(takt_budget_carriers) 대비 블록 크기 비율
+        #    식: shaping += w_bulk_block_bonus * min(block_size / budget, 1.0)
         if cfg.w_bulk_block_bonus > 0 and block_size > 1:
             budget = max(self._takt_budget_carriers(ppk, oper_id), 1)
             shaping += cfg.w_bulk_block_bonus * min(block_size / budget, 1.0)
 
-        # ② 전용 오용
+        # ② 전용 오용: 더 전용적인(breadth 작은) idle 장비가 있는데 범용 장비가
+        #    이 버킷을 잡으면 고정 패널티 (narrower_idle_specialist_exists=True일 때만)
         if cfg.w_dedication_misuse < 0 and self.narrower_idle_specialist_exists(
             eqp_id, ppk, oper_id,
         ):
             shaping += cfg.w_dedication_misuse
 
-        # ③ 중복 커버 (다른 셋업 장비의 투영 커버 / 잔여 필요량)
+        # ③ 중복 커버: 다른 셋업 장비가 day-end까지 투영 생산할 수 있는 양(cover)이
+        #    잔여 필요량(need)을 얼마나 커버하는지 비율로 패널티.
+        #    need = max(target-done, 1)  (0-division 방지, 별도 분기 아님)
+        #    shaping += w_redundant_cover * min(cover/need, 2.0)  (cap=2.0)
         if cfg.w_redundant_cover < 0:
             done = self.stats["completed_qty"].get((ppk, oper_id), 0)
             target = max(self._achievable_qty(ppk, oper_id), 1)
@@ -1775,16 +1786,9 @@ class SchedulingSimulator:
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
 
-        if cfg.w_same_setup > 0:
-            # 제품·공정 모두 동일할 때만 연속 보너스 (전환 회피와 정렬)
-            reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
-        else:
-            # legacy: 공정·제품 연속을 따로 보상
-            reward += self._same_oper_reward(eqp, ppk, oper_id, wf_qty)
-            reward += self._same_prod_reward(eqp, ppk)
+        reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
         reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
         reward += self._flow_balance_reward(ppk, oper_id)            # Step B
-        reward += cfg.w_completion * wf_qty / 25.0
 
         self._emit_event(
             EVENT_JOB_ASSIGNED, eqp_id,
