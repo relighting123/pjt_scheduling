@@ -242,6 +242,9 @@ class SchedulingSimulator:
         self._step_idx   = 0
         self._last_assigned: Optional[dict] = None
         self._last_decision_assignment: Optional[dict] = None
+        # 디버그용 리워드 항목별 분해 (추론 decision_log에서만 소비)
+        self._cur_conv_terms: Dict[str, float] = {}
+        self._last_reward_breakdown: Dict[str, float] = {}
         self._current_eqp: Optional[str] = None
         self._earliest_st_pick: Optional[Tuple[str, str]] = None
         self._initial_wip_total: int = sum(
@@ -894,13 +897,18 @@ class SchedulingSimulator:
         eqp_model: str = "",
     ) -> tuple:
         """LOT_CD/TEMP 변경 시 conversion 필요 여부·시작 시각·보상."""
+        self._cur_conv_terms = {}
         start_time = max(self.current_time, eqp.free_at)
+        idle_before = reward
         reward = self._accumulate_idle(eqp, reward, start_time)
+        if reward != idle_before:
+            self._cur_conv_terms["idle"] = round(reward - idle_before, 4)
         # 변환 필요 판단은 _would_need_conversion 하나로 일원화 (중복 제거)
         needs_conv = self._would_need_conversion(eqp.eqp_id, lot_cd, temp)
         if needs_conv:
             # 전환 1회당 고정 패널티
             reward += self._reward_cfg.w_conversion
+            self._cur_conv_terms["conversion"] = round(float(self._reward_cfg.w_conversion), 4)
             if self._reward_cfg.w_avoidable_conversion < 0:
                 # 회피 가능했던 전환이면 추가 패널티 (식: w_avoidable_conversion * avoidable[0,1])
                 # avoidable: 다른 무변환 장비가 커버 가능한 비율 또는 변환 후 가동시간이
@@ -909,7 +917,9 @@ class SchedulingSimulator:
                     eqp.eqp_id, ppk, oper_id, lot_cd, temp,
                 )
                 if avoidable > 0:
-                    reward += self._reward_cfg.w_avoidable_conversion * avoidable
+                    av_term = self._reward_cfg.w_avoidable_conversion * avoidable
+                    reward += av_term
+                    self._cur_conv_terms["avoidable_conversion"] = round(float(av_term), 4)
             eqp.conversion_count += 1
             self.stats["conversions"] += 1
             conv_end = start_time + self._conversion_minutes
@@ -1498,12 +1508,15 @@ class SchedulingSimulator:
         """
         cfg = self._reward_cfg
         shaping = 0.0
+        bulk_terms: Dict[str, float] = {}
 
         # ① 블록 크기 보너스: takt 예산(takt_budget_carriers) 대비 블록 크기 비율
         #    식: shaping += w_bulk_block_bonus * min(block_size / budget, 1.0)
         if cfg.w_bulk_block_bonus > 0 and block_size > 1:
             budget = max(self._takt_budget_carriers(ppk, oper_id), 1)
-            shaping += cfg.w_bulk_block_bonus * min(block_size / budget, 1.0)
+            t = cfg.w_bulk_block_bonus * min(block_size / budget, 1.0)
+            shaping += t
+            bulk_terms["bulk_block_bonus"] = round(float(t), 4)
 
         # ② 전용 오용: 더 전용적인(breadth 작은) idle 장비가 있는데 범용 장비가
         #    이 버킷을 잡으면 고정 패널티 (narrower_idle_specialist_exists=True일 때만)
@@ -1511,6 +1524,7 @@ class SchedulingSimulator:
             eqp_id, ppk, oper_id,
         ):
             shaping += cfg.w_dedication_misuse
+            bulk_terms["dedication_misuse"] = round(float(cfg.w_dedication_misuse), 4)
 
         # ③ 중복 커버: 다른 셋업 장비가 day-end까지 투영 생산할 수 있는 양(cover)이
         #    잔여 필요량(need)을 얼마나 커버하는지 비율로 패널티.
@@ -1521,7 +1535,16 @@ class SchedulingSimulator:
             target = max(self._achievable_qty(ppk, oper_id), 1)
             need = max(target - done, 1)
             cover = self._bucket_projected_cover(ppk, oper_id, exclude_eqp=eqp_id)
-            shaping += cfg.w_redundant_cover * min(cover / need, 2.0)
+            t = cfg.w_redundant_cover * min(cover / need, 2.0)
+            shaping += t
+            bulk_terms["redundant_cover"] = round(float(t), 4)
+
+        # 직전 배정의 리워드 분해에 벌크 항 병합 (decision_log 디버그용)
+        if bulk_terms:
+            self._last_reward_breakdown.update(bulk_terms)
+            if self._last_decision_assignment is not None:
+                bd = self._last_decision_assignment.setdefault("reward_breakdown", {})
+                bd.update(bulk_terms)
 
         return shaping
 
@@ -1714,7 +1737,14 @@ class SchedulingSimulator:
         temp = pending["temp"]
 
         end_time = start_time + proc_time
-        reward = proc_reward + self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
+        plan_hit = self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
+        reward = proc_reward + plan_hit
+        # plan_hit를 직전 결정의 리워드 분해에 추가(같은 LOT일 때만)
+        if plan_hit:
+            lb = self._last_decision_assignment
+            if lb is not None and lb.get("lot_id") == lot_id:
+                lb.setdefault("reward_breakdown", {})["plan_hit"] = round(float(plan_hit), 4)
+                self._last_reward_breakdown["plan_hit"] = round(float(plan_hit), 4)
 
         from_lot_cd = eqp.prev_lot_cd
         from_temp = eqp.prev_temp
@@ -1818,9 +1848,17 @@ class SchedulingSimulator:
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
 
-        reward += self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
-        reward += self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
-        reward += self._flow_balance_reward(ppk, oper_id)            # Step B
+        # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
+        terms: Dict[str, float] = {}
+        t = self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
+        if t: terms["same_setup"] = round(float(t), 4)
+        reward += t
+        t = self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
+        if t: terms["pacing"] = round(float(t), 4)
+        reward += t
+        t = self._flow_balance_reward(ppk, oper_id)                  # Step B
+        if t: terms["flow_balance"] = round(float(t), 4)
+        reward += t
 
         self._emit_event(
             EVENT_JOB_ASSIGNED, eqp_id,
@@ -1834,6 +1872,8 @@ class SchedulingSimulator:
             eqp, lot_cd, temp, reward,
             oper_id=oper_id, ppk=ppk, eqp_model=row["eqp_model"],
         )
+        terms.update(self._cur_conv_terms)
+        self._last_reward_breakdown = terms
         self._consume_wip(ppk, oper_id, lot_id)
 
         pending = {
@@ -1867,6 +1907,7 @@ class SchedulingSimulator:
             "conversion":    needs_conv,
             "start_tm":      conv_end if needs_conv else conv_start,
             "oper_in_time":  oper_in_time,
+            "reward_breakdown": dict(terms),
         }
 
         if needs_conv:

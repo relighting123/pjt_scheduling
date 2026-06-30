@@ -25,6 +25,7 @@ from gymnasium import spaces
 
 from config import CONFIG
 from simulation.simulator import SchedulingSimulator
+from simulation.decision_log import build_step_decision_entry
 from env.scheduling_env import compute_obs_dim
 
 # 블록 크기 레벨 수 (action 두 번째 차원). level→takt 예산 분율.
@@ -44,11 +45,14 @@ class BulkFillEnv(gym.Env):
         record_event_log: bool = True,
         truncate_on_time: bool = True,
         size_levels: int = BULK_SIZE_LEVELS,
+        record_decision_log: bool = False,
     ):
         super().__init__()
         self._env_data = env_data
         self._record_history = record_history
         self._record_event_log = record_event_log
+        self._record_decision_log = record_decision_log
+        self._decision_log: list = []
         self._truncate_on_time = truncate_on_time
         self._L = max(int(size_levels), 1)
 
@@ -82,6 +86,7 @@ class BulkFillEnv(gym.Env):
         )
         self._total_reward = 0.0
         self._episode_steps = 0
+        self._decision_log = []
         sim_end = int(self._env_data.get("sim_end_minutes", CONFIG.env.hard_horizon_minutes))
         self._max_episode_steps = sim_end + 500
         self._block = {}
@@ -156,6 +161,12 @@ class BulkFillEnv(gym.Env):
         bucket_idx = int(action_arr[0]) if action_arr.size > 0 else 0
         size_level = int(action_arr[1]) if action_arr.size > 1 else 0
 
+        time_at_step_start = self.sim.current_time
+        schedule_before = len(self.sim.schedule)
+        resolved_flat: Optional[int] = None
+        block_size_dbg: Optional[int] = None
+        is_block_start = False
+
         eqp_id = self._ensure_decision_eqp()
         reward = 0.0
 
@@ -169,6 +180,7 @@ class BulkFillEnv(gym.Env):
                 flat = bucket_idx % self._n_bucket
                 if flat not in feasible:
                     flat = feasible[0] if feasible else None
+            resolved_flat = flat
 
             if flat is not None and self.sim.eqps[eqp_id].status == "idle":
                 ppk, oper_id = self.sim.ppk_oper_from_flat(flat)
@@ -176,9 +188,11 @@ class BulkFillEnv(gym.Env):
                 if active is None:
                     # 새 블록 시작 — 배정 성공(-1.0이 아님)이면 shaping 적용
                     if reward != -1.0:
+                        is_block_start = True
                         n = self.sim.bulk_block_size(
                             eqp_id, ppk, oper_id, size_level, self._L,
                         )
+                        block_size_dbg = n
                         reward += self.sim.bulk_decision_shaping(
                             eqp_id, ppk, oper_id, n,
                         )
@@ -210,6 +224,28 @@ class BulkFillEnv(gym.Env):
             or self._episode_steps >= self._max_episode_steps
         )
 
+        # decision_log — history/clear 이전에 빌드(_last_decision_assignment 유효)
+        if self._record_decision_log:
+            entry = build_step_decision_entry(
+                step=self._episode_steps,
+                sim_time=time_at_step_start,
+                sim_time_after=self.sim.current_time,
+                eqp_id=eqp_id,
+                action_flat=bucket_idx,
+                resolved_flat=resolved_flat,
+                reward=reward,
+                sim=self.sim,
+                terminated=terminated,
+            )
+            entry["block_start"] = is_block_start
+            entry["block_size"] = block_size_dbg
+            entry["size_level"] = size_level
+            if len(self.sim.schedule) > schedule_before:
+                entry["assigned_lot_id"] = self.sim.schedule[-1].get("LOT_ID")
+                if entry["status"] not in ("assigned", "action_corrected"):
+                    entry["status"] = "assigned"
+            self._decision_log.append(entry)
+
         if self._record_history:
             self.sim.save_history_step()
         else:
@@ -239,3 +275,6 @@ class BulkFillEnv(gym.Env):
 
     def get_history(self) -> list:
         return self.sim.history if self.sim else []
+
+    def get_decision_log(self) -> list:
+        return list(self._decision_log)

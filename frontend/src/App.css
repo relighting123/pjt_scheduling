@@ -1980,3 +1980,57 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .mono { font-family: var(--font-mono); }
+
+/* ══════════════════════════════════════════════════════════════════
+   STEP DEBUGGER (스텝별 결정·리워드 분해)
+   ══════════════════════════════════════════════════════════════════ */
+.step-debugger { display: flex; flex-direction: column; gap: 1rem; }
+.stepdbg-nav { padding: 0.85rem 1rem; }
+.stepdbg-nav-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.stepdbg-counter {
+  font-weight: 700; color: var(--text); margin-left: 0.4rem;
+  font-variant-numeric: tabular-nums; min-width: 5.5rem;
+}
+.stepdbg-filter { margin-left: auto; }
+.stepdbg-slider { width: 100%; margin-top: 0.7rem; accent-color: var(--accent); }
+.stepdbg-body { align-items: start; }
+
+.kv-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.kv-table th {
+  text-align: left; color: var(--text-muted); font-weight: 600;
+  padding: 0.34rem 0.6rem 0.34rem 0; white-space: nowrap; vertical-align: top; width: 38%;
+}
+.kv-table td { padding: 0.34rem 0; color: var(--text); border-bottom: 1px solid var(--border); }
+.kv-table tr:last-child td { border-bottom: none; }
+
+.stepdbg-tag {
+  display: inline-block; padding: 0.06rem 0.45rem; border-radius: 6px; font-size: 0.74rem;
+  font-weight: 700; background: rgba(0,0,0,0.06); color: var(--text-muted); margin-left: 0.3rem;
+}
+.stepdbg-tag-accent { background: rgba(59,110,240,0.14); color: var(--accent); }
+.stepdbg-tag-warn { background: rgba(217,119,6,0.16); color: var(--warn); }
+
+.stepdbg-list { margin-top: 0.8rem; }
+.stepdbg-list-title { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem; }
+.stepdbg-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.stepdbg-chip {
+  font-size: 0.76rem; padding: 0.12rem 0.5rem; border-radius: 6px;
+  background: rgba(0,0,0,0.05); color: var(--text); border: 1px solid var(--border);
+}
+.stepdbg-chip-sel { background: rgba(22,163,74,0.15); border-color: rgba(22,163,74,0.4); color: var(--ok); font-weight: 700; }
+.stepdbg-blocked { font-size: 0.78rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.2rem; }
+
+/* 리워드 분해 표 */
+.reward-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.reward-table td { padding: 0.3rem 0.4rem; vertical-align: middle; }
+.reward-term { color: var(--text); white-space: nowrap; width: 36%; }
+.reward-bar-cell { width: 44%; }
+.reward-bar-track { background: rgba(0,0,0,0.05); border-radius: 4px; height: 12px; width: 100%; overflow: hidden; }
+.reward-bar { height: 100%; border-radius: 4px; }
+.reward-bar-pos { background: var(--ok); }
+.reward-bar-neg { background: var(--err); }
+.reward-val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.reward-pos { color: var(--ok); }
+.reward-neg { color: var(--err); }
+.reward-table tfoot td { border-top: 2px solid var(--border); padding-top: 0.5rem; }
+.reward-note { margin-top: 0.6rem; }

@@ -161,6 +161,12 @@ export interface DecisionLogEntry {
   status: string;
   reason: string;
   reward: number;
+  /** 리워드 항목별 분해 (term → 기여값). 합 ≈ reward(클립 전) */
+  reward_breakdown?: Record<string, number>;
+  /** 벌크 블록 시작 여부 / 블록 크기 / 크기 레벨 (BulkFill 전용) */
+  block_start?: boolean;
+  block_size?: number | null;
+  size_level?: number;
   assigned_lot_id?: string | null;
   failure_code?: string;
   failure_detail?: string;

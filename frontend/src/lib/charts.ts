@@ -1703,48 +1703,6 @@ export function buildGanttLegendItems(
 
 const ENHANCED_GANTT_BARGAP = 0.18;
 
-function inflowBarShapes(
-  barSegments: GanttBarSegment[],
-  eqpLabels: string[],
-  eqpModelMap: Record<string, string>,
-  baseMs: number | null,
-  hiddenProdOperKeys?: ReadonlySet<string>,
-): NonNullable<Layout["shapes"]> {
-  const halfBar = (1 - ENHANCED_GANTT_BARGAP) / 2 - 0.02;
-  const labelToIdx = new Map(eqpLabels.map((l, i) => [l, i]));
-  const shapes: NonNullable<Layout["shapes"]> = [];
-
-  for (const segment of barSegments) {
-    const rec = segment.records[0];
-    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
-    if (hiddenProdOperKeys?.has(pairKey)) continue;
-
-    const isAbstract = segment.records.some((r) => r.ABSTRACT === true);
-    const isInflow = segment.records.some((r) => (r.OPER_IN_TIME ?? 0) > 0);
-    if (!isAbstract && !isInflow) continue;
-
-    const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
-    const idx = labelToIdx.get(label);
-    if (idx === undefined) continue;
-
-    const { start, end } = segmentTimeRange(segment);
-    shapes.push({
-      type: "rect",
-      xref: "x",
-      yref: "y",
-      x0: ganttAxisValue(start, baseMs),
-      x1: ganttAxisValue(end, baseMs),
-      y0: idx - halfBar,
-      y1: idx + halfBar,
-      fillcolor: "transparent",
-      line: { dash: "dash", color: "rgba(15, 23, 42, 0.72)", width: 1.8 },
-      layer: "above",
-    } as NonNullable<Layout["shapes"]>[number]);
-  }
-
-  return shapes;
-}
-
 function inflowLegendTrace(hasInflow: boolean): Data {
   return {
     type: "scatter",
