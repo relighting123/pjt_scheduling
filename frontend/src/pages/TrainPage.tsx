@@ -32,7 +32,6 @@ const REWARD_SLIDERS: {
   { key: "w_completion", label: "완료 보너스", min: 0, max: 5, step: 0.5 },
   { key: "w_idle_per_min", label: "Idle/분", min: -3, max: 3, step: 0.1 },
   { key: "w_conversion", label: "전환 패널티", min: -15, max: 0, step: 0.5 },
-  { key: "w_late_finish", label: "Late finish", min: -5, max: 0, step: 0.1 },
   { key: "reward_clip", label: "Reward clip", min: 1, max: 10, step: 0.5 },
 ];
 

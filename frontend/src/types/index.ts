@@ -214,7 +214,6 @@ export interface RewardConfig {
   w_plan_hit: number;
   w_pacing: number;
   w_conversion: number;
-  w_late_finish: number;
   w_flow_balance: number;
   reward_clip: number;
   use_achievable_target: boolean;
