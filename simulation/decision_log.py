@@ -297,6 +297,9 @@ def build_step_decision_entry(
         "status": status,
         "reason": reason,
         "reward": round(float(reward), 4),
+        "reward_breakdown": (
+            dict(selected.get("reward_breakdown", {})) if selected_matches_eqp else {}
+        ),
         "assigned_lot_id": assigned_lot_id,
         "feasible_options": feasible,
         "blocked_buckets": diagnosis.get("blocked_buckets", []) if diagnosis else [],

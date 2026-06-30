@@ -48,6 +48,27 @@ def test_decision_log_records_assignments():
     assert result["stats"]["termination_mode"] == "current_wip_assigned"
 
 
+def test_decision_log_has_reward_breakdown():
+    """배정 스텝은 리워드 항목별 분해를 포함하고, 합이 reward와 일치한다."""
+    env_data = _env_data()
+    result = run_inference(
+        env_data,
+        algorithm="earliest_st",
+        record_history=False,
+        record_decision_log=True,
+    )
+    assigned = [r for r in result["decision_log"]
+                if r["status"] in ("assigned", "action_corrected")]
+    assert assigned
+    with_terms = [r for r in assigned if r.get("reward_breakdown")]
+    assert with_terms, "적어도 한 배정 스텝은 reward_breakdown을 가져야 함"
+    for r in with_terms:
+        bd = r["reward_breakdown"]
+        assert isinstance(bd, dict)
+        # 분해 합 ≈ reward (클립 전; earliest_st는 클립 영향 거의 없음)
+        assert abs(sum(bd.values()) - r["reward"]) < 0.05, (bd, r["reward"])
+
+
 def test_decision_log_disabled_by_default():
     env_data = _env_data()
     result = run_inference(env_data, algorithm="earliest_st", record_history=False)

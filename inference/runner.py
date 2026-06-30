@@ -196,6 +196,7 @@ def _run_bulkfill_inference(
         record_history=record_history,
         record_event_log=record_history,
         truncate_on_time=False,
+        record_decision_log=record_decision_log,
     )
     obs, _ = env.reset()
     done = False
@@ -231,7 +232,7 @@ def _run_bulkfill_inference(
         "schedule":         schedule,
         "history":          history,
         "event_log":        list(sched_env.sim.event_log),
-        "decision_log":     [],
+        "decision_log":     sched_env.get_decision_log() if record_decision_log else [],
         "conversion_plans": list(sched_env.sim.conversion_plans),
         "stats": {
             "idle_total":    stats["idle_total"],

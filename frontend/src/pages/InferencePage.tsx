@@ -4,6 +4,7 @@ import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import GanttKpiPanel from "../components/GanttKpiPanel";
 import GanttLegendPanel from "../components/GanttLegendPanel";
 import GanttSummaryPanel from "../components/GanttSummaryPanel";
+import StepDebugger from "../components/StepDebugger";
 import { EventTimeline } from "../components/EventTimeline";
 import { api } from "../lib/api";
 import { loadResultFromFile } from "../lib/resultFile";
@@ -41,7 +42,7 @@ const FALLBACK_ALGOS: AlgorithmInfo[] = [
   { id: "earliest_st", name: "Earliest-ST (휴리스틱)", description: "", requires_model: false },
 ];
 
-type MainTab = "gantt" | "events" | "table" | "compare";
+type MainTab = "gantt" | "events" | "table" | "debug" | "compare";
 const ROWS = 200;
 
 function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
@@ -412,6 +413,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               <button type="button" className={`tab-btn${tab === "gantt" ? " active" : ""}`} onClick={() => setTab("gantt")} disabled={!result}>간트 차트</button>
               <button type="button" className={`tab-btn${tab === "events" ? " active" : ""}`} onClick={() => setTab("events")} disabled={!result?.event_log?.length}>이벤트 이력</button>
               <button type="button" className={`tab-btn${tab === "table" ? " active" : ""}`} onClick={() => setTab("table")} disabled={!result}>간트 테이블</button>
+              <button type="button" className={`tab-btn${tab === "debug" ? " active" : ""}`} onClick={() => setTab("debug")} disabled={!result?.decision_log?.length}>스텝 디버거</button>
               {canShowCompare && (
                 <button type="button" className={`tab-btn${tab === "compare" ? " active" : ""}`} onClick={() => setTab("compare")}>알고리즘 비교</button>
               )}
@@ -526,6 +528,23 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   </button>
                 </div>
                 <VirtualTable rows={result.schedule} />
+              </div>
+            )}
+
+            {/* STEP DEBUGGER TAB */}
+            {tab === "debug" && result && (
+              <div className="tab-panel">
+                {result.decision_log?.length ? (
+                  <StepDebugger entries={result.decision_log} />
+                ) : (
+                  <div className="card">
+                    <div className="card-title">스텝 디버거</div>
+                    <p className="hint">
+                      이 결과에는 결정 로그가 없습니다. 좌측에서 <b>「결정 로그 포함」</b>을 켜고 추론을 다시 실행하세요.
+                      (성능상 추론에서만 기록됩니다)
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
