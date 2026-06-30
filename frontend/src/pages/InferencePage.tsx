@@ -271,22 +271,22 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, [result]);
 
   const compareGanttChart = useMemo(() => {
-    if (!compareShowGantt || compareEntries.length < 2) return null;
+    if (!compareShowGantt || compareEntries.length < 1) return null;
     const compareAxis = buildCompareGanttAxis(compareEntries, compareData, simBaseTime);
     return buildAlgorithmGanttComparison(compareEntries, compareAxis);
   }, [compareShowGantt, compareEntries, compareData, simBaseTime]);
 
   const compareKpiChart = useMemo(() => {
-    if (compareEntries.length < 2) return null;
+    if (compareEntries.length < 1) return null;
     return buildAlgorithmKpiComparison(compareEntries);
   }, [compareEntries]);
 
   const compareAchievementChart = useMemo(() => {
-    if (compareEntries.length < 2) return null;
+    if (compareEntries.length < 1) return null;
     return buildAlgorithmAchievementComparison(compareEntries);
   }, [compareEntries]);
 
-  const canShowCompare = compareEntries.length > 1;
+  const canShowCompare = compareEntries.length > 0;
 
   useEffect(() => {
     if (tab === "compare" && !canShowCompare) {
