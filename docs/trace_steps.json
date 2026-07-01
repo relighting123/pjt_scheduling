@@ -253,7 +253,19 @@
           "time_norm": 0.0,
           "takt_margin": 1.0,
           "remaining_lots": 1.0,
-          "plan_progress": 0.0
+          "plan_progress": 0.0,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 0.0,
+          "avoidable_frac": 0.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 2.83,
@@ -583,7 +595,19 @@
           "time_norm": 0.0,
           "takt_margin": 1.0,
           "remaining_lots": 1.0,
-          "plan_progress": 0.042
+          "plan_progress": 0.042,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 0.0,
+          "avoidable_frac": 0.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 2.83,
@@ -934,7 +958,19 @@
           "time_norm": 0.0,
           "takt_margin": 1.0,
           "remaining_lots": 1.0,
-          "plan_progress": 0.083
+          "plan_progress": 0.083,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 0.0,
+          "avoidable_frac": 0.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 2.83,
@@ -1293,7 +1329,19 @@
           "time_norm": 0.0,
           "takt_margin": 1.0,
           "remaining_lots": 1.0,
-          "plan_progress": 0.125
+          "plan_progress": 0.125,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 0.0,
+          "avoidable_frac": 0.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -1657,7 +1705,19 @@
           "time_norm": 0.125,
           "takt_margin": 0.955,
           "remaining_lots": 0.958,
-          "plan_progress": 0.167
+          "plan_progress": 0.167,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 1.0,
+          "avoidable_frac": 1.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -2029,7 +2089,19 @@
           "time_norm": 0.125,
           "takt_margin": 0.955,
           "remaining_lots": 0.917,
-          "plan_progress": 0.208
+          "plan_progress": 0.208,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 1.0,
+          "avoidable_frac": 1.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -2409,7 +2481,19 @@
           "time_norm": 0.125,
           "takt_margin": 0.955,
           "remaining_lots": 0.875,
-          "plan_progress": 0.25
+          "plan_progress": 0.25,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 0.0,
+          "avoidable_frac": 0.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -2797,7 +2881,19 @@
           "time_norm": 0.25,
           "takt_margin": 0.909,
           "remaining_lots": 0.833,
-          "plan_progress": 0.292
+          "plan_progress": 0.292,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 1.0,
+          "avoidable_frac": 1.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -3193,7 +3289,19 @@
           "time_norm": 0.25,
           "takt_margin": 0.909,
           "remaining_lots": 0.792,
-          "plan_progress": 0.333
+          "plan_progress": 0.333,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 1.0,
+          "avoidable_frac": 1.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -3597,7 +3705,19 @@
           "time_norm": 0.25,
           "takt_margin": 0.909,
           "remaining_lots": 0.75,
-          "plan_progress": 0.375
+          "plan_progress": 0.375,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 0.0,
+          "avoidable_frac": 0.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -4009,7 +4129,19 @@
           "time_norm": 0.375,
           "takt_margin": 0.864,
           "remaining_lots": 0.708,
-          "plan_progress": 0.417
+          "plan_progress": 0.417,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 1.0,
+          "avoidable_frac": 1.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -4429,7 +4561,19 @@
           "time_norm": 0.375,
           "takt_margin": 0.864,
           "remaining_lots": 0.667,
-          "plan_progress": 0.458
+          "plan_progress": 0.458,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 1.0,
+          "avoidable_frac": 1.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -4857,7 +5001,19 @@
           "time_norm": 0.375,
           "takt_margin": 0.864,
           "remaining_lots": 0.625,
-          "plan_progress": 0.5
+          "plan_progress": 0.5,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 0.0,
+          "avoidable_frac": 0.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
@@ -5293,7 +5449,19 @@
           "time_norm": 0.5,
           "takt_margin": 0.818,
           "remaining_lots": 0.583,
-          "plan_progress": 0.542
+          "plan_progress": 0.542,
+          "conv_idle_ratio": 0.0,
+          "tool_util": 0.0
+        },
+        "obs_eqp_local": {
+          "needs_conversion": 1.0,
+          "avoidable_frac": 1.0
+        },
+        "obs_context": {
+          "last_ppk": 0.0,
+          "last_oper": 0.0,
+          "last_eqp": 0.0,
+          "last_lot_cd": 0.0
         }
       },
       "reward": 0.83,
