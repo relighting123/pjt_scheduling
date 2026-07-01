@@ -150,7 +150,7 @@ def _step_kind(step_data: dict) -> str:
     blk = step_data.get("block") or {}
     if act.get("block_start"):
         n = act.get("block_total") or act.get("block_size") or "?"
-        return f"블록 시작 (N={n} 캐리어 커밋)"
+        return f"블록 시작 (N={n} 캐리어 연속 커밋)"
     if blk.get("continuation") or act.get("block_continuation"):
         done = blk.get("done", act.get("block_done", "?"))
         total = blk.get("total", act.get("block_total", "?"))
@@ -309,13 +309,13 @@ def step_walkthrough_slide(idx: int, step_no: int):
     ]
     blk = step_data.get("block") or {}
     if blk or act.get("block_start") or act.get("block_continuation"):
+        n = act.get("block_total") or act.get("block_size") or blk.get("total", "?")
         if act.get("block_start"):
-            action_lines.insert(4, ("블록 진행", f"1/{act.get('block_total') or act.get('block_size', '?')} 시작"))
+            action_lines.insert(4, ("블록 커밋", f"{n}캐리어 한번에 연속 점유"))
         elif blk or act.get("block_continuation"):
             done = blk.get("done", act.get("block_done", "?"))
             total = blk.get("total", act.get("block_total", "?"))
-            rem = blk.get("remaining", max(int(total) - int(done), 0) if str(done).isdigit() else "?")
-            action_lines.insert(4, ("블록 진행", f"{done}/{total}  (잔여 {rem})"))
+            action_lines.insert(4, ("블록 진행", f"LOT {done}/{total} 배정 (동일 블록)"))
     yy = 1.98
     for lbl, val in action_lines:
         txt(s, 10.02, yy, 1.2, 0.3, [[R(lbl, 10, GRAY)]])
