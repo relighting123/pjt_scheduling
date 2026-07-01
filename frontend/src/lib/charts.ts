@@ -1841,8 +1841,10 @@ export function buildEnhancedGantt(
   const layout: Partial<Layout> = {
     ...GANTT_PAN_LAYOUT,
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
+    // x축 제목 제거: 스크롤 스티키 시 눈금과 겹침 방지 + 기준 일자는 차트 상단 헤더에 표기.
+    // 눈금은 RULE_TIMEKEY(=0분) 기준 실제 시각으로 표시(baseMs 있을 때).
     xaxis: {
-      title: ganttXAxisTitle(baseMs),
+      title: undefined,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     },
     yaxis: ganttYAxisLayout(eqpLabels, {
@@ -1860,7 +1862,7 @@ export function buildEnhancedGantt(
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 20, t: 80, b: hasInflow ? 72 : 40 },
+    margin: { l: 160, r: 20, t: 48, b: hasInflow ? 72 : 40 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverdistance: 30,
