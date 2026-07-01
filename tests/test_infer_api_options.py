@@ -139,3 +139,58 @@ def test_inference_db_load_after_save(client, monkeypatch, tmp_path):
   assert kwargs["db_alias"] == "WT_RTS"
   assert kwargs["include_history"] is False
   assert res.json()["infer_meta"]["db_loaded"] is True
+
+
+def test_config_exposes_default_env(client):
+    res = client.get("/api/config")
+    assert res.status_code == 200
+    default_env = res.json()["default_env"]
+    assert "conversion_minutes" in default_env
+    assert default_env["conversion_minutes"] >= 0
+
+
+def test_inference_passes_conversion_options_to_runner(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("config.DATASET_DIR", tmp_path / "dataset")
+    infer_input = tmp_path / "dataset" / "FAC001" / "infer" / "input"
+    infer_input.mkdir(parents=True)
+    (infer_input / "discrete_arrange.json").write_text("[]", encoding="utf-8")
+
+    with patch("api.server.fetch_from_db", return_value=infer_input), patch(
+        "api.server._load_env_data",
+        return_value=_minimal_env_data(),
+    ), patch("api.server.run_inference") as run_mock, patch(
+        "api.server.save_result",
+    ), patch(
+        "api.server.SchedulingAgent.load",
+        return_value=MagicMock(),
+    ):
+        run_mock.return_value = {
+            "schedule": [],
+            "stats": {
+                "idle_total": 0,
+                "oper_switches": 0,
+                "prod_switches": 0,
+                "completed_qty": {},
+                "conversions": 0,
+            },
+            "plan": [],
+            "history": [],
+            "event_log": [],
+        }
+        res = client.post(
+            "/api/inference",
+            json={
+                "input_folder": "FAC001/infer",
+                "algorithm": "minprogress",
+                "nodb": True,
+                "max_conversions": 2,
+                "max_conversions_per_eqp": 1,
+                "conversion_minutes": 30,
+            },
+        )
+
+    assert res.status_code == 200
+    _, kwargs = run_mock.call_args
+    assert kwargs["max_conversions"] == 2
+    assert kwargs["max_conversions_per_eqp"] == 1
+    assert kwargs["conversion_minutes"] == 30
