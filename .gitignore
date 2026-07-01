@@ -26,6 +26,7 @@ models/**
 # Logs & temp
 *.log
 logs/
+logging/
 .env
 config/databases.yaml
 frontend/node_modules/

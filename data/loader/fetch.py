@@ -97,6 +97,57 @@ def _inline_binds(sql_text: str, binds: dict) -> str:
     return result
 
 
+def _input_log_path() -> Path:
+    from config import BASE_DIR  # 순환 import 방지용 지연 import
+
+    return BASE_DIR / "logging" / "input_log.txt"
+
+
+def _format_sql_log_entry(
+    sql_file: str,
+    alias: str,
+    period: str | None,
+    binds: dict,
+    sql_text: str,
+    row_count: int,
+) -> str:
+    per_str = period or "(없음)"
+    runnable_sql = _inline_binds(sql_text, binds)
+    return (
+        f"-- [{sql_file}] @{alias}  period={per_str}  rows={row_count}\n"
+        f"{runnable_sql}"
+    )
+
+
+def _init_input_log(fac_id: str, split: str, period: str | None) -> None:
+    """추론 input fetch 시작 시 logging/input_log.txt 초기화."""
+    path = _input_log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    per_str = period or "(없음)"
+    header = (
+        "# Input fetch log\n"
+        f"# FAC_ID={fac_id}  split={split}  RULE_TIMEKEY={per_str}\n"
+        f"# generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        "\n"
+    )
+    path.write_text(header, encoding="utf-8")
+
+
+def _append_input_log_entry(
+    sql_file: str,
+    alias: str,
+    period: str | None,
+    binds: dict,
+    sql_text: str,
+    row_count: int,
+) -> None:
+    """추론 input fetch 쿼리 1건을 logging/input_log.txt 에 추가."""
+    entry = _format_sql_log_entry(sql_file, alias, period, binds, sql_text, row_count)
+    with open(_input_log_path(), "a", encoding="utf-8") as f:
+        f.write(entry)
+        f.write("\n\n")
+
+
 def _log_sql_execute(
     sql_file: str,
     alias: str,
@@ -283,6 +334,10 @@ def fetch_from_db(
 
     own_registry = db_registry is None
     registry = db_registry or DbRegistry()
+    write_input_log = split == "infer" and not dry_run
+    if write_input_log:
+        _init_input_log(fac_id, split, per)
+
     if verbose:
         print(
             f"[loader] 준비 fac={fac_id} split={split} {f'period={per}' if per else ''} "
@@ -319,6 +374,10 @@ def fetch_from_db(
                 conn = registry.connect(alias)
                 rows = _execute_query(conn, sql, binds)
                 _log_sql_execute(sql_file, alias, per, binds, sql, len(rows))
+                if write_input_log:
+                    _append_input_log_entry(
+                        sql_file, alias, per, binds, sql, len(rows),
+                    )
                 with open(out_path, "w", encoding="utf-8") as f:
                     json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
                 row_warn = " ⚠ 0건" if not rows else ""
@@ -348,6 +407,9 @@ def fetch_from_db(
     finally:
         if own_registry:
             registry.close_all()
+
+    if write_input_log:
+        print(f"[loader] input 쿼리 로그 → {_input_log_path()}")
 
     return output_dir
 
