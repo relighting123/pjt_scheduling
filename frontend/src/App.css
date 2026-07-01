@@ -2047,3 +2047,13 @@ tbody tr:last-child td { border-bottom: none; }
   animation: chart-spin 0.7s linear infinite; display: inline-block;
 }
 @keyframes chart-spin { to { transform: rotate(360deg); } }
+
+/* 간트 기준 시각(RULE_TIMEKEY) 헤더 */
+.gantt-base-info {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem;
+  padding: 0.4rem 0.7rem; margin-bottom: 0.4rem;
+  background: var(--panel, #eef2f7); border: 1px solid var(--border); border-radius: 8px;
+  font-size: 0.8rem; color: var(--text-muted);
+}
+.gantt-base-rtk b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.gantt-base-time b { color: var(--text); font-variant-numeric: tabular-nums; }

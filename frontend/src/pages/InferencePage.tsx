@@ -22,7 +22,7 @@ import {
   ALGO_CHART_COLORS,
 } from "../lib/charts";
 import { buildEqpModelMap } from "../lib/metrics";
-import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey } from "../lib/ganttTime";
+import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey, parseSimBaseMs } from "../lib/ganttTime";
 import type {
   AlgorithmCompareResponse, AlgorithmId, AlgorithmInfo,
   AppConfig, DataSummary, InferenceResult,
@@ -159,6 +159,17 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     const rtk = ruleTimekeyFromFolder(selectedFolder);
     return rtk ? simBaseTimeFromRuleTimekey(rtk) : undefined;
   }, [summary, selectedFolder]);
+
+  // 간트 기준 시각(0분) = RULE_TIMEKEY. 차트 상단 헤더로 표시.
+  const ganttBaseInfo = useMemo(() => {
+    const rtk = ruleTimekeyFromFolder(selectedFolder);
+    const ms = parseSimBaseMs(simBaseTime);
+    if (ms == null) return { rtk, baseText: null as string | null };
+    const d = new Date(ms);
+    const p = (n: number) => String(n).padStart(2, "0");
+    const baseText = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return { rtk, baseText };
+  }, [simBaseTime, selectedFolder]);
 
   const axis = useMemo(() => ({
     eqpIds: result?.eqp_ids ?? compareData?.eqp_ids ?? [],
@@ -477,6 +488,17 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     )}
                   </div>
                 </div>
+
+                {(ganttBaseInfo.rtk || ganttBaseInfo.baseText) && (
+                  <div className="gantt-base-info">
+                    {ganttBaseInfo.rtk && (
+                      <span className="gantt-base-rtk">RULE_TIMEKEY <b>{ganttBaseInfo.rtk}</b></span>
+                    )}
+                    {ganttBaseInfo.baseText && (
+                      <span className="gantt-base-time">기준 시각 <b>{ganttBaseInfo.baseText}</b> = 0분 · 이후 눈금은 실제 시각(HH:mm)</span>
+                    )}
+                  </div>
+                )}
 
                 {ganttChart && (
                   <div className="chart-wrap gantt-chart-panel">

@@ -34,7 +34,8 @@ const plotConfig: Partial<Config> = {
 };
 
 const STICKY_X_BG_CLASS = "sticky-xaxis-bg";
-const STICKY_X_SELECTORS = [".xaxislayer-above", ".infolayer .g-xtitle"];
+// 눈금 레이어만 sticky 고정(축 제목은 제거됨 → 제목-눈금 겹침 없음)
+const STICKY_X_SELECTORS = [".xaxislayer-above"];
 
 type AxisRange = { prefix: string; start: number; end: number };
 
