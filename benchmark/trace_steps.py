@@ -13,29 +13,16 @@ from data.loader.fetch import load_data
 from data.loader.preprocess import preprocess
 from agent.rl_agent import SchedulingAgent
 from env.bulkfill_env import BulkFillEnv
+from benchmark.reward_formula_trace import REWARD_LABELS, build_reward_formula_details
 
 DS = ROOT / "data/dataset/SYM_3x3/train/20260629000000/input"
 SIM = 480
 
-# bulk 보상 가중치(평가·PPT와 동일)
 cfg = CONFIG.reward
 cfg.w_bulk_block_bonus = 3.0
 cfg.w_dedication_misuse = -4.0
 cfg.w_redundant_cover = -5.0
 cfg.w_plan_hit = 1.0
-
-REWARD_LABELS = {
-    "same_setup": "동일 셋업",
-    "pacing": "페이싱",
-    "plan_hit": "계획 달성",
-    "flow_balance": "흐름 균형",
-    "idle": "유휴",
-    "conversion": "전환",
-    "avoidable_conversion": "회피가능 전환",
-    "bulk_block_bonus": "블록 보너스",
-    "dedication_misuse": "전용 오용",
-    "redundant_cover": "중복 커버",
-}
 
 
 def _schedule_snapshot(schedule: list) -> list:
@@ -129,6 +116,10 @@ def main() -> None:
             bucket % (CONFIG.env.max_oper_count * CONFIG.env.max_prod_count),
         )
         state_before = _state_summary(obs, sim, total_plan)
+        eqp_obj = sim.eqps.get(eqp_before) if eqp_before else None
+        done_before = sim.stats["completed_qty"].get((ppk, oper), 0)
+        prev_prod = eqp_obj.prev_prod if eqp_obj else None
+        prev_oper = eqp_obj.prev_oper if eqp_obj else None
 
         obs, reward, terminated, truncated, info = env.step(action)
         cum += float(reward)
@@ -139,6 +130,26 @@ def main() -> None:
         block_size = int(log_entry.get("block_size") or 0)
         block_start = bool(log_entry.get("block_start"))
         assigned_lot = log_entry.get("assigned_lot_id", "")
+        wf_qty = 1
+        if sim.schedule:
+            last = sim.schedule[-1]
+            if last.get("EQP_ID") == eqp_before and last.get("PLAN_PROD_KEY") == ppk:
+                wf_qty = int(last.get("WF_QTY") or 1)
+
+        formula_details = build_reward_formula_details(
+            sim,
+            ppk=ppk,
+            oper_id=oper,
+            eqp_id=eqp_before or "",
+            wf_qty=wf_qty,
+            t=t_before,
+            breakdown=breakdown,
+            block_start=block_start,
+            block_size=block_size,
+            eqp_prev_prod=prev_prod,
+            eqp_prev_oper=prev_oper,
+            done_before=done_before,
+        )
 
         steps.append({
             "step": step + 1,
@@ -152,11 +163,13 @@ def main() -> None:
                 "block_size": block_size,
                 "block_start": block_start,
                 "assigned_lot": assigned_lot,
+                "wf_qty": wf_qty,
             },
             "state": state_before,
             "reward": round(float(reward), 2),
             "cum": round(float(cum), 2),
             "reward_breakdown": {k: round(float(v), 2) for k, v in breakdown.items()},
+            "reward_formula": formula_details,
             "schedule": _schedule_snapshot(sim.schedule),
         })
         step += 1
