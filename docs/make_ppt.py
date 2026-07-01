@@ -147,11 +147,18 @@ def _fmt_reward_terms(breakdown: dict) -> list:
 
 def _step_kind(step_data: dict) -> str:
     act = step_data.get("action", {})
+    blk = step_data.get("block") or {}
     if act.get("block_start"):
-        n = act.get("block_size") or "?"
-        return f"블록 시작 (N={n})"
-    if act.get("block_size", 0) > 1:
-        return "블록 연속"
+        n = act.get("block_total") or act.get("block_size") or "?"
+        return f"블록 시작 (N={n} 캐리어 커밋)"
+    if blk.get("continuation") or act.get("block_continuation"):
+        done = blk.get("done", act.get("block_done", "?"))
+        total = blk.get("total", act.get("block_total", "?"))
+        return f"블록 연속 ({done}/{total} · 같은 셋업·장비 점유)"
+    if act.get("same_setup"):
+        return "동일 셋업"
+    if act.get("setup_change"):
+        return "셋업 변경"
     return "단일 배정"
 
 
@@ -296,10 +303,19 @@ def step_walkthrough_slide(idx: int, step_no: int):
         ("결정 설비", step_data["eqp"]),
         ("버킷 PPK/OPER", f"{step_data['ppk']} / {step_data.get('oper', '')}"),
         ("블록 레벨", f"L={act.get('level', 0)}"),
-        ("블록 크기 N", str(act.get("block_size") or "-")),
+        ("블록 크기 N", str(act.get("block_total") or act.get("block_size") or "-")),
         ("배정 LOT", act.get("assigned_lot") or "-"),
         ("유형", kind),
     ]
+    blk = step_data.get("block") or {}
+    if blk or act.get("block_start") or act.get("block_continuation"):
+        if act.get("block_start"):
+            action_lines.insert(4, ("블록 진행", f"1/{act.get('block_total') or act.get('block_size', '?')} 시작"))
+        elif blk or act.get("block_continuation"):
+            done = blk.get("done", act.get("block_done", "?"))
+            total = blk.get("total", act.get("block_total", "?"))
+            rem = blk.get("remaining", max(int(total) - int(done), 0) if str(done).isdigit() else "?")
+            action_lines.insert(4, ("블록 진행", f"{done}/{total}  (잔여 {rem})"))
     yy = 1.98
     for lbl, val in action_lines:
         txt(s, 10.02, yy, 1.2, 0.3, [[R(lbl, 10, GRAY)]])
@@ -309,37 +325,55 @@ def step_walkthrough_slide(idx: int, step_no: int):
     # 중앙: 누적 간트
     gantt_path = os.path.join(TRACE_GANTT_DIR, f"step_{step_no:02d}.png")
     if os.path.isfile(gantt_path):
-        s.shapes.add_picture(gantt_path, Inches(3.65), Inches(1.48), width=Inches(6.05))
+        s.shapes.add_picture(gantt_path, Inches(3.65), Inches(1.45), width=Inches(6.05), height=Inches(2.45))
     else:
-        box(s, 3.65, 1.48, 6.05, 2.85, LIGHT, line_color=LINE, line_w=1.0)
-        txt(s, 3.65, 1.48, 6.05, 2.85, [[R(f"간트 이미지 없음\n(step_{step_no:02d}.png)", 12, GRAY)]],
+        box(s, 3.65, 1.45, 6.05, 2.45, LIGHT, line_color=LINE, line_w=1.0)
+        txt(s, 3.65, 1.45, 6.05, 2.45, [[R(f"간트 이미지 없음\n(step_{step_no:02d}.png)", 12, GRAY)]],
             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
-    # 하단: Reward
-    box(s, 0.55, 4.55, 12.25, 0.42, NAVY)
-    txt(s, 0.55, 4.55, 12.25, 0.42, [[
-        R(f"Reward  r = {step_data['reward']:+.2f}   ·   누적 Σr = {step_data['cum']:+.2f}", 13, WHITE, True),
+    # 하단: Reward — 항목별 세부 산식
+    formula_details = step_data.get("reward_formula") or []
+    box(s, 0.55, 4.05, 12.25, 0.4, NAVY)
+    txt(s, 0.55, 4.05, 12.25, 0.4, [[
+        R(f"Reward  r = {step_data['reward']:+.2f}   ·   누적 Σr = {step_data['cum']:+.2f}   ·   clip(Σ항, ±10)",
+          12, WHITE, True),
     ]], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    box(s, 0.55, 4.97, 12.25, 1.35, LIGHT, line_color=LINE, line_w=1.0)
-    terms = _fmt_reward_terms(bd)
-    if terms:
-        xx = 0.75
-        for lbl, val, col in terms:
-            box(s, xx, 5.12, 2.85, 0.95, WHITE, line_color=LINE, line_w=0.75)
-            txt(s, xx + 0.12, 5.2, 2.6, 0.35, [[R(lbl, 11, NAVY, True)]])
-            txt(s, xx + 0.12, 5.55, 2.6, 0.45, [[R(val, 18, col, True)]], align=PP_ALIGN.CENTER)
-            xx += 2.95
-    else:
-        txt(s, 0.75, 5.2, 11.8, 0.8, [[R("보상 항 분해 없음", 12, GRAY)]], anchor=MSO_ANCHOR.MIDDLE)
 
-    # 수식 힌트
-    hint = " + ".join(f"{REWARD_LBL.get(k, k)} {v:+.2f}" for k, v in bd.items() if abs(v) >= 0.005)
-    if not hint:
-        hint = "항목 없음"
-    box(s, 0.55, 6.45, 12.25, 0.48, RGBColor(0xEC, 0xF1, 0xF7))
-    txt(s, 0.75, 6.45, 11.9, 0.48, [[
-        R("계산  ", 10.5, ACCENT, True), R(hint, 10.5, INK),
-    ]], anchor=MSO_ANCHOR.MIDDLE)
+    fy = 4.52
+    if formula_details:
+        row_h = min(0.78, max(0.58, 2.35 / max(len(formula_details), 1)))
+        for det in formula_details:
+            val = float(det.get("value", 0))
+            col = GREEN if val > 0 else RED
+            box(s, 0.55, fy, 12.25, row_h, WHITE, line_color=LINE, line_w=0.75)
+            box(s, 0.55, fy, 0.08, row_h, col)
+            txt(s, 0.72, fy + 0.06, 1.55, 0.32, [[R(det.get("label", ""), 11, NAVY, True)]])
+            txt(s, 0.72, fy + 0.36, 1.55, 0.32, [[R(f"{val:+.2f}", 14, col, True)]])
+            txt(s, 2.35, fy + 0.05, 9.55, 0.28, [[R(det.get("formula", ""), 9.5, GRAY)]])
+            txt(s, 2.35, fy + 0.3, 9.9, 0.28, [[R(det.get("substitution", ""), 9.5, INK)]])
+            txt(s, 11.55, fy + 0.22, 1.1, 0.38, [[R(det.get("result", ""), 11, col, True)]],
+                align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
+            fy += row_h + 0.06
+        sum_terms = " + ".join(
+            f"{d.get('label', '')} {float(d.get('value', 0)):+.2f}" for d in formula_details
+        )
+        box(s, 0.55, fy + 0.02, 12.25, 0.38, RGBColor(0xEC, 0xF1, 0xF7))
+        txt(s, 0.75, fy + 0.02, 11.9, 0.38, [[
+            R("합산  ", 10, ACCENT, True),
+            R(f"{sum_terms}  →  r = {step_data['reward']:+.2f}", 10, INK),
+        ]], anchor=MSO_ANCHOR.MIDDLE)
+    else:
+        terms = _fmt_reward_terms(bd)
+        box(s, 0.55, fy, 12.25, 1.2, LIGHT, line_color=LINE, line_w=1.0)
+        if terms:
+            xx = 0.75
+            for lbl, val, col in terms:
+                box(s, xx, fy + 0.12, 2.85, 0.95, WHITE, line_color=LINE, line_w=0.75)
+                txt(s, xx + 0.12, fy + 0.2, 2.6, 0.35, [[R(lbl, 11, NAVY, True)]])
+                txt(s, xx + 0.12, fy + 0.55, 2.6, 0.45, [[R(val, 18, col, True)]], align=PP_ALIGN.CENTER)
+                xx += 2.95
+        else:
+            txt(s, 0.75, fy + 0.2, 11.8, 0.8, [[R("보상 항 분해 없음", 12, GRAY)]], anchor=MSO_ANCHOR.MIDDLE)
     return s
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -723,18 +757,19 @@ txt(s, 1.12, 2.6, 5.3, 0.55, [[
     R("EQP001이 직전과 같은 PPK001을 블록 크기 8(=takt 예산 전량)로 커밋, 다른 설비가 덮지 않는 제품", 11, GRAY),
 ]], line_spacing=1.12)
 calcA = [
-    ("동일 셋업 연속", "+1.0", "제품·공정 동일, 재공 잔존"),
-    ("페이싱", "+2.5 ×Δ", "takt 목표선에 근접"),
-    ("블록 보너스", "+3.0 ×(8/8)", "= +3.0  (전량 블록)"),
-    ("전환 패널티", "0", "셋업 변경 없음"),
-    ("중복 커버", "0", "다른 설비가 안 덮음"),
+    ("동일 셋업", "w·1[동일셋업]", "1.0·1 = +1.0", "+1.0"),
+    ("페이싱", "w·(|ideal−eff_b|−|ideal−eff_a|)/T", "2.5·(0.5−0.3)/8 ≈ +0.06", "+Δ"),
+    ("블록 보너스", "w_bulk·min(N/예산,1)", "3.0·min(8/8,1) = +3.0", "+3.0"),
+    ("전환", "w_conv·1[전환]", "셋업 동일 → 0", "0"),
+    ("중복 커버", "w_red·min(cover/need,2)", "cover=0 → 0", "0"),
 ]
-yy = 3.25
-for a, b, c in calcA:
-    txt(s, 1.12, yy, 1.9, 0.34, [[R(a, 11, INK, True)]])
-    txt(s, 3.0, yy, 1.25, 0.34, [[R(b, 11, GREEN, True)]])
-    txt(s, 4.2, yy, 2.3, 0.34, [[R(c, 10, GRAY)]])
-    yy += 0.42
+yy = 3.15
+for name, formula, sub, val in calcA:
+    txt(s, 1.12, yy, 1.55, 0.28, [[R(name, 10.5, NAVY, True)]])
+    txt(s, 2.65, yy, 2.85, 0.28, [[R(formula, 9, GRAY)]])
+    txt(s, 1.12, yy + 0.26, 4.35, 0.26, [[R(sub, 9.5, INK)]])
+    txt(s, 5.55, yy + 0.1, 0.75, 0.34, [[R(val, 11, GREEN, True)]], align=PP_ALIGN.RIGHT)
+    yy += 0.52
 box(s, 1.12, 5.42, 5.26, 0.02, LINE)
 txt(s, 1.12, 5.5, 5.26, 0.45, [[
     R("합계  ", 12.5, NAVY, True), R("≈ +6 수준의 강한 양(+) 보상", 13, GREEN, True)
@@ -750,18 +785,19 @@ txt(s, 6.92, 2.6, 5.3, 0.55, [[
     R("EQP가 PPK001→PPK002로 셋업을 바꿔 1캐리어만 처리. 다른 무전환 설비가 PPK002를 70% 커버 가능", 11, GRAY),
 ]], line_spacing=1.12)
 calcB = [
-    ("전환 패널티", "−10.0", "LOT_CD 변경 1회"),
-    ("회피가능 전환", "−8.0 ×0.7", "= −5.6  (커버 가능)"),
-    ("중복 커버", "−5.0 ×비율", "이미 덮이는 버킷"),
-    ("블록 보너스", "0", "블록 크기 1"),
-    ("동일 셋업", "0", "셋업이 바뀜"),
+    ("전환", "w_conv·1[전환]", "−10.0·1 = −10.0", "−10.0"),
+    ("회피가능 전환", "w_avoid·α", "−8.0·0.7 = −5.6", "−5.6"),
+    ("중복 커버", "w_red·min(c/need,2)", "−5.0·0.4 ≈ −2.0", "−Δ"),
+    ("블록 보너스", "w_bulk·min(N/B,1)", "N=1 → 0", "0"),
+    ("동일 셋업", "w·1[동일]", "셋업 변경 → 0", "0"),
 ]
-yy = 3.25
-for a, b, c in calcB:
-    txt(s, 6.92, yy, 1.9, 0.34, [[R(a, 11, INK, True)]])
-    txt(s, 8.8, yy, 1.4, 0.34, [[R(b, 11, RED, True)]])
-    txt(s, 10.15, yy, 2.25, 0.34, [[R(c, 10, GRAY)]])
-    yy += 0.42
+yy = 3.15
+for name, formula, sub, val in calcB:
+    txt(s, 6.92, yy, 1.55, 0.28, [[R(name, 10.5, NAVY, True)]])
+    txt(s, 8.45, yy, 2.85, 0.28, [[R(formula, 9, GRAY)]])
+    txt(s, 6.92, yy + 0.26, 4.35, 0.26, [[R(sub, 9.5, INK)]])
+    txt(s, 11.35, yy + 0.1, 0.75, 0.34, [[R(val, 11, RED, True)]], align=PP_ALIGN.RIGHT)
+    yy += 0.52
 box(s, 6.92, 5.42, 5.26, 0.02, LINE)
 txt(s, 6.92, 5.5, 5.26, 0.45, [[
     R("합계  ", 12.5, NAVY, True), R("≈ −20 수준의 강한 음(−) 보상", 13, RED, True)

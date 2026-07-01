@@ -209,8 +209,40 @@
         "level": 3,
         "block_size": 6,
         "block_start": true,
-        "assigned_lot": "LOT001"
+        "block_continuation": false,
+        "block_done": 1,
+        "block_total": 6,
+        "assigned_lot": "LOT001",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 1,
+        "remaining": 5,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 60,
+        "block_start": true
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 0.0,
@@ -232,6 +264,58 @@
         "bulk_block_bonus": 3.0,
         "redundant_cover": -0.0
       },
+      "reward_formula": [
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 0.0,
+            "eff_after": 1.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 0,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 8→7 (done 0→1, target=8) · 1.0·(8−7)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 8,
+            "gap_after": 7,
+            "target": 8,
+            "done_before": 0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 3.0,
+          "formula": "w_bulk · min(N / takt예산, 1)",
+          "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
+          "result": "= +3.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 6,
+            "budget": 6,
+            "ratio": 1.0
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -254,8 +338,53 @@
         "level": 3,
         "block_size": 6,
         "block_start": true,
-        "assigned_lot": "LOT009"
+        "block_continuation": false,
+        "block_done": 1,
+        "block_total": 6,
+        "assigned_lot": "LOT009",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 1,
+        "remaining": 5,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 60,
+        "block_start": true
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 4.2,
@@ -277,6 +406,58 @@
         "bulk_block_bonus": 3.0,
         "redundant_cover": -0.0
       },
+      "reward_formula": [
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 0.0,
+            "eff_after": 1.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 0,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 8→7 (done 0→1, target=8) · 1.0·(8−7)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 8,
+            "gap_after": 7,
+            "target": 8,
+            "done_before": 0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 3.0,
+          "formula": "w_bulk · min(N / takt예산, 1)",
+          "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
+          "result": "= +3.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 6,
+            "budget": 6,
+            "ratio": 1.0
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -307,8 +488,66 @@
         "level": 3,
         "block_size": 6,
         "block_start": true,
-        "assigned_lot": "LOT017"
+        "block_continuation": false,
+        "block_done": 1,
+        "block_total": 6,
+        "assigned_lot": "LOT017",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 1,
+        "remaining": 5,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 60,
+        "block_start": true
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 8.3,
@@ -330,6 +569,58 @@
         "bulk_block_bonus": 3.0,
         "redundant_cover": -0.0
       },
+      "reward_formula": [
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 0.0,
+            "eff_after": 1.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 0,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 8→7 (done 0→1, target=8) · 1.0·(8−7)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 8,
+            "gap_after": 7,
+            "target": 8,
+            "done_before": 0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 3.0,
+          "formula": "w_bulk · min(N / takt예산, 1)",
+          "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
+          "result": "= +3.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 6,
+            "budget": 6,
+            "ratio": 1.0
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -366,10 +657,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT004"
+        "block_continuation": true,
+        "block_done": 2,
+        "block_total": 6,
+        "assigned_lot": "LOT004",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 2,
+        "remaining": 4,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 120,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 12.5,
@@ -390,6 +739,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 22.0→23.0 (done=1, cover=21.0, wf=1) · 2.5·(22.0−23.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 1,
+            "cover": 21.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 7→6 (done 1→2, target=8) · 1.0·(7−6)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 7,
+            "gap_after": 6,
+            "target": 8,
+            "done_before": 1,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -434,10 +835,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT012"
+        "block_continuation": true,
+        "block_done": 2,
+        "block_total": 6,
+        "assigned_lot": "LOT012",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 2,
+        "remaining": 4,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 120,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 60,
         "progress_pct": 16.7,
@@ -458,6 +917,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.36,
+            "eff_before": 1.0,
+            "eff_after": 2.0,
+            "target": 8,
+            "t": 60,
+            "horizon": 1320,
+            "done_before": 1,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 7→6 (done 1→2, target=8) · 1.0·(7−6)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 7,
+            "gap_after": 6,
+            "target": 8,
+            "done_before": 1,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -510,10 +1021,68 @@
       "action": {
         "bucket": 2,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT020"
+        "block_continuation": true,
+        "block_done": 2,
+        "block_total": 6,
+        "assigned_lot": "LOT018",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 2,
+        "remaining": 4,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 120,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 60,
         "progress_pct": 20.8,
@@ -534,6 +1103,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK003→PPK003, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK003",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.36,
+            "eff_before": 1.0,
+            "eff_after": 2.0,
+            "target": 8,
+            "t": 60,
+            "horizon": 1320,
+            "done_before": 1,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 7→6 (done 1→2, target=8) · 1.0·(7−6)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 7,
+            "gap_after": 6,
+            "target": 8,
+            "done_before": 1,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -577,7 +1198,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -594,10 +1215,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT007"
+        "block_continuation": true,
+        "block_done": 3,
+        "block_total": 6,
+        "assigned_lot": "LOT007",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 3,
+        "remaining": 3,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 180,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 60,
         "progress_pct": 25.0,
@@ -618,6 +1297,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·60/1320 = 0.36 · eff: 22.0→23.0 (done=2, cover=20.0, wf=1) · 2.5·(21.64−22.64)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.36,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 60,
+            "horizon": 1320,
+            "done_before": 2,
+            "cover": 20.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 6→5 (done 2→3, target=8) · 1.0·(6−5)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 6,
+            "gap_after": 5,
+            "target": 8,
+            "done_before": 2,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -661,7 +1392,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -686,10 +1417,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT015"
+        "block_continuation": true,
+        "block_done": 3,
+        "block_total": 6,
+        "assigned_lot": "LOT015",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 3,
+        "remaining": 3,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 180,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 120,
         "progress_pct": 29.2,
@@ -710,6 +1499,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.73,
+            "eff_before": 2.0,
+            "eff_after": 3.0,
+            "target": 8,
+            "t": 120,
+            "horizon": 1320,
+            "done_before": 2,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 6→5 (done 2→3, target=8) · 1.0·(6−5)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 6,
+            "gap_after": 5,
+            "target": 8,
+            "done_before": 2,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -753,7 +1594,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -786,10 +1627,68 @@
       "action": {
         "bucket": 2,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT021"
+        "block_continuation": true,
+        "block_done": 3,
+        "block_total": 6,
+        "assigned_lot": "LOT020",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 3,
+        "remaining": 3,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 180,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 120,
         "progress_pct": 33.3,
@@ -810,6 +1709,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK003→PPK003, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK003",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.73,
+            "eff_before": 2.0,
+            "eff_after": 3.0,
+            "target": 8,
+            "t": 120,
+            "horizon": 1320,
+            "done_before": 2,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 6→5 (done 2→3, target=8) · 1.0·(6−5)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 6,
+            "gap_after": 5,
+            "target": 8,
+            "done_before": 2,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -853,7 +1804,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -877,7 +1828,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT021",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -894,10 +1845,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT002"
+        "block_continuation": true,
+        "block_done": 4,
+        "block_total": 6,
+        "assigned_lot": "LOT002",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 4,
+        "remaining": 2,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 240,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 120,
         "progress_pct": 37.5,
@@ -918,6 +1927,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·120/1320 = 0.73 · eff: 22.0→23.0 (done=3, cover=19.0, wf=1) · 2.5·(21.27−22.27)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.73,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 120,
+            "horizon": 1320,
+            "done_before": 3,
+            "cover": 19.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 5→4 (done 3→4, target=8) · 1.0·(5−4)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 5,
+            "gap_after": 4,
+            "target": 8,
+            "done_before": 3,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -961,7 +2022,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -985,7 +2046,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT021",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -1010,10 +2071,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT010"
+        "block_continuation": true,
+        "block_done": 4,
+        "block_total": 6,
+        "assigned_lot": "LOT010",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 4,
+        "remaining": 2,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 240,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 180,
         "progress_pct": 41.7,
@@ -1034,6 +2153,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.09,
+            "eff_before": 3.0,
+            "eff_after": 4.0,
+            "target": 8,
+            "t": 180,
+            "horizon": 1320,
+            "done_before": 3,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 5→4 (done 3→4, target=8) · 1.0·(5−4)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 5,
+            "gap_after": 4,
+            "target": 8,
+            "done_before": 3,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -1077,7 +2248,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -1101,7 +2272,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT021",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -1134,10 +2305,68 @@
       "action": {
         "bucket": 2,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT022"
+        "block_continuation": true,
+        "block_done": 4,
+        "block_total": 6,
+        "assigned_lot": "LOT023",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 4,
+        "remaining": 2,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 240,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 180,
         "progress_pct": 45.8,
@@ -1158,6 +2387,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK003→PPK003, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK003",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.09,
+            "eff_before": 3.0,
+            "eff_after": 4.0,
+            "target": 8,
+            "t": 180,
+            "horizon": 1320,
+            "done_before": 3,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 5→4 (done 3→4, target=8) · 1.0·(5−4)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 5,
+            "gap_after": 4,
+            "target": 8,
+            "done_before": 3,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -1201,7 +2482,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -1225,7 +2506,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT021",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -1249,7 +2530,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT022",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 180,
@@ -1266,10 +2547,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT003"
+        "block_continuation": true,
+        "block_done": 5,
+        "block_total": 6,
+        "assigned_lot": "LOT003",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 5,
+        "remaining": 1,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 300,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 5,
+          "remaining": 1,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 300,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 180,
         "progress_pct": 50.0,
@@ -1290,6 +2629,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·180/1320 = 1.09 · eff: 22.0→23.0 (done=4, cover=18.0, wf=1) · 2.5·(20.91−21.91)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.09,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 180,
+            "horizon": 1320,
+            "done_before": 4,
+            "cover": 18.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 4→3 (done 4→5, target=8) · 1.0·(4−3)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 4,
+            "gap_after": 3,
+            "target": 8,
+            "done_before": 4,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -1333,7 +2724,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -1357,7 +2748,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT021",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -1381,7 +2772,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT022",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 180,
@@ -1406,10 +2797,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
-        "assigned_lot": "LOT011"
+        "block_continuation": true,
+        "block_done": 5,
+        "block_total": 6,
+        "assigned_lot": "LOT011",
+        "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 5,
+        "remaining": 1,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 300,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 5,
+          "remaining": 1,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 300,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 5,
+          "remaining": 1,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 300,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 240,
         "progress_pct": 54.2,
@@ -1430,6 +2879,58 @@
         "pacing": -0.31,
         "plan_hit": 0.14
       },
+      "reward_formula": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          }
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,horizon)/horizon = 8·240/1320 = 1.45 · eff: 4.0→5.0 (done=4, cover=0.0, wf=1) · 2.5·(2.55−3.55)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.45,
+            "eff_before": 4.0,
+            "eff_after": 5.0,
+            "target": 8,
+            "t": 240,
+            "horizon": 1320,
+            "done_before": 4,
+            "cover": 0.0,
+            "wf_qty": 1
+          }
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 4→3 (done 4→5, target=8) · 1.0·(4−3)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 4,
+            "gap_after": 3,
+            "target": 8,
+            "done_before": 4,
+            "wf_qty": 1
+          }
+        }
+      ],
       "schedule": [
         {
           "EQP_ID": "EQP001",
@@ -1473,7 +2974,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT018",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -1497,7 +2998,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT021",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -1521,7 +3022,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT022",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 180,

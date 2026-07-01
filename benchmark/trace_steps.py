@@ -13,29 +13,16 @@ from data.loader.fetch import load_data
 from data.loader.preprocess import preprocess
 from agent.rl_agent import SchedulingAgent
 from env.bulkfill_env import BulkFillEnv
+from benchmark.reward_formula_trace import REWARD_LABELS, build_reward_formula_details
 
 DS = ROOT / "data/dataset/SYM_3x3/train/20260629000000/input"
 SIM = 480
 
-# bulk 보상 가중치(평가·PPT와 동일)
 cfg = CONFIG.reward
 cfg.w_bulk_block_bonus = 3.0
 cfg.w_dedication_misuse = -4.0
 cfg.w_redundant_cover = -5.0
 cfg.w_plan_hit = 1.0
-
-REWARD_LABELS = {
-    "same_setup": "동일 셋업",
-    "pacing": "페이싱",
-    "plan_hit": "계획 달성",
-    "flow_balance": "흐름 균형",
-    "idle": "유휴",
-    "conversion": "전환",
-    "avoidable_conversion": "회피가능 전환",
-    "bulk_block_bonus": "블록 보너스",
-    "dedication_misuse": "전용 오용",
-    "redundant_cover": "중복 커버",
-}
 
 
 def _schedule_snapshot(schedule: list) -> list:
@@ -110,9 +97,10 @@ def main() -> None:
 
     steps = []
     cum = 0.0
-    done = False
+    done_flag = False
     step = 0
-    while not done and step < 14:
+    active_blocks: dict[str, dict] = {}
+    while not done_flag and step < 14:
         t_before = int(sim.current_time)
         eqp_before = sim.current_idle_eqp()
         mask = env.action_masks()
@@ -129,16 +117,86 @@ def main() -> None:
             bucket % (CONFIG.env.max_oper_count * CONFIG.env.max_prod_count),
         )
         state_before = _state_summary(obs, sim, total_plan)
+        eqp_obj = sim.eqps.get(eqp_before) if eqp_before else None
+        done_before = sim.stats["completed_qty"].get((ppk, oper), 0)
+        prev_prod = eqp_obj.prev_prod if eqp_obj else None
+        prev_oper = eqp_obj.prev_oper if eqp_obj else None
 
         obs, reward, terminated, truncated, info = env.step(action)
         cum += float(reward)
-        done = terminated or truncated
+        done_flag = terminated or truncated
 
         log_entry = env.get_decision_log()[-1] if env.get_decision_log() else {}
         breakdown = dict(log_entry.get("reward_breakdown") or sim._last_reward_breakdown or {})
         block_size = int(log_entry.get("block_size") or 0)
         block_start = bool(log_entry.get("block_start"))
         assigned_lot = log_entry.get("assigned_lot_id", "")
+        wf_qty = 1
+        proc_min = 60
+        if sim.schedule:
+            last = sim.schedule[-1]
+            if last.get("EQP_ID") == eqp_before and last.get("PLAN_PROD_KEY") == ppk:
+                wf_qty = int(last.get("WF_QTY") or 1)
+                proc_min = max(int(last.get("END_TM", 0) - last.get("START_TM", 0)), 1)
+
+        eqp_key = eqp_before or info.get("current_eqp") or ""
+        if block_start and block_size > 0 and eqp_key and sim.schedule:
+            last_bar = sim.schedule[-1]
+            start_tm = int(last_bar["START_TM"])
+            active_blocks[eqp_key] = {
+                "eqp_id": eqp_key,
+                "ppk": ppk,
+                "oper": oper,
+                "total": block_size,
+                "done": 1,
+                "remaining": max(block_size - 1, 0),
+                "proc_min": proc_min,
+                "start_tm": start_tm,
+                "committed_end_tm": start_tm + block_size * proc_min,
+                "scheduled_end_tm": int(last_bar["END_TM"]),
+                "block_start": True,
+            }
+        elif eqp_key in active_blocks and active_blocks[eqp_key]["ppk"] == ppk:
+            blk = active_blocks[eqp_key]
+            blk["done"] += 1
+            blk["remaining"] = max(blk["total"] - blk["done"], 0)
+            blk["block_start"] = False
+            ends = [
+                int(b["END_TM"])
+                for b in sim.schedule
+                if b["EQP_ID"] == eqp_key and b["PLAN_PROD_KEY"] == ppk
+            ]
+            if ends:
+                blk["scheduled_end_tm"] = max(ends)
+            if blk["remaining"] <= 0:
+                del active_blocks[eqp_key]
+
+        current_block = active_blocks.get(eqp_key)
+        blocks_snapshot = [
+            {
+                **b,
+                "scheduled_end_tm": b.get(
+                    "scheduled_end_tm",
+                    b["start_tm"] + b["done"] * b["proc_min"],
+                ),
+            }
+            for b in active_blocks.values()
+        ]
+
+        formula_details = build_reward_formula_details(
+            sim,
+            ppk=ppk,
+            oper_id=oper,
+            eqp_id=eqp_before or "",
+            wf_qty=wf_qty,
+            t=t_before,
+            breakdown=breakdown,
+            block_start=block_start,
+            block_size=block_size,
+            eqp_prev_prod=prev_prod,
+            eqp_prev_oper=prev_oper,
+            done_before=done_before,
+        )
 
         steps.append({
             "step": step + 1,
@@ -149,14 +207,23 @@ def main() -> None:
             "action": {
                 "bucket": bucket,
                 "level": level,
-                "block_size": block_size,
+                "block_size": block_size or (current_block or {}).get("total", 0),
                 "block_start": block_start,
+                "block_continuation": bool(
+                    current_block and not block_start and current_block.get("remaining", 0) >= 0,
+                ),
+                "block_done": (current_block or {}).get("done"),
+                "block_total": (current_block or {}).get("total"),
                 "assigned_lot": assigned_lot,
+                "wf_qty": wf_qty,
             },
+            "block": dict(current_block) if current_block else None,
+            "blocks": blocks_snapshot,
             "state": state_before,
             "reward": round(float(reward), 2),
             "cum": round(float(cum), 2),
             "reward_breakdown": {k: round(float(v), 2) for k, v in breakdown.items()},
+            "reward_formula": formula_details,
             "schedule": _schedule_snapshot(sim.schedule),
         })
         step += 1
