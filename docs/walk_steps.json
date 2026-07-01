@@ -1,0 +1,1436 @@
+{
+ "sim": 520,
+ "eqp_ids": [
+  "EQP001",
+  "EQP002",
+  "EQP003"
+ ],
+ "ppks": [
+  "PPK001",
+  "PPK002",
+  "PPK003",
+  "PPK004",
+  "PPK005"
+ ],
+ "steps": [
+  {
+   "step": 1,
+   "t": 0,
+   "eqp": "EQP001",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": true,
+   "reward": 2.7083,
+   "cum": 2.7083,
+   "breakdown": {
+    "pacing": -0.625,
+    "plan_hit": 0.3333,
+    "bulk_block_bonus": 3.0,
+    "redundant_cover": -0.0
+   },
+   "new_lot": "LOT001",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    }
+   ],
+   "conv": [],
+   "produced": 1,
+   "new_ppk": "PPK001"
+  },
+  {
+   "step": 2,
+   "t": 0,
+   "eqp": "EQP002",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": true,
+   "reward": 2.7083,
+   "cum": 5.4167,
+   "breakdown": {
+    "pacing": -0.625,
+    "plan_hit": 0.3333,
+    "bulk_block_bonus": 3.0,
+    "redundant_cover": -0.0
+   },
+   "new_lot": "LOT005",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    }
+   ],
+   "conv": [],
+   "produced": 2,
+   "new_ppk": "PPK002"
+  },
+  {
+   "step": 3,
+   "t": 0,
+   "eqp": "EQP003",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": true,
+   "reward": 2.7083,
+   "cum": 8.125,
+   "breakdown": {
+    "pacing": -0.625,
+    "plan_hit": 0.3333,
+    "bulk_block_bonus": 3.0,
+    "redundant_cover": -0.0
+   },
+   "new_lot": "LOT009",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    }
+   ],
+   "conv": [],
+   "produced": 3,
+   "new_ppk": "PPK003"
+  },
+  {
+   "step": 4,
+   "t": 0,
+   "eqp": "EQP001",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.7083,
+   "cum": 8.8333,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333
+   },
+   "new_lot": "LOT004",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    }
+   ],
+   "conv": [],
+   "produced": 4,
+   "new_ppk": "PPK001"
+  },
+  {
+   "step": 5,
+   "t": 60,
+   "eqp": "EQP002",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.7083,
+   "cum": 9.5417,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333
+   },
+   "new_lot": "LOT008",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    }
+   ],
+   "conv": [],
+   "produced": 5,
+   "new_ppk": "PPK002"
+  },
+  {
+   "step": 6,
+   "t": 60,
+   "eqp": "EQP003",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.7083,
+   "cum": 10.25,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333
+   },
+   "new_lot": "LOT012",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    }
+   ],
+   "conv": [],
+   "produced": 6,
+   "new_ppk": "PPK003"
+  },
+  {
+   "step": 7,
+   "t": 60,
+   "eqp": "EQP001",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.7083,
+   "cum": 10.9583,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333
+   },
+   "new_lot": "LOT002",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    }
+   ],
+   "conv": [],
+   "produced": 7,
+   "new_ppk": "PPK001"
+  },
+  {
+   "step": 8,
+   "t": 120,
+   "eqp": "EQP002",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.7083,
+   "cum": 11.6667,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333
+   },
+   "new_lot": "LOT006",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    }
+   ],
+   "conv": [],
+   "produced": 8,
+   "new_ppk": "PPK002"
+  },
+  {
+   "step": 9,
+   "t": 120,
+   "eqp": "EQP003",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.7083,
+   "cum": 12.375,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333
+   },
+   "new_lot": "LOT010",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    }
+   ],
+   "conv": [],
+   "produced": 9,
+   "new_ppk": "PPK003"
+  },
+  {
+   "step": 10,
+   "t": 120,
+   "eqp": "EQP001",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.375,
+   "cum": 12.75,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "redundant_cover": -0.0
+   },
+   "new_lot": "LOT003",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT003",
+     "PPK": "PPK001",
+     "START_TM": 180,
+     "END_TM": 240
+    }
+   ],
+   "conv": [],
+   "produced": 10,
+   "new_ppk": "PPK001"
+  },
+  {
+   "step": 11,
+   "t": 180,
+   "eqp": "EQP002",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.375,
+   "cum": 13.125,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "redundant_cover": -0.0
+   },
+   "new_lot": "LOT007",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT003",
+     "PPK": "PPK001",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT007",
+     "PPK": "PPK002",
+     "START_TM": 180,
+     "END_TM": 240
+    }
+   ],
+   "conv": [],
+   "produced": 11,
+   "new_ppk": "PPK002"
+  },
+  {
+   "step": 12,
+   "t": 180,
+   "eqp": "EQP003",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": true,
+   "reward": -7.6932,
+   "cum": 5.4318,
+   "breakdown": {
+    "pacing": 0.0568,
+    "conversion": -10.0,
+    "bulk_block_bonus": 2.25,
+    "redundant_cover": -0.0
+   },
+   "new_lot": null,
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT003",
+     "PPK": "PPK001",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT007",
+     "PPK": "PPK002",
+     "START_TM": 180,
+     "END_TM": 240
+    }
+   ],
+   "conv": [
+    {
+     "eqp_id": "EQP003",
+     "from_lot_cd": "LC_C",
+     "to_lot_cd": "LC_E",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 180,
+     "conv_end_min": 240
+    }
+   ],
+   "produced": 11,
+   "new_ppk": null
+  },
+  {
+   "step": 13,
+   "t": 180,
+   "eqp": "EQP001",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": -9.7159,
+   "cum": -4.2841,
+   "breakdown": {
+    "pacing": 0.2841,
+    "conversion": -10.0,
+    "redundant_cover": -0.0
+   },
+   "new_lot": "LOT018",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT003",
+     "PPK": "PPK001",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT007",
+     "PPK": "PPK002",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT018",
+     "PPK": "PPK005",
+     "START_TM": 240,
+     "END_TM": 300
+    }
+   ],
+   "conv": [
+    {
+     "eqp_id": "EQP003",
+     "from_lot_cd": "LC_C",
+     "to_lot_cd": "LC_E",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 180,
+     "conv_end_min": 240
+    },
+    {
+     "eqp_id": "EQP001",
+     "from_lot_cd": "LC_A",
+     "to_lot_cd": "LC_D",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 240,
+     "conv_end_min": 300
+    }
+   ],
+   "produced": 12,
+   "new_ppk": "PPK005"
+  },
+  {
+   "step": 14,
+   "t": 240,
+   "eqp": "EQP002",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": -9.9242,
+   "cum": -14.2083,
+   "breakdown": {
+    "pacing": 0.0758,
+    "conversion": -10.0,
+    "redundant_cover": -0.0
+   },
+   "new_lot": null,
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT003",
+     "PPK": "PPK001",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT007",
+     "PPK": "PPK002",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT018",
+     "PPK": "PPK005",
+     "START_TM": 240,
+     "END_TM": 300
+    }
+   ],
+   "conv": [
+    {
+     "eqp_id": "EQP003",
+     "from_lot_cd": "LC_C",
+     "to_lot_cd": "LC_E",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 180,
+     "conv_end_min": 240
+    },
+    {
+     "eqp_id": "EQP001",
+     "from_lot_cd": "LC_A",
+     "to_lot_cd": "LC_D",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 240,
+     "conv_end_min": 300
+    },
+    {
+     "eqp_id": "EQP002",
+     "from_lot_cd": "LC_B",
+     "to_lot_cd": "LC_D",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 240,
+     "conv_end_min": 300
+    }
+   ],
+   "produced": 12,
+   "new_ppk": null
+  },
+  {
+   "step": 15,
+   "t": 240,
+   "eqp": "EQP003",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": 0.7083,
+   "cum": -13.5,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333
+   },
+   "new_lot": "LOT017",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT003",
+     "PPK": "PPK001",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT007",
+     "PPK": "PPK002",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT018",
+     "PPK": "PPK005",
+     "START_TM": 240,
+     "END_TM": 300
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT013",
+     "PPK": "PPK004",
+     "START_TM": 300,
+     "END_TM": 360
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT014",
+     "PPK": "PPK004",
+     "START_TM": 300,
+     "END_TM": 360
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT017",
+     "PPK": "PPK005",
+     "START_TM": 300,
+     "END_TM": 360
+    }
+   ],
+   "conv": [
+    {
+     "eqp_id": "EQP003",
+     "from_lot_cd": "LC_C",
+     "to_lot_cd": "LC_E",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 180,
+     "conv_end_min": 240
+    },
+    {
+     "eqp_id": "EQP001",
+     "from_lot_cd": "LC_A",
+     "to_lot_cd": "LC_D",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 240,
+     "conv_end_min": 300
+    },
+    {
+     "eqp_id": "EQP002",
+     "from_lot_cd": "LC_B",
+     "to_lot_cd": "LC_D",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 240,
+     "conv_end_min": 300
+    }
+   ],
+   "produced": 15,
+   "new_ppk": "PPK005"
+  },
+  {
+   "step": 16,
+   "t": 300,
+   "eqp": "EQP001",
+   "ppk": null,
+   "oper": null,
+   "lot": null,
+   "conversion": false,
+   "block_start": false,
+   "reward": -9.2917,
+   "cum": -22.7917,
+   "breakdown": {
+    "same_setup": 1.0,
+    "pacing": -0.625,
+    "plan_hit": 0.3333,
+    "redundant_cover": -10.0
+   },
+   "new_lot": "LOT015",
+   "schedule": [
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT001",
+     "PPK": "PPK001",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT005",
+     "PPK": "PPK002",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT009",
+     "PPK": "PPK003",
+     "START_TM": 0,
+     "END_TM": 60
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT004",
+     "PPK": "PPK001",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT008",
+     "PPK": "PPK002",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT012",
+     "PPK": "PPK003",
+     "START_TM": 60,
+     "END_TM": 120
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT002",
+     "PPK": "PPK001",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT006",
+     "PPK": "PPK002",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT010",
+     "PPK": "PPK003",
+     "START_TM": 120,
+     "END_TM": 180
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT003",
+     "PPK": "PPK001",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT007",
+     "PPK": "PPK002",
+     "START_TM": 180,
+     "END_TM": 240
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT018",
+     "PPK": "PPK005",
+     "START_TM": 240,
+     "END_TM": 300
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT013",
+     "PPK": "PPK004",
+     "START_TM": 300,
+     "END_TM": 360
+    },
+    {
+     "EQP_ID": "EQP002",
+     "LOT_ID": "LOT014",
+     "PPK": "PPK004",
+     "START_TM": 300,
+     "END_TM": 360
+    },
+    {
+     "EQP_ID": "EQP003",
+     "LOT_ID": "LOT017",
+     "PPK": "PPK005",
+     "START_TM": 300,
+     "END_TM": 360
+    },
+    {
+     "EQP_ID": "EQP001",
+     "LOT_ID": "LOT015",
+     "PPK": "PPK004",
+     "START_TM": 360,
+     "END_TM": 420
+    }
+   ],
+   "conv": [
+    {
+     "eqp_id": "EQP003",
+     "from_lot_cd": "LC_C",
+     "to_lot_cd": "LC_E",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 180,
+     "conv_end_min": 240
+    },
+    {
+     "eqp_id": "EQP001",
+     "from_lot_cd": "LC_A",
+     "to_lot_cd": "LC_D",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 240,
+     "conv_end_min": 300
+    },
+    {
+     "eqp_id": "EQP002",
+     "from_lot_cd": "LC_B",
+     "to_lot_cd": "LC_D",
+     "from_temp": "T600",
+     "to_temp": "T600",
+     "conv_start_min": 240,
+     "conv_end_min": 300
+    }
+   ],
+   "produced": 16,
+   "new_ppk": "PPK004"
+  }
+ ],
+ "sel": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  12
+ ]
+}
