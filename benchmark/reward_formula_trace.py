@@ -188,8 +188,61 @@ REWARD_TERM_PAGES: List[Dict[str, Any]] = [
 ]
 
 
+REWARD_ENRICH: Dict[str, Dict[str, Any]] = {
+    "same_setup": {
+        "plain": "직전과 제품(PPK)·공정(OPER)이 같으면 셋업 변경 없이 +1. 셋업을 이어 붙이라는 신호.",
+        "symbols": [("w", "+1.0"), ("1[동일]", "직전 PPK·OPER = 이번 선택")],
+        "why": "전환 비용을 피하고 같은 셋업으로 연속 가공하도록 유도.",
+    },
+    "pacing": {
+        "plain": "takt 목표선(ideal)에 실제 진척(eff)이 가까워지면 +, 멀어지면 −.",
+        "symbols": [
+            ("ideal", "target·min(t,H)/H — 지금까지 만들어야 할 이상량"),
+            ("eff", "done + 다른설비 cover — 실제+커버 진척"),
+            ("target", "달성가능 상한(재공 한도)"),
+        ],
+        "why": "계획 속도(takt)에 맞추되, 이미 다른 설비가 덮으면 pace 충족으로 봄.",
+    },
+    "plan_hit": {
+        "plain": "아직 만들어야 할 양(gap)이 줄면 +. 이미 다 만들었으면 0.",
+        "symbols": [("gap", "max(target−done, 0)"), ("target", "달성가능 상한")],
+        "why": "계획 수량 달성을 직접 장려.",
+    },
+    "bulk_block_bonus": {
+        "plain": "블록 시작 시 N캐리어 연속 처리를 약속(commit)하면 +. 연속 2번째 LOT에는 없음.",
+        "symbols": [("N", "커밋 블록 크기"), ("takt 예산", "horizon 내 허용 캐리어 수"), ("w_bulk", "+3.0")],
+        "why": "한 설비·한 셋업으로 길게 밀어라 — Bulk-Fill 핵심.",
+    },
+    "conversion": {
+        "plain": "LOT_CD/TEMP 셋업이 바뀌는 전환 1회마다 −10.",
+        "symbols": [("w_conv", "−10.0"), ("1[전환]", "셋업 변경 발생")],
+        "why": "전환 = 설비 가동 손실. 근본적으로 줄이게 함.",
+    },
+    "avoidable_conversion": {
+        "plain": "굳이 이 설비에서 바꿀 필요 없었는데 전환하면 추가 −8×α.",
+        "symbols": [("α", "0~1 회피가능 비율 (다른 설비 커버 등)")],
+        "why": "다른 idle 설비에 맡기라는 신호.",
+    },
+    "redundant_cover": {
+        "plain": "다른 설비가 이미 충분히 덮는 제품을 또 잡으면 −.",
+        "symbols": [("cover", "다른 EQP horizon 투영 생산"), ("need", "잔여 필요량")],
+        "why": "3대가 같은 제품만 몰리는 lockstep 방지.",
+    },
+    "dedication_misuse": {
+        "plain": "범용 설비가 전용 idle 설비도 할 수 있는 일을 가져가면 −4.",
+        "symbols": [("breadth", "장비가 할 수 있는 제품 종류 수 — 작을수록 전용")],
+        "why": "전용 설비는 전용 제품에, 범용은 범용에.",
+    },
+}
+
+
 def _r(x: float, n: int = 2) -> float:
     return round(float(x), n)
+
+
+def enriched_reward_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
+    extra = REWARD_ENRICH.get(meta.get("key", ""), {})
+    return {**meta, **extra}
 
 
 def _term_from_map(by_key: Dict[str, Dict], key: str) -> Dict[str, Any]:

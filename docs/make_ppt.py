@@ -32,8 +32,10 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+from benchmark.ppt_state_pages import STATE_TERM_PAGES, trace_state_value
 from benchmark.reward_formula_trace import (
-    BULK_REWARD_ORDER, REWARD_LABELS, REWARD_TERM_PAGES, trace_term_detail,
+    BULK_REWARD_ORDER, REWARD_LABELS, REWARD_TERM_PAGES,
+    enriched_reward_meta, trace_term_detail,
 )
 
 KPI = json.load(open(os.path.join(_HERE, "kpi_conv_bench.json"), encoding="utf-8"))
@@ -152,55 +154,156 @@ def _full_formula_list(step_data: dict) -> list:
     return step_data.get("reward_formula_full") or step_data.get("reward_formula") or []
 
 
+def state_term_detail_slide(idx: int, meta: dict):
+    """State 블록 1개 — 쉬운 설명 · 채널 정의 · SYM_3x3 실측."""
+    s = content_slide(
+        "02  Bulk-Fill MDP 모델 정의",
+        f"State 항목 — {meta['title']}  ({meta['obs_slice']})",
+        idx,
+    )
+    box(s, 0.55, 1.35, 12.25, 0.52, LIGHT, line_color=LINE, line_w=1.0)
+    txt(s, 0.72, 1.42, 11.9, 0.38, [[
+        R("쉬운 설명  ", 10.5, ACCENT, True),
+        R(meta.get("plain", ""), 10.5, INK),
+    ]], line_spacing=1.08)
+    box(s, 0.55, 1.92, 12.25, 0.38, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
+    txt(s, 0.72, 1.98, 11.9, 0.28, [[
+        R("왜 필요한가  ", 10, STEEL, True),
+        R(meta.get("why", ""), 10, GRAY),
+    ]], line_spacing=1.08)
+
+    step_no = meta.get("trace_step", 1)
+    hdr = ["인덱스", "이름", "산식", "의미", f"SYM_3x3 (Step {step_no})"]
+    widths = [1.15, 1.55, 2.85, 3.55, 2.7]
+    y = 2.38
+    x0 = 0.55
+    xh = 0.4
+    for c_i, (h, w) in enumerate(zip(hdr, widths)):
+        x = x0 + sum(widths[:c_i])
+        cell = box(s, x, y, w, xh, NAVY, line_color=LINE, line_w=0.75)
+        tf = cell.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = Inches(0.06)
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
+        r.text = h
+        r.font.size = Pt(10.5)
+        r.font.color.rgb = WHITE
+        r.font.bold = True
+        r.font.name = FONT
+
+    items = meta.get("items", [])
+    n = len(items)
+    body_top = y + xh
+    body_h = min(0.52, (6.55 - body_top) / max(n, 1))
+    for r_i, item in enumerate(items):
+        ry = body_top + r_i * body_h
+        fill = LIGHT if r_i % 2 else WHITE
+        vals = [
+            item.get("idx", ""),
+            item.get("name", ""),
+            item.get("formula", ""),
+            item.get("meaning", ""),
+            trace_state_value(TRACE["steps"], step_no, item.get("trace_path")),
+        ]
+        for c_i, (cv, w) in enumerate(zip(vals, widths)):
+            x = x0 + sum(widths[:c_i])
+            cell = box(s, x, ry, w, body_h, fill, line_color=LINE, line_w=0.75)
+            tf = cell.text_frame
+            tf.word_wrap = True
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.margin_left = Inches(0.06)
+            tf.margin_right = Inches(0.05)
+            p = tf.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER if c_i == 4 else PP_ALIGN.LEFT
+            run = p.add_run()
+            run.text = str(cv)
+            run.font.size = Pt(9.8 if c_i == 3 else 10.2)
+            run.font.bold = c_i == 0
+            run.font.color.rgb = NAVY if c_i <= 1 else (ACCENT if c_i == 4 else GRAY)
+            run.font.name = FONT
+    return s
+
+
 def reward_term_detail_slide(idx: int, meta: dict):
-    """보상 항목 1개 — 수식 · A/B 시나리오 · SYM_3x3 실측."""
+    """보상 항목 1개 — 쉬운 설명 · 수식 · A/B · SYM_3x3 실측."""
     key = meta["key"]
     label = REWARD_LABELS.get(key, key)
     s = content_slide("03  보상 산출 로직 예시", f"보상 항목 — {label}  (w={meta['weight']})", idx)
 
-    box(s, 0.55, 1.38, 12.25, 0.72, NAVY)
-    txt(s, 0.55, 1.38, 12.25, 0.72, [[R(meta["formula"], 13.5, WHITE, True)]],
+    box(s, 0.55, 1.32, 12.25, 0.62, NAVY)
+    txt(s, 0.55, 1.32, 12.25, 0.62, [[R(meta["formula"], 13, WHITE, True)]],
         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-    txt(s, 0.55, 2.18, 12.25, 0.38, [[R(meta["desc"], 11, GRAY)]])
+
+    box(s, 0.55, 2.0, 12.25, 0.48, LIGHT, line_color=LINE, line_w=1.0)
+    txt(s, 0.72, 2.06, 11.9, 0.36, [[
+        R("쉬운 설명  ", 10.5, ACCENT, True),
+        R(meta.get("plain", meta.get("desc", "")), 10.5, INK),
+    ]], line_spacing=1.06)
+
+    syms = meta.get("symbols") or []
+    if syms:
+        box(s, 0.55, 2.54, 12.25, 0.42 + 0.22 * min(len(syms), 3), LIGHT2, line_color=LINE, line_w=0.75)
+        sym_lines = []
+        for sym, desc in syms:
+            sym_lines.append([
+                R(f"{sym}  ", 10, NAVY, True),
+                R(desc, 10, GRAY),
+            ])
+        txt(s, 0.72, 2.6, 11.9, 0.35 + 0.22 * min(len(syms), 3), sym_lines, line_spacing=1.05)
+
+    why_y = 3.02 + 0.22 * max(0, min(len(syms), 3) - 1)
+    if meta.get("why"):
+        box(s, 0.55, why_y, 12.25, 0.34, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
+        txt(s, 0.72, why_y + 0.05, 11.9, 0.26, [[
+            R("왜 필요한가  ", 10, STEEL, True),
+            R(meta["why"], 10, INK),
+        ]], line_spacing=1.05)
+        panel_top = why_y + 0.42
+    else:
+        panel_top = why_y
 
     def _panel(x, y, w, h, hdr_col, hdr_title, block):
         box(s, x, y, w, h, LIGHT, line_color=LINE, line_w=1.0)
-        box(s, x, y, w, 0.42, hdr_col)
-        txt(s, x, y, w, 0.42, [[R(hdr_title, 11.5, WHITE, True)]],
+        box(s, x, y, w, 0.38, hdr_col)
+        txt(s, x, y, w, 0.38, [[R(hdr_title, 11, WHITE, True)]],
             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-        txt(s, x + 0.14, y + 0.52, w - 0.28, 0.42, [[R(block["context"], 10, INK)]], line_spacing=1.08)
-        box(s, x + 0.14, y + 0.98, w - 0.28, 0.78, WHITE, line_color=LINE, line_w=0.75)
-        txt(s, x + 0.22, y + 1.06, w - 0.44, 0.62, [[R(block["substitution"], 10, NAVY)]], line_spacing=1.1)
+        txt(s, x + 0.14, y + 0.46, w - 0.28, 0.38, [[R(block["context"], 9.5, INK)]], line_spacing=1.06)
+        box(s, x + 0.14, y + 0.88, w - 0.28, 0.68, WHITE, line_color=LINE, line_w=0.75)
+        txt(s, x + 0.22, y + 0.94, w - 0.44, 0.56, [[R(block["substitution"], 9.5, NAVY)]], line_spacing=1.08)
         v = block["value"]
         vcol = GREEN if str(v).startswith("+") else (RED if str(v).startswith("−") or str(v).startswith("-") else GRAY)
-        txt(s, x + 0.14, y + 1.82, w - 0.28, 0.38, [[R(f"결과  {v}", 14, vcol, True)]], align=PP_ALIGN.RIGHT)
+        txt(s, x + 0.14, y + 1.62, w - 0.28, 0.32, [[R(f"결과  {v}", 13, vcol, True)]], align=PP_ALIGN.RIGHT)
 
     sa, sb = meta["scenario_a"], meta["scenario_b"]
-    _panel(0.55, 2.62, 6.05, 2.28, GREEN, sa["title"], sa)
-    _panel(6.75, 2.62, 6.05, 2.28, RED, sb["title"], sb)
+    _panel(0.55, panel_top, 6.05, 2.0, GREEN, sa["title"], sa)
+    _panel(6.75, panel_top, 6.05, 2.0, RED, sb["title"], sb)
 
+    trace_top = panel_top + 2.08
     trace = trace_term_detail(TRACE["steps"], key, meta.get("trace_step"))
-    box(s, 0.55, 5.02, 12.25, 1.42, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=1.0)
-    box(s, 0.55, 5.02, 12.25, 0.38, STEEL)
+    box(s, 0.55, trace_top, 12.25, 1.35, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=1.0)
+    box(s, 0.55, trace_top, 12.25, 0.36, STEEL)
     if trace:
         hdr = (
             f"SYM_3x3 실측 — Step {trace['step']}  ·  {trace.get('eqp', '')} → {trace.get('ppk', '')}"
         )
-        txt(s, 0.55, 5.02, 12.25, 0.38, [[R(hdr, 11, WHITE, True)]],
+        txt(s, 0.55, trace_top, 12.25, 0.36, [[R(hdr, 11, WHITE, True)]],
             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
         tv = float(trace.get("value", 0))
-        txt(s, 0.72, 5.48, 11.9, 0.42, [[R(trace.get("substitution", ""), 10, INK)]])
-        txt(s, 0.72, 5.92, 11.9, 0.38, [[
-            R(f"→  {trace.get('result', '')}  ", 12, _val_color(tv), True),
-            R(f"(clip 전 항목 기여)", 10, GRAY),
+        txt(s, 0.72, trace_top + 0.44, 11.9, 0.4, [[R(trace.get("substitution", ""), 9.8, INK)]])
+        txt(s, 0.72, trace_top + 0.86, 11.9, 0.36, [[
+            R(f"→  {trace.get('result', '')}  ", 11.5, _val_color(tv), True),
+            R("(clip 전 항목 기여)", 9.5, GRAY),
         ]])
     else:
-        txt(s, 0.55, 5.02, 12.25, 0.38, [[R("SYM_3x3 실측 — 해당 항목 비발생 (0)", 11, WHITE, True)]],
+        txt(s, 0.55, trace_top, 12.25, 0.36, [[R("SYM_3x3 실측 — 해당 항목 비발생 (0)", 11, WHITE, True)]],
             align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-        txt(s, 0.72, 5.55, 11.9, 0.55, [[
-            R("이 트레이스에서는 전환·전용오용 등이 발생하지 않아 0입니다. ", 10.5, GRAY),
-            R("예시 B 시나리오를 참고하세요.", 10.5, NAVY, True),
-        ]], line_spacing=1.1)
+        txt(s, 0.72, trace_top + 0.48, 11.9, 0.5, [[
+            R("이 트레이스에서는 해당 항목이 발생하지 않아 0입니다. ", 10, GRAY),
+            R("예시 B 시나리오를 참고하세요.", 10, NAVY, True),
+        ]], line_spacing=1.08)
     return s
 
 
@@ -373,7 +476,7 @@ def reward_formula_slide(idx: int):
     txt(s, 0.9, 6.55, 11.5, 0.55, [[
         R("다음 ", 12, INK),
         R(f"{len(REWARD_TERM_PAGES)}개 보상 항목", 12, NAVY, True),
-        R("을 항목별 상세 슬라이드(수식·A/B·실측)로 설명한 뒤, ", 12, INK),
+        R("을 항목별 상세(쉬운 설명·수식·A/B·실측)로 설명한 뒤, ", 12, INK),
         R("SYM_3x3 실제 추론 트레이스", 12, NAVY, True),
         R("를 스텝마다 ", 12, INK),
         R("State → Action → Reward(8항 전체)", 12, ACCENT, True),
@@ -493,7 +596,7 @@ txt(s, 9.9, 6.5, 3.0, 0.4, [[R("2026", 12, RGBColor(0x8F,0xA6,0xC0), True)]], al
 s = content_slide("CONTENTS", "목차", 2)
 agenda = [
     ("01", "문제 정의 및 시스템 구조", "스케줄링 과제 · 전환 비용 · 모듈 아키텍처와 구조적 강점"),
-    ("02", "Bulk-Fill MDP 모델 정의", "State · Action · Reward 상세 정의와 마스킹 · 블록 점유 메커니즘"),
+    ("02", "Bulk-Fill MDP 모델 정의", "State · Action · Reward 상세(항목별 예시) · 마스킹 · 블록 점유 메커니즘"),
     ("03", "보상 산출 로직 예시", "입력 JSON · 보상 항목별 상세(8p) · 스텝별 SAR · 누적 간트"),
     ("04", "알고리즘 KPI 비교 및 효과성 검증", "테스트 데이터 기반 정량 비교 · 학습 모델 효과 입증"),
 ]
@@ -705,15 +808,26 @@ for r_i, (c1, c2, c3, is_h) in enumerate(rows):
         x += cwd
     y += h
 txt(s, 0.9, 6.55, 11.5, 0.6, [[
-    R("핵심 ", 12.5, ACCENT, True),
-    R("버킷 채널이 제품·공정·설비모델별 \"지금 이 버킷을 잡으면 얼마나 유효/시급/중복인가\"를 정책에 제공", 12.5, INK),
-    R("하여, 전환 회피와 페이싱 판단의 근거가 됩니다.", 12.5, GRAY),
+    R("다음 ", 12.5, ACCENT, True),
+    R(f"{len(STATE_TERM_PAGES)}개 State 블록", 12.5, NAVY, True),
+    R("을 항목별 상세(채널 정의·SYM_3x3 실측)로 설명합니다. ", 12.5, INK),
+    R("버킷 채널", 12.5, NAVY, True),
+    R("이 전환 회피·페이싱 판단의 근거가 됩니다.", 12.5, GRAY),
 ]], line_spacing=1.1)
 
 # ════════════════════════════════════════════════════════════════════════════
-# 8. Action 정의
+# 8~11. State 항목별 상세 (채널 · 실측)
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("02  Bulk-Fill MDP 모델 정의", "Action — 행동 공간과 블록 점유 메커니즘", 8)
+_slide = 8
+for _st in STATE_TERM_PAGES:
+    state_term_detail_slide(_slide, _st)
+    _slide += 1
+
+# ════════════════════════════════════════════════════════════════════════════
+# Action 정의
+# ════════════════════════════════════════════════════════════════════════════
+s = content_slide("02  Bulk-Fill MDP 모델 정의", "Action — 행동 공간과 블록 점유 메커니즘", _slide)
+_slide += 1
 box(s, 0.9, 1.4, 11.5, 0.66, ACCENT)
 txt(s, 0.9, 1.4, 11.5, 0.66, [[
     R("action = MultiDiscrete( [ O×P 버킷 ,  L 블록크기 레벨 ] )", 15, WHITE, True)
@@ -758,9 +872,10 @@ txt(s, 0.9, 6.5, 11.5, 0.5, [[
 ]], line_spacing=1.1)
 
 # ════════════════════════════════════════════════════════════════════════════
-# 9. Reward 정의
+# Reward 정의
 # ════════════════════════════════════════════════════════════════════════════
-s = content_slide("02  Bulk-Fill MDP 모델 정의", "Reward — 보상 항목과 가중치", 9)
+s = content_slide("02  Bulk-Fill MDP 모델 정의", "Reward — 보상 항목과 가중치", _slide)
+_slide += 1
 txt(s, 0.9, 1.38, 11.6, 0.45, [[
     R("스텝 보상은 아래 항의 합이며 ", 13.5, INK),
     R("±10 범위로 클리핑", 13.5, NAVY, True),
@@ -810,25 +925,23 @@ txt(s, 0.9, 6.62, 11.6, 0.5, [[
 ]], line_spacing=1.1)
 
 # ════════════════════════════════════════════════════════════════════════════
-# 10. 입력 데이터 형태
+# 입력 데이터 형태
 # ════════════════════════════════════════════════════════════════════════════
-input_data_slide(10)
+input_data_slide(_slide)
+_slide += 1
 
+# 보상 수식 개요
 # ════════════════════════════════════════════════════════════════════════════
-# 11. 보상 수식 개요
-# ════════════════════════════════════════════════════════════════════════════
-reward_formula_slide(11)
+reward_formula_slide(_slide)
+_slide += 1
 
+# 보상 항목별 상세 (수식 · A/B · 실측)
 # ════════════════════════════════════════════════════════════════════════════
-# 12~19. 보상 항목별 상세 (수식 · A/B · 실측)
-# ════════════════════════════════════════════════════════════════════════════
-_slide = 12
 for _meta in REWARD_TERM_PAGES:
-    reward_term_detail_slide(_slide, _meta)
+    reward_term_detail_slide(_slide, enriched_reward_meta(_meta))
     _slide += 1
 
-# ════════════════════════════════════════════════════════════════════════════
-# 20~25. 스텝별 State · Action · Reward · 누적 간트
+# 스텝별 State · Action · Reward · 누적 간트
 # ════════════════════════════════════════════════════════════════════════════
 for _sn in KEY_TRACE_STEPS:
     step_walkthrough_slide(_slide, _sn)
