@@ -141,14 +141,17 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   useEffect(() => { setCompareAlgos(new Set(available.map(a => a.id))); }, [available]);
 
-  // 간트 x축 끝 = max(sim_end, 스케줄 마지막 END_TM) → 지평선을 넘어 처리된 재공도 잘리지 않게 표시
-  const dataEnd = useMemo(() => {
-    const simEnd = result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 1440;
-    const schedEnd = result?.schedule?.length
-      ? Math.max(...result.schedule.map((r) => r.END_TM))
-      : 0;
-    return Math.max(simEnd, schedEnd, 1);
-  }, [result, compareData]);
+  // 간트 x축 기본 끝 = sim_end(예: 1440). 차트는 컨테이너 너비를 꽉 채우고,
+  // 「X축 고정」에서 종료 시각을 늘리면 크기는 유지된 채 x축 간격만 압축된다.
+  const dataEnd = useMemo(
+    () => result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 1440,
+    [result, compareData],
+  );
+  // 스케줄이 지평선을 넘는 경우, 「X축 고정」 종료값 상한으로 안내
+  const scheduleEnd = useMemo(
+    () => (result?.schedule?.length ? Math.max(...result.schedule.map((r) => r.END_TM)) : 0),
+    [result],
+  );
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
 
   const simBaseTime = useMemo(() => {
@@ -464,6 +467,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                         <label className="field-label gantt-time-field">
                           종료<input type="number" className="time-input" value={ganttEnd} onChange={e => setGanttEnd(Number(e.target.value))} />
                         </label>
+                        {scheduleEnd > dataEnd && (
+                          <button type="button" className="btn btn-ghost btn-xs"
+                            onClick={() => { setGanttStart(0); setGanttEnd(scheduleEnd); }}>
+                            전체({scheduleEnd}분)
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
