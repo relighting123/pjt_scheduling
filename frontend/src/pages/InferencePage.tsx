@@ -141,7 +141,14 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   useEffect(() => { setCompareAlgos(new Set(available.map(a => a.id))); }, [available]);
 
-  const dataEnd = useMemo(() => result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 1440, [result, compareData]);
+  // 간트 x축 끝 = max(sim_end, 스케줄 마지막 END_TM) → 지평선을 넘어 처리된 재공도 잘리지 않게 표시
+  const dataEnd = useMemo(() => {
+    const simEnd = result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 1440;
+    const schedEnd = result?.schedule?.length
+      ? Math.max(...result.schedule.map((r) => r.END_TM))
+      : 0;
+    return Math.max(simEnd, schedEnd, 1);
+  }, [result, compareData]);
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
 
   const simBaseTime = useMemo(() => {

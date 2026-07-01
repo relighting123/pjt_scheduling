@@ -161,7 +161,8 @@ def run_inference(
             "oper_switches": stats["oper_switches"],
             "prod_switches": stats["prod_switches"],
             "conversions":   stats.get("conversions", 0),
-            "completed_qty": {str(k): v for k, v in stats["completed_qty"].items()},
+            "completed_qty": {("|".join(map(str, k)) if isinstance(k, tuple) else str(k)): v
+                              for k, v in stats["completed_qty"].items()},
             "remaining_wip":  sched_env.sim.get_wip_waiting(),
             "remaining_current_wip": sched_env.sim.get_remaining_current_wip(),
             "steps":          steps,
@@ -239,7 +240,8 @@ def _run_bulkfill_inference(
             "oper_switches": stats["oper_switches"],
             "prod_switches": stats["prod_switches"],
             "conversions":   stats.get("conversions", 0),
-            "completed_qty": {str(k): v for k, v in stats["completed_qty"].items()},
+            "completed_qty": {("|".join(map(str, k)) if isinstance(k, tuple) else str(k)): v
+                              for k, v in stats["completed_qty"].items()},
             "remaining_wip":  sched_env.sim.get_wip_waiting(),
             "remaining_current_wip": sched_env.sim.get_remaining_current_wip(),
             "steps":          steps,
