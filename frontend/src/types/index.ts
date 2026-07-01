@@ -341,6 +341,7 @@ export interface AlgorithmCompareResponse {
   oper_ids: string[];
   eqp_ids: string[];
   sim_end_minutes: number;
+  sim_base_time?: string;
   infer_meta?: InferMeta;
 }
 

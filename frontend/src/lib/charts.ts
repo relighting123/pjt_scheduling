@@ -45,6 +45,24 @@ export function resolveGanttTimeRange(axis: GanttAxisOptions): [number, number] 
   return [0, end];
 }
 
+/** 스케줄 배열들에서 최대 END_TM(분) */
+export function maxScheduleEndMinutes(schedules: ScheduleRecord[][]): number {
+  const ends = schedules.flat().map((r) => r.END_TM);
+  return ends.length ? Math.max(...ends) : 0;
+}
+
+/** 알고리즘 비교 응답 기준 X축 종료(분) – sim_end와 실제 스케줄 끝 중 큰 값 */
+export function resolveCompareTimeEndMinutes(
+  compareData: {
+    sim_end_minutes?: number;
+    results?: { schedule: ScheduleRecord[] }[];
+  } | null,
+): number {
+  const schedules = compareData?.results?.map((r) => r.schedule ?? []) ?? [];
+  const maxSched = maxScheduleEndMinutes(schedules);
+  return Math.max(compareData?.sim_end_minutes ?? 0, maxSched, 1);
+}
+
 /** 간트 전용 팔레트 — 앱 UI accent 톤 */
 const GANTT_PROD_COLORS = [
   "#3b6ef0", "#6366f1", "#0ea5e9", "#14b8a6", "#22c55e",
@@ -1114,18 +1132,24 @@ export function buildCompareGanttAxis(
   entries: AlgoCompareEntry[],
   compareData: { eqp_ids?: string[]; sim_end_minutes?: number } | null,
   simBaseTime?: string,
+  overrides?: Pick<GanttAxisOptions, "timeStartMinutes" | "timeEndMinutes" | "fixedRange">,
 ): GanttAxisOptions {
-  const scheduleEnds = entries.flatMap((e) => e.result.schedule.map((r) => r.END_TM));
-  const maxScheduleEnd = scheduleEnds.length ? Math.max(...scheduleEnds) : 0;
-  const simEnd = Math.max(compareData?.sim_end_minutes ?? 1440, maxScheduleEnd, 1);
+  const simEnd = resolveCompareTimeEndMinutes(
+    compareData
+      ? {
+          sim_end_minutes: compareData.sim_end_minutes,
+          results: entries.map((e) => ({ schedule: e.result.schedule })),
+        }
+      : { results: entries.map((e) => ({ schedule: e.result.schedule })) },
+  );
   const eqpFromCompare = compareData?.eqp_ids ?? [];
   const eqpFromSched = [...new Set(entries.flatMap((e) => e.result.schedule.map((r) => r.EQP_ID)))];
   const eqpIds = eqpFromCompare.length ? eqpFromCompare : eqpFromSched;
   return {
     eqpIds: sortedEqpIds(eqpIds),
-    timeStartMinutes: 0,
-    timeEndMinutes: simEnd,
-    fixedRange: false,
+    timeStartMinutes: overrides?.fixedRange ? (overrides.timeStartMinutes ?? 0) : 0,
+    timeEndMinutes: overrides?.fixedRange ? (overrides.timeEndMinutes ?? simEnd) : simEnd,
+    fixedRange: overrides?.fixedRange ?? false,
     simBaseTime,
   };
 }

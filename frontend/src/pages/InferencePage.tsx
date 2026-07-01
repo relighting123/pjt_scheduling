@@ -17,6 +17,7 @@ import {
   buildAlgorithmAchievementComparison,
   buildAlgorithmGanttComparison,
   buildCompareGanttAxis,
+  resolveCompareTimeEndMinutes,
   type GanttBarLabel,
   type AlgoCompareEntry,
   ALGO_CHART_COLORS,
@@ -176,6 +177,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ganttFixed, setGanttFixed]       = useState(false);
   const [ganttStart, setGanttStart]       = useState(0);
   const [ganttEnd, setGanttEnd]           = useState(1440);
+  const [compareGanttFixed, setCompareGanttFixed] = useState(false);
+  const [compareGanttStart, setCompareGanttStart] = useState(0);
+  const [compareGanttEnd, setCompareGanttEnd] = useState(1440);
   const [compareShowGantt, setCompareShowGantt] = useState(true);
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<Set<string>>(new Set());
   const [showConversionBars, setShowConversionBars] = useState(true);
@@ -204,22 +208,43 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   useEffect(() => { setCompareAlgos(new Set(available.map(a => a.id))); }, [available]);
 
-  // 간트 x축 기본 끝 = sim_end(예: 1440). 차트는 컨테이너 너비를 꽉 채우고,
-  // 「X축 고정」에서 종료 시각을 늘리면 크기는 유지된 채 x축 간격만 압축된다.
-  const dataEnd = useMemo(
-    () => result?.sim_end_minutes ?? compareData?.sim_end_minutes ?? 1440,
-    [result, compareData],
+  // 간트 x축 기본 끝 = sim_end와 실제 스케줄 끝 중 큰 값.
+  const dataEnd = useMemo(() => {
+    if (!result) return 1440;
+    const schedEnd = result.schedule?.length
+      ? Math.max(...result.schedule.map((r) => r.END_TM))
+      : 0;
+    return Math.max(result.sim_end_minutes ?? 0, schedEnd, 1);
+  }, [result]);
+  const compareDataEnd = useMemo(
+    () => (compareData
+      ? resolveCompareTimeEndMinutes({
+          sim_end_minutes: compareData.sim_end_minutes,
+          results: compareData.results,
+        })
+      : 1440),
+    [compareData],
   );
+  const compareScheduleEnd = useMemo(() => {
+    if (!compareData?.results.length) return 0;
+    const ends = compareData.results.flatMap((r) => r.schedule.map((row) => row.END_TM));
+    return ends.length ? Math.max(...ends) : 0;
+  }, [compareData]);
   // 스케줄이 지평선을 넘는 경우, 「X축 고정」 종료값 상한으로 안내
   const scheduleEnd = useMemo(
     () => (result?.schedule?.length ? Math.max(...result.schedule.map((r) => r.END_TM)) : 0),
     [result],
   );
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
+  useEffect(() => {
+    if (compareDataEnd > 0 && !compareGanttFixed) setCompareGanttEnd(compareDataEnd);
+  }, [compareDataEnd, compareGanttFixed]);
 
   const simBaseTime = useMemo(() => {
     // 1순위: 추론 결과에 실린 sim_base_time(데이터 실제 기준시각, 폴더 형식 무관)
-    const resultBase = result?.sim_base_time ?? compareData?.results?.[0]?.sim_base_time;
+    const resultBase = result?.sim_base_time
+      ?? compareData?.sim_base_time
+      ?? compareData?.results?.[0]?.sim_base_time;
     if (resultBase && parseSimBaseMs(resultBase) != null) return resultBase;
     // 2순위: summary base(파싱 가능할 때만)
     if (summary?.sim_base_time && parseSimBaseMs(summary.sim_base_time) != null) {
@@ -370,6 +395,13 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         conversionMinutes,
       }));
       setCompareData(res);
+      const compareEnd = resolveCompareTimeEndMinutes({
+        sim_end_minutes: res.sim_end_minutes,
+        results: res.results,
+      });
+      setCompareGanttStart(0);
+      setCompareGanttEnd(compareEnd);
+      setCompareGanttFixed(false);
       if (res.results.length === 1) setResult(res.results[0]);
       if (res.infer_meta) {
         const meta = res.infer_meta;
@@ -426,9 +458,21 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const compareGanttChart = useMemo(() => {
     if (!compareShowGantt || compareEntries.length < 1) return null;
-    const compareAxis = buildCompareGanttAxis(compareEntries, compareData, simBaseTime);
+    const compareAxis = buildCompareGanttAxis(compareEntries, compareData, simBaseTime, {
+      fixedRange: compareGanttFixed,
+      timeStartMinutes: compareGanttStart,
+      timeEndMinutes: compareGanttEnd,
+    });
     return buildAlgorithmGanttComparison(compareEntries, compareAxis);
-  }, [compareShowGantt, compareEntries, compareData, simBaseTime]);
+  }, [
+    compareShowGantt,
+    compareEntries,
+    compareData,
+    simBaseTime,
+    compareGanttFixed,
+    compareGanttStart,
+    compareGanttEnd,
+  ]);
 
   const compareKpiChart = useMemo(() => {
     if (compareEntries.length < 1) return null;
@@ -893,8 +937,76 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   </div>
                 )}
                 {compareShowGantt && compareGanttChart && (
-                  <div className="card chart-wrap gantt-chart-panel">
-                    <PlotChart {...compareGanttChart} scrollable />
+                  <div className="card gantt-chart-panel">
+                    <div className="card-title">알고리즘 비교 간트</div>
+                    <div className="gantt-toolbar">
+                      <div className="gantt-toolbar-group time-range-group">
+                        <label className="check-label">
+                          <input
+                            type="checkbox"
+                            checked={compareGanttFixed}
+                            onChange={(e) => {
+                              setCompareGanttFixed(e.target.checked);
+                              if (e.target.checked) {
+                                setCompareGanttStart(0);
+                                setCompareGanttEnd(compareDataEnd);
+                              }
+                            }}
+                          />
+                          X축 고정
+                        </label>
+                        {compareGanttFixed && (
+                          <>
+                            <label className="field-label gantt-time-field">
+                              시작
+                              <input
+                                type="number"
+                                className="time-input"
+                                min={0}
+                                value={compareGanttStart}
+                                onChange={(e) => setCompareGanttStart(Math.max(0, Number(e.target.value)))}
+                              />
+                            </label>
+                            <label className="field-label gantt-time-field">
+                              종료
+                              <input
+                                type="number"
+                                className="time-input"
+                                value={compareGanttEnd}
+                                onChange={(e) => setCompareGanttEnd(Number(e.target.value))}
+                              />
+                            </label>
+                            {compareScheduleEnd > compareDataEnd && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => {
+                                  setCompareGanttStart(0);
+                                  setCompareGanttEnd(compareScheduleEnd);
+                                }}
+                              >
+                                전체({compareScheduleEnd}분)
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {(ganttBaseInfo.rtk || ganttBaseInfo.baseText) && (
+                      <div className="gantt-base-info">
+                        {ganttBaseInfo.rtk && (
+                          <span className="gantt-base-rtk">RULE_TIMEKEY <b>{ganttBaseInfo.rtk}</b></span>
+                        )}
+                        {ganttBaseInfo.baseText && (
+                          <span className="gantt-base-time">
+                            기준 시각 <b>{ganttBaseInfo.baseText}</b> = 0분 · 이후 눈금은 실제 시각(HH:mm)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="chart-wrap">
+                      <PlotChart {...compareGanttChart} scrollable />
+                    </div>
                   </div>
                 )}
               </div>
