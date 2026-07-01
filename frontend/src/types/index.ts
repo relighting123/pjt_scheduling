@@ -197,6 +197,8 @@ export interface InferRunOptions {
   decision_log?: boolean;
   enable_wip_inflow?: boolean;
   include_history?: boolean;
+  max_conversions?: number;
+  max_conversions_per_eqp?: number;
 }
 
 export interface InferenceResult {

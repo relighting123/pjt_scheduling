@@ -461,6 +461,8 @@ class EnvConfig:
     hard_horizon_minutes: int = 1440    # 07:00 → 익일 07:00
     soft_cutoff_minutes:  int = 1320    # 익일 05:00
     conversion_minutes:   int = 60      # LOT_CD/TEMP 변경 시 setup
+    max_conversions: Optional[int] = None          # 시뮬 전체 전환 상한 (None=무제한)
+    max_conversions_per_eqp: Optional[int] = None  # EQP별 전환 상한 (None=무제한)
 
 
 @dataclass

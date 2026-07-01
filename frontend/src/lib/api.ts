@@ -141,6 +141,8 @@ export const api = {
     db_load?: boolean;
     db_alias?: string;
     no_history?: boolean;
+    max_conversions?: number;
+    max_conversions_per_eqp?: number;
   } = {}) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
@@ -159,6 +161,10 @@ export const api = {
         ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),
         ...(opts.lot_cd ? { lot_cd: opts.lot_cd } : {}),
         ...(opts.db_alias ? { db_alias: opts.db_alias } : {}),
+        ...(opts.max_conversions != null ? { max_conversions: opts.max_conversions } : {}),
+        ...(opts.max_conversions_per_eqp != null
+          ? { max_conversions_per_eqp: opts.max_conversions_per_eqp }
+          : {}),
       }),
     }),
   runCompare: (
@@ -172,6 +178,8 @@ export const api = {
       rule_timekey?: string;
       nodb?: boolean;
       lot_cd?: string;
+      max_conversions?: number;
+      max_conversions_per_eqp?: number;
     } = {},
   ) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
@@ -187,6 +195,10 @@ export const api = {
         ...(opts.fac_id ? { fac_id: opts.fac_id } : {}),
         ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),
         ...(opts.lot_cd ? { lot_cd: opts.lot_cd } : {}),
+        ...(opts.max_conversions != null ? { max_conversions: opts.max_conversions } : {}),
+        ...(opts.max_conversions_per_eqp != null
+          ? { max_conversions_per_eqp: opts.max_conversions_per_eqp }
+          : {}),
       }),
     }),
   getInferenceResult: (input_folder?: string) =>

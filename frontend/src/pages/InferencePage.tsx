@@ -58,9 +58,15 @@ function buildInferOptions(
     dbLoad: boolean;
     dbAlias: string;
     noHistory: boolean;
+    maxConversions: string;
+    maxConversionsPerEqp: string;
   },
 ) {
   const facId = facIdFromFolder(selectedFolder);
+  const maxConv = opts.maxConversions.trim() ? Number(opts.maxConversions) : undefined;
+  const maxConvEqp = opts.maxConversionsPerEqp.trim()
+    ? Number(opts.maxConversionsPerEqp)
+    : undefined;
   return {
     input_folder: selectedFolder,
     ...(facId ? { fac_id: facId } : {}),
@@ -73,6 +79,10 @@ function buildInferOptions(
     db_load: opts.dbLoad,
     ...(opts.dbAlias.trim() ? { db_alias: opts.dbAlias.trim() } : {}),
     no_history: opts.noHistory,
+    ...(maxConv != null && !Number.isNaN(maxConv) ? { max_conversions: maxConv } : {}),
+    ...(maxConvEqp != null && !Number.isNaN(maxConvEqp)
+      ? { max_conversions_per_eqp: maxConvEqp }
+      : {}),
   };
 }
 
@@ -149,6 +159,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [dbLoad, setDbLoad]                 = useState(false);
   const [dbAlias, setDbAlias]               = useState("");
   const [noHistory, setNoHistory]           = useState(false);
+  const [maxConversions, setMaxConversions] = useState("");
+  const [maxConversionsPerEqp, setMaxConversionsPerEqp] = useState("");
   const [lastInferMeta, setLastInferMeta]   = useState<string | null>(null);
 
   const [labelMode, setLabelMode]         = useState<GanttBarLabel>("lot");
@@ -284,6 +296,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           dbLoad,
           dbAlias,
           noHistory,
+          maxConversions,
+          maxConversionsPerEqp,
         }),
       });
       setResultAndCompare(res); setFileSource(null); setTab("gantt");
@@ -303,7 +317,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     finally { setLoading(false); }
   }, [
     algorithm, selectedFolder, decisionLog, wipInflow, ruleTimekey, lotCd, nodb,
-    includeHistory, dbLoad, dbAlias, noHistory, syncInferFolder,
+    includeHistory, dbLoad, dbAlias, noHistory, maxConversions, maxConversionsPerEqp,
+    syncInferFolder,
   ]);
 
   const loadSaved = useCallback(async () => {
@@ -339,6 +354,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         dbLoad: false,
         dbAlias: "",
         noHistory: false,
+        maxConversions,
+        maxConversionsPerEqp,
       }));
       setCompareData(res);
       if (res.results.length === 1) setResult(res.results[0]);
@@ -354,7 +371,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       setTab("compare");
     } catch(e) { setError(e instanceof Error ? e.message : "비교 실패"); }
     finally { setCmpLoad(false); }
-  }, [compareAlgos, selectedFolder, wipInflow, ruleTimekey, lotCd, nodb, syncInferFolder]);
+  }, [compareAlgos, selectedFolder, wipInflow, ruleTimekey, lotCd, nodb, maxConversions, maxConversionsPerEqp, syncInferFolder]);
 
   const needsModel = algoList.find(a => a.id === algorithm)?.requires_model ?? false;
   const canRun = !needsModel || modelExists;
@@ -470,6 +487,30 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder="미지정 시 전체 (discrete_arrange 제외)"
             value={lotCd}
             onChange={e => setLotCd(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-max-conv">전환 상한 (전체)</label>
+          <input
+            id="infer-max-conv"
+            className="input"
+            type="number"
+            min={0}
+            placeholder="미지정 시 무제한"
+            value={maxConversions}
+            onChange={e => setMaxConversions(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-max-conv-eqp">전환 상한 (EQP별)</label>
+          <input
+            id="infer-max-conv-eqp"
+            className="input"
+            type="number"
+            min={0}
+            placeholder="미지정 시 무제한"
+            value={maxConversionsPerEqp}
+            onChange={e => setMaxConversionsPerEqp(e.target.value)}
             disabled={loading || compareLoading}
           />
 

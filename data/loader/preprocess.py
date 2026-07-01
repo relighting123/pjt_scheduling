@@ -689,6 +689,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "sim_end_minutes":  sim_end_minutes,
         "soft_cutoff_minutes": soft_cutoff_minutes,
         "conversion_minutes": CONFIG.env.conversion_minutes,
+        "max_conversions": CONFIG.env.max_conversions,
+        "max_conversions_per_eqp": CONFIG.env.max_conversions_per_eqp,
         "eqp_ids":          eqp_ids,
         "oper_ids":         oper_ids,
         "prod_keys":        prod_keys,

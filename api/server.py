@@ -385,6 +385,16 @@ class InferFetchOptions(BaseModel):
         default=False,
         description="db-load 시 HIS 테이블 적재 생략",
     )
+    max_conversions: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="시뮬 전체 전환(컨버전) 상한",
+    )
+    max_conversions_per_eqp: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="EQP별 전환(컨버전) 상한",
+    )
 
 
 class InferenceRequest(InferFetchOptions):
@@ -788,6 +798,8 @@ def inference(req: InferenceRequest):
         record_history=req.include_history,
         record_decision_log=req.decision_log,
         enable_wip_inflow=req.enable_wip_inflow,
+        max_conversions=req.max_conversions,
+        max_conversions_per_eqp=req.max_conversions_per_eqp,
     )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]
@@ -848,6 +860,8 @@ def inference_compare(req: CompareRequest):
         record_history=req.include_history,
         record_decision_log=req.decision_log,
         enable_wip_inflow=req.enable_wip_inflow,
+        max_conversions=req.max_conversions,
+        max_conversions_per_eqp=req.max_conversions_per_eqp,
     )
     if not payload["results"]:
         raise HTTPException(
