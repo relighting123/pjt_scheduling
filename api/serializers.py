@@ -75,7 +75,17 @@ def serialize_compare_response(payload: dict, *, include_history: bool = False) 
         "oper_ids": payload.get("oper_ids", []),
         "eqp_ids": payload.get("eqp_ids", []),
         "sim_end_minutes": payload.get("sim_end_minutes", 0),
+        "sim_base_time": _compare_sim_base_time(payload),
     }
+
+
+def _compare_sim_base_time(payload: dict) -> str | None:
+    results = payload.get("results") or []
+    for row in results:
+        base = row.get("sim_base_time")
+        if base:
+            return base if isinstance(base, str) else str(base)
+    return None
 
 
 def empty_data_summary() -> dict:
