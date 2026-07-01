@@ -45,6 +45,7 @@ def run_inference(
     current_wip_only: Optional[bool] = None,
     max_conversions: Optional[int] = None,
     max_conversions_per_eqp: Optional[int] = None,
+    conversion_minutes: Optional[int] = None,
 ) -> dict:
     """
     목적: 선택한 알고리즘으로 Scheduling 추론 실행
@@ -80,6 +81,8 @@ def run_inference(
         run_data["max_conversions"] = max_conversions
     if max_conversions_per_eqp is not None:
         run_data["max_conversions_per_eqp"] = max_conversions_per_eqp
+    if conversion_minutes is not None:
+        run_data["conversion_minutes"] = conversion_minutes
     if current_wip_only:
         run_data["termination_mode"] = "current_wip_assigned"
     if algorithm == "earliest_st":
@@ -317,6 +320,7 @@ def run_inference_compare(
     enable_wip_inflow: bool = False,
     max_conversions: Optional[int] = None,
     max_conversions_per_eqp: Optional[int] = None,
+    conversion_minutes: Optional[int] = None,
 ) -> dict:
     """
     동일 입력 데이터로 여러 알고리즘 추론 후 비교용 결과 반환
@@ -351,6 +355,7 @@ def run_inference_compare(
                 enable_wip_inflow=enable_wip_inflow,
                 max_conversions=max_conversions,
                 max_conversions_per_eqp=max_conversions_per_eqp,
+                conversion_minutes=conversion_minutes,
             )
             result["prod_keys"] = env_data["prod_keys"]
             result["oper_ids"] = env_data["oper_ids"]

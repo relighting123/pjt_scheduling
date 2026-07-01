@@ -395,6 +395,11 @@ class InferFetchOptions(BaseModel):
         ge=0,
         description="EQP별 전환(컨버전) 상한",
     )
+    conversion_minutes: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="LOT_CD/TEMP 전환 1회 소요 시간(분)",
+    )
 
 
 class InferenceRequest(InferFetchOptions):
@@ -548,6 +553,11 @@ def get_config():
         "default_n_episodes": CONFIG.rl.default_n_episodes,
         "default_learning_rate": CONFIG.rl.learning_rate,
         "default_reward": reward_params_dict(),
+        "default_env": {
+            "conversion_minutes": CONFIG.env.conversion_minutes,
+            "max_conversions": CONFIG.env.max_conversions,
+            "max_conversions_per_eqp": CONFIG.env.max_conversions_per_eqp,
+        },
     }
 
 
@@ -800,6 +810,7 @@ def inference(req: InferenceRequest):
         enable_wip_inflow=req.enable_wip_inflow,
         max_conversions=req.max_conversions,
         max_conversions_per_eqp=req.max_conversions_per_eqp,
+        conversion_minutes=req.conversion_minutes,
     )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]
@@ -862,6 +873,7 @@ def inference_compare(req: CompareRequest):
         enable_wip_inflow=req.enable_wip_inflow,
         max_conversions=req.max_conversions,
         max_conversions_per_eqp=req.max_conversions_per_eqp,
+        conversion_minutes=req.conversion_minutes,
     )
     if not payload["results"]:
         raise HTTPException(

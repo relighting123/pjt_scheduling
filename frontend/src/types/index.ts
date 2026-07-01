@@ -199,6 +199,7 @@ export interface InferRunOptions {
   include_history?: boolean;
   max_conversions?: number;
   max_conversions_per_eqp?: number;
+  conversion_minutes?: number;
 }
 
 export interface InferenceResult {
@@ -264,6 +265,12 @@ export interface RewardConfig {
   same_oper_conditional: boolean;
 }
 
+export interface EnvDefaults {
+  conversion_minutes: number;
+  max_conversions: number | null;
+  max_conversions_per_eqp: number | null;
+}
+
 export interface AppConfig {
   model_dir: string;
   input_folder: string;
@@ -280,6 +287,7 @@ export interface AppConfig {
   default_n_episodes: number;
   default_learning_rate: number;
   default_reward: RewardConfig;
+  default_env?: EnvDefaults;
 }
 
 export interface TrainMetrics {

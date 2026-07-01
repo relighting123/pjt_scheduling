@@ -46,6 +46,13 @@ function facIdFromFolder(folder: string): string {
   return folder.split("/")[0] ?? "";
 }
 
+function parseOptionalInt(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const n = Number(trimmed);
+  return Number.isNaN(n) ? undefined : n;
+}
+
 function buildInferOptions(
   selectedFolder: string,
   opts: {
@@ -60,13 +67,13 @@ function buildInferOptions(
     noHistory: boolean;
     maxConversions: string;
     maxConversionsPerEqp: string;
+    conversionMinutes: string;
   },
 ) {
   const facId = facIdFromFolder(selectedFolder);
-  const maxConv = opts.maxConversions.trim() ? Number(opts.maxConversions) : undefined;
-  const maxConvEqp = opts.maxConversionsPerEqp.trim()
-    ? Number(opts.maxConversionsPerEqp)
-    : undefined;
+  const maxConv = parseOptionalInt(opts.maxConversions);
+  const maxConvEqp = parseOptionalInt(opts.maxConversionsPerEqp);
+  const convMin = parseOptionalInt(opts.conversionMinutes);
   return {
     input_folder: selectedFolder,
     ...(facId ? { fac_id: facId } : {}),
@@ -79,10 +86,9 @@ function buildInferOptions(
     db_load: opts.dbLoad,
     ...(opts.dbAlias.trim() ? { db_alias: opts.dbAlias.trim() } : {}),
     no_history: opts.noHistory,
-    ...(maxConv != null && !Number.isNaN(maxConv) ? { max_conversions: maxConv } : {}),
-    ...(maxConvEqp != null && !Number.isNaN(maxConvEqp)
-      ? { max_conversions_per_eqp: maxConvEqp }
-      : {}),
+    ...(maxConv != null ? { max_conversions: maxConv } : {}),
+    ...(maxConvEqp != null ? { max_conversions_per_eqp: maxConvEqp } : {}),
+    ...(convMin != null ? { conversion_minutes: convMin } : {}),
   };
 }
 
@@ -161,7 +167,10 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [noHistory, setNoHistory]           = useState(false);
   const [maxConversions, setMaxConversions] = useState("");
   const [maxConversionsPerEqp, setMaxConversionsPerEqp] = useState("");
+  const [conversionMinutes, setConversionMinutes] = useState("");
   const [lastInferMeta, setLastInferMeta]   = useState<string | null>(null);
+
+  const defaultConversionMinutes = config?.default_env?.conversion_minutes ?? 60;
 
   const [labelMode, setLabelMode]         = useState<GanttBarLabel>("lot");
   const [ganttFixed, setGanttFixed]       = useState(false);
@@ -298,6 +307,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           noHistory,
           maxConversions,
           maxConversionsPerEqp,
+          conversionMinutes,
         }),
       });
       setResultAndCompare(res); setFileSource(null); setTab("gantt");
@@ -309,6 +319,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           meta.lot_cd ? `LOT_CD=${meta.lot_cd}` : null,
           meta.fetched_from_db ? "DB 조회" : "기존 JSON",
           meta.db_loaded ? "DB 적재 완료" : null,
+          `전환 ${res.stats.conversions ?? 0}회`,
         ].filter(Boolean).join(" · ");
         setLastInferMeta(metaText);
         await syncInferFolder(meta.input_folder);
@@ -318,7 +329,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, [
     algorithm, selectedFolder, decisionLog, wipInflow, ruleTimekey, lotCd, nodb,
     includeHistory, dbLoad, dbAlias, noHistory, maxConversions, maxConversionsPerEqp,
-    syncInferFolder,
+    conversionMinutes, syncInferFolder,
   ]);
 
   const loadSaved = useCallback(async () => {
@@ -356,6 +367,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         noHistory: false,
         maxConversions,
         maxConversionsPerEqp,
+        conversionMinutes,
       }));
       setCompareData(res);
       if (res.results.length === 1) setResult(res.results[0]);
@@ -371,7 +383,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       setTab("compare");
     } catch(e) { setError(e instanceof Error ? e.message : "비교 실패"); }
     finally { setCmpLoad(false); }
-  }, [compareAlgos, selectedFolder, wipInflow, ruleTimekey, lotCd, nodb, maxConversions, maxConversionsPerEqp, syncInferFolder]);
+  }, [compareAlgos, selectedFolder, wipInflow, ruleTimekey, lotCd, nodb, maxConversions, maxConversionsPerEqp, conversionMinutes, syncInferFolder]);
 
   const needsModel = algoList.find(a => a.id === algorithm)?.requires_model ?? false;
   const canRun = !needsModel || modelExists;
@@ -490,30 +502,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             disabled={loading || compareLoading}
           />
 
-          <label className="field-label mt-2" htmlFor="infer-max-conv">전환 상한 (전체)</label>
-          <input
-            id="infer-max-conv"
-            className="input"
-            type="number"
-            min={0}
-            placeholder="미지정 시 무제한"
-            value={maxConversions}
-            onChange={e => setMaxConversions(e.target.value)}
-            disabled={loading || compareLoading}
-          />
-
-          <label className="field-label mt-2" htmlFor="infer-max-conv-eqp">전환 상한 (EQP별)</label>
-          <input
-            id="infer-max-conv-eqp"
-            className="input"
-            type="number"
-            min={0}
-            placeholder="미지정 시 무제한"
-            value={maxConversionsPerEqp}
-            onChange={e => setMaxConversionsPerEqp(e.target.value)}
-            disabled={loading || compareLoading}
-          />
-
           <label className="check-label mt-2">
             <input
               type="checkbox"
@@ -571,6 +559,49 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           {lastInferMeta && (
             <p className="hint mt-2">최근 실행: {lastInferMeta}</p>
           )}
+        </div>
+
+        <div className="card">
+          <div className="card-title">컨버전 설정</div>
+          <p className="hint mb-2">
+            LOT_CD/TEMP 전환 횟수·소요 시간을 제한합니다. 비우면 무제한(시간은 기본 {defaultConversionMinutes}분).
+          </p>
+
+          <label className="field-label" htmlFor="infer-max-conv">컨버전 가능 횟수 (전체)</label>
+          <input
+            id="infer-max-conv"
+            className="input"
+            type="number"
+            min={0}
+            placeholder="무제한"
+            value={maxConversions}
+            onChange={e => setMaxConversions(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-max-conv-eqp">컨버전 가능 횟수 (EQP별)</label>
+          <input
+            id="infer-max-conv-eqp"
+            className="input"
+            type="number"
+            min={0}
+            placeholder="무제한"
+            value={maxConversionsPerEqp}
+            onChange={e => setMaxConversionsPerEqp(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-conv-min">전환 소요 시간 (분)</label>
+          <input
+            id="infer-conv-min"
+            className="input"
+            type="number"
+            min={0}
+            placeholder={`기본 ${defaultConversionMinutes}분`}
+            value={conversionMinutes}
+            onChange={e => setConversionMinutes(e.target.value)}
+            disabled={loading || compareLoading}
+          />
         </div>
 
         <div className="card">
