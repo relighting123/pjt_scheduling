@@ -989,13 +989,28 @@ export function buildAlgorithmKpiComparison(
   entries: AlgoCompareEntry[],
 ): { data: Data[]; layout: Partial<Layout> } {
   const metrics = ["Makespan(분)", "Idle 합계(분)", "공정 전환", "제품 전환"];
-  const data: Data[] = entries.map((e) => {
+  // 지표마다 단위(분 vs 회)와 스케일이 크게 달라, 각 지표의 최댓값=100%로 정규화해
+  // 모든 지표 막대가 보이도록 한다. 실제 값은 막대 위 텍스트로 표기.
+  const rawByEntry = entries.map((e) => {
     const s = resultScheduleStats(e.result);
+    return [s.makespan, s.idle_total, s.oper_switches, s.prod_switches];
+  });
+  const maxPerMetric = metrics.map((_, mi) =>
+    Math.max(1, ...rawByEntry.map((r) => Math.abs(r[mi]))),
+  );
+
+  const data: Data[] = entries.map((e, ei) => {
+    const raw = rawByEntry[ei];
     return {
       type: "bar" as const,
       name: e.label,
       x: metrics,
-      y: [s.makespan, s.idle_total, s.oper_switches, s.prod_switches],
+      y: raw.map((v, mi) => (v / maxPerMetric[mi]) * 100),
+      text: raw.map((v) => `${v.toLocaleString()}`),
+      textposition: "outside" as const,
+      textfont: { size: 10 },
+      customdata: raw,
+      hovertemplate: `<b>${e.label}</b><br>%{x}: %{customdata:,}<extra></extra>`,
       marker: { color: ALGO_CHART_COLORS[e.algorithm] ?? "#888" },
     };
   });
@@ -1003,9 +1018,9 @@ export function buildAlgorithmKpiComparison(
   return {
     data,
     layout: mergeSharedLayout({
-      title: { text: "알고리즘별 KPI 비교" },
+      title: { text: "알고리즘별 KPI 비교 (지표별 최댓값=100% 정규화)" },
       barmode: "group",
-      yaxis: { title: { text: "값" }, automargin: true, rangemode: "tozero" },
+      yaxis: { title: { text: "상대값 (%)" }, automargin: true, rangemode: "tozero", range: [0, 118] },
       xaxis: { automargin: true },
       legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
       height: 380,
@@ -1136,7 +1151,7 @@ export function buildAlgorithmGanttComparison(
     legend: n === 1 ? { title: { text: "제품×공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
-    margin: { l: 72, r: 16, t: 52, b: n === 1 ? 72 : 44 },
+    margin: { l: 92, r: 20, t: 56, b: n === 1 ? 72 : 48 },
   };
 
   entries.forEach((entry, i) => {
@@ -1178,8 +1193,9 @@ export function buildAlgorithmGanttComparison(
       title: i === 0 ? ganttXAxisTitle(baseMs) : undefined,
       ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
     };
+    // y축 제목은 생략(알고리즘 라벨 주석과 좌상단에서 겹침 방지). 눈금(EQP id)만 표시.
     (layout as Record<string, unknown>)[yKey] = ganttYAxisLayout(eqps,
-      i === 0 ? { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } } : undefined,
+      undefined,
       { domain, anchor: xName },
     );
 
@@ -1599,22 +1615,19 @@ function segmentTimeRange(segment: GanttBarSegment): { start: number; end: numbe
 }
 
 function inflowHoverLines(records: GanttBarSegment["records"], baseMs: number | null): string {
-  const isAbstract = records.some((r) => r.ABSTRACT === true);
+  // 유입 재공 = OPER_IN_TIME>0(시뮬 중 투입)만. ABSTRACT는 초기 재공 출처일 뿐 유입 아님.
   const inflowTimes = records
     .map((r) => r.OPER_IN_TIME ?? 0)
     .filter((t) => t > 0);
-  if (!isAbstract && inflowTimes.length === 0) return "";
+  if (inflowTimes.length === 0) return "";
 
-  const lines: string[] = ["─────────────────"];
-  if (isAbstract) lines.push("유형: 유입 재공 (Abstract)");
-  if (inflowTimes.length > 0) {
-    const minT = Math.min(...inflowTimes);
-    const maxT = Math.max(...inflowTimes);
-    const minLabel = formatGanttMinuteLabel(minT, baseMs);
-    lines.push(minT === maxT
-      ? `유입 가능 시각: ${minLabel}`
-      : `유입 시각 범위: ${minLabel} ~ ${formatGanttMinuteLabel(maxT, baseMs)}`);
-  }
+  const lines: string[] = ["─────────────────", "유형: 유입 재공"];
+  const minT = Math.min(...inflowTimes);
+  const maxT = Math.max(...inflowTimes);
+  const minLabel = formatGanttMinuteLabel(minT, baseMs);
+  lines.push(minT === maxT
+    ? `유입 가능 시각: ${minLabel}`
+    : `유입 시각 범위: ${minLabel} ~ ${formatGanttMinuteLabel(maxT, baseMs)}`);
   const totalWf = records.reduce((s, r) => s + (r.WF_QTY ?? 0), 0);
   if (totalWf > 0) lines.push(`유입 재공량: ${totalWf}매`);
   return lines.join("<br>") + "<br>";
@@ -1765,7 +1778,8 @@ export function buildEnhancedGantt(
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
     const showText = width >= (labelMode === "prod" ? 18 : 24);
     const { base, x } = ganttBarAxisCoords(start, width, baseMs);
-    const isInflowSeg = segment.records.some((r) => r.ABSTRACT || (r.OPER_IN_TIME ?? 0) > 0);
+    // 유입 재공 = 시뮬 중 투입(OPER_IN_TIME>0)만. ABSTRACT(초기 재공 출처)는 유입이 아님.
+    const isInflowSeg = segment.records.some((r) => (r.OPER_IN_TIME ?? 0) > 0);
     const baseMarker = ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", true);
     const marker = isInflowSeg
       ? { ...baseMarker, opacity: 0.82, line: { ...(baseMarker.line as object), width: 0 } }
@@ -1813,7 +1827,7 @@ export function buildEnhancedGantt(
 
   // 유입 재공 범례
   const hasInflow = barSegments.some((seg) =>
-    seg.records.some((r) => r.ABSTRACT || (r.OPER_IN_TIME ?? 0) > 0),
+    seg.records.some((r) => (r.OPER_IN_TIME ?? 0) > 0),
   );
   data.push(inflowLegendTrace(hasInflow));
 

@@ -248,11 +248,12 @@ export default function PlotChart({
         data,
         layout: {
           ...layout,
-          autosize: scrollable ? false : true,
+          // scrollable도 너비는 컨테이너에 맞춰 autosize(높이는 style의 고정 px 유지)
+          autosize: true,
           hoverlabel: { ...CHART_HOVERLABEL, ...layout.hoverlabel },
         },
         config: plotConfig,
-        useResizeHandler: !scrollable,
+        useResizeHandler: true,
         style: plotStyle,
         onClick: onPointClick ? handleClick : undefined,
         onInitialized: handleGraphInit,
