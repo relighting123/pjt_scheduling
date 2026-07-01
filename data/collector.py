@@ -19,7 +19,7 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
 RULE_TIMEKEY (DB 메타 SQL 필수, data/sql/rule_timekey_*.sql):
     수집 폴더명 = DB 에서 조회한 실제 RULE_TIMEKEY (로컬 시각 생성 없음)
     rule_timekey_latest.sql  – 최신 1건 (--snapshot 기본값)
-    rule_timekey_recent.sql  – 최근 N개 (--prevdays)
+    rule_timekey_recent.sql  – 현재시각-N일 ~ 현재시각 범위 (--prevdays)
     rule_timekey_list.sql    – FROM~TO 구간 (--from/--to)
     cp data/sql.example/rule_timekey_*.sql data/sql/
 
