@@ -188,6 +188,8 @@ export interface InferenceResult {
   oper_ids: string[];
   eqp_ids: string[];
   sim_end_minutes: number;
+  /** 시뮬 기준 시각(0분) = RULE_TIMEKEY. 간트 시각축 base. */
+  sim_base_time?: string;
   algorithm?: AlgorithmId | string;
 }
 

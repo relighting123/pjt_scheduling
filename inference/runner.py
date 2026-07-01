@@ -174,6 +174,7 @@ def run_inference(
             "enable_wip_inflow": sched_env.sim._enable_wip_inflow,
         },
         "plan":      env_data["plan"],
+        "sim_base_time": base_time.isoformat(sep=" ") if hasattr(base_time, "isoformat") else str(base_time),
         "algorithm": algorithm,
     }
 
@@ -253,6 +254,7 @@ def _run_bulkfill_inference(
             "enable_wip_inflow": sched_env.sim._enable_wip_inflow,
         },
         "plan":      env_data["plan"],
+        "sim_base_time": base_time.isoformat(sep=" ") if hasattr(base_time, "isoformat") else str(base_time),
         "algorithm": algorithm,
     }
 
