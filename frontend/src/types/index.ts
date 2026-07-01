@@ -102,6 +102,8 @@ export interface ConversionPlan {
   eqp_id: string;
   from_lot_cd: string;
   to_lot_cd: string;
+  from_temp?: string;
+  to_temp?: string;
   conv_start_min: number;
   conv_end_min: number;
   conv_time?: number;

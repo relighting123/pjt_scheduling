@@ -361,6 +361,13 @@ function conversionLegendTrace(hasConversion: boolean): Data {
   };
 }
 
+/** 전환 전이 텍스트: "LC_A / T650 → LC_B / T600" (TEMP 있으면 함께 표기) */
+function conversionTransitionText(p: ConversionPlan): string {
+  const side = (lc?: string, tp?: string) =>
+    tp ? `${lc ?? "-"} / ${tp}` : `${lc ?? "-"}`;
+  return `${side(p.from_lot_cd, p.from_temp)} → ${side(p.to_lot_cd, p.to_temp)}`;
+}
+
 function conversionTraces(
   plans: ConversionPlan[],
   visibleUntilTime: number,
@@ -387,7 +394,7 @@ function conversionTraces(
         hovertemplate:
           `<b>Conversion</b><br>` +
           `EQP: ${p.eqp_id}<br>` +
-          `${p.from_lot_cd} → ${p.to_lot_cd}<br>` +
+          `${conversionTransitionText(p)}<br>` +
           `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)}<br>` +
           `종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<br>` +
           `소요: ${p.conv_end_min - p.conv_start_min}분<extra></extra>`,
@@ -1818,7 +1825,7 @@ export function buildEnhancedGantt(
         textposition: "inside",
         insidetextanchor: "middle",
         textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
-        hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${p.from_lot_cd}→${p.to_lot_cd}<br>` +
+        hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${conversionTransitionText(p)}<br>` +
           `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)} · 종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<extra></extra>`,
         showlegend: false,
       } as Data);
