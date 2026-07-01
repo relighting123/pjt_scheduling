@@ -17,9 +17,11 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, format_missing_input_file_error, reward_params_dict, apply_reward_params
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
+from data.loader.sql_binds import resolve_lot_cd
+from data.writer.db_load import load_output_sql_files
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
@@ -126,6 +128,67 @@ def _apply_input_folder(folder: Optional[str]) -> None:
         set_input_folder(folder)
         _env_data_cache = None
         _data_warnings = []
+
+
+def _resolve_infer_fac_id(fac_id: Optional[str], input_folder: Optional[str]) -> str:
+    if fac_id:
+        return validate_path_segment(fac_id, "FAC_ID")
+    if input_folder:
+        parsed, _, _ = parse_input_folder(input_folder)
+        return parsed
+    if CONFIG.path.fac_id:
+        return CONFIG.path.fac_id
+    return "FAC001"
+
+
+def _prepare_infer_input(
+    *,
+    fac_id: Optional[str] = None,
+    input_folder: Optional[str] = None,
+    rule_timekey: Optional[str] = None,
+    nodb: bool = False,
+    lot_cd: Optional[str] = None,
+) -> dict:
+    """CLI cmd_inference 와 동일한 input 준비 (Oracle fetch → infer 폴더 설정)."""
+    global _env_data_cache
+
+    resolved_fac = _resolve_infer_fac_id(fac_id, input_folder)
+    rtk = resolve_infer_rule_timekey(resolved_fac, rule_timekey)
+    lcd = resolve_lot_cd(lot_cd)
+    fetched = False
+
+    if not nodb:
+        fetch_from_db(fac_id=resolved_fac, split="infer", period=rtk, lot_cd=lcd)
+        _env_data_cache = None
+        fetched = True
+
+    infer_folder = f"{resolved_fac}/infer"
+    set_input_folder(infer_folder)
+    _env_data_cache = None
+
+    return {
+        "fac_id": resolved_fac,
+        "rule_timekey": rtk,
+        "lot_cd": lcd,
+        "input_folder": infer_folder,
+        "fetched_from_db": fetched,
+        "nodb": nodb,
+    }
+
+
+def _apply_infer_db_load(
+    *,
+    db_load: bool,
+    db_alias: Optional[str] = None,
+    no_history: bool = False,
+) -> None:
+    if not db_load:
+        return
+    load_output_sql_files(
+        CONFIG.path.output_dir,
+        db_alias=db_alias,
+        include_history=not no_history,
+    )
 
 
 def _load_env_data_for_folder(folder: str) -> dict:
@@ -293,11 +356,52 @@ class TrainRequest(RewardParams):
     )
 
 
-class InferenceRequest(BaseModel):
+class InferFetchOptions(BaseModel):
+    fac_id: Optional[str] = Field(
+        default=None,
+        description="공장 ID (미지정 시 input_folder 또는 현재 설정)",
+    )
+    rule_timekey: Optional[str] = Field(
+        default=None,
+        description="추론 RULE_TIMEKEY (미지정 시 최신)",
+    )
+    nodb: bool = Field(
+        default=False,
+        description="Oracle input 조회 생략, dataset 기존 JSON 사용",
+    )
+    lot_cd: Optional[str] = Field(
+        default=None,
+        description="SQL :LOT_CD 바인드 (discrete_arrange 제외)",
+    )
+    db_load: bool = Field(
+        default=False,
+        description="추론 후 output/sql 을 Oracle RTS 테이블에 적재",
+    )
+    db_alias: Optional[str] = Field(
+        default=None,
+        description="db-load 시 DB alias (미지정 시 databases.yaml default)",
+    )
+    no_history: bool = Field(
+        default=False,
+        description="db-load 시 HIS 테이블 적재 생략",
+    )
+    max_conversions: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="시뮬 전체 전환(컨버전) 상한",
+    )
+    max_conversions_per_eqp: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="EQP별 전환(컨버전) 상한",
+    )
+
+
+class InferenceRequest(InferFetchOptions):
     algorithm: str = Field(default="rl", description="rl | minprogress | earliest_st")
     input_folder: Optional[str] = Field(
         default=None,
-        description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
+        description="FAC_ID 추론용 (미지정 시 현재 선택). fetch 후에는 {FAC_ID}/infer 로 고정",
     )
     decision_log: bool = Field(
         default=False,
@@ -373,14 +477,14 @@ class InputFolderRequest(BaseModel):
     input_folder: str = Field(description="사용할 입력 폴더명")
 
 
-class CompareRequest(BaseModel):
+class CompareRequest(InferFetchOptions):
     algorithms: list[str] = Field(
         min_length=1,
         description="비교할 알고리즘 ID 목록",
     )
     input_folder: Optional[str] = Field(
         default=None,
-        description="입력 데이터 폴더명 (예: FAC001/test/20260619070000)",
+        description="FAC_ID 추론용 (미지정 시 현재 선택). fetch 후에는 {FAC_ID}/infer 로 고정",
     )
     decision_log: bool = Field(
         default=False,
@@ -654,7 +758,19 @@ def list_algorithms():
 @app.post("/api/inference")
 def inference(req: InferenceRequest):
     global _last_inference
-    _apply_input_folder(req.input_folder)
+    try:
+        infer_meta = _prepare_infer_input(
+            fac_id=req.fac_id,
+            input_folder=req.input_folder,
+            rule_timekey=req.rule_timekey,
+            nodb=req.nodb,
+            lot_cd=req.lot_cd,
+        )
+    except (ValueError, FileNotFoundError, ImportError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
+
     try:
         env_data = _load_env_data()
     except FileNotFoundError as e:
@@ -682,6 +798,8 @@ def inference(req: InferenceRequest):
         record_history=req.include_history,
         record_decision_log=req.decision_log,
         enable_wip_inflow=req.enable_wip_inflow,
+        max_conversions=req.max_conversions,
+        max_conversions_per_eqp=req.max_conversions_per_eqp,
     )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]
@@ -689,18 +807,42 @@ def inference(req: InferenceRequest):
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     if req.save_output:
         save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
+    if req.db_load:
+        try:
+            _apply_infer_db_load(
+                db_load=True,
+                db_alias=req.db_alias,
+                no_history=req.no_history,
+            )
+            infer_meta["db_loaded"] = True
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DB 적재 실패: {e}") from e
     _last_inference = result
-    return serialize_inference_result(
+    payload = serialize_inference_result(
         result,
         include_history=req.include_history,
         include_event_log=req.include_history,
         include_decision_log=req.decision_log,
     )
+    payload["infer_meta"] = infer_meta
+    return payload
 
 
 @app.post("/api/inference/compare")
 def inference_compare(req: CompareRequest):
-    _apply_input_folder(req.input_folder)
+    try:
+        infer_meta = _prepare_infer_input(
+            fac_id=req.fac_id,
+            input_folder=req.input_folder,
+            rule_timekey=req.rule_timekey,
+            nodb=req.nodb,
+            lot_cd=req.lot_cd,
+        )
+    except (ValueError, FileNotFoundError, ImportError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
+
     try:
         env_data = _load_env_data()
     except FileNotFoundError as e:
@@ -718,6 +860,8 @@ def inference_compare(req: CompareRequest):
         record_history=req.include_history,
         record_decision_log=req.decision_log,
         enable_wip_inflow=req.enable_wip_inflow,
+        max_conversions=req.max_conversions,
+        max_conversions_per_eqp=req.max_conversions_per_eqp,
     )
     if not payload["results"]:
         raise HTTPException(
@@ -727,7 +871,9 @@ def inference_compare(req: CompareRequest):
                 "errors": payload["errors"],
             },
         )
-    return serialize_compare_response(payload, include_history=req.include_history)
+    response = serialize_compare_response(payload, include_history=req.include_history)
+    response["infer_meta"] = infer_meta
+    return response
 
 
 def _minutes_from_timekey(value: str, base: datetime) -> int:

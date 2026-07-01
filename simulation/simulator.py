@@ -161,6 +161,10 @@ class SchedulingSimulator:
         self.sim_end:       int = data["sim_end_minutes"]
         self.soft_cutoff:   int = data.get("soft_cutoff_minutes", CONFIG.env.soft_cutoff_minutes)
         self._conversion_minutes: int = data.get("conversion_minutes", CONFIG.env.conversion_minutes)
+        self._max_conversions: Optional[int] = data.get("max_conversions", CONFIG.env.max_conversions)
+        self._max_conversions_per_eqp: Optional[int] = data.get(
+            "max_conversions_per_eqp", CONFIG.env.max_conversions_per_eqp,
+        )
         # 전환 그룹 제약: (lot_cd, temp) → group_id. 같은 그룹끼리만 전환 허용.
         self._conv_group_map: Dict[Tuple[str, str], str] = dict(data.get("conv_group_map", {}))
         self._conv_groups_active: bool = bool(self._conv_group_map)
@@ -491,11 +495,24 @@ class SchedulingSimulator:
             return False
         return from_g != to_g
 
+    def _conversion_limit_blocks(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
+        """전환 횟수 상한: 한도 초과 시 전환이 필요한 배정을 차단."""
+        if not self._would_need_conversion(eqp_id, lot_cd, temp):
+            return False
+        if self._max_conversions is not None and self.stats["conversions"] >= self._max_conversions:
+            return True
+        if self._max_conversions_per_eqp is not None:
+            eqp = self.eqps.get(eqp_id)
+            if eqp is not None and eqp.conversion_count >= self._max_conversions_per_eqp:
+                return True
+        return False
+
     def _assign_blocked(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
-        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 제약."""
+        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 + 전환 횟수 제약."""
         return (
             self._tool_cap_blocks(eqp_id, lot_cd, temp)
             or self._conversion_group_blocks(eqp_id, lot_cd, temp)
+            or self._conversion_limit_blocks(eqp_id, lot_cd, temp)
         )
 
     def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:

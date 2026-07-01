@@ -360,6 +360,8 @@ def cmd_inference(
     db_load: bool = False,
     db_alias: str = None,
     no_history: bool = False,
+    max_conversions: int = None,
+    max_conversions_per_eqp: int = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
@@ -394,6 +396,10 @@ def cmd_inference(
     )
     if decision_log:
         print("[inference] 결정 로그: ON (step별 EQP/PPK/OPER·미할당 사유)")
+    if max_conversions is not None:
+        print(f"[inference] 전환 상한(전체): {max_conversions}")
+    if max_conversions_per_eqp is not None:
+        print(f"[inference] 전환 상한(EQP별): {max_conversions_per_eqp}")
     result = run_inference(
         env_data,
         algorithm="rl",
@@ -401,6 +407,8 @@ def cmd_inference(
         record_history=include_history,
         record_decision_log=decision_log,
         enable_wip_inflow=enable_wip_inflow,
+        max_conversions=max_conversions,
+        max_conversions_per_eqp=max_conversions_per_eqp,
     )
     path = save_result(result, env_data=env_data)
     stats = result["stats"]
@@ -667,6 +675,20 @@ def parse_args():
         action="store_true",
         help="db-load 시 HIS 테이블 적재 생략",
     )
+    inf_p.add_argument(
+        "--max-conversions",
+        type=int,
+        default=None,
+        metavar="N",
+        help="시뮬 전체 전환(컨버전) 상한",
+    )
+    inf_p.add_argument(
+        "--max-conversions-per-eqp",
+        type=int,
+        default=None,
+        metavar="N",
+        help="EQP별 전환(컨버전) 상한",
+    )
 
     db_load_p = sub.add_parser(
         "db-load",
@@ -818,6 +840,8 @@ def main():
                 db_load=args.db_load,
                 db_alias=args.db,
                 no_history=args.no_history,
+                max_conversions=args.max_conversions,
+                max_conversions_per_eqp=args.max_conversions_per_eqp,
             )
 
         elif args.command == "db-load":

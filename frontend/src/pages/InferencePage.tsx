@@ -42,6 +42,50 @@ const FALLBACK_ALGOS: AlgorithmInfo[] = [
   { id: "earliest_st", name: "Earliest-ST (휴리스틱)", description: "", requires_model: false },
 ];
 
+function facIdFromFolder(folder: string): string {
+  return folder.split("/")[0] ?? "";
+}
+
+function buildInferOptions(
+  selectedFolder: string,
+  opts: {
+    ruleTimekey: string;
+    lotCd: string;
+    nodb: boolean;
+    decisionLog: boolean;
+    wipInflow: boolean;
+    includeHistory: boolean;
+    dbLoad: boolean;
+    dbAlias: string;
+    noHistory: boolean;
+    maxConversions: string;
+    maxConversionsPerEqp: string;
+  },
+) {
+  const facId = facIdFromFolder(selectedFolder);
+  const maxConv = opts.maxConversions.trim() ? Number(opts.maxConversions) : undefined;
+  const maxConvEqp = opts.maxConversionsPerEqp.trim()
+    ? Number(opts.maxConversionsPerEqp)
+    : undefined;
+  return {
+    input_folder: selectedFolder,
+    ...(facId ? { fac_id: facId } : {}),
+    ...(opts.ruleTimekey.trim() ? { rule_timekey: opts.ruleTimekey.trim() } : {}),
+    ...(opts.lotCd.trim() ? { lot_cd: opts.lotCd.trim() } : {}),
+    nodb: opts.nodb,
+    decision_log: opts.decisionLog,
+    enable_wip_inflow: opts.wipInflow,
+    include_history: opts.includeHistory,
+    db_load: opts.dbLoad,
+    ...(opts.dbAlias.trim() ? { db_alias: opts.dbAlias.trim() } : {}),
+    no_history: opts.noHistory,
+    ...(maxConv != null && !Number.isNaN(maxConv) ? { max_conversions: maxConv } : {}),
+    ...(maxConvEqp != null && !Number.isNaN(maxConvEqp)
+      ? { max_conversions_per_eqp: maxConvEqp }
+      : {}),
+  };
+}
+
 type MainTab = "gantt" | "events" | "table" | "debug" | "compare";
 const ROWS = 200;
 
@@ -108,6 +152,16 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [selectedFolder, setSelectedFolder] = useState("");
   const [decisionLog, setDecisionLog]       = useState(false);
   const [wipInflow, setWipInflow]           = useState(false);
+  const [ruleTimekey, setRuleTimekey]       = useState("");
+  const [lotCd, setLotCd]                   = useState("");
+  const [nodb, setNodb]                     = useState(false);
+  const [includeHistory, setIncludeHistory] = useState(false);
+  const [dbLoad, setDbLoad]                 = useState(false);
+  const [dbAlias, setDbAlias]               = useState("");
+  const [noHistory, setNoHistory]           = useState(false);
+  const [maxConversions, setMaxConversions] = useState("");
+  const [maxConversionsPerEqp, setMaxConversionsPerEqp] = useState("");
+  const [lastInferMeta, setLastInferMeta]   = useState<string | null>(null);
 
   const [labelMode, setLabelMode]         = useState<GanttBarLabel>("lot");
   const [ganttFixed, setGanttFixed]       = useState(false);
@@ -220,14 +274,52 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     setCompareData({ results:[res], errors:[], plan:res.plan, prod_keys:res.prod_keys, oper_ids:res.oper_ids, eqp_ids:res.eqp_ids, sim_end_minutes:res.sim_end_minutes });
   };
 
+  const syncInferFolder = useCallback(async (folder?: string) => {
+    if (!folder) return;
+    setSelectedFolder(folder);
+    await onInputFolderChange(folder);
+  }, [onInputFolderChange]);
+
   const runInference = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setLastInferMeta(null);
     try {
-      const res = await api.runInference({ algorithm, input_folder: selectedFolder, decision_log: decisionLog, enable_wip_inflow: wipInflow, save_output: true });
+      const res = await api.runInference({
+        algorithm,
+        save_output: true,
+        ...buildInferOptions(selectedFolder, {
+          ruleTimekey,
+          lotCd,
+          nodb,
+          decisionLog,
+          wipInflow,
+          includeHistory,
+          dbLoad,
+          dbAlias,
+          noHistory,
+          maxConversions,
+          maxConversionsPerEqp,
+        }),
+      });
       setResultAndCompare(res); setFileSource(null); setTab("gantt");
+      if (res.infer_meta) {
+        const meta = res.infer_meta;
+        const metaText = [
+          `FAC=${meta.fac_id}`,
+          `RULE_TIMEKEY=${meta.rule_timekey}`,
+          meta.lot_cd ? `LOT_CD=${meta.lot_cd}` : null,
+          meta.fetched_from_db ? "DB 조회" : "기존 JSON",
+          meta.db_loaded ? "DB 적재 완료" : null,
+        ].filter(Boolean).join(" · ");
+        setLastInferMeta(metaText);
+        await syncInferFolder(meta.input_folder);
+      }
     } catch(e) { setError(e instanceof Error ? e.message : "추론 실패"); }
     finally { setLoading(false); }
-  }, [algorithm, selectedFolder, decisionLog, wipInflow]);
+  }, [
+    algorithm, selectedFolder, decisionLog, wipInflow, ruleTimekey, lotCd, nodb,
+    includeHistory, dbLoad, dbAlias, noHistory, maxConversions, maxConversionsPerEqp,
+    syncInferFolder,
+  ]);
 
   const loadSaved = useCallback(async () => {
     setLoading(true); setError(null);
@@ -250,15 +342,36 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const runCompare = useCallback(async () => {
     const ids = [...compareAlgos];
     if (!ids.length) { setError("알고리즘을 선택하세요."); return; }
-    setCmpLoad(true); setError(null);
+    setCmpLoad(true); setError(null); setLastInferMeta(null);
     try {
-      const res = await api.runCompare(ids, { input_folder: selectedFolder, enable_wip_inflow: wipInflow });
+      const res = await api.runCompare(ids, buildInferOptions(selectedFolder, {
+        ruleTimekey,
+        lotCd,
+        nodb,
+        decisionLog: false,
+        wipInflow,
+        includeHistory: false,
+        dbLoad: false,
+        dbAlias: "",
+        noHistory: false,
+        maxConversions,
+        maxConversionsPerEqp,
+      }));
       setCompareData(res);
       if (res.results.length === 1) setResult(res.results[0]);
+      if (res.infer_meta) {
+        const meta = res.infer_meta;
+        setLastInferMeta([
+          `FAC=${meta.fac_id}`,
+          `RULE_TIMEKEY=${meta.rule_timekey}`,
+          meta.fetched_from_db ? "DB 조회" : "기존 JSON",
+        ].join(" · "));
+        await syncInferFolder(meta.input_folder);
+      }
       setTab("compare");
     } catch(e) { setError(e instanceof Error ? e.message : "비교 실패"); }
     finally { setCmpLoad(false); }
-  }, [compareAlgos, selectedFolder, wipInflow]);
+  }, [compareAlgos, selectedFolder, wipInflow, ruleTimekey, lotCd, nodb, maxConversions, maxConversionsPerEqp, syncInferFolder]);
 
   const needsModel = algoList.find(a => a.id === algorithm)?.requires_model ?? false;
   const canRun = !needsModel || modelExists;
@@ -348,6 +461,115 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           </select>
           {summary && (
             <p className="hint mt-1">EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count}</p>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-title">실행 옵션</div>
+          <p className="hint mb-2">CLI <code>infer</code> 와 동일한 옵션입니다. 기본은 Oracle에서 input JSON을 조회한 뒤 추론합니다.</p>
+
+          <label className="field-label" htmlFor="infer-rule-timekey">RULE_TIMEKEY</label>
+          <input
+            id="infer-rule-timekey"
+            className="input"
+            type="text"
+            placeholder="미지정 시 최신"
+            value={ruleTimekey}
+            onChange={e => setRuleTimekey(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-lot-cd">LOT_CD</label>
+          <input
+            id="infer-lot-cd"
+            className="input"
+            type="text"
+            placeholder="미지정 시 전체 (discrete_arrange 제외)"
+            value={lotCd}
+            onChange={e => setLotCd(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-max-conv">전환 상한 (전체)</label>
+          <input
+            id="infer-max-conv"
+            className="input"
+            type="number"
+            min={0}
+            placeholder="미지정 시 무제한"
+            value={maxConversions}
+            onChange={e => setMaxConversions(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-max-conv-eqp">전환 상한 (EQP별)</label>
+          <input
+            id="infer-max-conv-eqp"
+            className="input"
+            type="number"
+            min={0}
+            placeholder="미지정 시 무제한"
+            value={maxConversionsPerEqp}
+            onChange={e => setMaxConversionsPerEqp(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="check-label mt-2">
+            <input
+              type="checkbox"
+              checked={nodb}
+              onChange={e => setNodb(e.target.checked)}
+              disabled={loading || compareLoading}
+            />
+            기존 JSON 사용 (--nodb, DB 조회 생략)
+          </label>
+
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={includeHistory}
+              onChange={e => setIncludeHistory(e.target.checked)}
+              disabled={loading || compareLoading}
+            />
+            history/event 포함 (--include-history)
+          </label>
+
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={dbLoad}
+              onChange={e => setDbLoad(e.target.checked)}
+              disabled={loading || compareLoading}
+            />
+            추론 후 DB 적재 (--db-load)
+          </label>
+
+          {dbLoad && (
+            <>
+              <label className="field-label mt-2" htmlFor="infer-db-alias">DB alias</label>
+              <input
+                id="infer-db-alias"
+                className="input"
+                type="text"
+                placeholder="미지정 시 default"
+                value={dbAlias}
+                onChange={e => setDbAlias(e.target.value)}
+                disabled={loading || compareLoading}
+              />
+              <label className="check-label mt-2">
+                <input
+                  type="checkbox"
+                  checked={noHistory}
+                  onChange={e => setNoHistory(e.target.checked)}
+                  disabled={loading || compareLoading}
+                />
+                HIS 테이블 적재 생략 (--no-history)
+              </label>
+            </>
+          )}
+
+          {lastInferMeta && (
+            <p className="hint mt-2">최근 실행: {lastInferMeta}</p>
           )}
         </div>
 

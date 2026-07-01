@@ -176,6 +176,31 @@ export interface DecisionLogEntry {
   blocked_buckets?: DecisionLogBlockedBucket[];
 }
 
+export interface InferMeta {
+  fac_id: string;
+  rule_timekey: string;
+  lot_cd?: string | null;
+  input_folder: string;
+  fetched_from_db: boolean;
+  nodb: boolean;
+  db_loaded?: boolean;
+}
+
+export interface InferRunOptions {
+  fac_id?: string;
+  rule_timekey?: string;
+  nodb?: boolean;
+  lot_cd?: string;
+  db_load?: boolean;
+  db_alias?: string;
+  no_history?: boolean;
+  decision_log?: boolean;
+  enable_wip_inflow?: boolean;
+  include_history?: boolean;
+  max_conversions?: number;
+  max_conversions_per_eqp?: number;
+}
+
 export interface InferenceResult {
   schedule: ScheduleRecord[];
   history: HistorySnap[];
@@ -191,6 +216,7 @@ export interface InferenceResult {
   /** 시뮬 기준 시각(0분) = RULE_TIMEKEY. 간트 시각축 base. */
   sim_base_time?: string;
   algorithm?: AlgorithmId | string;
+  infer_meta?: InferMeta;
 }
 
 export interface BatchInfoRecord {
@@ -307,6 +333,7 @@ export interface AlgorithmCompareResponse {
   oper_ids: string[];
   eqp_ids: string[];
   sim_end_minutes: number;
+  infer_meta?: InferMeta;
 }
 
 export interface TestDatasetInfo {
