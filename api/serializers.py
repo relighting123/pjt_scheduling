@@ -45,6 +45,7 @@ def serialize_inference_result(
         "oper_ids": result.get("oper_ids", []),
         "eqp_ids": result.get("eqp_ids", []),
         "sim_end_minutes": result.get("sim_end_minutes", 0),
+        "sim_base_time": result.get("sim_base_time"),
         "algorithm": result.get("algorithm", "rl"),
     }
     if include_history:

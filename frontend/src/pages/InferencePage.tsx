@@ -155,10 +155,17 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
 
   const simBaseTime = useMemo(() => {
-    if (summary?.sim_base_time) return summary.sim_base_time;
+    // 1순위: 추론 결과에 실린 sim_base_time(데이터 실제 기준시각, 폴더 형식 무관)
+    const resultBase = result?.sim_base_time ?? compareData?.results?.[0]?.sim_base_time;
+    if (resultBase && parseSimBaseMs(resultBase) != null) return resultBase;
+    // 2순위: summary base(파싱 가능할 때만)
+    if (summary?.sim_base_time && parseSimBaseMs(summary.sim_base_time) != null) {
+      return summary.sim_base_time;
+    }
+    // 3순위: 폴더 경로의 RULE_TIMEKEY
     const rtk = ruleTimekeyFromFolder(selectedFolder);
     return rtk ? simBaseTimeFromRuleTimekey(rtk) : undefined;
-  }, [summary, selectedFolder]);
+  }, [result, compareData, summary, selectedFolder]);
 
   // 간트 기준 시각(0분) = RULE_TIMEKEY. 차트 상단 헤더로 표시.
   const ganttBaseInfo = useMemo(() => {
