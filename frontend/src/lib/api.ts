@@ -143,6 +143,7 @@ export const api = {
     no_history?: boolean;
     max_conversions?: number;
     max_conversions_per_eqp?: number;
+    conversion_minutes?: number;
   } = {}) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
@@ -165,6 +166,7 @@ export const api = {
         ...(opts.max_conversions_per_eqp != null
           ? { max_conversions_per_eqp: opts.max_conversions_per_eqp }
           : {}),
+        ...(opts.conversion_minutes != null ? { conversion_minutes: opts.conversion_minutes } : {}),
       }),
     }),
   runCompare: (
@@ -180,6 +182,7 @@ export const api = {
       lot_cd?: string;
       max_conversions?: number;
       max_conversions_per_eqp?: number;
+      conversion_minutes?: number;
     } = {},
   ) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
@@ -199,6 +202,7 @@ export const api = {
         ...(opts.max_conversions_per_eqp != null
           ? { max_conversions_per_eqp: opts.max_conversions_per_eqp }
           : {}),
+        ...(opts.conversion_minutes != null ? { conversion_minutes: opts.conversion_minutes } : {}),
       }),
     }),
   getInferenceResult: (input_folder?: string) =>
