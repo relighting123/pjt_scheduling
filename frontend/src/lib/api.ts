@@ -134,6 +134,13 @@ export const api = {
     include_history?: boolean;
     enable_wip_inflow?: boolean;
     save_output?: boolean;
+    fac_id?: string;
+    rule_timekey?: string;
+    nodb?: boolean;
+    lot_cd?: string;
+    db_load?: boolean;
+    db_alias?: string;
+    no_history?: boolean;
   } = {}) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
@@ -144,7 +151,14 @@ export const api = {
         include_history: opts.include_history ?? false,
         enable_wip_inflow: opts.enable_wip_inflow ?? false,
         save_output: opts.save_output ?? false,
+        nodb: opts.nodb ?? false,
+        db_load: opts.db_load ?? false,
+        no_history: opts.no_history ?? false,
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
+        ...(opts.fac_id ? { fac_id: opts.fac_id } : {}),
+        ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),
+        ...(opts.lot_cd ? { lot_cd: opts.lot_cd } : {}),
+        ...(opts.db_alias ? { db_alias: opts.db_alias } : {}),
       }),
     }),
   runCompare: (
@@ -154,6 +168,10 @@ export const api = {
       decision_log?: boolean;
       include_history?: boolean;
       enable_wip_inflow?: boolean;
+      fac_id?: string;
+      rule_timekey?: string;
+      nodb?: boolean;
+      lot_cd?: string;
     } = {},
   ) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
@@ -164,7 +182,11 @@ export const api = {
         decision_log: opts.decision_log ?? false,
         include_history: opts.include_history ?? false,
         enable_wip_inflow: opts.enable_wip_inflow ?? false,
+        nodb: opts.nodb ?? false,
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
+        ...(opts.fac_id ? { fac_id: opts.fac_id } : {}),
+        ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),
+        ...(opts.lot_cd ? { lot_cd: opts.lot_cd } : {}),
       }),
     }),
   getInferenceResult: (input_folder?: string) =>
