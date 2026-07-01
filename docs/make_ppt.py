@@ -150,11 +150,11 @@ def _step_kind(step_data: dict) -> str:
     blk = step_data.get("block") or {}
     if act.get("block_start"):
         n = act.get("block_total") or act.get("block_size") or "?"
-        return f"블록 시작 (N={n} 캐리어 연속 커밋)"
+        return f"블록 시작 (N={n} 커밋 · 이번 1LOT)"
     if blk.get("continuation") or act.get("block_continuation"):
         done = blk.get("done", act.get("block_done", "?"))
         total = blk.get("total", act.get("block_total", "?"))
-        return f"블록 연속 ({done}/{total} · 같은 셋업·장비 점유)"
+        return f"블록 연속 (LOT {done}/{total} · masked replay)"
     if act.get("same_setup"):
         return "동일 셋업"
     if act.get("setup_change"):
@@ -303,29 +303,34 @@ def step_walkthrough_slide(idx: int, step_no: int):
         ("결정 설비", step_data["eqp"]),
         ("버킷 PPK/OPER", f"{step_data['ppk']} / {step_data.get('oper', '')}"),
         ("블록 레벨", f"L={act.get('level', 0)}"),
-        ("블록 크기 N", str(act.get("block_total") or act.get("block_size") or "-")),
         ("배정 LOT", act.get("assigned_lot") or "-"),
         ("유형", kind),
     ]
     blk = step_data.get("block") or {}
-    if blk or act.get("block_start") or act.get("block_continuation"):
+    if act.get("block_start"):
         n = act.get("block_total") or act.get("block_size") or blk.get("total", "?")
-        if act.get("block_start"):
-            action_lines.insert(4, ("블록 커밋", f"{n}캐리어 한번에 연속 점유"))
-        elif blk or act.get("block_continuation"):
-            done = blk.get("done", act.get("block_done", "?"))
-            total = blk.get("total", act.get("block_total", "?"))
-            action_lines.insert(4, ("블록 진행", f"LOT {done}/{total} 배정 (동일 블록)"))
+        rem = max(int(n) - 1, 0) if str(n).isdigit() else "?"
+        action_lines.insert(3, ("블록 커밋", f"N={n} 연속 처리 약속"))
+        action_lines.insert(4, ("remaining", f"{rem} (다음 idle마다)"))
+    elif blk or act.get("block_continuation"):
+        done = blk.get("done", act.get("block_done", "?"))
+        total = blk.get("total", act.get("block_total", "?"))
+        action_lines.insert(3, ("블록 진행", f"LOT {done}/{total} 추가 배정"))
     yy = 1.98
+    row_h = 0.34 if len(action_lines) > 6 else 0.38
     for lbl, val in action_lines:
         txt(s, 10.02, yy, 1.2, 0.3, [[R(lbl, 10, GRAY)]])
         txt(s, 11.15, yy, 1.55, 0.3, [[R(val, 10, NAVY, True)]], align=PP_ALIGN.RIGHT)
-        yy += 0.38
+        yy += row_h
 
     # 중앙: 누적 간트
     gantt_path = os.path.join(TRACE_GANTT_DIR, f"step_{step_no:02d}.png")
     if os.path.isfile(gantt_path):
-        s.shapes.add_picture(gantt_path, Inches(3.65), Inches(1.45), width=Inches(6.05), height=Inches(2.45))
+        s.shapes.add_picture(gantt_path, Inches(3.65), Inches(1.42), width=Inches(6.05), height=Inches(2.38))
+        if step_data.get("blocks"):
+            txt(s, 3.65, 3.84, 6.05, 0.22, [[
+                R("연한 해칭 = N캐리어 커밋 구간  ·  실선 = 스케줄 등록 LOT (스텝마다 1개씩)", 8.2, GRAY),
+            ]], align=PP_ALIGN.CENTER)
     else:
         box(s, 3.65, 1.45, 6.05, 2.45, LIGHT, line_color=LINE, line_w=1.0)
         txt(s, 3.65, 1.45, 6.05, 2.45, [[R(f"간트 이미지 없음\n(step_{step_no:02d}.png)", 12, GRAY)]],

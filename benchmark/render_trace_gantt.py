@@ -1,9 +1,9 @@
 """trace_steps.json 스텝별 누적 간트 PNG 생성 (PPT 삽입용).
 
-Bulk-Fill 특징 시각화:
-  - 블록 시작 시 N캐리어 전체를 한 장비에 연속으로 붙인 하나의 긴 막대로 표시
-  - 캐리어 경계는 얇은 세로선으로만 구분 (막대 내부 텍스트 없음)
-  - 라벨은 막대 위쪽에 흰 배경 박스로 표시
+Bulk-Fill 시각화 (구현과 일치):
+  - 연한 해칭 = N캐리어 연속 처리 커밋 구간 (약속)
+  - 실선 막대 = 이 스텝까지 스케줄에 등록된 LOT
+  - 캐리어 칸 경계 = 흰 세로선, 막대 내부 텍스트 없음
 """
 import json
 import sys
@@ -24,6 +24,7 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 PPK_COLORS = ["#2E6FB0", "#2E7D4F", "#C8861E", "#7A4FA0", "#0E8AA8"]
 NAVY = "#1B3255"
 GRAY = "#5C6670"
+BLOCK_HATCH = "////"
 
 
 def _setup_font():
@@ -44,7 +45,6 @@ def _setup_font():
 
 
 def _merge_segments(schedule: List[dict], eqp_id: str, ppk: str) -> List[dict]:
-    """동일 EQP·PPK에서 START=이전 END 인 막대를 하나의 블록 세그먼트로 병합."""
     bars = sorted(
         [b for b in schedule if b["EQP_ID"] == eqp_id and b["PPK"] == ppk],
         key=lambda x: (x["START_TM"], x["END_TM"]),
@@ -69,17 +69,20 @@ def _merge_segments(schedule: List[dict], eqp_id: str, ppk: str) -> List[dict]:
     return merged
 
 
+def _scheduled_end(schedule: List[dict], eqp_id: str, ppk: str) -> int:
+    ends = [b["END_TM"] for b in schedule if b["EQP_ID"] == eqp_id and b["PPK"] == ppk]
+    return max(ends) if ends else 0
+
+
 def _carrier_dividers(ax, start: int, proc_min: int, total: int, y: float, height: float):
-    """N캐리어 블록 내부 경계선."""
     y0 = y - height / 2
     y1 = y + height / 2
     for i in range(1, total):
         x = start + i * proc_min
-        ax.plot([x, x], [y0, y1], color="white", linewidth=1.0, solid_capstyle="butt", zorder=6)
+        ax.plot([x, x], [y0, y1], color="#cbd5e1", linewidth=0.9, solid_capstyle="butt", zorder=3)
 
 
 def _label_above(ax, x: float, y: float, text: str, color: str):
-    """막대 위쪽 라벨 — 막대와 겹치지 않게."""
     ax.annotate(
         text,
         xy=(x, y + 0.52),
@@ -100,26 +103,38 @@ def _label_above(ax, x: float, y: float, text: str, color: str):
     )
 
 
-def _draw_bulk_block(ax, blk: Dict[str, Any], y: float, color: str):
-    """N캐리어를 한 번에 붙인 연속 블록 막대 (전체 구간 동일 색)."""
+def _draw_bulk_block(ax, blk: Dict[str, Any], schedule: List[dict], y: float, color: str):
     start = int(blk["start_tm"])
     committed_end = int(blk["committed_end_tm"])
     proc_min = max(int(blk.get("proc_min") or 60), 1)
     total = int(blk["total"])
-    done = int(blk.get("done") or total)
+    done = int(blk.get("done") or 0)
+    eqp = blk["eqp_id"]
+    ppk = blk["ppk"]
     full_w = max(committed_end - start, proc_min)
+    sched_end = int(blk.get("scheduled_end_tm") or _scheduled_end(schedule, eqp, ppk))
+    sched_w = max(min(sched_end - start, full_w), proc_min if done > 0 else 0)
 
+    # ① 커밋 구간 (N캐리어 연속 처리 약속)
     ax.barh(
-        y, full_w, left=start, height=0.68,
-        color=color, alpha=0.9,
-        edgecolor=color, linewidth=1.1, zorder=4,
+        y, full_w, left=start, height=0.72,
+        color=color, alpha=0.16, hatch=BLOCK_HATCH,
+        edgecolor=color, linewidth=1.0, zorder=1,
     )
-    _carrier_dividers(ax, start, proc_min, total, y, 0.68)
+    _carrier_dividers(ax, start, proc_min, total, y, 0.72)
+
+    # ② 실제 스케줄 등록 LOT (이 스텝까지 누적)
+    if sched_w > 0:
+        ax.barh(
+            y, sched_w, left=start, height=0.58,
+            color=color, alpha=0.92,
+            edgecolor="white", linewidth=0.7, zorder=4,
+        )
 
     if blk.get("block_start"):
-        label = f"BLK×{total}  ({total}캐리어 연속)"
+        label = f"BLK×{total} 커밋  ·  LOT 1/{total}"
     else:
-        label = f"BLK×{total}  (LOT {done}/{total})"
+        label = f"BLK×{total}  ·  LOT {done}/{total}"
     _label_above(ax, start + full_w / 2, y, label, color)
 
 
@@ -137,10 +152,9 @@ def render_step(step_data: dict, eqp_ids: list, sim_end: int, ppk_colors: dict) 
         ppk = blk["ppk"]
         y = ypos.get(eqp, 0)
         color = ppk_colors.get(ppk, "#999")
-        _draw_bulk_block(ax, blk, y, color)
+        _draw_bulk_block(ax, blk, schedule, y, color)
         block_eqp_ppk.add((eqp, ppk))
 
-    # 블록에 포함되지 않은 일반 스케줄 막대
     eqp_ppks = {(b["EQP_ID"], b["PPK"]) for b in schedule}
     for eqp_id, ppk in sorted(eqp_ppks):
         if (eqp_id, ppk) in block_eqp_ppk:
@@ -172,9 +186,9 @@ def render_step(step_data: dict, eqp_ids: list, sim_end: int, ppk_colors: dict) 
     blk_hint = ""
     if blk:
         if blk.get("block_start"):
-            blk_hint = f" | BLK×{blk['total']} 커밋"
+            blk_hint = f" | BLK×{blk['total']} 커밋 · LOT 1/{blk['total']}"
         else:
-            blk_hint = f" | BLK×{blk['total']} (LOT {blk['done']}/{blk['total']} 배정)"
+            blk_hint = f" | LOT {blk['done']}/{blk['total']}"
     elif act.get("block_start"):
         n = act.get("block_size") or act.get("block_total") or "?"
         blk_hint = f" | BLK×{n} 커밋"
@@ -183,7 +197,7 @@ def render_step(step_data: dict, eqp_ids: list, sim_end: int, ppk_colors: dict) 
         f"Step {step_no}  |  t={step_data['t']}min  |  "
         f"{step_data['eqp']} -> {step_data['ppk']}{blk_hint}"
     )
-    ax.set_title(title, fontsize=9.2, color=NAVY, loc="left", fontweight="bold", pad=8)
+    ax.set_title(title, fontsize=9.0, color=NAVY, loc="left", fontweight="bold", pad=8)
     ax.tick_params(axis="x", labelsize=7.5, colors=GRAY)
     for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
@@ -193,12 +207,14 @@ def render_step(step_data: dict, eqp_ids: list, sim_end: int, ppk_colors: dict) 
     ax.grid(axis="x", color="#E4EAF1", linewidth=0.7)
 
     legend_items = [Patch(facecolor=c, label=p) for p, c in ppk_colors.items()]
-    legend_items.append(
-        Patch(facecolor="#94a3b8", alpha=0.9, edgecolor="#64748b",
-              label="N캐리어 연속 블록"),
-    )
+    legend_items.extend([
+        Patch(facecolor="#94a3b8", alpha=0.25, hatch=BLOCK_HATCH, edgecolor="#64748b",
+              label="커밋 구간 (N약속)"),
+        Patch(facecolor="#2E6FB0", alpha=0.92, edgecolor="#64748b",
+              label="스케줄 등록 LOT"),
+    ])
     ax.legend(
-        handles=legend_items, loc="upper right", fontsize=6.2,
+        handles=legend_items, loc="upper right", fontsize=6.0,
         frameon=True, framealpha=0.92, ncol=2,
     )
 
