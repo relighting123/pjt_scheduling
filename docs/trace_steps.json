@@ -1,6 +1,32 @@
 {
+  "dataset": "SYM_3x3",
   "total_plan": 24,
   "sim": 480,
+  "eqp_ids": [
+    "EQP001",
+    "EQP002",
+    "EQP003"
+  ],
+  "prod_keys": [
+    "PPK001",
+    "PPK002",
+    "PPK003"
+  ],
+  "oper_ids": [
+    "OPER001"
+  ],
+  "reward_labels": {
+    "same_setup": "동일 셋업",
+    "pacing": "페이싱",
+    "plan_hit": "계획 달성",
+    "flow_balance": "흐름 균형",
+    "idle": "유휴",
+    "conversion": "전환",
+    "avoidable_conversion": "회피가능 전환",
+    "bulk_block_bonus": "블록 보너스",
+    "dedication_misuse": "전용 오용",
+    "redundant_cover": "중복 커버"
+  },
   "rows": [
     {
       "step": 1,
@@ -10,9 +36,9 @@
       "block_lv": 3,
       "reward": 2.83,
       "cum": 2.83,
-      "prog": 0.042,
+      "prog": 0.0,
       "conv": 0,
-      "produced": 1
+      "produced": 0
     },
     {
       "step": 2,
@@ -22,9 +48,9 @@
       "block_lv": 3,
       "reward": 2.83,
       "cum": 5.66,
-      "prog": 0.083,
+      "prog": 0.042,
       "conv": 0,
-      "produced": 2
+      "produced": 1
     },
     {
       "step": 3,
@@ -34,141 +60,1490 @@
       "block_lv": 3,
       "reward": 2.83,
       "cum": 8.49,
-      "prog": 0.125,
+      "prog": 0.083,
       "conv": 0,
-      "produced": 3
+      "produced": 2
     },
     {
       "step": 4,
       "t": 0,
       "eqp": "EQP001",
       "ppk": "PPK001",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 9.32,
-      "prog": 0.167,
+      "prog": 0.125,
       "conv": 0,
-      "produced": 4
+      "produced": 3
     },
     {
       "step": 5,
       "t": 60,
       "eqp": "EQP002",
       "ppk": "PPK002",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 10.15,
-      "prog": 0.208,
+      "prog": 0.167,
       "conv": 0,
-      "produced": 5
+      "produced": 4
     },
     {
       "step": 6,
       "t": 60,
       "eqp": "EQP003",
       "ppk": "PPK003",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 10.98,
-      "prog": 0.25,
+      "prog": 0.208,
       "conv": 0,
-      "produced": 6
+      "produced": 5
     },
     {
       "step": 7,
       "t": 60,
       "eqp": "EQP001",
       "ppk": "PPK001",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 11.81,
-      "prog": 0.292,
+      "prog": 0.25,
       "conv": 0,
-      "produced": 7
+      "produced": 6
     },
     {
       "step": 8,
       "t": 120,
       "eqp": "EQP002",
       "ppk": "PPK002",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 12.64,
-      "prog": 0.333,
+      "prog": 0.292,
       "conv": 0,
-      "produced": 8
+      "produced": 7
     },
     {
       "step": 9,
       "t": 120,
       "eqp": "EQP003",
       "ppk": "PPK003",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 13.47,
-      "prog": 0.375,
+      "prog": 0.333,
       "conv": 0,
-      "produced": 9
+      "produced": 8
     },
     {
       "step": 10,
       "t": 120,
       "eqp": "EQP001",
       "ppk": "PPK001",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 14.3,
-      "prog": 0.417,
+      "prog": 0.375,
       "conv": 0,
-      "produced": 10
+      "produced": 9
     },
     {
       "step": 11,
       "t": 180,
       "eqp": "EQP002",
       "ppk": "PPK002",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 15.13,
-      "prog": 0.458,
+      "prog": 0.417,
       "conv": 0,
-      "produced": 11
+      "produced": 10
     },
     {
       "step": 12,
       "t": 180,
       "eqp": "EQP003",
       "ppk": "PPK003",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 15.96,
-      "prog": 0.5,
+      "prog": 0.458,
       "conv": 0,
-      "produced": 12
+      "produced": 11
     },
     {
       "step": 13,
       "t": 180,
       "eqp": "EQP001",
       "ppk": "PPK001",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 16.79,
-      "prog": 0.542,
+      "prog": 0.5,
       "conv": 0,
-      "produced": 13
+      "produced": 12
     },
     {
       "step": 14,
       "t": 240,
       "eqp": "EQP002",
       "ppk": "PPK002",
-      "block_lv": 0,
+      "block_lv": 3,
       "reward": 0.83,
       "cum": 17.62,
-      "prog": 0.583,
+      "prog": 0.542,
       "conv": 0,
-      "produced": 14
+      "produced": 13
+    }
+  ],
+  "steps": [
+    {
+      "step": 1,
+      "t": 0,
+      "eqp": "EQP001",
+      "ppk": "PPK001",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 0,
+        "level": 3,
+        "block_size": 6,
+        "block_start": true,
+        "assigned_lot": "LOT001"
+      },
+      "state": {
+        "time_min": 0,
+        "progress_pct": 0.0,
+        "produced": 0,
+        "conversions": 0,
+        "idle_eqps": 3,
+        "obs_global": {
+          "time_norm": 0.0,
+          "takt_margin": 1.0,
+          "remaining_lots": 1.0,
+          "plan_progress": 0.0
+        }
+      },
+      "reward": 2.83,
+      "cum": 2.83,
+      "reward_breakdown": {
+        "pacing": -0.31,
+        "plan_hit": 0.14,
+        "bulk_block_bonus": 3.0,
+        "redundant_cover": -0.0
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "t": 0,
+      "eqp": "EQP002",
+      "ppk": "PPK002",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 1,
+        "level": 3,
+        "block_size": 6,
+        "block_start": true,
+        "assigned_lot": "LOT009"
+      },
+      "state": {
+        "time_min": 0,
+        "progress_pct": 4.2,
+        "produced": 1,
+        "conversions": 0,
+        "idle_eqps": 2,
+        "obs_global": {
+          "time_norm": 0.0,
+          "takt_margin": 1.0,
+          "remaining_lots": 1.0,
+          "plan_progress": 0.042
+        }
+      },
+      "reward": 2.83,
+      "cum": 5.66,
+      "reward_breakdown": {
+        "pacing": -0.31,
+        "plan_hit": 0.14,
+        "bulk_block_bonus": 3.0,
+        "redundant_cover": -0.0
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "t": 0,
+      "eqp": "EQP003",
+      "ppk": "PPK003",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 2,
+        "level": 3,
+        "block_size": 6,
+        "block_start": true,
+        "assigned_lot": "LOT017"
+      },
+      "state": {
+        "time_min": 0,
+        "progress_pct": 8.3,
+        "produced": 2,
+        "conversions": 0,
+        "idle_eqps": 1,
+        "obs_global": {
+          "time_norm": 0.0,
+          "takt_margin": 1.0,
+          "remaining_lots": 1.0,
+          "plan_progress": 0.083
+        }
+      },
+      "reward": 2.83,
+      "cum": 8.49,
+      "reward_breakdown": {
+        "pacing": -0.31,
+        "plan_hit": 0.14,
+        "bulk_block_bonus": 3.0,
+        "redundant_cover": -0.0
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "t": 0,
+      "eqp": "EQP001",
+      "ppk": "PPK001",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 0,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT004"
+      },
+      "state": {
+        "time_min": 0,
+        "progress_pct": 12.5,
+        "produced": 3,
+        "conversions": 0,
+        "idle_eqps": 0,
+        "obs_global": {
+          "time_norm": 0.0,
+          "takt_margin": 1.0,
+          "remaining_lots": 1.0,
+          "plan_progress": 0.125
+        }
+      },
+      "reward": 0.83,
+      "cum": 9.32,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "t": 60,
+      "eqp": "EQP002",
+      "ppk": "PPK002",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 1,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT012"
+      },
+      "state": {
+        "time_min": 60,
+        "progress_pct": 16.7,
+        "produced": 4,
+        "conversions": 0,
+        "idle_eqps": 2,
+        "obs_global": {
+          "time_norm": 0.125,
+          "takt_margin": 0.955,
+          "remaining_lots": 0.958,
+          "plan_progress": 0.167
+        }
+      },
+      "reward": 0.83,
+      "cum": 10.15,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        }
+      ]
+    },
+    {
+      "step": 6,
+      "t": 60,
+      "eqp": "EQP003",
+      "ppk": "PPK003",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 2,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT020"
+      },
+      "state": {
+        "time_min": 60,
+        "progress_pct": 20.8,
+        "produced": 5,
+        "conversions": 0,
+        "idle_eqps": 1,
+        "obs_global": {
+          "time_norm": 0.125,
+          "takt_margin": 0.955,
+          "remaining_lots": 0.917,
+          "plan_progress": 0.208
+        }
+      },
+      "reward": 0.83,
+      "cum": 10.98,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        }
+      ]
+    },
+    {
+      "step": 7,
+      "t": 60,
+      "eqp": "EQP001",
+      "ppk": "PPK001",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 0,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT007"
+      },
+      "state": {
+        "time_min": 60,
+        "progress_pct": 25.0,
+        "produced": 6,
+        "conversions": 0,
+        "idle_eqps": 0,
+        "obs_global": {
+          "time_norm": 0.125,
+          "takt_margin": 0.955,
+          "remaining_lots": 0.875,
+          "plan_progress": 0.25
+        }
+      },
+      "reward": 0.83,
+      "cum": 11.81,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        }
+      ]
+    },
+    {
+      "step": 8,
+      "t": 120,
+      "eqp": "EQP002",
+      "ppk": "PPK002",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 1,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT015"
+      },
+      "state": {
+        "time_min": 120,
+        "progress_pct": 29.2,
+        "produced": 7,
+        "conversions": 0,
+        "idle_eqps": 2,
+        "obs_global": {
+          "time_norm": 0.25,
+          "takt_margin": 0.909,
+          "remaining_lots": 0.833,
+          "plan_progress": 0.292
+        }
+      },
+      "reward": 0.83,
+      "cum": 12.64,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT015",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        }
+      ]
+    },
+    {
+      "step": 9,
+      "t": 120,
+      "eqp": "EQP003",
+      "ppk": "PPK003",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 2,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT021"
+      },
+      "state": {
+        "time_min": 120,
+        "progress_pct": 33.3,
+        "produced": 8,
+        "conversions": 0,
+        "idle_eqps": 1,
+        "obs_global": {
+          "time_norm": 0.25,
+          "takt_margin": 0.909,
+          "remaining_lots": 0.792,
+          "plan_progress": 0.333
+        }
+      },
+      "reward": 0.83,
+      "cum": 13.47,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT015",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT021",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        }
+      ]
+    },
+    {
+      "step": 10,
+      "t": 120,
+      "eqp": "EQP001",
+      "ppk": "PPK001",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 0,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT002"
+      },
+      "state": {
+        "time_min": 120,
+        "progress_pct": 37.5,
+        "produced": 9,
+        "conversions": 0,
+        "idle_eqps": 0,
+        "obs_global": {
+          "time_norm": 0.25,
+          "takt_margin": 0.909,
+          "remaining_lots": 0.75,
+          "plan_progress": 0.375
+        }
+      },
+      "reward": 0.83,
+      "cum": 14.3,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT015",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT021",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT002",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        }
+      ]
+    },
+    {
+      "step": 11,
+      "t": 180,
+      "eqp": "EQP002",
+      "ppk": "PPK002",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 1,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT010"
+      },
+      "state": {
+        "time_min": 180,
+        "progress_pct": 41.7,
+        "produced": 10,
+        "conversions": 0,
+        "idle_eqps": 2,
+        "obs_global": {
+          "time_norm": 0.375,
+          "takt_margin": 0.864,
+          "remaining_lots": 0.708,
+          "plan_progress": 0.417
+        }
+      },
+      "reward": 0.83,
+      "cum": 15.13,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT015",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT021",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT002",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT010",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        }
+      ]
+    },
+    {
+      "step": 12,
+      "t": 180,
+      "eqp": "EQP003",
+      "ppk": "PPK003",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 2,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT022"
+      },
+      "state": {
+        "time_min": 180,
+        "progress_pct": 45.8,
+        "produced": 11,
+        "conversions": 0,
+        "idle_eqps": 1,
+        "obs_global": {
+          "time_norm": 0.375,
+          "takt_margin": 0.864,
+          "remaining_lots": 0.667,
+          "plan_progress": 0.458
+        }
+      },
+      "reward": 0.83,
+      "cum": 15.96,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT015",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT021",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT002",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT010",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT022",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        }
+      ]
+    },
+    {
+      "step": 13,
+      "t": 180,
+      "eqp": "EQP001",
+      "ppk": "PPK001",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 0,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT003"
+      },
+      "state": {
+        "time_min": 180,
+        "progress_pct": 50.0,
+        "produced": 12,
+        "conversions": 0,
+        "idle_eqps": 0,
+        "obs_global": {
+          "time_norm": 0.375,
+          "takt_margin": 0.864,
+          "remaining_lots": 0.625,
+          "plan_progress": 0.5
+        }
+      },
+      "reward": 0.83,
+      "cum": 16.79,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT015",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT021",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT002",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT010",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT022",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT003",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 240,
+          "END_TM": 300
+        }
+      ]
+    },
+    {
+      "step": 14,
+      "t": 240,
+      "eqp": "EQP002",
+      "ppk": "PPK002",
+      "oper": "OPER001",
+      "action": {
+        "bucket": 1,
+        "level": 3,
+        "block_size": 0,
+        "block_start": false,
+        "assigned_lot": "LOT011"
+      },
+      "state": {
+        "time_min": 240,
+        "progress_pct": 54.2,
+        "produced": 13,
+        "conversions": 0,
+        "idle_eqps": 2,
+        "obs_global": {
+          "time_norm": 0.5,
+          "takt_margin": 0.818,
+          "remaining_lots": 0.583,
+          "plan_progress": 0.542
+        }
+      },
+      "reward": 0.83,
+      "cum": 17.62,
+      "reward_breakdown": {
+        "same_setup": 1.0,
+        "pacing": -0.31,
+        "plan_hit": 0.14
+      },
+      "schedule": [
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT001",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT009",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT017",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 0,
+          "END_TM": 60
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT004",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT012",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT020",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 60,
+          "END_TM": 120
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT007",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT015",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT021",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 120,
+          "END_TM": 180
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT002",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT010",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP003",
+          "LOT_ID": "LOT022",
+          "PPK": "PPK003",
+          "OPER": "OPER001",
+          "START_TM": 180,
+          "END_TM": 240
+        },
+        {
+          "EQP_ID": "EQP001",
+          "LOT_ID": "LOT003",
+          "PPK": "PPK001",
+          "OPER": "OPER001",
+          "START_TM": 240,
+          "END_TM": 300
+        },
+        {
+          "EQP_ID": "EQP002",
+          "LOT_ID": "LOT011",
+          "PPK": "PPK002",
+          "OPER": "OPER001",
+          "START_TM": 240,
+          "END_TM": 300
+        }
+      ]
     }
   ]
 }
