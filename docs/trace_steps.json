@@ -209,9 +209,40 @@
         "level": 3,
         "block_size": 6,
         "block_start": true,
+        "block_continuation": false,
+        "block_done": 1,
+        "block_total": 6,
         "assigned_lot": "LOT001",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 1,
+        "remaining": 5,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 60,
+        "block_start": true
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 0.0,
@@ -307,9 +338,53 @@
         "level": 3,
         "block_size": 6,
         "block_start": true,
+        "block_continuation": false,
+        "block_done": 1,
+        "block_total": 6,
         "assigned_lot": "LOT009",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 1,
+        "remaining": 5,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 60,
+        "block_start": true
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 4.2,
@@ -413,9 +488,66 @@
         "level": 3,
         "block_size": 6,
         "block_start": true,
+        "block_continuation": false,
+        "block_done": 1,
+        "block_total": 6,
         "assigned_lot": "LOT017",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 1,
+        "remaining": 5,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 60,
+        "block_start": true
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 8.3,
@@ -525,11 +657,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 2,
+        "block_total": 6,
         "assigned_lot": "LOT004",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 2,
+        "remaining": 4,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 120,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 0,
         "progress_pct": 12.5,
@@ -646,11 +835,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 2,
+        "block_total": 6,
         "assigned_lot": "LOT012",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 2,
+        "remaining": 4,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 120,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 1,
+          "remaining": 5,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 60,
+          "block_start": true
+        }
+      ],
       "state": {
         "time_min": 60,
         "progress_pct": 16.7,
@@ -775,11 +1021,68 @@
       "action": {
         "bucket": 2,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 2,
+        "block_total": 6,
         "assigned_lot": "LOT018",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 2,
+        "remaining": 4,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 120,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 60,
         "progress_pct": 20.8,
@@ -912,11 +1215,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 3,
+        "block_total": 6,
         "assigned_lot": "LOT007",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 3,
+        "remaining": 3,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 180,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 60,
         "progress_pct": 25.0,
@@ -1057,11 +1417,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 3,
+        "block_total": 6,
         "assigned_lot": "LOT015",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 3,
+        "remaining": 3,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 180,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 2,
+          "remaining": 4,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 120,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 120,
         "progress_pct": 29.2,
@@ -1210,11 +1627,68 @@
       "action": {
         "bucket": 2,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 3,
+        "block_total": 6,
         "assigned_lot": "LOT020",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 3,
+        "remaining": 3,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 180,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 120,
         "progress_pct": 33.3,
@@ -1371,11 +1845,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 4,
+        "block_total": 6,
         "assigned_lot": "LOT002",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 4,
+        "remaining": 2,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 240,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 120,
         "progress_pct": 37.5,
@@ -1540,11 +2071,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 4,
+        "block_total": 6,
         "assigned_lot": "LOT010",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 4,
+        "remaining": 2,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 240,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 3,
+          "remaining": 3,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 180,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 180,
         "progress_pct": 41.7,
@@ -1717,11 +2305,68 @@
       "action": {
         "bucket": 2,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 4,
+        "block_total": 6,
         "assigned_lot": "LOT023",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP003",
+        "ppk": "PPK003",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 4,
+        "remaining": 2,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 240,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 180,
         "progress_pct": 45.8,
@@ -1902,11 +2547,68 @@
       "action": {
         "bucket": 0,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 5,
+        "block_total": 6,
         "assigned_lot": "LOT003",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP001",
+        "ppk": "PPK001",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 5,
+        "remaining": 1,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 300,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 5,
+          "remaining": 1,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 300,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 180,
         "progress_pct": 50.0,
@@ -2095,11 +2797,68 @@
       "action": {
         "bucket": 1,
         "level": 3,
-        "block_size": 0,
+        "block_size": 6,
         "block_start": false,
+        "block_continuation": true,
+        "block_done": 5,
+        "block_total": 6,
         "assigned_lot": "LOT011",
         "wf_qty": 1
       },
+      "block": {
+        "eqp_id": "EQP002",
+        "ppk": "PPK002",
+        "oper": "OPER001",
+        "total": 6,
+        "done": 5,
+        "remaining": 1,
+        "proc_min": 60,
+        "start_tm": 0,
+        "committed_end_tm": 360,
+        "scheduled_end_tm": 300,
+        "block_start": false
+      },
+      "blocks": [
+        {
+          "eqp_id": "EQP001",
+          "ppk": "PPK001",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 5,
+          "remaining": 1,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 300,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP002",
+          "ppk": "PPK002",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 5,
+          "remaining": 1,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 300,
+          "block_start": false
+        },
+        {
+          "eqp_id": "EQP003",
+          "ppk": "PPK003",
+          "oper": "OPER001",
+          "total": 6,
+          "done": 4,
+          "remaining": 2,
+          "proc_min": 60,
+          "start_tm": 0,
+          "committed_end_tm": 360,
+          "scheduled_end_tm": 240,
+          "block_start": false
+        }
+      ],
       "state": {
         "time_min": 240,
         "progress_pct": 54.2,

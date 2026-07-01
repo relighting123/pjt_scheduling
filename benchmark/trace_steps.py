@@ -97,9 +97,10 @@ def main() -> None:
 
     steps = []
     cum = 0.0
-    done = False
+    done_flag = False
     step = 0
-    while not done and step < 14:
+    active_blocks: dict[str, dict] = {}
+    while not done_flag and step < 14:
         t_before = int(sim.current_time)
         eqp_before = sim.current_idle_eqp()
         mask = env.action_masks()
@@ -123,7 +124,7 @@ def main() -> None:
 
         obs, reward, terminated, truncated, info = env.step(action)
         cum += float(reward)
-        done = terminated or truncated
+        done_flag = terminated or truncated
 
         log_entry = env.get_decision_log()[-1] if env.get_decision_log() else {}
         breakdown = dict(log_entry.get("reward_breakdown") or sim._last_reward_breakdown or {})
@@ -131,10 +132,56 @@ def main() -> None:
         block_start = bool(log_entry.get("block_start"))
         assigned_lot = log_entry.get("assigned_lot_id", "")
         wf_qty = 1
+        proc_min = 60
         if sim.schedule:
             last = sim.schedule[-1]
             if last.get("EQP_ID") == eqp_before and last.get("PLAN_PROD_KEY") == ppk:
                 wf_qty = int(last.get("WF_QTY") or 1)
+                proc_min = max(int(last.get("END_TM", 0) - last.get("START_TM", 0)), 1)
+
+        eqp_key = eqp_before or info.get("current_eqp") or ""
+        if block_start and block_size > 0 and eqp_key and sim.schedule:
+            last_bar = sim.schedule[-1]
+            start_tm = int(last_bar["START_TM"])
+            active_blocks[eqp_key] = {
+                "eqp_id": eqp_key,
+                "ppk": ppk,
+                "oper": oper,
+                "total": block_size,
+                "done": 1,
+                "remaining": max(block_size - 1, 0),
+                "proc_min": proc_min,
+                "start_tm": start_tm,
+                "committed_end_tm": start_tm + block_size * proc_min,
+                "scheduled_end_tm": int(last_bar["END_TM"]),
+                "block_start": True,
+            }
+        elif eqp_key in active_blocks and active_blocks[eqp_key]["ppk"] == ppk:
+            blk = active_blocks[eqp_key]
+            blk["done"] += 1
+            blk["remaining"] = max(blk["total"] - blk["done"], 0)
+            blk["block_start"] = False
+            ends = [
+                int(b["END_TM"])
+                for b in sim.schedule
+                if b["EQP_ID"] == eqp_key and b["PLAN_PROD_KEY"] == ppk
+            ]
+            if ends:
+                blk["scheduled_end_tm"] = max(ends)
+            if blk["remaining"] <= 0:
+                del active_blocks[eqp_key]
+
+        current_block = active_blocks.get(eqp_key)
+        blocks_snapshot = [
+            {
+                **b,
+                "scheduled_end_tm": b.get(
+                    "scheduled_end_tm",
+                    b["start_tm"] + b["done"] * b["proc_min"],
+                ),
+            }
+            for b in active_blocks.values()
+        ]
 
         formula_details = build_reward_formula_details(
             sim,
@@ -160,11 +207,18 @@ def main() -> None:
             "action": {
                 "bucket": bucket,
                 "level": level,
-                "block_size": block_size,
+                "block_size": block_size or (current_block or {}).get("total", 0),
                 "block_start": block_start,
+                "block_continuation": bool(
+                    current_block and not block_start and current_block.get("remaining", 0) >= 0,
+                ),
+                "block_done": (current_block or {}).get("done"),
+                "block_total": (current_block or {}).get("total"),
                 "assigned_lot": assigned_lot,
                 "wf_qty": wf_qty,
             },
+            "block": dict(current_block) if current_block else None,
+            "blocks": blocks_snapshot,
             "state": state_before,
             "reward": round(float(reward), 2),
             "cum": round(float(cum), 2),
