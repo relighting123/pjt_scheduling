@@ -362,6 +362,7 @@ def cmd_inference(
     no_history: bool = False,
     max_conversions: int = None,
     max_conversions_per_eqp: int = None,
+    conversion_minutes: int = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
@@ -400,6 +401,8 @@ def cmd_inference(
         print(f"[inference] 전환 상한(전체): {max_conversions}")
     if max_conversions_per_eqp is not None:
         print(f"[inference] 전환 상한(EQP별): {max_conversions_per_eqp}")
+    if conversion_minutes is not None:
+        print(f"[inference] 전환 소요 시간: {conversion_minutes}분")
     result = run_inference(
         env_data,
         algorithm="rl",
@@ -409,6 +412,7 @@ def cmd_inference(
         enable_wip_inflow=enable_wip_inflow,
         max_conversions=max_conversions,
         max_conversions_per_eqp=max_conversions_per_eqp,
+        conversion_minutes=conversion_minutes,
     )
     path = save_result(result, env_data=env_data)
     stats = result["stats"]
@@ -689,6 +693,13 @@ def parse_args():
         metavar="N",
         help="EQP별 전환(컨버전) 상한",
     )
+    inf_p.add_argument(
+        "--conversion-minutes",
+        type=int,
+        default=None,
+        metavar="MIN",
+        help="LOT_CD/TEMP 전환 1회 소요 시간(분, 기본: config.env.conversion_minutes)",
+    )
 
     db_load_p = sub.add_parser(
         "db-load",
@@ -842,6 +853,7 @@ def main():
                 no_history=args.no_history,
                 max_conversions=args.max_conversions,
                 max_conversions_per_eqp=args.max_conversions_per_eqp,
+                conversion_minutes=args.conversion_minutes,
             )
 
         elif args.command == "db-load":

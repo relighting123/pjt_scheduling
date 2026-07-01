@@ -78,6 +78,21 @@ def test_run_inference_respects_global_conversion_cap():
     assert not any(r.get("CONVERSION") for r in result["schedule"])
 
 
+def test_run_inference_applies_conversion_minutes():
+    env_data = dict(_env_data())
+    result = run_inference(
+        env_data,
+        algorithm="earliest_st",
+        record_history=False,
+        conversion_minutes=15,
+    )
+    assert result["stats"]["conversions"] >= 1
+    conv_plans = result.get("conversion_plans", [])
+    assert conv_plans, "전환이 발생해야 conversion_minutes 검증 가능"
+    for plan in conv_plans:
+        assert plan.get("conv_time") == 15
+
+
 def test_run_inference_allows_one_conversion_with_cap_one():
     env_data = dict(_env_data())
     unlimited = run_inference(env_data, algorithm="earliest_st", record_history=False)
