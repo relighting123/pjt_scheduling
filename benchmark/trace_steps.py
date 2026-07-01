@@ -196,6 +196,7 @@ def main() -> None:
             eqp_prev_prod=prev_prod,
             eqp_prev_oper=prev_oper,
             done_before=done_before,
+            include_zero=True,
         )
 
         steps.append({
@@ -224,6 +225,7 @@ def main() -> None:
             "cum": round(float(cum), 2),
             "reward_breakdown": {k: round(float(v), 2) for k, v in breakdown.items()},
             "reward_formula": formula_details,
+            "reward_formula_full": formula_details,
             "schedule": _schedule_snapshot(sim.schedule),
         })
         step += 1

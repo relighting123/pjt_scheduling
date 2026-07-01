@@ -266,11 +266,26 @@
       },
       "reward_formula": [
         {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 0.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          },
+          "active": false
+        },
+        {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -283,7 +298,8 @@
             "done_before": 0,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -299,13 +315,14 @@
             "target": 8,
             "done_before": 0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "bulk_block_bonus",
           "label": "블록 보너스",
           "value": 3.0,
-          "formula": "w_bulk · min(N / takt예산, 1)",
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
           "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
           "result": "= +3.00",
           "vars": {
@@ -313,7 +330,178 @@
             "N": 6,
             "budget": 6,
             "ratio": 1.0
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": -0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=8 → 0",
+          "result": "= -0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 8
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 0.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          },
+          "active": false
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 0.0,
+            "eff_after": 1.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 0,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 8→7 (done 0→1, target=8) · 1.0·(8−7)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 8,
+            "gap_after": 7,
+            "target": 8,
+            "done_before": 0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 3.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
+          "result": "= +3.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 6,
+            "budget": 6,
+            "ratio": 1.0
+          },
+          "active": true
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": -0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=8 → 0",
+          "result": "= -0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 8
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -408,11 +596,26 @@
       },
       "reward_formula": [
         {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 0.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK002, None→OPER001] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          },
+          "active": false
+        },
+        {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -425,7 +628,8 @@
             "done_before": 0,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -441,13 +645,14 @@
             "target": 8,
             "done_before": 0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "bulk_block_bonus",
           "label": "블록 보너스",
           "value": 3.0,
-          "formula": "w_bulk · min(N / takt예산, 1)",
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
           "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
           "result": "= +3.00",
           "vars": {
@@ -455,7 +660,178 @@
             "N": 6,
             "budget": 6,
             "ratio": 1.0
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": -0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=8 → 0",
+          "result": "= -0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 8
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 0.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK002, None→OPER001] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          },
+          "active": false
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 0.0,
+            "eff_after": 1.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 0,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 8→7 (done 0→1, target=8) · 1.0·(8−7)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 8,
+            "gap_after": 7,
+            "target": 8,
+            "done_before": 0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 3.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
+          "result": "= +3.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 6,
+            "budget": 6,
+            "ratio": 1.0
+          },
+          "active": true
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": -0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=8 → 0",
+          "result": "= -0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 8
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -571,11 +947,26 @@
       },
       "reward_formula": [
         {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 0.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK003, None→OPER001] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          },
+          "active": false
+        },
+        {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -588,7 +979,8 @@
             "done_before": 0,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -604,13 +996,14 @@
             "target": 8,
             "done_before": 0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "bulk_block_bonus",
           "label": "블록 보너스",
           "value": 3.0,
-          "formula": "w_bulk · min(N / takt예산, 1)",
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
           "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
           "result": "= +3.00",
           "vars": {
@@ -618,7 +1011,178 @@
             "N": 6,
             "budget": 6,
             "ratio": 1.0
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": -0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=8 → 0",
+          "result": "= -0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 8
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 0.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK003, None→OPER001] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": false
+          },
+          "active": false
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 0.0→1.0 (done=0, cover=0.0, wf=1) · 2.5·(0.0−1.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 0.0,
+            "eff_after": 1.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 0,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 8→7 (done 0→1, target=8) · 1.0·(8−7)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 8,
+            "gap_after": 7,
+            "target": 8,
+            "done_before": 0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 3.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "3.0 · min(6 / 6, 1) = 3.0 · 1.0",
+          "result": "= +3.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 6,
+            "budget": 6,
+            "ratio": 1.0
+          },
+          "active": true
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": -0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=8 → 0",
+          "result": "= -0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 8
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -745,21 +1309,22 @@
           "label": "동일 셋업",
           "value": 1.0,
           "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
-          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
           "result": "= +1.00",
           "vars": {
             "w_same_setup": 1.0,
             "prev_prod": null,
             "prev_oper": null,
-            "same_setup": false
-          }
+            "same_setup": true
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·0/1320 = 0.0 · eff: 22.0→23.0 (done=1, cover=21.0, wf=1) · 2.5·(22.0−23.0)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 22.0→23.0 (done=1, cover=21.0, wf=1) · 2.5·(22.0−23.0)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -772,7 +1337,8 @@
             "done_before": 1,
             "cover": 21.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -788,7 +1354,191 @@
             "target": 8,
             "done_before": 1,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 6
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=21.0, need=7 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 21.0,
+            "need": 7
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·0/1320 = 0.0 · eff: 22.0→23.0 (done=1, cover=21.0, wf=1) · 2.5·(22.0−23.0)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.0,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 0,
+            "horizon": 1320,
+            "done_before": 1,
+            "cover": 21.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 7→6 (done 1→2, target=8) · 1.0·(7−6)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 7,
+            "gap_after": 6,
+            "target": 8,
+            "done_before": 1,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 6
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=21.0, need=7 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 21.0,
+            "need": 7
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -930,14 +1680,15 @@
             "prev_prod": "PPK002",
             "prev_oper": "OPER001",
             "same_setup": true
-          }
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -950,7 +1701,8 @@
             "done_before": 1,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -966,7 +1718,191 @@
             "target": 8,
             "done_before": 1,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 6
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=7 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 7
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.36,
+            "eff_before": 1.0,
+            "eff_after": 2.0,
+            "target": 8,
+            "t": 60,
+            "horizon": 1320,
+            "done_before": 1,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 7→6 (done 1→2, target=8) · 1.0·(7−6)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 7,
+            "gap_after": 6,
+            "target": 8,
+            "done_before": 1,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 6
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=7 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 7
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -1116,14 +2052,15 @@
             "prev_prod": "PPK003",
             "prev_oper": "OPER001",
             "same_setup": true
-          }
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -1136,7 +2073,8 @@
             "done_before": 1,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -1152,7 +2090,191 @@
             "target": 8,
             "done_before": 1,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 6
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=7 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 7
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK003→PPK003, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK003",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·60/1320 = 0.36 · eff: 1.0→2.0 (done=1, cover=0.0, wf=1) · 2.5·(0.64−1.64)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.36,
+            "eff_before": 1.0,
+            "eff_after": 2.0,
+            "target": 8,
+            "t": 60,
+            "horizon": 1320,
+            "done_before": 1,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 7→6 (done 1→2, target=8) · 1.0·(7−6)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 7,
+            "gap_after": 6,
+            "target": 8,
+            "done_before": 1,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 6
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=7 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 7
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -1303,21 +2425,22 @@
           "label": "동일 셋업",
           "value": 1.0,
           "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
-          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
           "result": "= +1.00",
           "vars": {
             "w_same_setup": 1.0,
             "prev_prod": null,
             "prev_oper": null,
-            "same_setup": false
-          }
+            "same_setup": true
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·60/1320 = 0.36 · eff: 22.0→23.0 (done=2, cover=20.0, wf=1) · 2.5·(21.64−22.64)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·60/1320 = 0.36 · eff: 22.0→23.0 (done=2, cover=20.0, wf=1) · 2.5·(21.64−22.64)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -1330,7 +2453,8 @@
             "done_before": 2,
             "cover": 20.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -1346,7 +2470,191 @@
             "target": 8,
             "done_before": 2,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 5
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=20.0, need=6 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 20.0,
+            "need": 6
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·60/1320 = 0.36 · eff: 22.0→23.0 (done=2, cover=20.0, wf=1) · 2.5·(21.64−22.64)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.36,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 60,
+            "horizon": 1320,
+            "done_before": 2,
+            "cover": 20.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 6→5 (done 2→3, target=8) · 1.0·(6−5)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 6,
+            "gap_after": 5,
+            "target": 8,
+            "done_before": 2,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 5
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=20.0, need=6 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 20.0,
+            "need": 6
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -1512,14 +2820,15 @@
             "prev_prod": "PPK002",
             "prev_oper": "OPER001",
             "same_setup": true
-          }
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -1532,7 +2841,8 @@
             "done_before": 2,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -1548,7 +2858,191 @@
             "target": 8,
             "done_before": 2,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 5
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=6 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 6
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.73,
+            "eff_before": 2.0,
+            "eff_after": 3.0,
+            "target": 8,
+            "t": 120,
+            "horizon": 1320,
+            "done_before": 2,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 6→5 (done 2→3, target=8) · 1.0·(6−5)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 6,
+            "gap_after": 5,
+            "target": 8,
+            "done_before": 2,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 5
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=6 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 6
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -1722,14 +3216,15 @@
             "prev_prod": "PPK003",
             "prev_oper": "OPER001",
             "same_setup": true
-          }
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -1742,7 +3237,8 @@
             "done_before": 2,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -1758,7 +3254,191 @@
             "target": 8,
             "done_before": 2,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 5
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=6 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 6
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK003→PPK003, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK003",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·120/1320 = 0.73 · eff: 2.0→3.0 (done=2, cover=0.0, wf=1) · 2.5·(1.27−2.27)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.73,
+            "eff_before": 2.0,
+            "eff_after": 3.0,
+            "target": 8,
+            "t": 120,
+            "horizon": 1320,
+            "done_before": 2,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 6→5 (done 2→3, target=8) · 1.0·(6−5)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 6,
+            "gap_after": 5,
+            "target": 8,
+            "done_before": 2,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 5
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=6 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 6
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -1933,21 +3613,22 @@
           "label": "동일 셋업",
           "value": 1.0,
           "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
-          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
           "result": "= +1.00",
           "vars": {
             "w_same_setup": 1.0,
             "prev_prod": null,
             "prev_oper": null,
-            "same_setup": false
-          }
+            "same_setup": true
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·120/1320 = 0.73 · eff: 22.0→23.0 (done=3, cover=19.0, wf=1) · 2.5·(21.27−22.27)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·120/1320 = 0.73 · eff: 22.0→23.0 (done=3, cover=19.0, wf=1) · 2.5·(21.27−22.27)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -1960,7 +3641,8 @@
             "done_before": 3,
             "cover": 19.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -1976,7 +3658,191 @@
             "target": 8,
             "done_before": 3,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 4
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=19.0, need=5 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 19.0,
+            "need": 5
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·120/1320 = 0.73 · eff: 22.0→23.0 (done=3, cover=19.0, wf=1) · 2.5·(21.27−22.27)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 0.73,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 120,
+            "horizon": 1320,
+            "done_before": 3,
+            "cover": 19.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 5→4 (done 3→4, target=8) · 1.0·(5−4)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 5,
+            "gap_after": 4,
+            "target": 8,
+            "done_before": 3,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 4
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=19.0, need=5 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 19.0,
+            "need": 5
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -2166,14 +4032,15 @@
             "prev_prod": "PPK002",
             "prev_oper": "OPER001",
             "same_setup": true
-          }
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -2186,7 +4053,8 @@
             "done_before": 3,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -2202,7 +4070,191 @@
             "target": 8,
             "done_before": 3,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 4
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=5 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 5
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.09,
+            "eff_before": 3.0,
+            "eff_after": 4.0,
+            "target": 8,
+            "t": 180,
+            "horizon": 1320,
+            "done_before": 3,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 5→4 (done 3→4, target=8) · 1.0·(5−4)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 5,
+            "gap_after": 4,
+            "target": 8,
+            "done_before": 3,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 4
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=5 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 5
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -2400,14 +4452,15 @@
             "prev_prod": "PPK003",
             "prev_oper": "OPER001",
             "same_setup": true
-          }
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -2420,7 +4473,8 @@
             "done_before": 3,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -2436,7 +4490,191 @@
             "target": 8,
             "done_before": 3,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 4
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=5 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 5
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK003→PPK003, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK003",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·180/1320 = 1.09 · eff: 3.0→4.0 (done=3, cover=0.0, wf=1) · 2.5·(1.91−2.91)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.09,
+            "eff_before": 3.0,
+            "eff_after": 4.0,
+            "target": 8,
+            "t": 180,
+            "horizon": 1320,
+            "done_before": 3,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 5→4 (done 3→4, target=8) · 1.0·(5−4)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 5,
+            "gap_after": 4,
+            "target": 8,
+            "done_before": 3,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 4
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=5 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 5
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -2635,21 +4873,22 @@
           "label": "동일 셋업",
           "value": 1.0,
           "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
-          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 0",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
           "result": "= +1.00",
           "vars": {
             "w_same_setup": 1.0,
             "prev_prod": null,
             "prev_oper": null,
-            "same_setup": false
-          }
+            "same_setup": true
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·180/1320 = 1.09 · eff: 22.0→23.0 (done=4, cover=18.0, wf=1) · 2.5·(20.91−21.91)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·180/1320 = 1.09 · eff: 22.0→23.0 (done=4, cover=18.0, wf=1) · 2.5·(20.91−21.91)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -2662,7 +4901,8 @@
             "done_before": 4,
             "cover": 18.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -2678,7 +4918,191 @@
             "target": 8,
             "done_before": 4,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 3
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=18.0, need=4 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 18.0,
+            "need": 4
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[None→PPK001, None→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": null,
+            "prev_oper": null,
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·180/1320 = 1.09 · eff: 22.0→23.0 (done=4, cover=18.0, wf=1) · 2.5·(20.91−21.91)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.09,
+            "eff_before": 22.0,
+            "eff_after": 23.0,
+            "target": 8,
+            "t": 180,
+            "horizon": 1320,
+            "done_before": 4,
+            "cover": 18.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 4→3 (done 4→5, target=8) · 1.0·(4−3)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 4,
+            "gap_after": 3,
+            "target": 8,
+            "done_before": 4,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 3
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=18.0, need=4 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 18.0,
+            "need": 4
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
@@ -2892,14 +5316,15 @@
             "prev_prod": "PPK002",
             "prev_oper": "OPER001",
             "same_setup": true
-          }
+          },
+          "active": true
         },
         {
           "key": "pacing",
           "label": "페이싱",
           "value": -0.31,
           "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
-          "substitution": "ideal: target·min(t,horizon)/horizon = 8·240/1320 = 1.45 · eff: 4.0→5.0 (done=4, cover=0.0, wf=1) · 2.5·(2.55−3.55)/8",
+          "substitution": "ideal: target·min(t,H)/H = 8·240/1320 = 1.45 · eff: 4.0→5.0 (done=4, cover=0.0, wf=1) · 2.5·(2.55−3.55)/8",
           "result": "= -0.31",
           "vars": {
             "w_pacing": 2.5,
@@ -2912,7 +5337,8 @@
             "done_before": 4,
             "cover": 0.0,
             "wf_qty": 1
-          }
+          },
+          "active": true
         },
         {
           "key": "plan_hit",
@@ -2928,7 +5354,191 @@
             "target": 8,
             "done_before": 4,
             "wf_qty": 1
-          }
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 3
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=4 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 4
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
+        }
+      ],
+      "reward_formula_full": [
+        {
+          "key": "same_setup",
+          "label": "동일 셋업",
+          "value": 1.0,
+          "formula": "w_same_setup · 1[동일 제품·공정 & 재공 잔존]",
+          "substitution": "1.0 · 1[PPK002→PPK002, OPER001→OPER001] = 1.0",
+          "result": "= +1.00",
+          "vars": {
+            "w_same_setup": 1.0,
+            "prev_prod": "PPK002",
+            "prev_oper": "OPER001",
+            "same_setup": true
+          },
+          "active": true
+        },
+        {
+          "key": "pacing",
+          "label": "페이싱",
+          "value": -0.31,
+          "formula": "w_pacing · (|ideal − eff_before| − |ideal − eff_after|) / target",
+          "substitution": "ideal: target·min(t,H)/H = 8·240/1320 = 1.45 · eff: 4.0→5.0 (done=4, cover=0.0, wf=1) · 2.5·(2.55−3.55)/8",
+          "result": "= -0.31",
+          "vars": {
+            "w_pacing": 2.5,
+            "ideal": 1.45,
+            "eff_before": 4.0,
+            "eff_after": 5.0,
+            "target": 8,
+            "t": 240,
+            "horizon": 1320,
+            "done_before": 4,
+            "cover": 0.0,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "plan_hit",
+          "label": "계획 달성",
+          "value": 0.14,
+          "formula": "w_plan_hit · (gap_before − gap_after) / target   ;  gap = max(target − done, 0)",
+          "substitution": "gap: 4→3 (done 4→5, target=8) · 1.0·(4−3)/8",
+          "result": "= +0.14",
+          "vars": {
+            "w_plan_hit": 1.0,
+            "gap_before": 4,
+            "gap_after": 3,
+            "target": 8,
+            "done_before": 4,
+            "wf_qty": 1
+          },
+          "active": true
+        },
+        {
+          "key": "bulk_block_bonus",
+          "label": "블록 보너스",
+          "value": 0.0,
+          "formula": "w_bulk · min(N / takt예산, 1)   [블록 시작]",
+          "substitution": "블록 시작 아님 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_bulk": 3.0,
+            "N": 0,
+            "budget": 3
+          },
+          "active": false
+        },
+        {
+          "key": "conversion",
+          "label": "전환",
+          "value": 0.0,
+          "formula": "w_conversion · 1[LOT_CD/TEMP 전환]",
+          "substitution": "-10.0 · 1[전환 없음] = 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_conversion": -10.0
+          },
+          "active": false
+        },
+        {
+          "key": "avoidable_conversion",
+          "label": "회피가능 전환",
+          "value": 0.0,
+          "formula": "w_avoidable · α   (α=회피가능 비율)",
+          "substitution": "전환 없음 또는 회피 불가 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_avoidable": -8.0
+          },
+          "active": false
+        },
+        {
+          "key": "redundant_cover",
+          "label": "중복 커버",
+          "value": 0.0,
+          "formula": "w_redundant · min(cover / need, 2)",
+          "substitution": "cover=0.0, need=4 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_redundant": -5.0,
+            "cover": 0.0,
+            "need": 4
+          },
+          "active": false
+        },
+        {
+          "key": "dedication_misuse",
+          "label": "전용 오용",
+          "value": 0.0,
+          "formula": "w_dedication_misuse · 1[더 전용 idle 설비 존재]",
+          "substitution": "더 전용 idle 설비 없음 → 0",
+          "result": "= +0.00",
+          "vars": {
+            "w_dedication_misuse": -4.0
+          },
+          "active": false
         }
       ],
       "schedule": [
