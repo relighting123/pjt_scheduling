@@ -20,12 +20,6 @@ import type {
 
 interface Props { config: AppConfig | null; modelExists: boolean; }
 
-const FALLBACK_ALGOS: AlgorithmInfo[] = [
-  { id: "rl",          name: "PPO (강화학습)",        description: "", requires_model: true },
-  { id: "minprogress", name: "Min-Progress (휴리스틱)", description: "", requires_model: false },
-  { id: "earliest_st", name: "Earliest-ST (휴리스틱)", description: "", requires_model: false },
-];
-
 type TestTab = "summary" | "gantt" | "detail";
 
 export default function TestPage({ config, modelExists }: Props) {
@@ -44,7 +38,7 @@ export default function TestPage({ config, modelExists }: Props) {
   const [ganttStart, setGanttStart] = useState(0);
   const [ganttEnd, setGanttEnd]     = useState(1440);
 
-  const algoList  = algorithms.length ? algorithms : FALLBACK_ALGOS;
+  const algoList  = algorithms;
   const available = useMemo(() => algoList.filter(a => !a.requires_model || modelExists), [algoList, modelExists]);
   const algoLabels = useMemo(() => { const m: Record<string,string>={}; algoList.forEach(a=>m[a.id]=a.name); return m; }, [algoList]);
   const facId = config?.fac_id ?? "FAC001";
