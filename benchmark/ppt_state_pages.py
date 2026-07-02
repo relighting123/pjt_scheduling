@@ -126,3 +126,42 @@ def trace_state_value(steps: list, step_no: int, trace_path) -> str:
             return "—"
         return str(cur)
     return "—"
+
+
+def trace_state_detail(trace: dict, step_no: int, trace_path) -> str:
+    """실측 산출식 값 — 산식에 실제 트레이스 수치를 대입한 상세 값."""
+    if not trace_path:
+        return "—"
+    steps = trace.get("steps", [])
+    st = next((s for s in steps if s.get("step") == step_no), None)
+    if st is None:
+        return "—"
+    obj = st.get("state") or {}
+    cur = obj
+    for key in trace_path:
+        cur = (cur or {}).get(key)
+    if cur is None:
+        return "—"
+    value = cur
+    group, name = trace_path
+
+    if group == "obs_global" and name == "time_norm":
+        t = obj.get("time_min", st.get("t"))
+        sim_end = trace.get("sim")
+        if t is not None and sim_end:
+            return f"min({t}/{sim_end}, 1) = {value}"
+
+    if group == "obs_global" and name == "plan_progress":
+        produced = obj.get("produced")
+        total_plan = trace.get("total_plan")
+        if produced is not None and total_plan:
+            return f"min({produced}/{total_plan}, 1) = {value}"
+
+    if group == "obs_context" and name in ("last_ppk", "last_oper", "last_eqp"):
+        prev = next((s for s in steps if s.get("step") == step_no - 1), None)
+        key_map = {"last_ppk": "ppk", "last_oper": "oper", "last_eqp": "eqp"}
+        label = prev.get(key_map[name]) if prev else None
+        if label:
+            return f"직전 배정 {label} → 정규화 {value}"
+
+    return f"= {value}"
