@@ -61,14 +61,63 @@ STATE_TERM_PAGES = [
         "why": "보상(페이싱·중복커버) 판단의 근거가 되는 핵심 특징입니다.",
         "trace_step": 1,
         "items": [
-            {"idx": "ch0", "name": "valid", "formula": "1[가공 가능]", "meaning": "현재 EQP·재공·공구 제약 통과", "trace_path": None},
-            {"idx": "ch1-2", "name": "wip 비중", "formula": "wip/total, wip/ppk", "meaning": "재공이 이 버킷에 얼마나 몰려있나", "trace_path": None},
-            {"idx": "ch3", "name": "min_end_time", "formula": "min(free_at) 정규화", "meaning": "이 모델 설비가 언제 비나", "trace_path": None},
-            {"idx": "ch4-7", "name": "takt·처리율", "formula": "throughput, prev/post takt", "meaning": "수요·capa 대비 속도", "trace_path": None},
-            {"idx": "ch12", "name": "needs_conversion", "formula": "1[현재 EQP에서 전환 필요]", "meaning": "이 버킷 잡으면 셋업 변경?", "trace_path": None},
-            {"idx": "ch13", "name": "tool_can_assign", "formula": "1[공구 슬롯 여유]", "meaning": "tool cap 통과 여부", "trace_path": None},
-            {"idx": "ch14", "name": "achievable_ratio", "formula": "달성가능/계획", "meaning": "재공 한도 내 달성 상한", "trace_path": None},
-            {"idx": "ch15", "name": "projected_cover", "formula": "다른 EQP 투영커버/need", "meaning": "중복 커버 신호 (보상 redundant와 연동)", "trace_path": None},
+            {
+                "idx": "ch0", "name": "valid",
+                "formula": "1[해당 oper·model 조합에 배정 가능한 설비 존재]",
+                "meaning": "현재 EQP·재공·공구 제약과 무관하게 이 (공정×모델)이 유효한가",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch1-2", "name": "wip_비중",
+                "formula": "wip_q/ΣWIP_전체 ,  wip_q/ΣWIP_동일PPK",
+                "meaning": "재공이 이 버킷에 얼마나 몰려있나 (전체 대비 / 같은 제품 대비)",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch3", "name": "min_end_time",
+                "formula": "min(free_at, 해당 oper·model 설비군) / sim_end",
+                "meaning": "이 모델 설비가 가장 빨리 비는 시각(정규화)",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch4", "name": "throughput_ratio",
+                "formula": "wip_q / max(간트 최대종료시각, min_end_time + st_per_wafer·wf_unit)",
+                "meaning": "대기 재공 대비 이 모델의 처리완료 예상 밀도 — 높을수록 적체",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch6-7", "name": "prev/post_takt",
+                "formula": (
+                    "eff_takt(ppk, 이전/다음공정) / max_takt  ;  "
+                    "eff_takt = max(수요takt, capa takt)·wf_unit"
+                ),
+                "meaning": "상류(이전공정)·하류(다음공정) 기준 요구 속도 — 수요 vs 설비capa 중 더 빠듯한 쪽",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch12", "name": "needs_conversion",
+                "formula": "1[현재 EQP에서 이 LOT_CD/TEMP로 전환 필요]",
+                "meaning": "이 버킷 잡으면 셋업 변경?",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch13", "name": "tool_can_assign",
+                "formula": "1[공구 교체 불필요 또는 공구 슬롯 여유]",
+                "meaning": "tool cap 통과 여부",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch14", "name": "achievable_ratio",
+                "formula": "min(min(계획량, 완료+상류WIP) / 계획량, 1)",
+                "meaning": "재공 한도 내 달성 가능한 상한 비율",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch15", "name": "projected_cover_ratio",
+                "formula": "min(cover / need, 2) / 2  ;  need=달성상한−완료, cover=타EQP 하루 투영생산",
+                "meaning": "중복 커버 신호 — 클수록 다른 설비가 이미 커버 중(회피 유도)",
+                "trace_path": None,
+            },
         ],
     },
     {
