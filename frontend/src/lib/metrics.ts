@@ -41,6 +41,7 @@ export interface EqpScheduleSummary {
   convMin: number;
   idleMin: number;
   utilPct: number;
+  idlePct: number;
   outputQty: number;
   operSwitches: number;
   prodSwitches: number;
@@ -109,6 +110,9 @@ export function computeEqpScheduleSummary(
     const activeMin = busyMin + convMin;
     const idleMin = Math.max(0, simEndMin - activeMin);
     const utilPct = simEndMin > 0 ? Math.round((activeMin / simEndMin) * 1000) / 10 : 0;
+    // idle 률 = makespan 대비 (중간 유휴 시간 + conversion 시간) 비율. 가동률(busy+conv)과 달리
+    // conversion 시간은 실제 생산이 없는 구간이므로 idle 쪽으로 집계한다.
+    const idlePct = simEndMin > 0 ? Math.round(((idleMin + convMin) / simEndMin) * 1000) / 10 : 0;
 
     return {
       eqp_id,
@@ -120,6 +124,7 @@ export function computeEqpScheduleSummary(
       convMin,
       idleMin,
       utilPct,
+      idlePct,
       outputQty,
       operSwitches,
       prodSwitches,
@@ -255,6 +260,11 @@ export function computeAvgUtil(utils: EqpUtil[]): number {
   return Math.round((utils.reduce((s, u) => s + u.utilPct, 0) / utils.length) * 10) / 10;
 }
 
+export function computeAvgIdle(rows: EqpScheduleSummary[]): number {
+  if (!rows.length) return 0;
+  return Math.round((rows.reduce((s, r) => s + r.idlePct, 0) / rows.length) * 10) / 10;
+}
+
 export function computeAvgAchievement(rows: AchievementRow[]): number {
   if (!rows.length) return 0;
   return Math.round((rows.reduce((s, r) => s + Math.min(r.pct, 100), 0) / rows.length) * 10) / 10;
@@ -263,6 +273,7 @@ export function computeAvgAchievement(rows: AchievementRow[]): number {
 export interface InferenceKpi {
   makespan: number;
   avgUtilPct: number;
+  avgIdlePct: number;
   operSwitches: number;
   prodSwitches: number;
   toolSwitches: number;
@@ -276,6 +287,13 @@ export function computeInferenceKpi(
   const sched = result.schedule;
   const makespan = sched.length ? Math.max(...sched.map((r) => r.END_TM)) : 0;
   const utils = computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, modelMap);
+  const eqpSummary = computeEqpScheduleSummary(
+    sched,
+    result.eqp_ids,
+    result.sim_end_minutes,
+    modelMap,
+    result.conversion_plans ?? [],
+  );
   const ach = computeAchievement(sched, result.plan, {
     prodKeys: result.prod_keys,
     operIds: result.oper_ids,
@@ -284,6 +302,7 @@ export function computeInferenceKpi(
   return {
     makespan,
     avgUtilPct: computeAvgUtil(utils),
+    avgIdlePct: computeAvgIdle(eqpSummary),
     operSwitches: result.stats.oper_switches,
     prodSwitches: result.stats.prod_switches,
     toolSwitches: toolSw,

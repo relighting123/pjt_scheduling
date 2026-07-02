@@ -29,6 +29,12 @@ function utilClass(pct: number): string {
   return "bad";
 }
 
+function idleClass(pct: number): string {
+  if (pct <= 20) return "ok";
+  if (pct <= 50) return "warn";
+  return "bad";
+}
+
 function achClass(pct: number): string {
   if (pct >= 90) return "ok";
   if (pct >= 70) return "warn";
@@ -120,6 +126,7 @@ function filterEqpRow(row: EqpScheduleSummary, query: string): boolean {
     row.convMin,
     row.idleMin,
     row.utilPct,
+    row.idlePct,
     row.outputQty,
     row.operSwitches,
     row.prodSwitches,
@@ -140,6 +147,7 @@ function sortEqpRow(a: EqpScheduleSummary, b: EqpScheduleSummary, key: string, d
     case "convMin": return compareNumbers(a.convMin, b.convMin, dir);
     case "idleMin": return compareNumbers(a.idleMin, b.idleMin, dir);
     case "utilPct": return compareNumbers(a.utilPct, b.utilPct, dir);
+    case "idlePct": return compareNumbers(a.idlePct, b.idlePct, dir);
     case "outputQty": return compareNumbers(a.outputQty, b.outputQty, dir);
     case "operSwitches": return compareNumbers(a.operSwitches, b.operSwitches, dir);
     case "prodSwitches": return compareNumbers(a.prodSwitches, b.prodSwitches, dir);
@@ -245,6 +253,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
         <div className="gantt-summary-kpi-grid">
           <div><span className="gantt-summary-kpi-label">Makespan</span><strong>{kpi.makespan}분</strong></div>
           <div><span className="gantt-summary-kpi-label">평균 가동률</span><strong className={utilClass(kpi.avgUtilPct)}>{kpi.avgUtilPct}%</strong></div>
+          <div><span className="gantt-summary-kpi-label">평균 유휴율</span><strong className={idleClass(kpi.avgIdlePct)}>{kpi.avgIdlePct}%</strong></div>
           <div><span className="gantt-summary-kpi-label">평균 달성률</span><strong className={achClass(kpi.avgAchPct)}>{kpi.avgAchPct}%</strong></div>
           <div><span className="gantt-summary-kpi-label">공정 전환</span><strong>{kpi.operSwitches}회</strong></div>
           <div><span className="gantt-summary-kpi-label">제품 전환</span><strong>{kpi.prodSwitches}회</strong></div>
@@ -318,6 +327,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
               <col className="col-num" />
               <col className="col-num-sm" />
               <col className="col-num-sm" />
+              <col className="col-num-sm" />
               <col className="col-output" />
               <col className="col-num-sm" />
               <col className="col-num-sm" />
@@ -333,6 +343,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                 <SortableTh label="Conv(분)" sortKey="convMin" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="유휴(분)" sortKey="idleMin" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="가동률" sortKey="utilPct" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
+                <SortableTh label="유휴율" sortKey="idlePct" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="누적 실적" sortKey="outputQty" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="공정전환" sortKey="operSwitches" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="제품전환" sortKey="prodSwitches" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
@@ -350,6 +361,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                   <td className="mono num">{row.convMin}</td>
                   <td className="mono num">{row.idleMin}</td>
                   <td className={`mono num ${utilClass(row.utilPct)}`}>{row.utilPct}%</td>
+                  <td className={`mono num ${idleClass(row.idlePct)}`}>{row.idlePct}%</td>
                   <td className="mono num">{row.outputQty.toLocaleString()}매</td>
                   <td className="mono num">{row.operSwitches}회</td>
                   <td className="mono num">{row.prodSwitches}회</td>

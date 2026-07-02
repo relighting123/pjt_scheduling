@@ -11,7 +11,7 @@ import {
   minutesToTimestamp,
   parseSimBaseMs,
 } from "./ganttTime";
-import type { EqpUtil, ModelUtil, TatRow, AchievementRow } from "./metrics";
+import type { EqpUtil, EqpScheduleSummary, ModelUtil, TatRow, AchievementRow } from "./metrics";
 
 export type GanttBarLabel = "lot" | "car" | "prod";
 
@@ -1946,6 +1946,34 @@ export function buildModelUtilChart(utils: ModelUtil[]): { data: Data[]; layout:
       xaxis: { range: [0, 115], title: { text: "평균 가동률 (%)" } },
       height: Math.max(260, 40 * Math.max(utils.length, 4)),
       margin: { l: 120, r: 60, t: 40, b: 56 },
+      ...SHARED_DARK,
+    },
+  };
+}
+
+export function buildEqpIdleChart(rows: EqpScheduleSummary[]): { data: Data[]; layout: Partial<Layout> } {
+  const sorted = [...rows].sort((a, b) => b.idlePct - a.idlePct);
+  const labels = sorted.map((r) => (r.model ? `${r.model}/${r.eqp_id}` : r.eqp_id));
+  const values = sorted.map((r) => r.idlePct);
+  const colors = values.map((v) => (v <= 20 ? "#55A868" : v <= 50 ? "#DD8452" : "#C44E52"));
+
+  return {
+    data: [{
+      type: "bar",
+      orientation: "h",
+      x: values,
+      y: labels,
+      marker: { color: colors },
+      text: values.map((v) => `${v}%`),
+      textposition: "outside",
+      hovertemplate: "%{y}<br>유휴율: %{x}%<extra></extra>",
+      showlegend: false,
+    }],
+    layout: {
+      title: { text: "장비별 유휴율 (%)", font: { size: 13 } },
+      xaxis: { range: [0, 115], title: { text: "유휴율 (%)" } },
+      height: Math.max(300, 28 * Math.max(rows.length, 6)),
+      margin: { l: 140, r: 60, t: 40, b: 56 },
       ...SHARED_DARK,
     },
   };

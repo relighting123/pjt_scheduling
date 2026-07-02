@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import PlotChart from "./PlotChart";
 import {
   buildAchievementTableChart,
+  buildEqpIdleChart,
   buildEqpUtilChart,
   buildModelUtilChart,
   buildTatChart,
@@ -9,7 +10,9 @@ import {
 import {
   computeAchievement,
   computeAvgAchievement,
+  computeAvgIdle,
   computeAvgUtil,
+  computeEqpScheduleSummary,
   computeEqpUtil,
   computeModelUtil,
   computeTAT,
@@ -22,12 +25,13 @@ interface Props {
   eqpModelMap: Record<string, string>;
 }
 
-type DetailTab = "ach" | "eqp" | "model" | "tat" | "sw";
+type DetailTab = "ach" | "eqp" | "model" | "idle" | "tat" | "sw";
 
 const DETAIL_TABS: { id: DetailTab; label: string }[] = [
   { id: "ach",   label: "달성률" },
   { id: "eqp",   label: "장비 가동률" },
   { id: "model", label: "모델 가동률" },
+  { id: "idle",  label: "장비 유휴율" },
   { id: "tat",   label: "TAT" },
   { id: "sw",    label: "전환 횟수" },
 ];
@@ -41,6 +45,10 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
 
   const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap), [sched, result, eqpModelMap]);
   const models = useMemo(() => computeModelUtil(utils), [utils]);
+  const eqpSummary = useMemo(
+    () => computeEqpScheduleSummary(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? []),
+    [sched, result, eqpModelMap],
+  );
   const ach    = useMemo(
     () => computeAchievement(sched, result.plan, {
       prodKeys: result.prod_keys,
@@ -52,11 +60,13 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   const toolSw = countToolSwitches(sched, result.conversion_plans ?? []);
 
   const avgUtil = computeAvgUtil(utils);
+  const avgIdle = computeAvgIdle(eqpSummary);
   const avgAch  = computeAvgAchievement(ach);
 
   const kpis = [
     { label: "Makespan",  value: `${makespan}분`,                cls: "" },
     { label: "평균 가동률", value: `${avgUtil}%`,                 cls: avgUtil >= 80 ? "ok" : avgUtil >= 50 ? "warn" : "bad" },
+    { label: "평균 유휴율", value: `${avgIdle}%`,                 cls: avgIdle <= 20 ? "ok" : avgIdle <= 50 ? "warn" : "bad" },
     { label: "공정 전환",  value: `${result.stats.oper_switches}회`, cls: "" },
     { label: "제품 전환",  value: `${result.stats.prod_switches}회`, cls: "" },
     { label: "Tool 전환",  value: `${toolSw}회`,                  cls: "" },
@@ -101,6 +111,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
           {tab === "ach"   && <div className="chart-wrap"><PlotChart {...buildAchievementTableChart(ach)} /></div>}
           {tab === "eqp"   && <div className="chart-wrap"><PlotChart {...buildEqpUtilChart(utils)} /></div>}
           {tab === "model" && <div className="chart-wrap"><PlotChart {...buildModelUtilChart(models)} /></div>}
+          {tab === "idle"  && <div className="chart-wrap"><PlotChart {...buildEqpIdleChart(eqpSummary)} /></div>}
 
           {tab === "tat" && (
             <>
