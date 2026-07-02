@@ -38,6 +38,9 @@ from benchmark.reward_formula_trace import (
     BULK_REWARD_ORDER, REWARD_LABELS, REWARD_TERM_PAGES,
     enriched_reward_meta, trace_term_detail,
 )
+from benchmark.state_source_walkthrough import (
+    MINI_A_DATASET, MINI_A_NOTE, SOURCE_FILE, STATE_WALKTHROUGH,
+)
 
 KPI = json.load(open(os.path.join(_HERE, "kpi_conv_bench.json"), encoding="utf-8"))
 SUITE = json.load(open(os.path.join(_HERE, "bench_suite_results.json"), encoding="utf-8"))
@@ -332,6 +335,96 @@ def state_multi_eqp_slide(idx: int):
         R("이 시점까지 누적 배정  ", 11, STEEL, True),
         R(f"{counts_txt}  — 대칭 벤치(SYM_3x3)에서 설비마다 전담 제품을 반복 배정받는 모습.", 11, GRAY),
     ]], line_spacing=1.1)
+    return s
+
+
+def mini_a_dataset_slide(idx: int):
+    """State 산식 완전 해설의 서두 — MINI-A 가상 예시 데이터셋 정의."""
+    s = content_slide(
+        "02  Bulk-Fill MDP 모델 정의",
+        "State 산식 완전 해설 — MINI-A 예시 데이터셋",
+        idx,
+    )
+    box(s, 0.55, 1.35, 12.25, 0.6, NAVY)
+    txt(s, 0.72, 1.35, 11.9, 0.6, [[R(MINI_A_NOTE, 11.5, WHITE, True)]],
+        anchor=MSO_ANCHOR.MIDDLE, line_spacing=1.15)
+
+    y = 2.15
+    x0 = 0.55
+    widths = [1.7, 10.55]
+    for label, desc in MINI_A_DATASET:
+        h = 0.34 if len(desc) < 90 else 0.46
+        if label:
+            cell = box(s, x0, y, widths[0], h, LIGHT, line_color=LINE, line_w=0.75)
+            tf = cell.text_frame
+            tf.word_wrap = True
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.margin_left = Inches(0.08)
+            p = tf.paragraphs[0]
+            r = p.add_run()
+            r.text = label
+            r.font.size = Pt(10.5)
+            r.font.bold = True
+            r.font.color.rgb = NAVY
+            r.font.name = FONT
+        else:
+            box(s, x0, y, widths[0], h, LIGHT, line_color=LINE, line_w=0.75)
+        cell2 = box(s, x0 + widths[0], y, widths[1], h, WHITE, line_color=LINE, line_w=0.75)
+        tf2 = cell2.text_frame
+        tf2.word_wrap = True
+        tf2.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf2.margin_left = Inches(0.1)
+        p2 = tf2.paragraphs[0]
+        r2 = p2.add_run()
+        r2.text = desc
+        r2.font.size = Pt(10.5)
+        r2.font.color.rgb = INK
+        r2.font.name = FONT
+        y += h
+    return s
+
+
+def state_source_slide(idx: int, item: dict):
+    """State 항목 1개 — 실제 소스코드(좌) + MINI-A 대입 계산(우)."""
+    s = content_slide(
+        "02  Bulk-Fill MDP 모델 정의",
+        f"State 산식 해설 — {item['title']}",
+        idx,
+    )
+    txt(s, 0.55, 1.3, 12.25, 0.32, [[
+        R(f"{item['group']}   ", 10.5, ACCENT, True),
+        R(f"({SOURCE_FILE})", 10, GRAY),
+    ]])
+
+    lx, ly, lw, lh = 0.55, 1.65, 6.0, 4.75
+    box(s, lx, ly, lw, 0.34, STEEL)
+    txt(s, lx, ly, lw, 0.34, [[R("실제 소스코드", 11, WHITE, True)]],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    box(s, lx, ly + 0.34, lw, lh - 0.34, RGBColor(0xF4, 0xF6, 0xF8), line_color=LINE, line_w=0.75)
+    code_lines = [[R(ln, 9.3, INK, False, "Courier New")] for ln in item["lines"]]
+    txt(s, lx + 0.12, ly + 0.42, lw - 0.24, lh - 0.5, code_lines, line_spacing=1.05, space_after=0)
+
+    rx, ry_, rw, rh = 6.85, 1.65, 5.95, 4.75
+    box(s, rx, ry_, rw, 0.34, ACCENT)
+    txt(s, rx, ry_, rw, 0.34, [[R("MINI-A 대입 계산", 11, WHITE, True)]],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    chars_per_line = 68
+    wrapped_lines = sum(max(1, -(-len(ln) // chars_per_line)) for ln in item["calc"])
+    calc_h = min(3.5, max(1.2, 0.3 + 0.165 * wrapped_lines))
+    box(s, rx, ry_ + 0.34, rw, calc_h, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
+    calc_lines = [[R(ln if ln else " ", 10.2, INK)] for ln in item["calc"]]
+    txt(s, rx + 0.14, ry_ + 0.42, rw - 0.28, calc_h - 0.1, calc_lines, line_spacing=1.12, space_after=1)
+
+    res_y = ry_ + 0.34 + calc_h + 0.08
+    box(s, rx, res_y, rw, 0.5, NAVY)
+    txt(s, rx, res_y, rw, 0.5, [[R(item["result"], 12.5, WHITE, True)]],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+
+    note_y = res_y + 0.58
+    txt(s, rx, note_y, rw, ry_ + rh - note_y, [[
+        R("해석  ", 10, STEEL, True),
+        R(item["note"], 10, GRAY),
+    ]], line_spacing=1.12)
     return s
 
 
@@ -936,6 +1029,15 @@ for _st in STATE_TERM_PAGES:
 # ════════════════════════════════════════════════════════════════════════════
 state_multi_eqp_slide(_slide)
 _slide += 1
+
+# ════════════════════════════════════════════════════════════════════════════
+# State 산식 완전 해설 (실제 소스코드 + MINI-A 대입 계산)
+# ════════════════════════════════════════════════════════════════════════════
+mini_a_dataset_slide(_slide)
+_slide += 1
+for _item in STATE_WALKTHROUGH:
+    state_source_slide(_slide, _item)
+    _slide += 1
 
 # ════════════════════════════════════════════════════════════════════════════
 # Action 정의
