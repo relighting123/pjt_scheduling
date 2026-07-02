@@ -10,3 +10,4 @@ uvicorn[standard]>=0.32.0
 oracledb>=2.0.0
 python-dotenv>=1.0.0
 pyyaml>=6.0.0
+matplotlib>=3.7.0   # optional: 학습 수렴 차트(training_convergence_*.png) 생성용, 없어도 학습/JSON 리포트는 동작

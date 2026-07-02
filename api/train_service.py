@@ -7,6 +7,7 @@ from typing import Optional, Union
 from config import CONFIG, apply_reward_params
 from agent.rl_agent import SchedulingAgent
 from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES, TRAIN_BUDGET_TIMESTEPS
+from agent.training_report import save_training_convergence_report
 
 train_progress = TrainProgressState()
 _train_lock = threading.Lock()
@@ -47,6 +48,11 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
         if train_progress.is_stop_requested():
             train_progress.add_log("학습 중지됨 – 부분 모델 저장 중…")
             agent.save(algorithm=algorithm)
+            report = save_training_convergence_report(
+                CONFIG.path.model_dir, algorithm=algorithm,
+                progress_series=train_progress.snapshot()["series"],
+            )
+            train_progress.add_log(f"수렴 리포트 저장: {report['json_path']}")
             train_progress.set_stopped()
             train_progress.add_log("학습 중지 완료 (부분 모델 저장됨)")
             return
@@ -55,6 +61,16 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
         eval_eps = int(n_episodes) if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes else 1
         train_progress.add_log(f"학습 후 평가 ({eval_eps} 에피소드)…")
         metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
+        report = save_training_convergence_report(
+            CONFIG.path.model_dir, algorithm=algorithm,
+            progress_series=train_progress.snapshot()["series"],
+            eval_metrics=metrics,
+        )
+        train_progress.add_log(
+            f"수렴 리포트 저장: {report['json_path']} "
+            f"({'PNG 포함' if report['png_path'] else 'PNG 없음(matplotlib 미설치)'}) "
+            f"— 판정: {report['verdict']}"
+        )
         train_progress.set_completed(metrics)
         train_progress.add_log("학습 완료")
     except Exception as exc:
