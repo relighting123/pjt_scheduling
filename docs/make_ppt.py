@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Bulk-Fill 강화학습 스케줄링 — 사무용 발표 자료 생성기."""
 import json
+from collections import Counter
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
@@ -224,6 +225,113 @@ def state_term_detail_slide(idx: int, meta: dict):
             run.font.bold = c_i == 0
             run.font.color.rgb = NAVY if c_i <= 1 else (ACCENT if c_i == 4 else GRAY)
             run.font.name = FONT
+    return s
+
+
+# 동일 시점(t=120분)에 연속으로 판단을 내린 3대 설비 — 실제 트레이스 Step 번호
+MULTI_EQP_PICKS = [("EQP001", 10), ("EQP002", 8), ("EQP003", 9)]
+
+
+def state_multi_eqp_slide(idx: int):
+    """동일 시점 다장비 State 실측 비교 — 설비마다 실제로 다른 계산값을 보여줌."""
+    steps_by_no = {st["step"]: st for st in TRACE["steps"]}
+    rows_eqp = [(eqp_id, sn, steps_by_no[sn]) for eqp_id, sn in MULTI_EQP_PICKS]
+    t_val = rows_eqp[0][2]["t"]
+    g = rows_eqp[0][2]["state"]["obs_global"]
+
+    s = content_slide(
+        "02  Bulk-Fill MDP 모델 정의",
+        f"State — 다장비 동시 비교 (t={t_val}분, 3대 설비 실측)",
+        idx,
+    )
+    box(s, 0.55, 1.35, 12.25, 0.52, LIGHT, line_color=LINE, line_w=1.0)
+    txt(s, 0.72, 1.42, 11.9, 0.38, [[
+        R("쉬운 설명  ", 10.5, ACCENT, True),
+        R("같은 시각에 3대 설비가 차례로 판단을 내릴 때, 설비마다 State 값이 실제로 다르게 계산됩니다.", 10.5, INK),
+    ]], line_spacing=1.08)
+    box(s, 0.55, 1.92, 12.25, 0.38, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
+    txt(s, 0.72, 1.98, 11.9, 0.28, [[
+        R("공통 전역값 (3대 동일)  ", 10, STEEL, True),
+        R(
+            f"time_norm={g['time_norm']}, takt_margin={g['takt_margin']}, "
+            f"conv_idle_ratio={g['conv_idle_ratio']}, tool_util={g['tool_util']}",
+            10, GRAY,
+        ),
+    ]], line_spacing=1.08)
+
+    hdr = ["항목", "산식", *[f"{eqp_id}  (Step {sn})" for eqp_id, sn, _ in rows_eqp]]
+    widths = [2.0, 3.2, 2.2, 2.2, 2.2]
+    y = 2.38
+    x0 = 0.55
+    xh = 0.4
+    for c_i, (h, w) in enumerate(zip(hdr, widths)):
+        x = x0 + sum(widths[:c_i])
+        cell = box(s, x, y, w, xh, NAVY, line_color=LINE, line_w=0.75)
+        tf = cell.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.margin_left = Inches(0.06)
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
+        r.text = h
+        r.font.size = Pt(10.5)
+        r.font.color.rgb = WHITE
+        r.font.bold = True
+        r.font.name = FONT
+
+    items = [
+        ("배정 결정 (참고)", "이번 스텝에서 고른 PPK·OPER",
+         lambda st: f"{st['ppk']}·{st['oper']}"),
+        ("remaining_lots", "min(|lot_pool| / 초기 LOT수, 1)",
+         lambda st: st["state"]["obs_global"]["remaining_lots"]),
+        ("plan_progress", "min(produced / total_plan, 1)",
+         lambda st: st["state"]["obs_global"]["plan_progress"]),
+        ("needs_conversion", "1[feasible 중 전환 필요 버킷 존재]",
+         lambda st: st["state"]["obs_eqp_local"]["needs_conversion"]),
+        ("avoidable_frac", "max α over feasible 전환 버킷",
+         lambda st: st["state"]["obs_eqp_local"]["avoidable_frac"]),
+        ("reward (이 결정)", "8항목 보상 합",
+         lambda st: st["reward"]),
+    ]
+    n = len(items)
+    body_top = y + xh
+    body_h = min(0.6, (6.2 - body_top) / n)
+    for r_i, (name, formula, getter) in enumerate(items):
+        ry = body_top + r_i * body_h
+        fill = LIGHT if r_i % 2 else WHITE
+        vals = [name, formula, *[getter(st) for _, _, st in rows_eqp]]
+        for c_i, (cv, w) in enumerate(zip(vals, widths)):
+            x = x0 + sum(widths[:c_i])
+            cell = box(s, x, ry, w, body_h, fill, line_color=LINE, line_w=0.75)
+            tf = cell.text_frame
+            tf.word_wrap = True
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.margin_left = Inches(0.06)
+            tf.margin_right = Inches(0.05)
+            p = tf.paragraphs[0]
+            p.alignment = PP_ALIGN.LEFT if c_i < 2 else PP_ALIGN.CENTER
+            run = p.add_run()
+            run.text = str(cv)
+            run.font.size = Pt(9.8 if c_i == 1 else 10.5)
+            run.font.bold = c_i == 0 or c_i >= 2
+            if c_i == 0:
+                col = NAVY
+            elif c_i == 1:
+                col = GRAY
+            elif name.startswith("reward"):
+                col = _val_color(float(cv))
+            else:
+                col = ACCENT
+            run.font.color.rgb = col
+            run.font.name = FONT
+
+    eqp_counts = Counter(r["EQP_ID"] for r in rows_eqp[0][2]["schedule"])
+    counts_txt = ", ".join(f"{e}: {eqp_counts.get(e, 0)}건" for e, _, _ in rows_eqp)
+    txt(s, 0.55, 6.3, 12.25, 0.6, [[
+        R("이 시점까지 누적 배정  ", 11, STEEL, True),
+        R(f"{counts_txt}  — 대칭 벤치(SYM_3x3)에서 설비마다 전담 제품을 반복 배정받는 모습.", 11, GRAY),
+    ]], line_spacing=1.1)
     return s
 
 
@@ -822,6 +930,12 @@ _slide = 8
 for _st in STATE_TERM_PAGES:
     state_term_detail_slide(_slide, _st)
     _slide += 1
+
+# ════════════════════════════════════════════════════════════════════════════
+# State 다장비 동시 비교
+# ════════════════════════════════════════════════════════════════════════════
+state_multi_eqp_slide(_slide)
+_slide += 1
 
 # ════════════════════════════════════════════════════════════════════════════
 # Action 정의
