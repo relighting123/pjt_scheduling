@@ -32,7 +32,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-from benchmark.ppt_state_pages import STATE_TERM_PAGES, trace_state_value
+from benchmark.ppt_state_pages import STATE_TERM_PAGES, trace_state_detail
 from benchmark.reward_formula_trace import (
     BULK_REWARD_ORDER, REWARD_LABELS, REWARD_TERM_PAGES,
     enriched_reward_meta, trace_term_detail,
@@ -155,7 +155,7 @@ def _full_formula_list(step_data: dict) -> list:
 
 
 def state_term_detail_slide(idx: int, meta: dict):
-    """State 블록 1개 — 쉬운 설명 · 채널 정의 · SYM_3x3 실측."""
+    """State 블록 1개 — 쉬운 설명 · 채널 정의 · 실측 산출식 값."""
     s = content_slide(
         "02  Bulk-Fill MDP 모델 정의",
         f"State 항목 — {meta['title']}  ({meta['obs_slice']})",
@@ -173,8 +173,8 @@ def state_term_detail_slide(idx: int, meta: dict):
     ]], line_spacing=1.08)
 
     step_no = meta.get("trace_step", 1)
-    hdr = ["인덱스", "이름", "산식", "의미", f"SYM_3x3 (Step {step_no})"]
-    widths = [1.15, 1.55, 2.85, 3.55, 2.7]
+    hdr = ["인덱스", "이름", "산식", "의미", f"실측 산출식 값 (Step {step_no})"]
+    widths = [1.15, 1.55, 2.65, 3.35, 3.1]
     y = 2.38
     x0 = 0.55
     xh = 0.4
@@ -206,7 +206,7 @@ def state_term_detail_slide(idx: int, meta: dict):
             item.get("name", ""),
             item.get("formula", ""),
             item.get("meaning", ""),
-            trace_state_value(TRACE["steps"], step_no, item.get("trace_path")),
+            trace_state_detail(TRACE, step_no, item.get("trace_path")),
         ]
         for c_i, (cv, w) in enumerate(zip(vals, widths)):
             x = x0 + sum(widths[:c_i])
@@ -217,10 +217,10 @@ def state_term_detail_slide(idx: int, meta: dict):
             tf.margin_left = Inches(0.06)
             tf.margin_right = Inches(0.05)
             p = tf.paragraphs[0]
-            p.alignment = PP_ALIGN.CENTER if c_i == 4 else PP_ALIGN.LEFT
+            p.alignment = PP_ALIGN.LEFT
             run = p.add_run()
             run.text = str(cv)
-            run.font.size = Pt(9.8 if c_i == 3 else 10.2)
+            run.font.size = Pt(9.8 if c_i in (3, 4) else 10.2)
             run.font.bold = c_i == 0
             run.font.color.rgb = NAVY if c_i <= 1 else (ACCENT if c_i == 4 else GRAY)
             run.font.name = FONT
@@ -810,7 +810,7 @@ for r_i, (c1, c2, c3, is_h) in enumerate(rows):
 txt(s, 0.9, 6.55, 11.5, 0.6, [[
     R("다음 ", 12.5, ACCENT, True),
     R(f"{len(STATE_TERM_PAGES)}개 State 블록", 12.5, NAVY, True),
-    R("을 항목별 상세(채널 정의·SYM_3x3 실측)로 설명합니다. ", 12.5, INK),
+    R("을 항목별 상세(채널 정의·실측 산출식 값)로 설명합니다. ", 12.5, INK),
     R("버킷 채널", 12.5, NAVY, True),
     R("이 전환 회피·페이싱 판단의 근거가 됩니다.", 12.5, GRAY),
 ]], line_spacing=1.1)
