@@ -302,6 +302,7 @@ def save_result(
         "stats":            result["stats"],
         "plan":             result["plan"],
         "algorithm":        result.get("algorithm", "rl"),
+        "validation":       result.get("validation"),
     }
     with open(full_path, "w", encoding="utf-8") as f:
         json.dump(serializable, f, ensure_ascii=False, indent=2)
