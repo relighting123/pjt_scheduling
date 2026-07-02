@@ -13,13 +13,14 @@ import {
   buildGanttLegendItems,
   buildProductProductionCharts,
   buildInferenceWipChart,
-  buildAlgorithmKpiComparison,
-  buildAlgorithmAchievementComparison,
+  buildTestMetricChart,
+  TEST_METRICS,
   buildAlgorithmGanttComparison,
   buildCompareGanttAxis,
   resolveCompareTimeEndMinutes,
   type GanttBarLabel,
   type AlgoCompareEntry,
+  type TestBenchmarkChartRow,
   ALGO_CHART_COLORS,
 } from "../lib/charts";
 import { buildEqpModelMap } from "../lib/metrics";
@@ -205,6 +206,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const algoList = algorithms.length ? algorithms : FALLBACK_ALGOS;
   const available = useMemo(() => algoList.filter(a => !a.requires_model || modelExists), [algoList, modelExists]);
+  const algoLabels = useMemo(() => { const m: Record<string,string>={}; algoList.forEach(a=>m[a.id]=a.name); return m; }, [algoList]);
 
   useEffect(() => { setCompareAlgos(new Set(available.map(a => a.id))); }, [available]);
 
@@ -474,15 +476,15 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     compareGanttEnd,
   ]);
 
-  const compareKpiChart = useMemo(() => {
-    if (compareEntries.length < 1) return null;
-    return buildAlgorithmKpiComparison(compareEntries);
-  }, [compareEntries]);
+  const compareChartRows = useMemo((): TestBenchmarkChartRow[] => {
+    if (compareEntries.length < 1) return [];
+    return [{ input_folder: selectedFolder ?? "", label: "", entries: compareEntries }];
+  }, [compareEntries, selectedFolder]);
 
-  const compareAchievementChart = useMemo(() => {
-    if (compareEntries.length < 1) return null;
-    return buildAlgorithmAchievementComparison(compareEntries);
-  }, [compareEntries]);
+  const compareChartAlgos = useMemo(
+    () => compareEntries.map(e => e.algorithm),
+    [compareEntries],
+  );
 
   const canShowCompare = compareEntries.length > 0;
 
@@ -920,20 +922,13 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     </table>
                   </div>
                 </div>
-                {compareKpiChart && (
+                {compareChartRows.length > 0 && (
                   <div className="grid-2 mb-2">
-                    <div className="card chart-wrap compare-chart-panel">
-                      <PlotChart {...compareKpiChart} />
-                    </div>
-                    {compareAchievementChart ? (
-                      <div className="card chart-wrap compare-chart-panel">
-                        <PlotChart {...compareAchievementChart} />
+                    {TEST_METRICS.map(m => (
+                      <div key={m.key} className="card chart-wrap compare-chart-panel">
+                        <PlotChart {...buildTestMetricChart(m, compareChartRows, compareChartAlgos, algoLabels)} />
                       </div>
-                    ) : (
-                      <div className="card compare-chart-panel" style={{ display: "grid", placeItems: "center", minHeight: 380, color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                        달성률 비교 데이터 없음
-                      </div>
-                    )}
+                    ))}
                   </div>
                 )}
                 {compareShowGantt && compareGanttChart && (

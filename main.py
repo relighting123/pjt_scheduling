@@ -63,6 +63,7 @@ from data.writer.db_load import (
     resolve_output_dir,
 )
 from validation.runner import run_validation
+from validation.output_checks import validate_schedule_output
 
 
 def _refresh_invalid_folders(
@@ -363,6 +364,7 @@ def cmd_inference(
     max_conversions: int = None,
     max_conversions_per_eqp: int = None,
     conversion_minutes: int = None,
+    strict_validate: bool = False,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
@@ -414,6 +416,29 @@ def cmd_inference(
         max_conversions_per_eqp=max_conversions_per_eqp,
         conversion_minutes=conversion_minutes,
     )
+    print("=" * 60)
+    print("[inference] 결과 검증 (장비 투입 가능성 · 처리시간 · 배정 완전성)")
+    validation = validate_schedule_output(result, env_data)
+    result["validation"] = validation
+    summary = validation["summary"]
+    if validation["ok"]:
+        print(f"  [OK] 이상 없음 (배정 {summary['total_scheduled']}건)")
+    else:
+        print(
+            f"  [경고] 투입불가 {summary['eligibility_violation_count']}건 · "
+            f"처리시간불일치 {summary['proc_time_mismatch_count']}건 · "
+            f"미배정LOT {summary['unassigned_lot_count']}건"
+        )
+        for v in validation["eligibility_violations"][:10]:
+            print(f"    · [투입불가] LOT={v['lot_id']} EQP={v['eqp_id']} OPER={v['oper_id']}")
+        for m in validation["proc_time_mismatches"][:10]:
+            print(
+                f"    · [처리시간불일치] LOT={m['lot_id']} EQP={m['eqp_id']} "
+                f"기대={m['expected_proc_time']}분 실제={m['actual_proc_time']}분"
+            )
+        for u in validation["unassigned_lots"][:10]:
+            print(f"    · [미배정] LOT={u['lot_id']} PPK={u['plan_prod_key']} OPER={u['oper_id']}")
+
     path = save_result(result, env_data=env_data)
     stats = result["stats"]
     print(f"  배정 LOT 수:    {len(result['schedule'])}")
@@ -424,6 +449,10 @@ def cmd_inference(
     if decision_log:
         log = result.get("decision_log", [])
         print(f"  결정 로그:      {len(log)}건 → result_full.json 의 decision_log")
+
+    if strict_validate and not validation["ok"]:
+        print("[오류] --strict-validate: 검증 실패로 종료합니다.")
+        sys.exit(1)
 
     if db_load:
         print("=" * 60)
@@ -700,6 +729,11 @@ def parse_args():
         metavar="MIN",
         help="LOT_CD/TEMP 전환 1회 소요 시간(분, 기본: config.env.conversion_minutes)",
     )
+    inf_p.add_argument(
+        "--strict-validate",
+        action="store_true",
+        help="결과 검증(장비 투입 가능성·처리시간·배정 완전성) 실패 시 종료코드 1로 종료",
+    )
 
     db_load_p = sub.add_parser(
         "db-load",
@@ -854,6 +888,7 @@ def main():
                 max_conversions=args.max_conversions,
                 max_conversions_per_eqp=args.max_conversions_per_eqp,
                 conversion_minutes=args.conversion_minutes,
+                strict_validate=args.strict_validate,
             )
 
         elif args.command == "db-load":

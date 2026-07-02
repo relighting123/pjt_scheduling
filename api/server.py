@@ -25,6 +25,7 @@ from data.writer.db_load import load_output_sql_files
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
+from validation.output_checks import validate_schedule_output
 from api.serializers import env_data_summary, empty_data_summary, serialize_inference_result, serialize_compare_response
 from api.test_benchmark_store import (
     load_benchmark,
@@ -816,6 +817,7 @@ def inference(req: InferenceRequest):
     result["oper_ids"] = env_data["oper_ids"]
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
+    result["validation"] = validate_schedule_output(result, env_data)
     if req.save_output:
         save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
     if req.db_load:
@@ -1002,6 +1004,7 @@ def get_inference_result(input_folder: Optional[str] = None):
             "eqp_ids": env_data["eqp_ids"],
             "sim_end_minutes": env_data["sim_end_minutes"],
             "algorithm": saved.get("algorithm", "rl"),
+            "validation": saved.get("validation"),
         }
         return serialize_inference_result(result, include_history=False)
 

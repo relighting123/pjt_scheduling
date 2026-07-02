@@ -47,6 +47,7 @@ def serialize_inference_result(
         "sim_end_minutes": result.get("sim_end_minutes", 0),
         "sim_base_time": result.get("sim_base_time"),
         "algorithm": result.get("algorithm", "rl"),
+        "validation": result.get("validation"),
     }
     if include_history:
         payload["history"] = serialize_history(result.get("history", []))
