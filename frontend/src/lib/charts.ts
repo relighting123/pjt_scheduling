@@ -1342,7 +1342,7 @@ function buildTestMetricSingleDatasetChart(
       showlegend: false,
     }],
     layout: {
-      title: { text: `${metric.label} · ${row?.label ?? ""}`, font: { size: 14 } },
+      title: { text: row?.label ? `${metric.label} · ${row.label}` : metric.label, font: { size: 14 } },
       xaxis: { title: { text: "알고리즘" } },
       yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
       ...SHARED_DARK,
