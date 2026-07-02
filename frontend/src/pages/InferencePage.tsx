@@ -38,12 +38,6 @@ interface Props {
   onInputFolderChange: (f: string) => void | Promise<void>;
 }
 
-const FALLBACK_ALGOS: AlgorithmInfo[] = [
-  { id: "rl",          name: "PPO (강화학습)",        description: "", requires_model: true },
-  { id: "minprogress", name: "Min-Progress (휴리스틱)", description: "", requires_model: false },
-  { id: "earliest_st", name: "Earliest-ST (휴리스틱)", description: "", requires_model: false },
-];
-
 function facIdFromFolder(folder: string): string {
   return folder.split("/")[0] ?? "";
 }
@@ -204,7 +198,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     api.getAlgorithms().then(r => setAlgorithms(r.algorithms)).catch(() => {});
   }, []);
 
-  const algoList = algorithms.length ? algorithms : FALLBACK_ALGOS;
+  const algoList = algorithms;
   const available = useMemo(() => algoList.filter(a => !a.requires_model || modelExists), [algoList, modelExists]);
   const algoLabels = useMemo(() => { const m: Record<string,string>={}; algoList.forEach(a=>m[a.id]=a.name); return m; }, [algoList]);
 
