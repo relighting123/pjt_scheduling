@@ -4,8 +4,8 @@ STATE_TERM_PAGES = [
     {
         "key": "global",
         "title": "전역 상태 (Global)",
-        "obs_slice": "obs[0:5]",
-        "plain": "라인 전체 상황 — 시간·재공·계획·전환·공구를 5개 숫자로 요약합니다.",
+        "obs_slice": "obs[0:6]",
+        "plain": "라인 전체 상황 — 시간·takt 여유·재공·계획·전환·공구를 6개 숫자로 요약합니다.",
         "why": "정책이 \"지금 몇 시쯤인지, 얼마나 급한지\"를 전역적으로 파악하게 합니다.",
         "trace_step": 1,
         "items": [
@@ -18,27 +18,34 @@ STATE_TERM_PAGES = [
             },
             {
                 "idx": "obs[1]",
+                "name": "takt_margin",
+                "formula": "(soft_cutoff − t) / soft_cutoff",
+                "meaning": "남은 horizon 여유 (1→여유 많음)",
+                "trace_path": ("obs_global", "takt_margin"),
+            },
+            {
+                "idx": "obs[2]",
                 "name": "remaining_lots",
                 "formula": "|lot_pool| / 초기 LOT 수",
                 "meaning": "미배정 재공 비율 (↓=소진)",
                 "trace_path": ("obs_global", "remaining_lots"),
             },
             {
-                "idx": "obs[2]",
+                "idx": "obs[3]",
                 "name": "plan_progress",
                 "formula": "Σ완료 / Σ계획",
                 "meaning": "전체 계획 달성률",
                 "trace_path": ("obs_global", "plan_progress"),
             },
             {
-                "idx": "obs[3]",
+                "idx": "obs[4]",
                 "name": "conv_idle_ratio",
                 "formula": "전환대기 idle 설비 / 전체",
                 "meaning": "셋업 바꾸느라 대기 중인 설비 비율",
                 "trace_path": ("obs_global", "conv_idle_ratio"),
             },
             {
-                "idx": "obs[4]",
+                "idx": "obs[5]",
                 "name": "tool_util",
                 "formula": "공구 동시가공 사용률",
                 "meaning": "tool cap 포화 정도",
@@ -49,7 +56,7 @@ STATE_TERM_PAGES = [
     {
         "key": "bucket",
         "title": "버킷 특징 (Bucket)",
-        "obs_slice": "obs[5 : 5+O×P×K×12]",
+        "obs_slice": "obs[6 : 6+O×P×K×12]",
         "plain": "(OPER×PPK×모델) 격자마다 12채널 — \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
         "why": "보상(페이싱·중복커버·전환) 판단의 근거가 되는 핵심 특징입니다.",
         "trace_step": 1,

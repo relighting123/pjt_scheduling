@@ -2299,7 +2299,7 @@ class SchedulingSimulator:
     # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(5) + Bucket(O×P×K×F) + current EQP(4) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(4) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P = cfg.max_oper_count, cfg.max_prod_count
@@ -2340,21 +2340,24 @@ class SchedulingSimulator:
                         max_avoidable = av
             eqp_local[1] = max_avoidable
 
-        group_global = np.zeros(5, dtype=np.float32)
+        group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)
-        group_global[1] = min(len(self.lot_pool) / initial_lot_count, 1.0)
+        group_global[1] = min(
+            max(self.soft_cutoff - self.current_time, 0) / max(self.soft_cutoff, 1), 1.0,
+        )
+        group_global[2] = min(len(self.lot_pool) / initial_lot_count, 1.0)
         produced = sum(self.stats["completed_qty"].values())
         if total_plan > 0:
-            group_global[2] = min(produced / total_plan, 1.0)
+            group_global[3] = min(produced / total_plan, 1.0)
         else:
-            group_global[2] = min(produced / max(self._initial_wip_total, 1), 1.0)
+            group_global[3] = min(produced / max(self._initial_wip_total, 1), 1.0)
         conv_eqps = 0
         for eqp_id, eqp in self.eqps.items():
             rem = max(eqp.free_at - self.current_time, 0)
             if rem > 0 and eqp.status == "idle" and eqp.prev_lot_cd is not None:
                 conv_eqps += 1
-        group_global[3] = conv_eqps / max(len(self.eqps), 1)
-        group_global[4] = min(self._tool_tracker.utilization(), 1.0)
+        group_global[4] = conv_eqps / max(len(self.eqps), 1)
+        group_global[5] = min(self._tool_tracker.utilization(), 1.0)
 
         context = np.zeros(4, dtype=np.float32)
         if self._last_assigned:

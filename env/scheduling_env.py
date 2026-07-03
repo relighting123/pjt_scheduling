@@ -18,7 +18,7 @@ from config import CONFIG
 from simulation.simulator import SchedulingSimulator
 from simulation.decision_log import build_step_decision_entry
 
-_OBS_GLOBAL_DIM = 5
+_OBS_GLOBAL_DIM = 6
 _OBS_EQP_LOCAL_DIM = 4
 _OBS_CONTEXT_DIM = 4
 _OBS_FIXED_DIM = _OBS_GLOBAL_DIM + _OBS_EQP_LOCAL_DIM + _OBS_CONTEXT_DIM

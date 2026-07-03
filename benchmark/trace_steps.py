@@ -48,7 +48,7 @@ def _state_summary(obs: np.ndarray, sim, total_plan: int) -> dict:
     P = CONFIG.env.max_prod_count
     K = CONFIG.env.max_model_count
     F = SchedulingSimulator.BUCKET_FEATURES
-    base = 5 + O * P * K * F
+    base = 6 + O * P * K * F
     return {
         "time_min": int(sim.current_time),
         "progress_pct": round(100 * produced / max(total_plan, 1), 1),
@@ -57,10 +57,11 @@ def _state_summary(obs: np.ndarray, sim, total_plan: int) -> dict:
         "idle_eqps": len(sim.get_idle_eqps()),
         "obs_global": {
             "time_norm": round(float(obs[0]), 3),
-            "remaining_lots": round(float(obs[1]), 3),
-            "plan_progress": round(float(obs[2]), 3),
-            "conv_idle_ratio": round(float(obs[3]), 3),
-            "tool_util": round(float(obs[4]), 3),
+            "takt_margin": round(float(obs[1]), 3),
+            "remaining_lots": round(float(obs[2]), 3),
+            "plan_progress": round(float(obs[3]), 3),
+            "conv_idle_ratio": round(float(obs[4]), 3),
+            "tool_util": round(float(obs[5]), 3),
         },
         "obs_eqp_local": {
             "needs_conversion": round(float(obs[base]), 3),

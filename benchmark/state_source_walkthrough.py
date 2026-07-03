@@ -31,20 +31,27 @@ MINI_A_NOTE = (
 STATE_WALKTHROUGH = [
     {
         "group": "전역 (Global)",
-        "title": "obs[0] time_norm",
+        "title": "obs[0] time_norm  ·  obs[1] takt_margin",
         "lines": [
             "2344  group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)",
+            "2345  group_global[1] = min(",
+            "2346      max(self.soft_cutoff - self.current_time, 0) / max(self.soft_cutoff, 1), 1.0,",
+            "2347  )",
         ],
         "calc": [
             "current_time=120, sim_end=480",
             "time_norm = min(120 / 480, 1) = 0.25",
+            "",
+            "soft_cutoff=480",
+            "takt_margin = min( max(480-120,0) / 480, 1 ) = min(360/480, 1) = 0.75",
         ],
-        "result": "time_norm = 0.25",
-        "note": "takt_margin(obs[1])은 time_norm과 중복되어 제거됨.",
+        "result": "time_norm = 0.25   /   takt_margin = 0.75",
+        "note": "sim_end과 soft_cutoff을 같은 값(480)으로 두면 takt_margin ≈ 1-time_norm 처럼 보이지만, "
+                "두 값이 실제로 다르면(예: sim_end=600) 이 관계는 깨진다 — 서로 다른 변수임에 유의.",
     },
     {
         "group": "전역 (Global)",
-        "title": "obs[1] remaining_lots  ·  obs[2] plan_progress",
+        "title": "obs[2] remaining_lots  ·  obs[3] plan_progress",
         "lines": [
             "2331  initial_lot_count = max(len(data[\"lots\"]), 1)",
             "2332  total_plan = max(",
@@ -52,12 +59,12 @@ STATE_WALKTHROUGH = [
             "2334      0,",
             "2335  )",
             "  ...",
-            "2361  group_global[1] = min(len(self.lot_pool) / initial_lot_count, 1.0)",
-            "2362  produced = sum(self.stats[\"completed_qty\"].values())",
-            "2363  if total_plan > 0:",
-            "2364      group_global[2] = min(produced / total_plan, 1.0)",
-            "2365  else:",
-            "2366      group_global[2] = min(produced / max(self._initial_wip_total, 1), 1.0)",
+            "2348  group_global[2] = min(len(self.lot_pool) / initial_lot_count, 1.0)",
+            "2349  produced = sum(self.stats[\"completed_qty\"].values())",
+            "2350  if total_plan > 0:",
+            "2351      group_global[3] = min(produced / total_plan, 1.0)",
+            "2352  else:",
+            "2353      group_global[3] = min(produced / max(self._initial_wip_total, 1), 1.0)",
         ],
         "calc": [
             "len(lot_pool)=25, initial_lot_count=40",
@@ -72,15 +79,15 @@ STATE_WALKTHROUGH = [
     },
     {
         "group": "전역 (Global)",
-        "title": "obs[3] conv_idle_ratio  ·  obs[4] tool_util",
+        "title": "obs[4] conv_idle_ratio  ·  obs[5] tool_util",
         "lines": [
             "2367  conv_eqps = 0",
             "2368  for eqp_id, eqp in self.eqps.items():",
             "2369      rem = max(eqp.free_at - self.current_time, 0)",
             "2370      if rem > 0 and eqp.status == \"idle\" and eqp.prev_lot_cd is not None:",
             "2371          conv_eqps += 1",
-            "2372  group_global[3] = conv_eqps / max(len(self.eqps), 1)",
-            "2373  group_global[4] = min(self._tool_tracker.utilization(), 1.0)",
+            "2359  group_global[4] = conv_eqps / max(len(self.eqps), 1)",
+            "2360  group_global[5] = min(self._tool_tracker.utilization(), 1.0)",
         ],
         "calc": [
             "EQP001: busy → status!=idle → 제외",
