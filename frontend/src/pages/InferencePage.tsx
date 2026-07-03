@@ -52,6 +52,7 @@ function parseOptionalInt(value: string): number | undefined {
 function buildInferOptions(
   selectedFolder: string,
   opts: {
+    facIdOverride: string;
     ruleTimekey: string;
     lotCd: string;
     nodb: boolean;
@@ -66,7 +67,7 @@ function buildInferOptions(
     conversionMinutes: string;
   },
 ) {
-  const facId = facIdFromFolder(selectedFolder);
+  const facId = opts.facIdOverride.trim() || facIdFromFolder(selectedFolder);
   const maxConv = parseOptionalInt(opts.maxConversions);
   const maxConvEqp = parseOptionalInt(opts.maxConversionsPerEqp);
   const convMin = parseOptionalInt(opts.conversionMinutes);
@@ -152,6 +153,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const fileRef                       = useRef<HTMLInputElement>(null);
 
   const [selectedFolder, setSelectedFolder] = useState("");
+  const [facIdOverride, setFacIdOverride]   = useState("");
   const [decisionLog, setDecisionLog]       = useState(false);
   const [wipInflow, setWipInflow]           = useState(false);
   const [ruleTimekey, setRuleTimekey]       = useState("");
@@ -317,6 +319,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         algorithm,
         save_output: true,
         ...buildInferOptions(selectedFolder, {
+          facIdOverride,
           ruleTimekey,
           lotCd,
           nodb,
@@ -348,7 +351,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     } catch(e) { setError(e instanceof Error ? e.message : "추론 실패"); }
     finally { setLoading(false); }
   }, [
-    algorithm, selectedFolder, decisionLog, wipInflow, ruleTimekey, lotCd, nodb,
+    algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey, lotCd, nodb,
     includeHistory, dbLoad, dbAlias, noHistory, maxConversions, maxConversionsPerEqp,
     conversionMinutes, syncInferFolder,
   ]);
@@ -377,6 +380,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     setCmpLoad(true); setError(null); setLastInferMeta(null);
     try {
       const res = await api.runCompare(ids, buildInferOptions(selectedFolder, {
+        facIdOverride,
         ruleTimekey,
         lotCd,
         nodb,
@@ -411,7 +415,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       setTab("compare");
     } catch(e) { setError(e instanceof Error ? e.message : "비교 실패"); }
     finally { setCmpLoad(false); }
-  }, [compareAlgos, selectedFolder, wipInflow, ruleTimekey, lotCd, nodb, maxConversions, maxConversionsPerEqp, conversionMinutes, syncInferFolder]);
+  }, [compareAlgos, selectedFolder, facIdOverride, wipInflow, ruleTimekey, lotCd, nodb, maxConversions, maxConversionsPerEqp, conversionMinutes, syncInferFolder]);
 
   const needsModel = algoList.find(a => a.id === algorithm)?.requires_model ?? false;
   const canRun = !needsModel || modelExists;
@@ -520,7 +524,18 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           <div className="card-title">실행 옵션</div>
           <p className="hint mb-2">CLI <code>infer</code> 와 동일한 옵션입니다. 기본은 Oracle에서 input JSON을 조회한 뒤 추론합니다.</p>
 
-          <label className="field-label" htmlFor="infer-rule-timekey">RULE_TIMEKEY</label>
+          <label className="field-label" htmlFor="infer-fac-id">FAC_ID</label>
+          <input
+            id="infer-fac-id"
+            className="input"
+            type="text"
+            placeholder={facIdFromFolder(selectedFolder) || "미지정 시 경로 첫 세그먼트"}
+            value={facIdOverride}
+            onChange={e => setFacIdOverride(e.target.value)}
+            disabled={loading || compareLoading}
+          />
+
+          <label className="field-label mt-2" htmlFor="infer-rule-timekey">RULE_TIMEKEY</label>
           <input
             id="infer-rule-timekey"
             className="input"
