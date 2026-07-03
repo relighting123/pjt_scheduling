@@ -416,7 +416,7 @@ def state_source_slide(idx: int, item: dict):
     # 중앙: 이 항목 전용 개념 그림 (MINI-A 시나리오 수치와 일치)
     gx, gw = 0.55, 12.25
     img_top = 1.60
-    img_h = 1.05
+    img_h = 1.75 if item.get("diagram_tall") else 1.05
     box(s, gx, img_top, gw, img_h, WHITE, line_color=LINE, line_w=0.75)
     diagram_path = os.path.join(STATE_ITEM_DIAGRAM_DIR, f"{item['diagram']}.png")
     if os.path.isfile(diagram_path):
@@ -426,13 +426,16 @@ def state_source_slide(idx: int, item: dict):
         s.shapes.add_picture(diagram_path, Inches(pic_x), Inches(img_top + 0.04),
                               width=Inches(pic_w), height=Inches(pic_h))
     cap_y = img_top + img_h + 0.05
-    box(s, gx, cap_y, gw, 0.4, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
-    txt(s, gx + 0.14, cap_y + 0.02, gw - 0.28, 0.36, [[
+    cap_chars_per_line = 80
+    cap_wrapped = max(1, -(-len(item["diagram_desc"]) // cap_chars_per_line))
+    cap_h = min(1.0, max(0.4, 0.14 + 0.158 * cap_wrapped))
+    box(s, gx, cap_y, gw, cap_h, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
+    txt(s, gx + 0.14, cap_y + 0.02, gw - 0.28, cap_h - 0.04, [[
         R("이 그림은  ", 9.2, STEEL, True),
         R(item["diagram_desc"], 9.2, INK),
-    ]], line_spacing=1.03, anchor=MSO_ANCHOR.MIDDLE)
+    ]], line_spacing=1.05, anchor=MSO_ANCHOR.MIDDLE)
 
-    lx, ly, lw, lh = 0.55, cap_y + 0.4 + 0.08, 6.0, 3.62
+    lx, ly, lw, lh = 0.55, cap_y + cap_h + 0.08, 6.0, 6.85 - (cap_y + cap_h + 0.08)
     box(s, lx, ly, lw, 0.32, STEEL)
     txt(s, lx, ly, lw, 0.32, [[R("실제 소스코드", 11, WHITE, True)]],
         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
@@ -441,7 +444,7 @@ def state_source_slide(idx: int, item: dict):
     code_lines = [[R(ln, code_font, INK, False, "Courier New")] for ln in item["lines"]]
     txt(s, lx + 0.12, ly + 0.4, lw - 0.24, lh - 0.48, code_lines, line_spacing=1.03, space_after=0)
 
-    rx, ry_, rw, rh = 6.85, ly, 5.95, 3.62
+    rx, ry_, rw, rh = 6.85, ly, 5.95, lh
     box(s, rx, ry_, rw, 0.32, ACCENT)
     txt(s, rx, ry_, rw, 0.32, [[R("MINI-A 대입 계산", 11, WHITE, True)]],
         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
@@ -449,7 +452,7 @@ def state_source_slide(idx: int, item: dict):
     chars_per_line = 68
     wrapped_lines = sum(max(1, -(-len(ln) // chars_per_line)) for ln in item["calc"])
     calc_max_h = rh - 0.32 - 0.06 - 0.38 - 0.06 - 0.34  # 헤더/간격/결과박스/간격/해석 최소공간 제외
-    for calc_font, calc_spacing in [(10.2, 1.1), (9.4, 1.06), (8.6, 1.02), (7.8, 1.0)]:
+    for calc_font, calc_spacing in [(10.2, 1.1), (9.4, 1.06), (8.6, 1.02), (7.8, 1.0), (7.0, 1.0)]:
         pitch = (calc_font * 1.2 * calc_spacing) / 72
         needed = 0.16 + pitch * wrapped_lines
         if needed <= calc_max_h:
