@@ -1013,44 +1013,81 @@ export function resultScheduleStats(result: InferenceResult): ScheduleStats {
 export function buildAlgorithmKpiComparison(
   entries: AlgoCompareEntry[],
 ): { data: Data[]; layout: Partial<Layout> } {
-  const metrics = ["Makespan(분)", "Idle 합계(분)", "공정 전환", "제품 전환"];
-  // 지표마다 단위(분 vs 회)와 스케일이 크게 달라, 각 지표의 최댓값=100%로 정규화해
-  // 모든 지표 막대가 보이도록 한다. 실제 값은 막대 위 텍스트로 표기.
-  const rawByEntry = entries.map((e) => {
-    const s = resultScheduleStats(e.result);
-    return [s.makespan, s.idle_total, s.oper_switches, s.prod_switches];
-  });
-  const maxPerMetric = metrics.map((_, mi) =>
-    Math.max(1, ...rawByEntry.map((r) => Math.abs(r[mi]))),
-  );
+  const metricDefs = [
+    { label: "Makespan", unit: "분", key: "makespan" as const },
+    { label: "Idle 합계", unit: "분", key: "idle_total" as const },
+    { label: "공정 전환", unit: "회", key: "oper_switches" as const },
+    { label: "제품 전환", unit: "회", key: "prod_switches" as const },
+  ];
+  type RawKey = "makespan" | "idle_total" | "oper_switches" | "prod_switches";
 
-  const data: Data[] = entries.map((e, ei) => {
-    const raw = rawByEntry[ei];
+  const algoNames = entries.map((e) => e.label);
+  const rawByAlgo = entries.map((e) => {
+    const s = resultScheduleStats(e.result);
+    return { makespan: s.makespan, idle_total: s.idle_total, oper_switches: s.oper_switches, prod_switches: s.prod_switches };
+  });
+
+  const axisRefs = [
+    { x: "x" as const, y: "y" as const, xKey: "xaxis", yKey: "yaxis" },
+    { x: "x2" as const, y: "y2" as const, xKey: "xaxis2", yKey: "yaxis2" },
+    { x: "x3" as const, y: "y3" as const, xKey: "xaxis3", yKey: "yaxis3" },
+    { x: "x4" as const, y: "y4" as const, xKey: "xaxis4", yKey: "yaxis4" },
+  ];
+  const domainX: [number, number][] = [[0, 0.44], [0.56, 1.0], [0, 0.44], [0.56, 1.0]];
+  const domainY: [number, number][] = [[0.57, 1.0], [0.57, 1.0], [0, 0.43], [0, 0.43]];
+  const sharedAxisStyle = { gridcolor: "rgba(15,23,42,0.07)", color: "#475569", zerolinecolor: "rgba(15,23,42,0.12)" };
+
+  const data: Data[] = metricDefs.map((metric, mi) => {
+    const vals = rawByAlgo.map((r) => r[metric.key as RawKey] as number);
+    const maxVal = Math.max(...vals, 1);
     return {
       type: "bar" as const,
-      name: e.label,
-      x: metrics,
-      y: raw.map((v, mi) => (v / maxPerMetric[mi]) * 100),
-      text: raw.map((v) => `${v.toLocaleString()}`),
+      x: algoNames,
+      y: vals,
+      text: vals.map((v) => v.toLocaleString()),
       textposition: "outside" as const,
-      textfont: { size: 10 },
-      customdata: raw,
-      hovertemplate: `<b>${e.label}</b><br>%{x}: %{customdata:,}<extra></extra>`,
-      marker: { color: ALGO_CHART_COLORS[e.algorithm] ?? "#888" },
-    };
+      textfont: { size: 11 },
+      cliponaxis: false,
+      marker: { color: entries.map((e) => ALGO_CHART_COLORS[e.algorithm] ?? "#888") },
+      hovertemplate: `%{x}: %{y:,} ${metric.unit}<extra></extra>`,
+      xaxis: axisRefs[mi].x,
+      yaxis: axisRefs[mi].y,
+      showlegend: false,
+      name: metric.label,
+    } as Data;
+  });
+
+  const annotations = metricDefs.map((metric, mi) => ({
+    text: `<b>${metric.label} (${metric.unit})</b>`,
+    x: (domainX[mi][0] + domainX[mi][1]) / 2,
+    y: domainY[mi][1] + 0.005,
+    xref: "paper" as const,
+    yref: "paper" as const,
+    showarrow: false,
+    font: { size: 12 },
+    xanchor: "center" as const,
+    yanchor: "bottom" as const,
+  }));
+
+  const extraAxes: Record<string, unknown> = {};
+  metricDefs.forEach((metric, mi) => {
+    const vals = rawByAlgo.map((r) => r[metric.key as RawKey] as number);
+    const maxVal = Math.max(...vals, 1);
+    extraAxes[axisRefs[mi].xKey] = { ...sharedAxisStyle, domain: domainX[mi], anchor: axisRefs[mi].y, automargin: true };
+    extraAxes[axisRefs[mi].yKey] = { ...sharedAxisStyle, domain: domainY[mi], anchor: axisRefs[mi].x, automargin: true, rangemode: "tozero" as const, range: [0, maxVal * 1.35], title: { text: metric.unit } };
   });
 
   return {
     data,
-    layout: mergeSharedLayout({
-      title: { text: "알고리즘별 KPI 비교 (지표별 최댓값=100% 정규화)" },
-      barmode: "group",
-      yaxis: { title: { text: "상대값 (%)" }, automargin: true, rangemode: "tozero", range: [0, 118] },
-      xaxis: { automargin: true },
-      legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
-      height: 380,
-      margin: { t: 60, b: 88, l: 56, r: 16 },
-    }),
+    layout: {
+      ...mergeSharedLayout({
+        title: { text: "알고리즘별 KPI 비교" },
+        height: 520,
+        margin: { t: 64, b: 56, l: 56, r: 16 },
+        annotations,
+      }),
+      ...extraAxes,
+    } as Partial<Layout>,
   };
 }
 
@@ -1327,8 +1364,11 @@ function buildTestMetricSingleDatasetChart(
   const algoNames = algorithms.map((a) => algoLabels[a] ?? a);
   const values = algorithms.map((algo) => {
     const entry = row?.entries.find((e) => e.algorithm === algo);
-    return entry ? metricValue(entry.result, metric.key) : 0;
+    return entry ? (metricValue(entry.result, metric.key) ?? 0) : 0;
   });
+
+  const maxVal = Math.max(...values, metric.key === "avg_achievement" ? 100 : 1);
+  const yMax = metric.key === "avg_achievement" ? 110 : maxVal * 1.3;
 
   return {
     data: [{
@@ -1336,16 +1376,18 @@ function buildTestMetricSingleDatasetChart(
       x: algoNames,
       y: values,
       marker: { color: algorithms.map((a) => ALGO_CHART_COLORS[a] ?? "#888") },
-      text: values.map((v) => String(v ?? "")),
+      text: values.map((v) => (v != null ? v.toLocaleString() : "")),
       textposition: "outside" as const,
+      textfont: { size: 12 },
+      cliponaxis: false,
       hovertemplate: `<b>%{x}</b><br>${metric.label}: %{y}<extra></extra>`,
       showlegend: false,
     }],
     layout: {
       title: { text: row?.label ? `${metric.label} · ${row.label}` : metric.label, font: { size: 14 } },
-      xaxis: { title: { text: "알고리즘" } },
-      yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
       ...SHARED_DARK,
+      xaxis: { ...SHARED_DARK.xaxis, title: { text: "알고리즘" } },
+      yaxis: { ...SHARED_DARK.yaxis, title: { text: metric.yTitle }, range: [0, yMax] },
       height: 340,
       margin: { t: 50, b: 72, l: 55, r: 20 },
     },
@@ -1367,15 +1409,27 @@ function buildTestMetricLineChart(
       return entry && metricValue(entry.result, metric.key) != null;
     }),
   );
-  const data: Data[] = activeAlgos.map((algo) => ({
-    type: "scatter" as const,
-    mode: "lines+markers" as const,
-    name: algoLabels[algo] ?? algo,
-    x: categories,
-    y: rows.map((row) => {
+  const yValues = activeAlgos.map((algo) =>
+    rows.map((row) => {
       const entry = row.entries.find((e) => e.algorithm === algo);
       return entry ? metricValue(entry.result, metric.key) : null;
     }),
+  );
+  const allVals = yValues.flat().filter((v): v is number => v != null);
+  const maxVal = allVals.length ? Math.max(...allVals) : 1;
+  const yRange: [number, number] | undefined =
+    metric.key === "avg_achievement" ? [0, 110] : [0, maxVal * 1.25];
+
+  const showText = rows.length <= 8;
+  const data: Data[] = activeAlgos.map((algo, ai) => ({
+    type: "scatter" as const,
+    mode: showText ? ("lines+markers+text" as const) : ("lines+markers" as const),
+    name: algoLabels[algo] ?? algo,
+    x: categories,
+    y: yValues[ai],
+    text: showText ? yValues[ai].map((v) => (v != null ? v.toLocaleString() : "")) : undefined,
+    textposition: "top center" as const,
+    textfont: { size: 10 },
     connectgaps: false,
     marker: {
       size: 9,
@@ -1384,7 +1438,7 @@ function buildTestMetricLineChart(
     },
     line: { color: ALGO_CHART_COLORS[algo] ?? "#888", width: 2 },
     hovertemplate:
-      `<b>%{customdata}</b><br>${algoLabels[algo] ?? algo}: %{y}<extra></extra>`,
+      `<b>%{customdata}</b><br>${algoLabels[algo] ?? algo}: %{y:,}<extra></extra>`,
     customdata: tickText,
   }));
 
@@ -1406,8 +1460,8 @@ function buildTestMetricLineChart(
         tickvals: categories,
         ticktext: tickText,
       },
-      yaxis: { title: { text: metric.yTitle }, rangemode: "tozero" },
       ...SHARED_DARK,
+      yaxis: { ...SHARED_DARK.yaxis, title: { text: metric.yTitle }, ...(yRange ? { range: yRange } : { rangemode: "tozero" as const }) },
       legend: { orientation: "h", y: -0.44 },
       height: 340,
       margin: { t: 50, b: 120, l: 55, r: 20 },
