@@ -173,8 +173,10 @@ function sortAchRow(a: AchievementRow, b: AchievementRow, key: string, dir: "asc
     case "prod": return compareStrings(a.prod, b.prod, dir);
     case "oper": return compareStrings(a.oper, b.oper, dir);
     case "planQty": return compareNumbers(a.planQty, b.planQty, dir);
+    case "targetQty": return compareNumbers(a.targetQty, b.targetQty, dir);
     case "doneQty": return compareNumbers(a.doneQty, b.doneQty, dir);
     case "pct": return compareNumbers(a.pct, b.pct, dir);
+    case "targetPct": return compareNumbers(a.targetPct, b.targetPct, dir);
     default: return compareStrings(a.prod, b.prod, dir);
   }
 }
@@ -254,7 +256,8 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
           <div><span className="gantt-summary-kpi-label">Makespan</span><strong>{kpi.makespan}분</strong></div>
           <div><span className="gantt-summary-kpi-label">평균 가동률</span><strong className={utilClass(kpi.avgUtilPct)}>{kpi.avgUtilPct}%</strong></div>
           <div><span className="gantt-summary-kpi-label">평균 유휴율</span><strong className={idleClass(kpi.avgIdlePct)}>{kpi.avgIdlePct}%</strong></div>
-          <div><span className="gantt-summary-kpi-label">평균 달성률</span><strong className={achClass(kpi.avgAchPct)}>{kpi.avgAchPct}%</strong></div>
+          <div><span className="gantt-summary-kpi-label">계획 달성률</span><strong className={achClass(kpi.avgAchPct)}>{kpi.avgAchPct}%</strong></div>
+          <div><span className="gantt-summary-kpi-label">타겟 달성률</span><strong className={achClass(kpi.avgTargetAchPct)}>{kpi.avgTargetAchPct}%</strong></div>
           <div><span className="gantt-summary-kpi-label">공정 전환</span><strong>{kpi.operSwitches}회</strong></div>
           <div><span className="gantt-summary-kpi-label">제품 전환</span><strong>{kpi.prodSwitches}회</strong></div>
           <div><span className="gantt-summary-kpi-label">Tool 전환</span><strong>{kpi.toolSwitches}회</strong></div>
@@ -394,6 +397,8 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
               <col className="col-num" />
               <col className="col-num" />
               <col className="col-num" />
+              <col className="col-num" />
+              <col className="col-num" />
             </colgroup>
             <thead>
               <tr>
@@ -401,9 +406,11 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                 <SortableTh label="공정" sortKey="oper" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="col-code" />
                 <SortableTh label="PPK" sortKey="prod" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="col-key" />
                 <SortableTh label="OPER" sortKey="oper" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="col-key" />
-                <SortableTh label="계획량" sortKey="planQty" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="num col-num" />
+                <SortableTh label="계획량(D0)" sortKey="planQty" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="num col-num" />
+                <SortableTh label="타겟량(D1)" sortKey="targetQty" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="num col-num" />
                 <SortableTh label="누적 실적" sortKey="doneQty" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="num col-num" />
-                <SortableTh label="달성률" sortKey="pct" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="num col-num" />
+                <SortableTh label="계획달성률" sortKey="pct" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="num col-num" />
+                <SortableTh label="타겟달성률" sortKey="targetPct" currentKey={achTable.sort.key} currentDir={achTable.sort.dir} onSort={achTable.toggleSort} className="num col-num" />
               </tr>
             </thead>
             <tbody>
@@ -411,6 +418,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                 const pCode = achCodeLookup.prod.get(row.prod) ?? row.prod;
                 const oCode = achCodeLookup.oper.get(row.oper) ?? row.oper;
                 const pct = Math.min(row.pct, 100);
+                const tpct = Math.min(row.targetPct, 100);
                 return (
                   <tr key={row.key}>
                     <td className="mono col-code"><span className="code-text">{pCode}</span></td>
@@ -418,8 +426,10 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                     <td className="cell-key col-key">{row.prod}</td>
                     <td className="cell-key col-key">{row.oper}</td>
                     <td className="mono num col-num">{row.planQty.toLocaleString()}매</td>
+                    <td className="mono num col-num">{row.targetQty.toLocaleString()}매</td>
                     <td className="mono num col-num">{row.doneQty.toLocaleString()}매</td>
                     <td className={`mono num col-num ${achClass(pct)}`}>{row.pct}%</td>
+                    <td className={`mono num col-num ${achClass(tpct)}`}>{row.targetPct}%</td>
                   </tr>
                 );
               })}

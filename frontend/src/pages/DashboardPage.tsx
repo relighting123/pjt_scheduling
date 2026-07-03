@@ -110,12 +110,12 @@ export default function DashboardPage({ onNavigate }: Props) {
                   <div className={`dash-kpi-value ${kpi.avgUtilPct >= 80 ? "good" : "warn"}`}>{kpi.avgUtilPct.toLocaleString()}<small className="dash-kpi-unit">%</small></div>
                 </div>
                 <div className="dash-kpi">
-                  <div className="dash-kpi-label">평균 달성률</div>
+                  <div className="dash-kpi-label">계획 달성률</div>
                   <div className={`dash-kpi-value ${kpi.avgAchPct >= 90 ? "good" : kpi.avgAchPct >= 70 ? "warn" : "bad"}`}>{kpi.avgAchPct.toLocaleString()}<small className="dash-kpi-unit">%</small></div>
                 </div>
                 <div className="dash-kpi">
-                  <div className="dash-kpi-label">공정 전환</div>
-                  <div className="dash-kpi-value">{kpi.operSwitches.toLocaleString()}<small className="dash-kpi-unit">회</small></div>
+                  <div className="dash-kpi-label">타겟 달성률</div>
+                  <div className={`dash-kpi-value ${kpi.avgTargetAchPct >= 90 ? "good" : kpi.avgTargetAchPct >= 70 ? "warn" : "bad"}`}>{kpi.avgTargetAchPct.toLocaleString()}<small className="dash-kpi-unit">%</small></div>
                 </div>
               </div>
             )}

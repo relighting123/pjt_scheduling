@@ -2013,27 +2013,46 @@ export function buildTatChart(rows: TatRow[]): { data: Data[]; layout: Partial<L
 }
 
 export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data[]; layout: Partial<Layout> } {
-  const colors = rows.map((r) =>
-    r.pct >= 100 ? "#55A868" : r.pct >= 60 ? "#DD8452" : "#C44E52",
-  );
+  const labels = rows.map((r) => `${r.prod}/${r.oper}`);
+  const planColors = rows.map((r) => r.pct >= 100 ? "#55A868" : r.pct >= 60 ? "#DD8452" : "#C44E52");
+  const targetColors = rows.map((r) => r.targetPct >= 100 ? "#3b8a5a" : r.targetPct >= 60 ? "#b86830" : "#8b2e31");
   return {
-    data: [{
-      type: "bar",
-      orientation: "h",
-      x: rows.map((r) => Math.min(r.pct, 100)),
-      y: rows.map((r) => `${r.prod}/${r.oper}`),
-      text: rows.map((r) => `${r.doneQty}/${r.planQty}매 (${r.pct}%)`),
-      textposition: "outside",
-      marker: { color: colors },
-      hovertemplate: "%{y}<br>달성률: %{x}%<extra></extra>",
-      showlegend: false,
-    }],
+    data: [
+      {
+        type: "bar",
+        orientation: "h",
+        name: "계획달성률(D0)",
+        x: rows.map((r) => Math.min(r.pct, 100)),
+        y: labels,
+        text: rows.map((r) => `${r.pct}%`),
+        textposition: "outside",
+        marker: { color: planColors },
+        hovertemplate: "%{y}<br>계획달성률: %{x}% (%{customdata}매/%{meta}매)<extra></extra>",
+        customdata: rows.map((r) => r.doneQty),
+        meta: rows.map((r) => r.planQty),
+      },
+      {
+        type: "bar",
+        orientation: "h",
+        name: "타겟달성률(D1)",
+        x: rows.map((r) => Math.min(r.targetPct, 100)),
+        y: labels,
+        text: rows.map((r) => `${r.targetPct}%`),
+        textposition: "outside",
+        marker: { color: targetColors, opacity: 0.65 },
+        hovertemplate: "%{y}<br>타겟달성률: %{x}% (%{customdata}매/%{meta}매)<extra></extra>",
+        customdata: rows.map((r) => r.doneQty),
+        meta: rows.map((r) => r.targetQty),
+      },
+    ],
     layout: {
-      title: { text: "제품/공정별 달성률", font: { size: 13 } },
+      title: { text: "제품/공정별 달성률 (계획 vs 타겟)", font: { size: 13 } },
+      barmode: "group",
       xaxis: { range: [0, 130], title: { text: "달성률 (%)" } },
       shapes: [{ type: "line" as const, x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper" as const, line: { dash: "dash" as const, color: "#4C72B0", width: 1.5 } }],
-      height: Math.max(260, 28 * Math.max(rows.length, 6)),
-      margin: { l: 140, r: 100, t: 40, b: 56 },
+      legend: { orientation: "h", y: -0.15 },
+      height: Math.max(300, 40 * Math.max(rows.length, 5)),
+      margin: { l: 140, r: 100, t: 40, b: 80 },
       ...SHARED_DARK,
     },
   };
