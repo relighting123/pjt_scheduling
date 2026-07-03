@@ -384,19 +384,50 @@ def mini_a_dataset_slide(idx: int):
     return s
 
 
+MINI_A_GANTT_PATH = os.path.join(_HERE, "gantt", "mini_a_snapshot.png")
+if os.path.isfile(MINI_A_GANTT_PATH):
+    from PIL import Image as _PILImage
+    with _PILImage.open(MINI_A_GANTT_PATH) as _img:
+        MINI_A_GANTT_ASPECT = _img.width / _img.height
+else:
+    MINI_A_GANTT_ASPECT = 7.48
+MINI_A_CAPTION = (
+    "t=120분 시점  ·  EQP001 busy(free_at=320)  ·  "
+    "EQP002 idle(free_at=120, 결정대상 current_eqp)  ·  "
+    "EQP003 busy(free_at=400, 직전배정 PPK001·OPER002·세팅A)  ·  sim_end/soft_cutoff=480"
+)
+
+
 def state_source_slide(idx: int, item: dict):
-    """State 항목 1개 — 실제 소스코드(좌) + MINI-A 대입 계산(우)."""
+    """State 항목 1개 — MINI-A 상태 스냅샷(중앙) + 실제 소스코드(좌) + 대입 계산(우)."""
     s = content_slide(
         "02  Bulk-Fill MDP 모델 정의",
         f"State 산식 해설 — {item['title']}",
         idx,
     )
-    txt(s, 0.55, 1.3, 12.25, 0.32, [[
+    txt(s, 0.55, 1.3, 12.25, 0.3, [[
         R(f"{item['group']}   ", 10.5, ACCENT, True),
         R(f"({SOURCE_FILE})", 10, GRAY),
     ]])
 
-    lx, ly, lw, lh = 0.55, 1.65, 6.0, 4.75
+    # 중앙: MINI-A 상태 스냅샷 간트 (모든 대입 계산이 참조하는 공통 시나리오)
+    gx, gy, gw = 0.55, 1.64, 12.25
+    box(s, gx, gy, gw, 0.28, NAVY)
+    txt(s, gx, gy, gw, 0.28, [[R("MINI-A 상태 스냅샷  —  이 계산이 대입하는 시점", 10.5, WHITE, True)]],
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    img_h = 1.05
+    box(s, gx, gy + 0.28, gw, img_h, WHITE, line_color=LINE, line_w=0.75)
+    if os.path.isfile(MINI_A_GANTT_PATH):
+        pic_h = img_h - 0.06
+        pic_w = min(gw - 0.1, pic_h * MINI_A_GANTT_ASPECT)
+        pic_x = gx + (gw - pic_w) / 2
+        s.shapes.add_picture(MINI_A_GANTT_PATH, Inches(pic_x), Inches(gy + 0.28 + 0.03),
+                              width=Inches(pic_w), height=Inches(pic_h))
+    txt(s, gx + 0.1, gy + 0.28 + img_h + 0.03, gw - 0.2, 0.22, [[
+        R(MINI_A_CAPTION, 8.3, GRAY),
+    ]], align=PP_ALIGN.CENTER)
+
+    lx, ly, lw, lh = 0.55, gy + 0.28 + img_h + 0.30, 6.0, 3.55
     box(s, lx, ly, lw, 0.34, STEEL)
     txt(s, lx, ly, lw, 0.34, [[R("실제 소스코드", 11, WHITE, True)]],
         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
@@ -404,27 +435,27 @@ def state_source_slide(idx: int, item: dict):
     code_lines = [[R(ln, 9.3, INK, False, "Courier New")] for ln in item["lines"]]
     txt(s, lx + 0.12, ly + 0.42, lw - 0.24, lh - 0.5, code_lines, line_spacing=1.05, space_after=0)
 
-    rx, ry_, rw, rh = 6.85, 1.65, 5.95, 4.75
+    rx, ry_, rw, rh = 6.85, ly, 5.95, 3.65
     box(s, rx, ry_, rw, 0.34, ACCENT)
     txt(s, rx, ry_, rw, 0.34, [[R("MINI-A 대입 계산", 11, WHITE, True)]],
         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
     chars_per_line = 68
     wrapped_lines = sum(max(1, -(-len(ln) // chars_per_line)) for ln in item["calc"])
-    calc_h = min(3.5, max(1.2, 0.3 + 0.165 * wrapped_lines))
+    calc_h = min(2.2, max(1.0, 0.28 + 0.14 * wrapped_lines))
     box(s, rx, ry_ + 0.34, rw, calc_h, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
     calc_lines = [[R(ln if ln else " ", 10.2, INK)] for ln in item["calc"]]
-    txt(s, rx + 0.14, ry_ + 0.42, rw - 0.28, calc_h - 0.1, calc_lines, line_spacing=1.12, space_after=1)
+    txt(s, rx + 0.14, ry_ + 0.42, rw - 0.28, calc_h - 0.1, calc_lines, line_spacing=1.1, space_after=1)
 
     res_y = ry_ + 0.34 + calc_h + 0.08
-    box(s, rx, res_y, rw, 0.5, NAVY)
-    txt(s, rx, res_y, rw, 0.5, [[R(item["result"], 12.5, WHITE, True)]],
+    box(s, rx, res_y, rw, 0.44, NAVY)
+    txt(s, rx, res_y, rw, 0.44, [[R(item["result"], 12, WHITE, True)]],
         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
-    note_y = res_y + 0.58
+    note_y = res_y + 0.5
     txt(s, rx, note_y, rw, ry_ + rh - note_y, [[
         R("해석  ", 10, STEEL, True),
-        R(item["note"], 10, GRAY),
-    ]], line_spacing=1.12)
+        R(item["note"], 9.6, GRAY),
+    ]], line_spacing=1.08)
     return s
 
 
