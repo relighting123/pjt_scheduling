@@ -128,7 +128,7 @@ function ganttProdOperPairs(
 ): string[] {
   const seen = new Set<string>();
   for (const r of schedule) {
-    seen.add(ganttProdOperKey(r.PLAN_PROD_KEY, r.OPER_ID ?? ""));
+    seen.add(ganttProdOperKey(r.PLAN_PROD_ATTR_VAL, r.OPER_ID ?? ""));
   }
   if (seen.size > 0) return [...seen].sort();
   const pairs: string[] = [];
@@ -297,7 +297,7 @@ function legendTraces(
     const prodCode = prodCodes?.[pk] ?? pk;
     const operCode = operCodes?.[op] ?? op;
     const inSchedule = schedule.some(
-      (r) => ganttProdOperKey(r.PLAN_PROD_KEY, r.OPER_ID ?? "") === pairKey,
+      (r) => ganttProdOperKey(r.PLAN_PROD_ATTR_VAL, r.OPER_ID ?? "") === pairKey,
     );
     return {
       type: "scatter",
@@ -333,7 +333,7 @@ function ganttTraces(
     const visible = highlightMax === undefined || idx <= highlightMax;
     const width = rec.END_TM - rec.START_TM;
     const { base, x } = ganttBarAxisCoords(rec.START_TM, width, baseMs);
-    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
+    const pairKey = ganttProdOperKey(rec.PLAN_PROD_ATTR_VAL, rec.OPER_ID ?? "");
     traces.push({
       type: "bar",
       orientation: "h",
@@ -348,7 +348,7 @@ function ganttTraces(
       hovertemplate:
         `<b>LOT: ${rec.LOT_ID}</b><br>` +
         `EQP: ${rec.EQP_ID}<br>` +
-        `제품: ${rec.PLAN_PROD_KEY}<br>` +
+        `제품: ${rec.PLAN_PROD_ATTR_VAL}<br>` +
         `공정: ${rec.OPER_ID ?? "N/A"}<br>` +
         `시작: ${formatGanttMinuteLabel(rec.START_TM, baseMs)}<br>` +
         `종료: ${formatGanttMinuteLabel(rec.END_TM, baseMs)}<br>` +
@@ -616,7 +616,7 @@ function opersForProduct(
   )];
   const fromSched = [...new Set(
     schedule
-      .filter((r) => r.PLAN_PROD_KEY === prod)
+      .filter((r) => r.PLAN_PROD_ATTR_VAL === prod)
       .map((r) => r.OPER_ID ?? "")
       .filter(Boolean),
   )];
@@ -641,7 +641,7 @@ function cumulativeProductionSeries(
   baseMs: number | null = null,
 ): { x: number[]; y: number[] } {
   const events = schedule
-    .filter((r) => r.PLAN_PROD_KEY === prod && (r.OPER_ID ?? "") === operId)
+    .filter((r) => r.PLAN_PROD_ATTR_VAL === prod && (r.OPER_ID ?? "") === operId)
     .map((r) => ({ t: r.START_TM, q: r.WF_QTY ?? 25 }))
     .sort((a, b) => a.t - b.t || a.q - b.q);
 
@@ -693,7 +693,7 @@ export function buildProductProductionCharts(
 ): PlotChartSpec | null {
   const prods = prodKeys.length
     ? [...prodKeys]
-    : [...new Set(schedule.map((r) => r.PLAN_PROD_KEY))].sort();
+    : [...new Set(schedule.map((r) => r.PLAN_PROD_ATTR_VAL))].sort();
   if (!prods.length || !schedule.length) return null;
 
   const operOrder = options.operIds?.length
@@ -870,14 +870,14 @@ function computeStats(schedule: ScheduleRecord[], plan: PlanRecord[]): ScheduleS
     recs.sort((a, b) => a.START_TM - b.START_TM);
     for (let i = 1; i < recs.length; i++) {
       if (recs[i].OPER_ID !== recs[i - 1].OPER_ID) operSw++;
-      if (recs[i].PLAN_PROD_KEY !== recs[i - 1].PLAN_PROD_KEY) prodSw++;
+      if (recs[i].PLAN_PROD_ATTR_VAL !== recs[i - 1].PLAN_PROD_ATTR_VAL) prodSw++;
       idleTotal += Math.max(recs[i].START_TM - recs[i - 1].END_TM, 0);
     }
   });
 
   const completed: Record<string, number> = {};
   schedule.forEach((r) => {
-    const key = `${r.PLAN_PROD_KEY}|${r.OPER_ID ?? ""}`;
+    const key = `${r.PLAN_PROD_ATTR_VAL}|${r.OPER_ID ?? ""}`;
     completed[key] = (completed[key] ?? 0) + (r.WF_QTY ?? 25);
   });
 
@@ -1582,7 +1582,7 @@ function barText(
 ): string {
   switch (mode) {
     case "car": return rec.CARRIER_ID ?? rec.LOT_ID;
-    case "prod": return prodCodes[rec.PLAN_PROD_KEY] ?? rec.PLAN_PROD_KEY;
+    case "prod": return prodCodes[rec.PLAN_PROD_ATTR_VAL] ?? rec.PLAN_PROD_ATTR_VAL;
     default: return rec.LOT_ID;
   }
 }
@@ -1594,7 +1594,7 @@ interface GanttBarSegment {
 function canMergeProdOperSegment(prev: ScheduleRecord, next: ScheduleRecord): boolean {
   return (
     prev.EQP_ID === next.EQP_ID
-    && prev.PLAN_PROD_KEY === next.PLAN_PROD_KEY
+    && prev.PLAN_PROD_ATTR_VAL === next.PLAN_PROD_ATTR_VAL
     && (prev.OPER_ID ?? "") === (next.OPER_ID ?? "")
     && prev.END_TM === next.START_TM
   );
@@ -1674,7 +1674,7 @@ function segmentHoverTemplate(
   const first = records[0];
   const { start, end, width } = segmentTimeRange(segment);
   const oper = first.OPER_ID ?? "N/A";
-  const prodLabel = prodCodes[first.PLAN_PROD_KEY] ?? first.PLAN_PROD_KEY;
+  const prodLabel = prodCodes[first.PLAN_PROD_ATTR_VAL] ?? first.PLAN_PROD_ATTR_VAL;
   const operLabel = operCodes[oper] ?? oper;
   const startLabel = formatGanttMinuteLabel(start, baseMs);
   const endLabel = formatGanttMinuteLabel(end, baseMs);
@@ -1686,7 +1686,7 @@ function segmentHoverTemplate(
       `<b>LOT: ${rec.LOT_ID}</b><br>` +
       (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
       `EQP: ${rec.EQP_ID}<br>` +
-      `제품: ${prodLabel} (${rec.PLAN_PROD_KEY})<br>` +
+      `제품: ${prodLabel} (${rec.PLAN_PROD_ATTR_VAL})<br>` +
       `공정: ${operLabel}<br>` +
       `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
       inflowLines +
@@ -1699,7 +1699,7 @@ function segmentHoverTemplate(
     : `${records.slice(0, 3).map((r) => r.LOT_ID).join(", ")} 외 ${records.length - 3}건`;
 
   return (
-    `<b>제품: ${prodLabel}</b> (${first.PLAN_PROD_KEY})<br>` +
+    `<b>제품: ${prodLabel}</b> (${first.PLAN_PROD_ATTR_VAL})<br>` +
     `공정: ${operLabel}<br>` +
     `EQP: ${first.EQP_ID}<br>` +
     `병합 LOT ${records.length}건: ${lotSummary}<br>` +
@@ -1739,7 +1739,7 @@ export function buildGanttLegendItems(
       label: `${prodCodeMap[pk] ?? pk}/${operCodeMap[op] ?? op}`,
       color: colorMap[pairKey] ?? "#94a3b8",
       inSchedule: schedule.some(
-        (r) => ganttProdOperKey(r.PLAN_PROD_KEY, r.OPER_ID ?? "") === pairKey,
+        (r) => ganttProdOperKey(r.PLAN_PROD_ATTR_VAL, r.OPER_ID ?? "") === pairKey,
       ),
     };
   });
@@ -1803,7 +1803,7 @@ export function buildEnhancedGantt(
 
   barSegments.forEach((segment) => {
     const rec = segment.records[0];
-    const pairKey = ganttProdOperKey(rec.PLAN_PROD_KEY, rec.OPER_ID ?? "");
+    const pairKey = ganttProdOperKey(rec.PLAN_PROD_ATTR_VAL, rec.OPER_ID ?? "");
     if (hiddenProdOperKeys?.has(pairKey)) return;
     const { start, width } = segmentTimeRange(segment);
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);

@@ -15,7 +15,7 @@ export interface ScheduleRecord {
   EQP_ID: string;
   LOT_ID: string;
   CARRIER_ID?: string;
-  PLAN_PROD_KEY: string;
+  PLAN_PROD_ATTR_VAL: string;
   OPER_ID?: string;
   ST?: string;
   SEQ?: number;

@@ -43,7 +43,7 @@ def check_eligibility(schedule: List[dict], env_data: dict) -> List[dict]:
     violations = []
     for row in schedule:
         eqp_id, ppk, oper_id, lot_id = (
-            row["EQP_ID"], row["PLAN_PROD_KEY"], row["OPER_ID"], row["LOT_ID"],
+            row["EQP_ID"], row["PLAN_PROD_ATTR_VAL"], row["OPER_ID"], row["LOT_ID"],
         )
         if not _eqp_can_process(env_data, eqp_id, ppk, oper_id):
             violations.append({
@@ -63,7 +63,7 @@ def check_processing_time(
     mismatches = []
     for row in schedule:
         lot_id, eqp_id, oper_id, ppk = (
-            row["LOT_ID"], row["EQP_ID"], row["OPER_ID"], row["PLAN_PROD_KEY"],
+            row["LOT_ID"], row["EQP_ID"], row["OPER_ID"], row["PLAN_PROD_ATTR_VAL"],
         )
         wf_qty = row.get("WF_QTY", 0)
         actual = row["END_TM"] - row["START_TM"]

@@ -28,7 +28,7 @@ def test_rts_output_restores_schedule_for_gantt():
             "EQP_ID": "EQP001",
             "LOT_ID": "LOT001",
             "CARRIER_ID": "CAR001",
-            "PLAN_PROD_KEY": "PPK001",
+            "PLAN_PROD_ATTR_VAL": "PPK001",
             "OPER_ID": "OPER001",
             "ST": 4,
             "EQP_MODEL": "A",

@@ -56,7 +56,7 @@ function resultFromRtsOutput(payload: Record<string, unknown>): InferenceResult 
       EQP_ID: String(row.EQP_ID ?? ""),
       LOT_ID: String(row.LOT_ID ?? ""),
       CARRIER_ID: String(row.CARRIER_ID ?? ""),
-      PLAN_PROD_KEY: String(row.PLAN_PROD_KEY ?? ""),
+      PLAN_PROD_ATTR_VAL: String(row.PLAN_PROD_ATTR_VAL ?? ""),
       OPER_ID: String(row.OPER_ID ?? ""),
       EQP_MODEL: String(row.EQP_MODEL_CD ?? ""),
       SEQ: Number(row.SEQ_NO ?? 0) || 0,
@@ -98,7 +98,7 @@ function resultFromRtsOutput(payload: Record<string, unknown>): InferenceResult 
 
   const completed: Record<string, number> = {};
   for (const rec of schedule) {
-    const key = `${rec.PLAN_PROD_KEY}|${rec.OPER_ID ?? ""}`;
+    const key = `${rec.PLAN_PROD_ATTR_VAL}|${rec.OPER_ID ?? ""}`;
     completed[key] = (completed[key] ?? 0) + (rec.WF_QTY ?? 0);
   }
 
@@ -119,7 +119,7 @@ function resultFromRtsOutput(payload: Record<string, unknown>): InferenceResult 
       source_file: "output.json",
     },
     plan: [],
-    prod_keys: sortedUnique(schedule.map((r) => r.PLAN_PROD_KEY)),
+    prod_keys: sortedUnique(schedule.map((r) => r.PLAN_PROD_ATTR_VAL)),
     oper_ids: sortedUnique(schedule.map((r) => r.OPER_ID ?? "")),
     eqp_ids: sortedUnique(schedule.map((r) => r.EQP_ID)),
     sim_end_minutes: simEnd,
@@ -136,7 +136,7 @@ function resultFromFull(payload: Record<string, unknown>): InferenceResult {
   const prodKeys =
     (payload.prod_keys as string[])?.length
       ? (payload.prod_keys as string[])
-      : sortedUnique(schedule.map((r) => r.PLAN_PROD_KEY));
+      : sortedUnique(schedule.map((r) => r.PLAN_PROD_ATTR_VAL));
   const operIds =
     (payload.oper_ids as string[])?.length
       ? (payload.oper_ids as string[])

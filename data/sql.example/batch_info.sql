@@ -3,7 +3,7 @@
 -- (PPK, OPER)별 conversion용 LOT_CD / TEMP 레시피
 -- 바인드: :FAC_ID (필수), :RULE_TIMEKEY (필수)
 SELECT
-    b.PLAN_PROD_KEY,
+    b.PLAN_PROD_ATTR_VAL,
     b.OPER_ID,
     b.LOT_CD,
     b.TEMP

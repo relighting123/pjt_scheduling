@@ -16,7 +16,7 @@ def test_preprocess_proc_time_after_split():
         {
             "EQP_ID": "EQP001",
             "LOT_ID": "LOT001",
-            "PLAN_PROD_KEY": "PPK001",
+            "PLAN_PROD_ATTR_VAL": "PPK001",
             "OPER_ID": "OPER001",
             "ST": 10,
             "EQP_MODEL_CD": "A",
@@ -26,11 +26,11 @@ def test_preprocess_proc_time_after_split():
     raw = {
         "discrete_arrange": discrete,
         "abstract_arrange": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
         ],
         "plan": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "D0_PLAN_QTY": 25,
                 "D1_PLAN_QTY": 25,
@@ -38,11 +38,11 @@ def test_preprocess_proc_time_after_split():
             },
         ],
         "flow": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
         ],
         "split": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "EQP_MODEL_CD": "A",
                 "SPLIT_QTY": 3,
@@ -76,7 +76,7 @@ def test_build_abstract_arrange_uses_eqp_model_cd():
         {
             "EQP_ID": "EQP001",
             "LOT_ID": "LOT001",
-            "PLAN_PROD_KEY": "PPK001",
+            "PLAN_PROD_ATTR_VAL": "PPK001",
             "OPER_ID": "OPER001",
             "ST": 10,
             "EQP_MODEL_CD": "A",
@@ -86,7 +86,7 @@ def test_build_abstract_arrange_uses_eqp_model_cd():
 
     assert rows == [
         {
-            "PLAN_PROD_KEY": "PPK001",
+            "PLAN_PROD_ATTR_VAL": "PPK001",
             "OPER_ID": "OPER001",
             "EQP_MODEL_CD": "A",
             "ST": 10,
@@ -101,7 +101,7 @@ def test_validate_data_requires_eqp_model_fields():
             {
                 "EQP_ID": "EQP001",
                 "LOT_ID": "LOT001",
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "ST": 10,
                 "EQP_MODEL": "A",
@@ -110,7 +110,7 @@ def test_validate_data_requires_eqp_model_fields():
             {
                 "EQP_ID": "EQP002",
                 "LOT_ID": "LOT002",
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "ST": 10,
                 "EQP_MODEL_CD": "",
@@ -118,11 +118,11 @@ def test_validate_data_requires_eqp_model_fields():
             },
         ],
         "abstract_arrange": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "", "ST": 10},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "", "ST": 10},
         ],
         "plan": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "D0_PLAN_QTY": 25,
                 "D1_PLAN_QTY": 25,
@@ -130,11 +130,11 @@ def test_validate_data_requires_eqp_model_fields():
             },
         ],
         "flow": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
         ],
         "split": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "EQP_MODEL_CD": "",
                 "SPLIT_QTY": 3,

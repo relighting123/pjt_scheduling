@@ -6,7 +6,7 @@ SELECT
     e.EQP_ID,
     e.LOT_CD,
     e.TEMP,
-    e.PLAN_PROD_KEY,
+    e.PLAN_PROD_ATTR_VAL,
     e.OPER_ID
 FROM EQP_INITIAL_STATE e
 WHERE e.FAC_ID = :FAC_ID

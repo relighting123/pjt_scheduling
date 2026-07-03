@@ -96,7 +96,7 @@ function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
   const total = rows.length;
   const pages = Math.ceil(total / ROWS);
   const visible = rows.slice(page * ROWS, (page + 1) * ROWS);
-  const cols = ["EQP_ID","LOT_ID","CARRIER_ID","PLAN_PROD_KEY","OPER_ID","ST","START_TM","END_TM","PROC_TIME","WF_QTY"] as const;
+  const cols = ["EQP_ID","LOT_ID","CARRIER_ID","PLAN_PROD_ATTR_VAL","OPER_ID","ST","START_TM","END_TM","PROC_TIME","WF_QTY"] as const;
 
   return (
     <>
@@ -119,7 +119,7 @@ function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
             {visible.map((r, i) => (
               <tr key={`${r.EQP_ID}-${r.LOT_ID}-${r.START_TM}-${i}`}>
                 <td>{r.EQP_ID}</td><td>{r.LOT_ID}</td><td>{r.CARRIER_ID ?? ""}</td>
-                <td>{r.PLAN_PROD_KEY}</td><td>{r.OPER_ID ?? ""}</td><td>{r.ST ?? ""}</td>
+                <td>{r.PLAN_PROD_ATTR_VAL}</td><td>{r.OPER_ID ?? ""}</td><td>{r.ST ?? ""}</td>
                 <td>{r.START_TM}</td><td>{r.END_TM}</td><td>{r.PROC_TIME ?? ""}</td><td>{r.WF_QTY ?? ""}</td>
               </tr>
             ))}
@@ -131,7 +131,7 @@ function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
 }
 
 function csv(sched: InferenceResult["schedule"], name: string) {
-  const H = ["EQP_ID","LOT_ID","CARRIER_ID","PLAN_PROD_KEY","OPER_ID","ST","START_TM","END_TM","PROC_TIME","WF_QTY"];
+  const H = ["EQP_ID","LOT_ID","CARRIER_ID","PLAN_PROD_ATTR_VAL","OPER_ID","ST","START_TM","END_TM","PROC_TIME","WF_QTY"];
   const body = sched.map(r => H.map(h => String(r[h as keyof typeof r] ?? "")).join(",")).join("\n");
   const blob = new Blob(["﻿"+H.join(",")+"\n"+body], { type: "text/csv;charset=utf-8" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
@@ -899,7 +899,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                           const s = e.result.schedule;
                           const ms = s.length ? Math.max(...s.map(r => r.END_TM)) : 0;
                           const achV = e.result.plan.map(p => {
-                            const done = s.filter(r => r.PLAN_PROD_KEY === p.plan_prod_key && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
+                            const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.plan_prod_key && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
                             return Math.min((done/Math.max(p.d0_plan_qty,1))*100,100);
                           });
                           const avg = achV.length ? Math.round(achV.reduce((a,b)=>a+b,0)/achV.length*10)/10 : 0;

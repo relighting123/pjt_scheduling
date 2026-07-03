@@ -19,32 +19,32 @@ def _build_env():
         "discrete_arrange": [
             {
                 "EQP_ID": "EQP001", "LOT_ID": "LOT001",
-                "PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001",
+                "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
                 "ST": 10, "EQP_MODEL_CD": "A", "WF_QTY": 25,
             },
             {
                 "EQP_ID": "EQP002", "LOT_ID": "LOT002",
-                "PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001",
+                "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
                 "ST": 12, "EQP_MODEL_CD": "B", "WF_QTY": 25,
             },
             {
                 "EQP_ID": "EQP003", "LOT_ID": "LOT003",
-                "PLAN_PROD_KEY": "PPK002", "OPER_ID": "OPER002",
+                "PLAN_PROD_ATTR_VAL": "PPK002", "OPER_ID": "OPER002",
                 "ST": 5, "EQP_MODEL_CD": "C", "WF_QTY": 10,
             },
         ],
         "abstract_arrange": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "B", "ST": 12},
-            {"PLAN_PROD_KEY": "PPK002", "OPER_ID": "OPER002", "EQP_MODEL_CD": "C", "ST": 5},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "B", "ST": 12},
+            {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_ID": "OPER002", "EQP_MODEL_CD": "C", "ST": 5},
         ],
         "plan": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "D0_PLAN_QTY": 50, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
-            {"PLAN_PROD_KEY": "PPK002", "OPER_ID": "OPER002", "D0_PLAN_QTY": 10, "D1_PLAN_QTY": 10, "PLAN_PRIORITY": 1},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "D0_PLAN_QTY": 50, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
+            {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_ID": "OPER002", "D0_PLAN_QTY": 10, "D1_PLAN_QTY": 10, "PLAN_PRIORITY": 1},
         ],
         "flow": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
-            {"PLAN_PROD_KEY": "PPK002", "OPER_SEQ": 1, "OPER_ID": "OPER002"},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+            {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_SEQ": 1, "OPER_ID": "OPER002"},
         ],
     }
     assert validate_data(raw) == []
@@ -60,7 +60,7 @@ def _schedule_row(env, lot_id, eqp_id, *, wf_qty=None, proc_time=None):
     return {
         "EQP_ID": eqp_id,
         "LOT_ID": lot_id,
-        "PLAN_PROD_KEY": lot["plan_prod_key"],
+        "PLAN_PROD_ATTR_VAL": lot["plan_prod_key"],
         "OPER_ID": lot["oper_id"],
         "WF_QTY": wf_qty,
         "ST": env["proc_time_matrix"].get((lot_id, eqp_id, lot["oper_id"]), lot["processing_time"]),

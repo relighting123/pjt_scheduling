@@ -75,7 +75,7 @@ def test_conversion_performed_when_assigning_ppk002():
     assert conv_rows, "schedule에 CONVERSION=True 행 기대"
     ppk002_on_eqp1 = [
         r for r in result["schedule"]
-        if r["EQP_ID"] == "EQP001" and r["PLAN_PROD_KEY"] == "PPK002"
+        if r["EQP_ID"] == "EQP001" and r["PLAN_PROD_ATTR_VAL"] == "PPK002"
     ]
     assert ppk002_on_eqp1, "EQP001에 PPK002 배정이 있어야 함"
     assert any(r.get("CONVERSION") for r in ppk002_on_eqp1)

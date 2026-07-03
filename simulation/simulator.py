@@ -1802,7 +1802,7 @@ class SchedulingSimulator:
             "EQP_ID":        eqp_id,
             "LOT_ID":        lot_id,
             "CARRIER_ID":    carrier_id,
-            "PLAN_PROD_KEY": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "OPER_ID":       oper_id,
             "ST":            st_per_wafer,
             "EQP_MODEL":     row["eqp_model"],

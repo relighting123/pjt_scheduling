@@ -46,7 +46,7 @@ export default function ArrangeTable({
         <table className="arrange-table" key={step}>
           <thead>
             <tr>
-              {["EQP_ID", "LOT_ID", "OPER", "LOT_CD", "TEMP", "PLAN_PROD_KEY", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
+              {["EQP_ID", "LOT_ID", "OPER", "LOT_CD", "TEMP", "PLAN_PROD_ATTR_VAL", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
                 <th key={h}>{h}</th>
               ))}
             </tr>

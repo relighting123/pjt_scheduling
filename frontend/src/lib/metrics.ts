@@ -98,7 +98,7 @@ export function computeEqpScheduleSummary(
     let prodSwitches = 0;
     for (let i = 1; i < recs.length; i++) {
       if ((recs[i].OPER_ID ?? "") !== (recs[i - 1].OPER_ID ?? "")) operSwitches++;
-      if (recs[i].PLAN_PROD_KEY !== recs[i - 1].PLAN_PROD_KEY) prodSwitches++;
+      if (recs[i].PLAN_PROD_ATTR_VAL !== recs[i - 1].PLAN_PROD_ATTR_VAL) prodSwitches++;
     }
 
     const convEnds = convs.map((p) => p.conv_end_min);
@@ -150,7 +150,7 @@ export function computeTAT(schedule: ScheduleRecord[]): TatRow[] {
   schedule.forEach((r) => {
     const prev = lotTimes[r.LOT_ID];
     if (!prev) {
-      lotTimes[r.LOT_ID] = { start: r.START_TM, end: r.END_TM, prod: r.PLAN_PROD_KEY };
+      lotTimes[r.LOT_ID] = { start: r.START_TM, end: r.END_TM, prod: r.PLAN_PROD_ATTR_VAL };
     } else {
       lotTimes[r.LOT_ID].start = Math.min(prev.start, r.START_TM);
       lotTimes[r.LOT_ID].end = Math.max(prev.end, r.END_TM);
@@ -204,7 +204,7 @@ export function computeAchievement(
 ): AchievementRow[] {
   const doneMap: Record<string, number> = {};
   schedule.forEach((r) => {
-    const key = achievementKey(r.PLAN_PROD_KEY, r.OPER_ID);
+    const key = achievementKey(r.PLAN_PROD_ATTR_VAL, r.OPER_ID);
     doneMap[key] = (doneMap[key] ?? 0) + (r.WF_QTY ?? 25);
   });
 

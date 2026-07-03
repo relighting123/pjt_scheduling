@@ -106,7 +106,7 @@ def _discrete_row(
     row = {
         "EQP_ID": eqp_id,
         "LOT_ID": lot_id,
-        "PLAN_PROD_KEY": ppk,
+        "PLAN_PROD_ATTR_VAL": ppk,
         "OPER_ID": oper_id,
         "ST": st_per_wafer,
         "EQP_MODEL_CD": eqp_model,
@@ -121,7 +121,7 @@ def _discrete_row(
 
 def _abstract_row(ppk: str, oper_id: str, eqp_model: str, st: int) -> dict:
     return {
-        "PLAN_PROD_KEY": ppk,
+        "PLAN_PROD_ATTR_VAL": ppk,
         "OPER_ID": oper_id,
         "EQP_MODEL_CD": eqp_model,
         "ST": st,
@@ -139,7 +139,7 @@ def build_abstract_arrange(
         oper = r.get("OPER_ID")
         if not oper:
             continue
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         model = str(r["EQP_MODEL_CD"])
         st = int(r.get("ST") or 60)
         arrange_st.setdefault((ppk, oper, model), []).append(st)
@@ -152,7 +152,7 @@ def build_abstract_arrange(
 
 def _split_row(ppk: str, oper_id: str, eqp_model: str, split_qty: int) -> dict:
     return {
-        "PLAN_PROD_KEY": ppk,
+        "PLAN_PROD_ATTR_VAL": ppk,
         "OPER_ID": oper_id,
         "EQP_MODEL_CD": eqp_model,
         "SPLIT_QTY": split_qty,
@@ -165,7 +165,7 @@ def build_split_rules(
     models: Tuple[str, ...] = ("A", "B", "C", "D", "E"),
 ) -> List[dict]:
     """flow의 PPK × OPER × EQP MODEL CD 별 SPLIT_QTY 규칙 생성"""
-    ppk_opers = sorted({(r["PLAN_PROD_KEY"], r["OPER_ID"]) for r in flow})
+    ppk_opers = sorted({(r["PLAN_PROD_ATTR_VAL"], r["OPER_ID"]) for r in flow})
     return [
         _split_row(ppk, oper_id, model, split_qty)
         for ppk, oper_id in ppk_opers
@@ -181,7 +181,7 @@ def build_lot_master_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
         if lid in seen:
             continue
         seen.add(lid)
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         rows.append({
             "LOT_ID": lid,
             "LOT_CD": f"LC{ppk[-3:]}",
@@ -197,12 +197,12 @@ def build_batch_info_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
         oper_id = r.get("OPER_ID")
         if not oper_id:
             continue
-        pairs.add((r["PLAN_PROD_KEY"], oper_id))
+        pairs.add((r["PLAN_PROD_ATTR_VAL"], oper_id))
     rows = []
     for ppk, oper_id in sorted(pairs):
         suffix = int(ppk[-3:]) if ppk[-3:].isdigit() else sum(ord(c) for c in ppk)
         rows.append({
-            "PLAN_PROD_KEY": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "OPER_ID": oper_id,
             "LOT_CD": f"LC{ppk[-3:]}",
             "TEMP": "T650" if suffix % 2 == 0 else "T700",
@@ -295,26 +295,26 @@ def _build_default_sample() -> Tuple[List[dict], List[dict], List[dict]]:
                 carrier_id=carrier, seq=seq,
             ))
     plan = [
-        {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001",
+        {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
          "D0_PLAN_QTY": 75, "D1_PLAN_QTY": 100, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": "PPK002", "OPER_ID": "OPER001",
+        {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_ID": "OPER001",
          "D0_PLAN_QTY": 50, "D1_PLAN_QTY": 75, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": "PPK003", "OPER_ID": "OPER001",
+        {"PLAN_PROD_ATTR_VAL": "PPK003", "OPER_ID": "OPER001",
          "D0_PLAN_QTY": 25, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER002",
+        {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER002",
          "D0_PLAN_QTY": 50, "D1_PLAN_QTY": 75, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": "PPK002", "OPER_ID": "OPER002",
+        {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_ID": "OPER002",
          "D0_PLAN_QTY": 25, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": "PPK003", "OPER_ID": "OPER002",
+        {"PLAN_PROD_ATTR_VAL": "PPK003", "OPER_ID": "OPER002",
          "D0_PLAN_QTY": 25, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
     ]
     flow = [
-        {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": "PPK002", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK002", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": "PPK003", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": "PPK003", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_ATTR_VAL": "PPK003", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_ATTR_VAL": "PPK003", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
     return discrete, plan, flow
 
@@ -351,14 +351,14 @@ def _build_single_heavy_wip_sample() -> Tuple[List[dict], List[dict], List[dict]
 
     total = n_lots * wf_qty
     plan = [
-        {"PLAN_PROD_KEY": ppk, "OPER_ID": "OPER001",
+        {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": "OPER001",
          "D0_PLAN_QTY": total, "D1_PLAN_QTY": total + 50, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": ppk, "OPER_ID": "OPER002",
+        {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": "OPER002",
          "D0_PLAN_QTY": total, "D1_PLAN_QTY": total + 50, "PLAN_PRIORITY": 1},
     ]
     flow = [
-        {"PLAN_PROD_KEY": ppk, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": ppk, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_ATTR_VAL": ppk, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_ATTR_VAL": ppk, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
     return discrete, plan, flow
 
@@ -408,7 +408,7 @@ def _build_random_sample(
     for ppk in products:
         for seq in range(1, cfg.n_opers + 1):
             flow.append({
-                "PLAN_PROD_KEY": ppk,
+                "PLAN_PROD_ATTR_VAL": ppk,
                 "OPER_SEQ": seq,
                 "OPER_ID": opers[seq - 1],
             })
@@ -421,7 +421,7 @@ def _build_random_sample(
             if d1 < d0:
                 d0, d1 = d1, d0
             plan.append({
-                "PLAN_PROD_KEY": ppk,
+                "PLAN_PROD_ATTR_VAL": ppk,
                 "OPER_ID": oper,
                 "D0_PLAN_QTY": d0,
                 "D1_PLAN_QTY": d1,
@@ -475,19 +475,19 @@ def _build_pacing_steady_sample() -> Tuple[List[dict], List[dict], List[dict]]:
     ppk_a, ppk_b = "PPK001", "PPK002"
 
     flow = [
-        {"PLAN_PROD_KEY": ppk_a, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": ppk_a, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
-        {"PLAN_PROD_KEY": ppk_b, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
-        {"PLAN_PROD_KEY": ppk_b, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_ATTR_VAL": ppk_a, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_ATTR_VAL": ppk_a, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        {"PLAN_PROD_ATTR_VAL": ppk_b, "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+        {"PLAN_PROD_ATTR_VAL": ppk_b, "OPER_SEQ": 2, "OPER_ID": "OPER002"},
     ]
     plan = [
-        {"PLAN_PROD_KEY": ppk_a, "OPER_ID": "OPER001",
+        {"PLAN_PROD_ATTR_VAL": ppk_a, "OPER_ID": "OPER001",
          "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": ppk_a, "OPER_ID": "OPER002",
+        {"PLAN_PROD_ATTR_VAL": ppk_a, "OPER_ID": "OPER002",
          "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": ppk_b, "OPER_ID": "OPER001",
+        {"PLAN_PROD_ATTR_VAL": ppk_b, "OPER_ID": "OPER001",
          "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
-        {"PLAN_PROD_KEY": ppk_b, "OPER_ID": "OPER002",
+        {"PLAN_PROD_ATTR_VAL": ppk_b, "OPER_ID": "OPER002",
          "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1},
     ]
 

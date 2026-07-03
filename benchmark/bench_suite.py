@@ -43,7 +43,7 @@ def kpi(result, m):
     by_eqp = defaultdict(lambda: defaultdict(int))
     busy_by_eqp = defaultdict(int)
     for r in in_time:
-        by_eqp[r["EQP_ID"]][r.get("PLAN_PROD_KEY", "?")] += 1
+        by_eqp[r["EQP_ID"]][r.get("PLAN_PROD_ATTR_VAL", "?")] += 1
         busy_by_eqp[r["EQP_ID"]] += int(r.get("PROC_TIME") or (r["END_TM"] - r["START_TM"]))
     eqp_ids = sorted(by_eqp.keys()) or sorted({r["EQP_ID"] for r in sched})
     carriers = [sum(by_eqp[e].values()) for e in eqp_ids]

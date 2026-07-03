@@ -24,7 +24,7 @@ def _coerce_proc_time(value) -> Optional[int]:
 def _build_split_lookup(split_raw: List[dict]) -> Dict[Tuple[str, str, str], int]:
     lookup: Dict[Tuple[str, str, str], int] = {}
     for r in split_raw:
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         oper = str(r.get("OPER_ID", "*")).strip().upper() or "*"
         model = str(r["EQP_MODEL_CD"]).strip().upper()
         lookup[(ppk, oper, model)] = coerce_int(r["SPLIT_QTY"], field="SPLIT_QTY")
@@ -71,7 +71,7 @@ def _build_flow_maps(
     flow_map: Dict[str, Dict[int, str]] = {}
     oper_seq_map: Dict[str, Dict[str, int]] = {}
     for r in flow_raw:
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         seq = coerce_int(r["OPER_SEQ"], field="OPER_SEQ")
         oper_id = r["OPER_ID"]
         flow_map.setdefault(ppk, {})[seq] = oper_id
@@ -84,7 +84,7 @@ def _resolve_lot_oper_seq(
     flow_map: Dict[str, Dict[int, str]],
     oper_seq_map: Dict[str, Dict[str, int]],
 ) -> Tuple[str, int]:
-    ppk = row["PLAN_PROD_KEY"]
+    ppk = row["PLAN_PROD_ATTR_VAL"]
     if row.get("OPER_ID"):
         oper_id = row["OPER_ID"]
         seq = coerce_int(row.get("SEQ") or oper_seq_map.get(ppk, {}).get(oper_id, 1), field="SEQ")
@@ -114,7 +114,7 @@ def _build_batch_info_map(
     """(PPK, OPER) → {lot_cd, temp} — conversion/tool lookup."""
     out: Dict[Tuple[str, str], dict] = {}
     for r in batch_info_raw:
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         oper_id = r["OPER_ID"]
         out[(ppk, oper_id)] = {
             "lot_cd": str(r["LOT_CD"]),
@@ -193,7 +193,7 @@ def _normalize_eqp_initial_state(rows: List[dict]) -> List[dict]:
             "eqp_id":        eid,
             "lot_cd":        str(r.get("LOT_CD", "")).strip(),
             "temp":          str(r.get("TEMP", "")).strip(),
-            "plan_prod_key": str(r.get("PLAN_PROD_KEY", "")).strip() or None,
+            "plan_prod_key": str(r.get("PLAN_PROD_ATTR_VAL", "")).strip() or None,
             "oper_id":       str(r.get("OPER_ID", "")).strip() or None,
         })
     return out
@@ -298,7 +298,7 @@ def _build_abstract_arrange_maps(
     arrange_map: Dict[Tuple[str, str, str], int] = {}
     by_ppk_oper: Dict[Tuple[str, str], List[Tuple[str, int]]] = {}
     for r in abstract_raw:
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         oper_id = r["OPER_ID"]
         model = str(r["EQP_MODEL_CD"])
         st = _coerce_proc_time(r.get("ST")) or 60
@@ -332,7 +332,7 @@ def _build_abstract_inventory(
     inventory: List[dict] = []
     seen: set = set()
     for r in abstract_raw:
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         oper_id = r["OPER_ID"]
         model = str(r["EQP_MODEL_CD"])
         abs_key = f"{ppk}|{oper_id}|{model}"
@@ -405,10 +405,10 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     목적: 원시 입력 4종을 RL 환경·시뮬레이터가 사용하는 공통 데이터 구조로 변환
     Input:
         raw = {
-            "discrete_arrange": [{EQP_ID, LOT_ID, PLAN_PROD_KEY, OPER_ID, ST, EQP_MODEL_CD, WF_QTY, ...}, ...],
-            "abstract_arrange": [{PLAN_PROD_KEY, OPER_ID, EQP_MODEL_CD, ST}, ...],
-            "plan":         [{PLAN_PROD_KEY, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY, PLAN_PRIORITY}, ...],
-            "flow":         [{PLAN_PROD_KEY, OPER_SEQ, OPER_ID}, ...]
+            "discrete_arrange": [{EQP_ID, LOT_ID, PLAN_PROD_ATTR_VAL, OPER_ID, ST, EQP_MODEL_CD, WF_QTY, ...}, ...],
+            "abstract_arrange": [{PLAN_PROD_ATTR_VAL, OPER_ID, EQP_MODEL_CD, ST}, ...],
+            "plan":         [{PLAN_PROD_ATTR_VAL, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY, PLAN_PRIORITY}, ...],
+            "flow":         [{PLAN_PROD_ATTR_VAL, OPER_SEQ, OPER_ID}, ...]
         }
     Output:
         {
@@ -449,7 +449,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     eqp_ids  = sorted({r["EQP_ID"] for r in discrete_raw})
     oper_ids = sorted({r["OPER_ID"] for r in flow_raw})
     prod_keys = sorted({
-        r["PLAN_PROD_KEY"]
+        r["PLAN_PROD_ATTR_VAL"]
         for r in discrete_raw + abstract_raw + plan_raw
     })
 
@@ -476,12 +476,12 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         seen_lots.add(lot_id)
 
         oper_id, seq = _resolve_lot_oper_seq(r, flow_map, oper_seq_map)
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         wf_qty = coerce_int(r["WF_QTY"], field="WF_QTY")
 
         priority = 1
         for p in plan_raw:
-            if p["PLAN_PROD_KEY"] == ppk and p["OPER_ID"] == oper_id:
+            if p["PLAN_PROD_ATTR_VAL"] == ppk and p["OPER_ID"] == oper_id:
                 priority = coerce_int(p.get("PLAN_PRIORITY", 1), field="PLAN_PRIORITY")
                 break
 
@@ -502,7 +502,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     plan_list = []
     for p in plan_raw:
         plan_list.append({
-            "plan_prod_key": p["PLAN_PROD_KEY"],
+            "plan_prod_key": p["PLAN_PROD_ATTR_VAL"],
             "oper_id":       p["OPER_ID"],
             "d0_plan_qty":   coerce_int(p["D0_PLAN_QTY"], field="D0_PLAN_QTY"),
             "d1_plan_qty":   coerce_int(p["D1_PLAN_QTY"], field="D1_PLAN_QTY"),
@@ -512,7 +512,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # FLOW 데이터 정리
     flow_list: Dict[str, List[dict]] = {}
     for r in flow_raw:
-        ppk = r["PLAN_PROD_KEY"]
+        ppk = r["PLAN_PROD_ATTR_VAL"]
         flow_list.setdefault(ppk, [])
         flow_list[ppk].append({"seq_id": coerce_int(r["OPER_SEQ"], field="OPER_SEQ"), "oper_id": r["OPER_ID"]})
     for ppk in flow_list:
@@ -659,7 +659,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "eqp_id":           eid,
             "lot_id":           lot_id,
             "oper_id":          oper_id,
-            "plan_prod_key":    r["PLAN_PROD_KEY"],
+            "plan_prod_key":    r["PLAN_PROD_ATTR_VAL"],
             "st":               st_per_wafer,
             "proc_time":        effective_proc_time(st_per_wafer, wf_qty_row),
             "eqp_model":        row_model,

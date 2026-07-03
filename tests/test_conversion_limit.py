@@ -17,24 +17,24 @@ def _env_data():
             n += 1
             lid = f"LOT{n:03d}"
             discrete.append({
-                "EQP_ID": eqps[ci % 2], "LOT_ID": lid, "PLAN_PROD_KEY": ppk,
+                "EQP_ID": eqps[ci % 2], "LOT_ID": lid, "PLAN_PROD_ATTR_VAL": ppk,
                 "OPER_ID": "OPER001", "ST": 60, "EQP_MODEL_CD": "A",
                 "WF_QTY": 1, "SEQ": 1, "CARRIER_ID": f"CAR{n:03d}",
             })
             lot_master.append({"LOT_ID": lid, "LOT_CD": LC[ppk], "TEMP": TEMP})
-    abstract = [{"EQP_MODEL_CD": "A", "PLAN_PROD_KEY": p, "OPER_ID": "OPER001", "ST": 60}
+    abstract = [{"EQP_MODEL_CD": "A", "PLAN_PROD_ATTR_VAL": p, "OPER_ID": "OPER001", "ST": 60}
                 for p in ppks]
-    plan = [{"PLAN_PROD_KEY": p, "OPER_ID": "OPER001", "D0_PLAN_QTY": 4,
+    plan = [{"PLAN_PROD_ATTR_VAL": p, "OPER_ID": "OPER001", "D0_PLAN_QTY": 4,
              "D1_PLAN_QTY": 4, "PLAN_PRIORITY": 1} for p in ppks]
-    flow = [{"PLAN_PROD_KEY": p, "OPER_SEQ": 1, "OPER_ID": "OPER001"} for p in ppks]
-    batch = [{"PLAN_PROD_KEY": p, "OPER_ID": "OPER001", "LOT_CD": LC[p], "TEMP": TEMP}
+    flow = [{"PLAN_PROD_ATTR_VAL": p, "OPER_SEQ": 1, "OPER_ID": "OPER001"} for p in ppks]
+    batch = [{"PLAN_PROD_ATTR_VAL": p, "OPER_ID": "OPER001", "LOT_CD": LC[p], "TEMP": TEMP}
              for p in ppks]
     tool = [{"LOT_CD": lc, "EQP_MODEL_CD": "A", "MAX_TOOL": 99} for lc in LC.values()]
     eqp_init = [{
         "EQP_ID": "EQP001",
         "LOT_CD": LC["PPK001"],
         "TEMP": TEMP,
-        "PLAN_PROD_KEY": "PPK001",
+        "PLAN_PROD_ATTR_VAL": "PPK001",
         "OPER_ID": "OPER001",
     }]
     raw = {

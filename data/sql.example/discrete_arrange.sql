@@ -6,7 +6,7 @@
 SELECT
     a.EQP_ID,
     a.LOT_ID,
-    a.PLAN_PROD_KEY,
+    a.PLAN_PROD_ATTR_VAL,
     a.OPER_ID,
     a.CARRIER_ID,
     a.ST,

@@ -37,12 +37,12 @@ OPER1_LOTS = 6  # 6 × 25 = 150 > PLAN_QTY
 def _build_oper_dedicated_steady_sample() -> Tuple[List[dict], List[dict], List[dict]]:
     """1PPK·3OPER·3EQP 전담, OPER001 재공만 초기 보유."""
     flow = [
-        {"PLAN_PROD_KEY": PPK, "OPER_SEQ": seq, "OPER_ID": op}
+        {"PLAN_PROD_ATTR_VAL": PPK, "OPER_SEQ": seq, "OPER_ID": op}
         for seq, op in enumerate(OPERS, start=1)
     ]
     plan = [
         {
-            "PLAN_PROD_KEY": PPK,
+            "PLAN_PROD_ATTR_VAL": PPK,
             "OPER_ID": op,
             "D0_PLAN_QTY": PLAN_QTY,
             "D1_PLAN_QTY": PLAN_QTY,

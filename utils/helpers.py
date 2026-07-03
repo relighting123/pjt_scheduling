@@ -41,16 +41,16 @@ def encode_normalized(value: Optional[str], index_map: Dict[str, int], total: in
 # ── 검증 ───────────────────────────────────────────────────────────────────────
 
 REQUIRED_DISCRETE_ARRANGE_FIELDS = {
-    "EQP_ID", "LOT_ID", "PLAN_PROD_KEY", "OPER_ID", "ST", "EQP_MODEL_CD", "WF_QTY",
+    "EQP_ID", "LOT_ID", "PLAN_PROD_ATTR_VAL", "OPER_ID", "ST", "EQP_MODEL_CD", "WF_QTY",
 }
-REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_KEY", "OPER_ID", "EQP_MODEL_CD", "ST"}
-REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_KEY", "OPER_ID",
+REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD", "ST"}
+REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_ATTR_VAL", "OPER_ID",
                                  "D0_PLAN_QTY", "D1_PLAN_QTY", "PLAN_PRIORITY"}
-REQUIRED_FLOW_FIELDS         = {"PLAN_PROD_KEY", "OPER_SEQ", "OPER_ID"}
-REQUIRED_SPLIT_FIELDS        = {"PLAN_PROD_KEY", "EQP_MODEL_CD", "SPLIT_QTY"}  # OPER_ID optional (defaults to *)
+REQUIRED_FLOW_FIELDS         = {"PLAN_PROD_ATTR_VAL", "OPER_SEQ", "OPER_ID"}
+REQUIRED_SPLIT_FIELDS        = {"PLAN_PROD_ATTR_VAL", "EQP_MODEL_CD", "SPLIT_QTY"}  # OPER_ID optional (defaults to *)
 REQUIRED_LOT_MASTER_FIELDS   = {"LOT_ID", "LOT_CD", "TEMP"}
 REQUIRED_TOOL_CAPACITY_FIELDS = {"LOT_CD", "EQP_MODEL_CD", "MAX_TOOL"}
-REQUIRED_BATCH_INFO_FIELDS   = {"LOT_CD", "TEMP", "PLAN_PROD_KEY", "OPER_ID"}
+REQUIRED_BATCH_INFO_FIELDS   = {"LOT_CD", "TEMP", "PLAN_PROD_ATTR_VAL", "OPER_ID"}
 
 
 def _pick_record_field(record: dict, *names: str):
