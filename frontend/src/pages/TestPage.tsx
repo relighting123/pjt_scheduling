@@ -38,10 +38,12 @@ export default function TestPage({ config, modelExists }: Props) {
   const [ganttStart, setGanttStart] = useState(0);
   const [ganttEnd, setGanttEnd]     = useState(1440);
 
+  const [facIdOverride, setFacIdOverride] = useState("");
+
   const algoList  = algorithms;
   const available = useMemo(() => algoList.filter(a => !a.requires_model || modelExists), [algoList, modelExists]);
   const algoLabels = useMemo(() => { const m: Record<string,string>={}; algoList.forEach(a=>m[a.id]=a.name); return m; }, [algoList]);
-  const facId = config?.fac_id ?? "FAC001";
+  const facId = facIdOverride.trim() || config?.fac_id || "FAC001";
 
   const displayAlgos = useMemo((): AlgorithmId[] => {
     if (benchmark?.algorithms?.length) return benchmark.algorithms;
@@ -55,14 +57,15 @@ export default function TestPage({ config, modelExists }: Props) {
 
   useEffect(() => {
     setSaved(true);
+    const fac = facIdOverride.trim() || config?.fac_id;
     Promise.all([
-      api.getSavedTestBenchmark(config?.fac_id).catch(() => null),
-      api.getTestDatasets(config?.fac_id).catch(() => null),
+      api.getSavedTestBenchmark(fac).catch(() => null),
+      api.getTestDatasets(fac).catch(() => null),
     ]).then(([saved, folders]) => {
       if (saved) setBenchmark(saved);
       if (folders?.datasets) setTestFolders(folders.datasets);
     }).finally(() => setSaved(false));
-  }, [config?.fac_id]);
+  }, [config?.fac_id, facIdOverride]);
 
   const chartRows = useMemo(() => benchmark?.datasets?.length ? benchmarkRowsFromResponse(benchmark.datasets, algoLabels) : [], [benchmark, algoLabels]);
 
@@ -112,8 +115,8 @@ export default function TestPage({ config, modelExists }: Props) {
   }, [compareAlgos, available, facId, testFolders]);
 
   const clear = useCallback(async () => {
-    try { await api.clearSavedTestBenchmark(config?.fac_id); setBenchmark(null); } catch { /* ignore */ }
-  }, [config?.fac_id]);
+    try { await api.clearSavedTestBenchmark(facId); setBenchmark(null); } catch { /* ignore */ }
+  }, [facId]);
 
   const hasData = !!(benchmark?.datasets?.length);
 
@@ -126,6 +129,20 @@ export default function TestPage({ config, modelExists }: Props) {
 
       {/* ── Control panel ── */}
       <aside className="ctrl-panel">
+        <div className="card">
+          <div className="card-title">설정</div>
+          <label className="field-label" htmlFor="test-fac-id">FAC_ID</label>
+          <input
+            id="test-fac-id"
+            className="input"
+            type="text"
+            placeholder={config?.fac_id ?? "FAC001"}
+            value={facIdOverride}
+            onChange={e => setFacIdOverride(e.target.value)}
+            disabled={loading}
+          />
+        </div>
+
         <div className="card">
           <div className="card-title">알고리즘</div>
           <div className="algo-list mb-2">
