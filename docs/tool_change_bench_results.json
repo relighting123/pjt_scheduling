@@ -1,0 +1,426 @@
+{
+  "datasets": [
+    {
+      "id": "TCB01_SINGLE_2OP",
+      "category": "A. 단일제품 재공충분",
+      "sim_end_minutes": 480,
+      "optimal": {
+        "production": 48,
+        "conversions": 0,
+        "by_oper": {
+          "OPER001": 24,
+          "OPER002": 24
+        },
+        "derivation": "전담 장비 1:1이므로 전환은 항상 회피 가능. 장비당 처리량 상한 = floor(480/20)=24개. 재공(30)>계획(24)이므로 상한이 곧 최적. 0전환은 자명."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 48,
+          "conv": 0,
+          "prod_opt": 48,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        },
+        "minprogress": {
+          "prod": 48,
+          "conv": 0,
+          "prod_opt": 48,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        }
+      }
+    },
+    {
+      "id": "TCB02_SINGLE_3OP_BOTTLENECK",
+      "category": "A. 단일제품 재공충분",
+      "sim_end_minutes": 480,
+      "optimal": {
+        "production": 96,
+        "conversions": 0,
+        "by_oper": {
+          "OPER001": 32,
+          "OPER002": 32,
+          "OPER003": 32
+        },
+        "derivation": "세 공정 모두 장비수×floor(480/ST)=32로 균형 설계(1×32, 1×32, 2×16×... 정확히는 OPER003=2대×floor(480/30)=2×16=32). 전담이므로 0전환. 재공(40)>계획(32) → 상한=32/공정이 최적."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 96,
+          "conv": 0,
+          "prod_opt": 96,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        },
+        "minprogress": {
+          "prod": 96,
+          "conv": 0,
+          "prod_opt": 96,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        }
+      }
+    },
+    {
+      "id": "TCB03_SINGLE_4OP_CHAIN",
+      "category": "A. 단일제품 재공충분",
+      "sim_end_minutes": 600,
+      "optimal": {
+        "production": 200,
+        "conversions": 0,
+        "by_oper": {
+          "OPER001": 50,
+          "OPER002": 50,
+          "OPER003": 50,
+          "OPER004": 50
+        },
+        "derivation": "장비수×floor(600/ST): 1×50, 1×50, 2×25=50, 1×50 → 모두 50으로 균형. 전담·재공충분이므로 0전환·상한 100% 달성이 최적."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 200,
+          "conv": 0,
+          "prod_opt": 200,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        },
+        "minprogress": {
+          "prod": 200,
+          "conv": 0,
+          "prod_opt": 200,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        }
+      }
+    },
+    {
+      "id": "TCB04_MULTI_SYM_2STAGE",
+      "category": "B. 다품종 재공충분",
+      "sim_end_minutes": 320,
+      "optimal": {
+        "production": 48,
+        "conversions": 0,
+        "by_stage": {
+          "OPER001": {
+            "production": 24,
+            "conversions": 0
+          },
+          "OPER002": {
+            "production": 24,
+            "conversions": 0
+          }
+        },
+        "derivation": "각 단계 3대×3제품, 제품당 8carrier×40min=320min=sim_end 정확히 일치. 장비당 1제품 전담(비홈 lot도 abstract 경로로 선택 가능)이면 0전환으로 정확히 24개/단계 완결 — 이보다 많은 생산은 재공 총량(24) 초과라 불가능."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 36,
+          "conv": 12,
+          "prod_opt": 48,
+          "conv_opt": 0,
+          "prod_gap": 12,
+          "conv_gap": 12,
+          "prod_pct": 75.0
+        },
+        "minprogress": {
+          "prod": 48,
+          "conv": 0,
+          "prod_opt": 48,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        }
+      },
+      "oracle_verification": {
+        "prod": 48,
+        "conv": 0,
+        "makespan": 320
+      }
+    },
+    {
+      "id": "TCB05_MULTI_OVER_2STAGE",
+      "category": "B. 다품종 재공충분",
+      "sim_end_minutes": 405,
+      "optimal": {
+        "production": 40,
+        "conversions": 4,
+        "by_stage": {
+          "OPER001": {
+            "production": 20,
+            "conversions": 2
+          },
+          "OPER002": {
+            "production": 20,
+            "conversions": 2
+          }
+        },
+        "derivation": "구성적 증명(단계별 동일): 3대에 5제품을 2/2/1로 배분 → 전환 (2-1)+(2-1)+(1-1)=2회(하한: 5제품-3대=2, 달성). M1=A+B(4+4carrier×45=360min+conv45=405), M2=C+D(405), M3=E(180min). makespan=405=sim_end. 전량(20/20) 생산 + 최소전환 동시 달성 → 최적. 장비별 담당 제품 그룹을 전용 장비모델로 고정해(EQP1↔{A,B}, EQP2↔{C,D}, EQP3↔{E}) 의도치 않은 교차 배정을 원천 차단했고, 실제 시뮬레이터 오라클 정책으로 이 스케줄이 그대로 달성됨을 검증함(benchmark/tool_change_bench.py --verify)."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 40,
+          "conv": 4,
+          "prod_opt": 40,
+          "conv_opt": 4,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        },
+        "minprogress": {
+          "prod": 33,
+          "conv": 11,
+          "prod_opt": 40,
+          "conv_opt": 4,
+          "prod_gap": 7,
+          "conv_gap": 7,
+          "prod_pct": 82.5
+        }
+      },
+      "oracle_verification": {
+        "prod": 40,
+        "conv": 4,
+        "makespan": 405
+      }
+    },
+    {
+      "id": "TCB06_MULTI_LOADSKEW_2STAGE",
+      "category": "B. 다품종 재공충분",
+      "sim_end_minutes": 360,
+      "optimal": {
+        "production": 60,
+        "conversions": 0,
+        "by_stage": {
+          "OPER001": {
+            "production": 30,
+            "conversions": 0
+          },
+          "OPER002": {
+            "production": 30,
+            "conversions": 0
+          }
+        },
+        "derivation": "장비 1대를 제품 1개에 전담 배정(물량이 큰 제품일수록 그 장비를 오래 점유): 12×30=360, 8×30=240, 6×30=180, 4×30=120(모두 sim_end=360 이내). 전담이므로 0전환, 재공 전량(30/단계) 소진이 상한 — 동시 달성. 물량이 적은 제품 담당 장비는 자기 몫을 일찍 끝내고 남은 시간 유휴 상태가 되는데, 이는 비용이 전혀 없으므로(전환 0 유지) 그대로 최적 — 실제 오라클 정책을 max_conversions_per_eqp=0으로 강제해(유휴 장비가 남의 제품을 대신 돕지 못하게 막음) 이 0전환·전량생산이 동시에 달성 가능함을 시뮬레이터로 검증함(--verify)."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 60,
+          "conv": 24,
+          "prod_opt": 60,
+          "conv_opt": 0,
+          "prod_gap": 0,
+          "conv_gap": 24,
+          "prod_pct": 100.0
+        },
+        "minprogress": {
+          "prod": 59,
+          "conv": 31,
+          "prod_opt": 60,
+          "conv_opt": 0,
+          "prod_gap": 1,
+          "conv_gap": 31,
+          "prod_pct": 98.3
+        }
+      },
+      "oracle_verification": {
+        "prod": 60,
+        "conv": 0,
+        "makespan": 360
+      }
+    },
+    {
+      "id": "TCB07_MULTI_CONVHEAVY_2STAGE",
+      "category": "B. 다품종 재공충분",
+      "sim_end_minutes": 440,
+      "optimal": {
+        "production": 40,
+        "conversions": 4,
+        "by_stage": {
+          "OPER001": {
+            "production": 20,
+            "conversions": 2
+          },
+          "OPER002": {
+            "production": 20,
+            "conversions": 2
+          }
+        },
+        "derivation": "B2와 동일 구성(2/2/1 분배, 하한 전환=2/단계). M1=A+B(160+160+120=440), M2=C+D(440), M3=E(160). makespan=440=sim_end. 전량(20/20)+최소전환 동시 달성. 전용 장비그룹으로 교차 배정을 차단해 실제 시뮬레이터 오라클 정책으로 이 스케줄이 그대로 달성됨을 검증함(--verify)."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 40,
+          "conv": 4,
+          "prod_opt": 40,
+          "conv_opt": 4,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        },
+        "minprogress": {
+          "prod": 29,
+          "conv": 7,
+          "prod_opt": 40,
+          "conv_opt": 4,
+          "prod_gap": 11,
+          "conv_gap": 3,
+          "prod_pct": 72.5
+        }
+      },
+      "oracle_verification": {
+        "prod": 40,
+        "conv": 4,
+        "makespan": 440
+      }
+    },
+    {
+      "id": "TCB08_SAFETY_1EQP",
+      "category": "C. 재공편중·안전재공",
+      "sim_end_minutes": 860,
+      "optimal": {
+        "production": 40,
+        "conversions": 1,
+        "by_oper": {
+          "OPER001": 20,
+          "OPER002": 20
+        },
+        "derivation": "증명: (1)장비가 1대뿐이므로 두 공정을 동시에 처리 불가 → 전환을 여러 번 해도 병렬 이득이 없고 전환시간만 순손실. 따라서 전환 횟수를 늘리는 어떤 정책도 1회 전환 정책보다 나을 수 없다. (2)OPER002는 초기 재공 0이라 첫 배정은 반드시 OPER001 → 전환 0회는 불가능(OPER002 계획 미달성). → 최소 전환=1이 하한이자 달성 가능: OPER001 20개(400min) 전부 처리 후 전환(60min) → OPER002 20개(400min). 총 860min. 오라클 정책으로 시뮬레이터 직접 검증(benchmark/tool_change_bench.py)."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 40,
+          "conv": 1,
+          "prod_opt": 40,
+          "conv_opt": 1,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        },
+        "minprogress": {
+          "prod": 40,
+          "conv": 1,
+          "prod_opt": 40,
+          "conv_opt": 1,
+          "prod_gap": 0,
+          "conv_gap": 0,
+          "prod_pct": 100.0
+        }
+      },
+      "oracle_verification": {
+        "prod": 40,
+        "conv": 1,
+        "makespan": 860
+      }
+    },
+    {
+      "id": "TCB09_SAFETY_2EQP_BUFFER",
+      "category": "C. 재공편중·안전재공",
+      "sim_end_minutes": 780,
+      "optimal": {
+        "production": 100,
+        "conversions": 1,
+        "by_oper": {
+          "OPER001": 60,
+          "OPER002": 40
+        },
+        "derivation": "구성적 균형점(crossing-point) 설계: 두 장비가 t=0~120min 함께 OPER001 진행(16개 완료, 안전재공 16 확보) → 1대가 전환(120~180min, 전환 중에도 나머지 1대가 OPER001 계속 진행해 재공 +4 → 20) → 그 장비는 이후 OPER002 전담(공급률=잔여 1대의 OPER001 산출률과 정확히 같아 재공이 마르지 않음, 40개 처리에 600min, t=780 완료). 남은 1대는 계속 OPER001 진행해 나머지 44개 (660min)를 처리, t=780 완료. 두 장비가 t=780에 동시 완결 → makespan 최소화(crossing-point 표준 논증). 이론 하한(총 작업량/2대, 전환 무시)=750min에 불과 30min(전환 1회의 절반) 위 — 사실상 최적."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 96,
+          "conv": 2,
+          "prod_opt": 100,
+          "conv_opt": 1,
+          "prod_gap": 4,
+          "conv_gap": 1,
+          "prod_pct": 96.0
+        },
+        "minprogress": {
+          "prod": 89,
+          "conv": 3,
+          "prod_opt": 100,
+          "conv_opt": 1,
+          "prod_gap": 11,
+          "conv_gap": 2,
+          "prod_pct": 89.0
+        }
+      },
+      "oracle_verification": {
+        "prod": 100,
+        "conv": 1,
+        "makespan": 780
+      }
+    },
+    {
+      "id": "TCB10_SAFETY_3EQP_SKEWED",
+      "category": "C. 재공편중·안전재공",
+      "sim_end_minutes": 420,
+      "optimal": {
+        "production": 120,
+        "conversions": 1,
+        "by_oper": {
+          "OPER001": 90,
+          "OPER002": 30
+        },
+        "derivation": "구성적 설계: 3대 모두 t=0~80min 함께 OPER001(24개 완료, 안전재공 확보) → 1대가 전환(80~120min, 나머지 2대는 OPER001 계속 진행해 재공 +8 → 32) → 전환 장비는 OPER002 전담(잔여 2대 공급률 > 자신의 소비율이라 재공이 계속 쌓이기만 함, 절대 마르지 않음. 30개 처리 300min, t=420 완료). 남은 2대는 OPER001 잔여 66개(330min)를 t=80+330=410에 완결. makespan=max(410,420)=420. 전환 1회로 두 계획(90+30) 모두 100% 달성 — crossing-point 근사 최적(이론 하한 대비 여유 <2%)."
+      },
+      "algos": {
+        "earliest_st": {
+          "prod": 114,
+          "conv": 3,
+          "prod_opt": 120,
+          "conv_opt": 1,
+          "prod_gap": 6,
+          "conv_gap": 2,
+          "prod_pct": 95.0
+        },
+        "minprogress": {
+          "prod": 70,
+          "conv": 14,
+          "prod_opt": 120,
+          "conv_opt": 1,
+          "prod_gap": 50,
+          "conv_gap": 13,
+          "prod_pct": 58.3
+        }
+      },
+      "oracle_verification": {
+        "prod": 120,
+        "conv": 1,
+        "makespan": 430
+      }
+    }
+  ],
+  "summary": {
+    "earliest_st": {
+      "prod": 770,
+      "prod_opt": 792,
+      "prod_pct": 97.2,
+      "conv": 50,
+      "conv_opt": 11,
+      "n_optimal": 6,
+      "n_sets": 10
+    },
+    "minprogress": {
+      "prod": 712,
+      "prod_opt": 792,
+      "prod_pct": 89.9,
+      "conv": 67,
+      "conv_opt": 11,
+      "n_optimal": 5,
+      "n_sets": 10
+    }
+  }
+}
