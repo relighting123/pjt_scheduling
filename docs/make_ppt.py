@@ -294,6 +294,10 @@ def state_multi_eqp_slide(idx: int):
          lambda st: st["state"]["obs_eqp_local"]["needs_conversion"]),
         ("avoidable_frac", "max α over feasible 전환 버킷",
          lambda st: st["state"]["obs_eqp_local"]["avoidable_frac"]),
+        ("prev_prod", "encode(현재 EQP.prev_prod)",
+         lambda st: st["state"]["obs_eqp_local"].get("prev_prod", "—")),
+        ("prev_oper", "encode(현재 EQP.prev_oper)",
+         lambda st: st["state"]["obs_eqp_local"].get("prev_oper", "—")),
         ("reward (이 결정)", "8항목 보상 합",
          lambda st: st["reward"]),
     ]
@@ -954,7 +958,7 @@ txt(s, 4.5, 3.42, 4.3, 0.35, [[R("상태 s′ · 보상 r", 11.5, NAVY, True)]],
 
 # S/A/R 3열 요약
 cols = [
-    ("State  (관측)", "2,412차원 벡터", "전역 6 + 버킷 O×P×K×16 + 설비 2 + 맥락 4", STEEL),
+    ("State  (관측)", "1,814차원 벡터", "전역 6 + 버킷 O×P×K×12 + 설비 4 + 맥락 4", STEEL),
     ("Action  (행동)", "MultiDiscrete([O·P, L])", "투입할 (PPK·OPER) 버킷 + 블록 크기 레벨 4단계", ACCENT),
     ("Reward  (보상)", "전환·페이싱·벌크 합산", "전환 회피 + takt 추종 + 큰 블록 점유 유도", NAVY),
 ]
@@ -974,21 +978,21 @@ for t, big, d, col in cols:
 s = content_slide("02  Bulk-Fill MDP 모델 정의", "State — 관측 공간 정의", 7)
 txt(s, 0.9, 1.4, 11.6, 0.5, [[
     R("관측은 [0,1]로 정규화된 ", 13.5, INK),
-    R("2,412차원 Box 벡터", 13.5, NAVY, True),
-    R(" 입니다.  (O=3, P=10, K=5, 버킷 채널 F=16 기준)", 13, GRAY),
+    R("1,814차원 Box 벡터", 13.5, NAVY, True),
+    R(" 입니다.  (O=3, P=10, K=5, 버킷 채널 F=12 기준)", 13, GRAY),
 ]])
 # 공식 박스
 box(s, 0.9, 2.05, 11.5, 0.66, NAVY)
 txt(s, 0.9, 2.05, 11.5, 0.66, [[
-    R("obs_dim = 6 (전역)  +  O×P×K×16 (버킷)  +  2 (현재 설비)  +  4 (직전 맥락)  =  2,412", 14.5, WHITE, True)
+    R("obs_dim = 6 (전역)  +  O×P×K×12 (버킷)  +  4 (현재 설비)  +  4 (직전 맥락)  =  1,814", 14.5, WHITE, True)
 ]], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
 # 표
 rows = [
     ("구성 블록", "차원", "주요 내용", True),
     ("전역 상태 (Global)", "6", "경과시간 · 잔여 takt여유 · 재공 소진율 · 계획 달성률 · 전환대기 설비 비율 · 공구 가동률", False),
-    ("버킷 특징 (Bucket)", "2,400", "(OPER×PPK×MODEL) 격자의 16개 채널: 유효성·WIP비중·종료시각·처리율·takt·전환필요·공구여유·달성가능비·투영커버 등", False),
-    ("현재 설비 (EQP local)", "2", "현재 결정 설비의 전환 필요 여부 · 전환 회피가능 정도(0~1)", False),
+    ("버킷 특징 (Bucket)", "1,800", "(OPER×PPK×MODEL) 격자 12채널: WIP비중·takt·ST·urgency·전환/공구·달성가능·투영커버", False),
+    ("현재 설비 (EQP local)", "4", "전환 필요 · 회피가능 α · 직전 PPK · 직전 OPER (same_setup 정렬)", False),
     ("직전 맥락 (Context)", "4", "직전 배정의 PPK · OPER · EQP · LOT_CD (정규화 인덱스)", False),
 ]
 y = 2.95; widths = [3.0, 1.0, 7.5]
