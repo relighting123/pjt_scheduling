@@ -1,0 +1,6 @@
+[
+  { "GROUP_ID": "G1", "LOT_CD": "AG/92",  "TEMP": "" },
+  { "GROUP_ID": "G1", "LOT_CD": "AG/-30", "TEMP": "" },
+  { "GROUP_ID": "G2", "LOT_CD": "BG/92",  "TEMP": "" },
+  { "GROUP_ID": "G2", "LOT_CD": "BG/-30", "TEMP": "" }
+]
