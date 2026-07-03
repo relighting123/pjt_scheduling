@@ -56,8 +56,8 @@ STATE_TERM_PAGES = [
     {
         "key": "bucket",
         "title": "버킷 특징 (Bucket)",
-        "obs_slice": "obs[6 : 6+O×P×K×12]",
-        "plain": "(OPER×PPK×모델) 격자마다 12채널 — \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
+        "obs_slice": "obs[6 : 6+O×P×K×13]",
+        "plain": "(OPER×PPK×모델) 격자마다 13채널 — \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
         "why": "보상(페이싱·중복커버·전환) 판단의 근거가 되는 핵심 특징입니다.",
         "trace_step": 1,
         "items": [
@@ -110,6 +110,12 @@ STATE_TERM_PAGES = [
                 "idx": "ch11", "name": "projected_cover_ratio",
                 "formula": "min(cover / need, 2) / 2  ;  need=달성상한−완료, cover=타EQP 하루 투영생산",
                 "meaning": "중복 커버 신호 — 클수록 다른 설비가 이미 커버 중(회피 유도)",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch12", "name": "starve_time_norm",
+                "formula": "wip / (현공정 처리속도 − 전공정 처리속도) / T_avail  if 현공정 > 전공정 else 1.0",
+                "meaning": "안전재공 소진 시간 (몇 시간 후 재공이 말라 안전재공이 사라지는지)",
                 "trace_path": None,
             },
         ],

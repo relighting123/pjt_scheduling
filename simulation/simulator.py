@@ -1,4 +1,4 @@
-﻿"""
+"""
 simulation/simulator.py – 이산 사건 시뮬레이션(DES) 엔진
 
 RL 환경의 내부 시뮬레이터로, EQP 상태 및 LOT 배정 이력을 관리합니다.
@@ -2092,7 +2092,7 @@ class SchedulingSimulator:
         self._pending_step_events = []
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
-    BUCKET_FEATURES = 12
+    BUCKET_FEATURES = 13
 
     def get_bucket_features(self) -> np.ndarray:
         """
@@ -2102,7 +2102,8 @@ class SchedulingSimulator:
               6 wip_lot_cd, 7 wip_temp,
               8 needs_conversion(current_eqp), 9 tool_can_assign(current_eqp),
               10 achievable_ratio (Step C: 달성가능 상한/계획량),
-              11 projected_cover_ratio (다른 장비(current_eqp 제외)의 하루 투영 커버/남은 필요량).
+              11 projected_cover_ratio (다른 장비(current_eqp 제외)의 하루 투영 커버/남은 필요량),
+              12 starve_time_normalized (재공 소진 시간: wip / (consume_rate - supply_rate) if consume_rate > supply_rate else 1.0).
         """
         # 버전 + current_eqp 가 같으면 캐시 반환
         cache_state = (self._state_version, self._current_eqp)
@@ -2278,6 +2279,17 @@ class SchedulingSimulator:
                 need11 = max(self._achievable_qty(ppk, op) - done11, 1.0)
                 cov11 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
                 feats[oi, pi, vmis, 11] = min(cov11 / need11, 2.0) / 2.0
+
+                # 채널 12: starve_time_normalized (재공 소진 시간)
+                consume_rate = self._oper_capacity_per_min(ppk, op)
+                supply_rate = self._oper_supply_rate(ppk, op)
+                if consume_rate > supply_rate:
+                    net_rate = consume_rate - supply_rate
+                    starve_time = wip_q / net_rate
+                    starve_time_norm = min(starve_time / T_avail, 1.0)
+                else:
+                    starve_time_norm = 1.0
+                feats[oi, pi, vmis, 12] = starve_time_norm
 
                 # 모델별 채널: numpy 벡터 연산
                 feats[oi, pi, vmis, 4] = vsts / max_arrange_st

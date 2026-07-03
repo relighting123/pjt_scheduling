@@ -165,21 +165,31 @@ def state_term_detail_slide(idx: int, meta: dict):
         f"State 항목 — {meta['title']}  ({meta['obs_slice']})",
         idx,
     )
-    box(s, 0.55, 1.35, 12.25, 0.52, LIGHT, line_color=LINE, line_w=1.0)
-    txt(s, 0.72, 1.42, 11.9, 0.38, [[
-        R("쉬운 설명  ", 10.5, ACCENT, True),
-        R(meta.get("plain", ""), 10.5, INK),
-    ]], line_spacing=1.08)
-    box(s, 0.55, 1.92, 12.25, 0.38, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=0.75)
-    txt(s, 0.72, 1.98, 11.9, 0.28, [[
-        R("왜 필요한가  ", 10, STEEL, True),
-        R(meta.get("why", ""), 10, GRAY),
-    ]], line_spacing=1.08)
+    # 상단 2단 카드 레이아웃 (좌: 쉬운 설명, 우: 핵심 목적)
+    card_w = 6.02
+    card_h = 0.95
+    gap = 0.21
+    
+    # 좌측 카드 (쉬운 설명)
+    box(s, 0.55, 1.32, card_w, card_h, LIGHT, line_color=LINE, line_w=1.0)
+    box(s, 0.55, 1.32, 0.08, card_h, ACCENT)
+    txt(s, 0.78, 1.42, card_w - 0.35, card_h - 0.2, [
+        [R("쉬운 설명", 11, ACCENT, True)],
+        [R(meta.get("plain", ""), 10, INK)]
+    ], line_spacing=1.1)
+
+    # 우측 카드 (핵심 목적)
+    box(s, 0.55 + card_w + gap, 1.32, card_w, card_h, RGBColor(0xEC, 0xF1, 0xF7), line_color=LINE, line_w=1.0)
+    box(s, 0.55 + card_w + gap, 1.32, 0.08, card_h, STEEL)
+    txt(s, 0.55 + card_w + gap + 0.23, 1.42, card_w - 0.35, card_h - 0.2, [
+        [R("핵심 목적 (필요성)", 11, STEEL, True)],
+        [R(meta.get("why", ""), 10, GRAY)]
+    ], line_spacing=1.1)
 
     step_no = meta.get("trace_step", 1)
     hdr = ["인덱스", "이름", "산식", "의미", f"실측 산출식 값 (Step {step_no})"]
     widths = [1.15, 1.55, 2.65, 3.35, 3.1]
-    y = 2.38
+    y = 2.42
     x0 = 0.55
     xh = 0.4
     for c_i, (h, w) in enumerate(zip(hdr, widths)):
@@ -978,40 +988,41 @@ for t, big, d, col in cols:
 s = content_slide("02  Bulk-Fill MDP 모델 정의", "State — 관측 공간 정의", 7)
 txt(s, 0.9, 1.4, 11.6, 0.5, [[
     R("관측은 [0,1]로 정규화된 ", 13.5, INK),
-    R("1,814차원 Box 벡터", 13.5, NAVY, True),
-    R(" 입니다.  (O=3, P=10, K=5, 버킷 채널 F=12 기준)", 13, GRAY),
+    R("1,964차원 Box 벡터", 13.5, NAVY, True),
+    R(" 입니다.  (O=3, P=10, K=5, 버킷 채널 F=13 기준)", 13, GRAY),
 ]])
 # 공식 박스
 box(s, 0.9, 2.05, 11.5, 0.66, NAVY)
 txt(s, 0.9, 2.05, 11.5, 0.66, [[
-    R("obs_dim = 6 (전역)  +  O×P×K×12 (버킷)  +  4 (현재 설비)  +  4 (직전 맥락)  =  1,814", 14.5, WHITE, True)
+    R("obs_dim = 6 (전역)  +  O×P×K×13 (버킷)  +  4 (현재 설비)  +  4 (직전 맥락)  =  1,964", 14.5, WHITE, True)
 ]], align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
-# 표
-rows = [
-    ("구성 블록", "차원", "주요 내용", True),
-    ("전역 상태 (Global)", "6", "경과시간 · 잔여 takt여유 · 재공 소진율 · 계획 달성률 · 전환대기 설비 비율 · 공구 가동률", False),
-    ("버킷 특징 (Bucket)", "1,800", "(OPER×PPK×MODEL) 격자 12채널: WIP비중·takt·ST·urgency·전환/공구·달성가능·투영커버", False),
-    ("현재 설비 (EQP local)", "4", "전환 필요 · 회피가능 α · 직전 PPK · 직전 OPER (same_setup 정렬)", False),
-    ("직전 맥락 (Context)", "4", "직전 배정의 PPK · OPER · EQP · LOT_CD (정규화 인덱스)", False),
+# 2x2 카드형 도표 레이아웃
+cards_data = [
+    ("전역 상태 (Global)", "6 차원", "경과시간 · 잔여 takt여유 · 재공 소진율 · 계획 달성률 · 전환대기 설비 비율 · 공구 가동률", NAVY),
+    ("버킷 특징 (Bucket)", "1,950 차원", "(OPER×PPK×MODEL) 격자 13채널: WIP비중·takt·ST·urgency·전환/공구·달성가능·투영커버·소진시간", ACCENT),
+    ("현재 설비 (EQP local)", "4 차원", "전환 필요 · 회피가능 α · 직전 PPK · 직전 OPER (same_setup 정렬)", STEEL),
+    ("직전 맥락 (Context)", "4 차원", "직전 배정의 PPK · OPER · EQP · LOT_CD (정규화 인덱스)", GRAY),
 ]
-y = 2.95; widths = [3.0, 1.0, 7.5]
-for r_i, (c1, c2, c3, is_h) in enumerate(rows):
-    h = 0.5 if is_h else (0.95 if r_i == 2 else 0.78)
-    x = 0.9
-    fill = NAVY if is_h else (LIGHT if r_i % 2 else WHITE)
-    for c_i, (cv, cwd) in enumerate(zip((c1, c2, c3), widths)):
-        cell = box(s, x, y, cwd, h, fill, line_color=LINE, line_w=0.75)
-        tf = cell.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.margin_left = Inches(0.1); tf.margin_right = Inches(0.08)
-        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER if (c_i == 1 or is_h) else PP_ALIGN.LEFT
-        run = p.add_run(); run.text = cv
-        run.font.size = Pt(12 if is_h else (11 if c_i == 2 else 12))
-        run.font.bold = is_h or c_i == 0
-        run.font.color.rgb = WHITE if is_h else (NAVY if c_i <= 1 else GRAY)
-        run.font.name = FONT
-        x += cwd
-    y += h
+
+x0, y0 = 0.9, 2.85
+cw, ch = 5.65, 1.6
+gx, gy = 0.2, 0.2
+
+for i, (title, dim, desc, col) in enumerate(cards_data):
+    cx = x0 + (i % 2) * (cw + gx)
+    cy = y0 + (i // 2) * (ch + gy)
+    
+    # 카드 외곽 테두리 및 배경
+    box(s, cx, cy, cw, ch, LIGHT, line_color=LINE, line_w=1.0)
+    
+    # 카드 헤더 (띠)
+    box(s, cx, cy, cw, 0.42, col)
+    txt(s, cx + 0.15, cy + 0.08, cw * 0.6, 0.3, [[R(title, 12, WHITE, True)]])
+    txt(s, cx + cw - 2.15, cy + 0.08, 2.0, 0.3, [[R(dim, 11, WHITE, True)]], align=PP_ALIGN.RIGHT)
+    
+    # 카드 바디 (설명)
+    txt(s, cx + 0.2, cy + 0.52, cw - 0.4, ch - 0.6, [[R(desc, 10.5, INK)]], line_spacing=1.12)
 txt(s, 0.9, 6.55, 11.5, 0.6, [[
     R("다음 ", 12.5, ACCENT, True),
     R(f"{len(STATE_TERM_PAGES)}개 State 블록", 12.5, NAVY, True),
