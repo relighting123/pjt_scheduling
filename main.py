@@ -55,6 +55,7 @@ from data.loader import fetch_from_db, load_data, validate_data, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods
 from data.loader.sql_binds import resolve_lot_cd
 from agent.rl_agent import SchedulingAgent
+from agent.training_report import save_training_convergence_report
 from inference.runner import run_inference, save_result
 from data.writer.db_load import (
     apply_output_ddl,
@@ -282,6 +283,12 @@ def cmd_train(
     agent.train(env_data, verbose=1, env_cls=env_cls)
     agent.save(algorithm=algorithm)
     print(f"  모델 저장: {CONFIG.path.model_dir / _model_name_for_algorithm(algorithm)}.zip")
+
+    report = save_training_convergence_report(CONFIG.path.model_dir, algorithm=algorithm)
+    print(f"  수렴 리포트: {report['json_path']}")
+    if report["png_path"]:
+        print(f"  수렴 차트: {report['png_path']}")
+    print(f"  판정: {report['verdict']} — {report['note']}")
 
     print("=" * 60)
     print("[train] validation (test 전체)")
