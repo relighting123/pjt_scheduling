@@ -909,7 +909,7 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
             "EQP_ID":        row.get("EQP_ID", ""),
             "LOT_ID":        row.get("LOT_ID", ""),
             "CARRIER_ID":    row.get("CARRIER_ID", ""),
-            "PLAN_PROD_KEY": row.get("PLAN_PROD_KEY", ""),
+            "PLAN_PROD_ATTR_VAL": row.get("PLAN_PROD_ATTR_VAL", ""),
             "OPER_ID":       row.get("OPER_ID", ""),
             "EQP_MODEL":     row.get("EQP_MODEL_CD", ""),
             "SEQ":           int(row.get("SEQ_NO") or 0),
@@ -944,7 +944,7 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
 
     completed: dict[str, int] = {}
     for rec in schedule:
-        key = f"{rec['PLAN_PROD_KEY']}|{rec.get('OPER_ID', '')}"
+        key = f"{rec['PLAN_PROD_ATTR_VAL']}|{rec.get('OPER_ID', '')}"
         completed[key] = completed.get(key, 0) + int(rec.get("WF_QTY") or 0)
 
     meta = payload.get("meta", {})

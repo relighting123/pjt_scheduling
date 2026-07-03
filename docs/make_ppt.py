@@ -595,13 +595,13 @@ def input_data_slide(idx: int):
     ]])
     rows = [
         ("파일", "필수", "주요 필드 (행 단위)", True),
-        ("discrete_arrange.json", "●", "EQP_ID, LOT_ID, PLAN_PROD_KEY, OPER_ID, ST, EQP_MODEL_CD, WF_QTY, CARRIER_ID", False),
-        ("plan.json", "●", "PLAN_PROD_KEY, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY, PLAN_PRIORITY", False),
-        ("flow.json", "●", "PLAN_PROD_KEY, OPER_SEQ, OPER_ID  (공정 순서)", False),
-        ("abstract_arrange.json", "●", "EQP_MODEL_CD, PLAN_PROD_KEY, OPER_ID, ST  (모델-제품 적합성)", False),
+        ("discrete_arrange.json", "●", "EQP_ID, LOT_ID, PLAN_PROD_ATTR_VAL, OPER_ID, ST, EQP_MODEL_CD, WF_QTY, CARRIER_ID", False),
+        ("plan.json", "●", "PLAN_PROD_ATTR_VAL, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY, PLAN_PRIORITY", False),
+        ("flow.json", "●", "PLAN_PROD_ATTR_VAL, OPER_SEQ, OPER_ID  (공정 순서)", False),
+        ("abstract_arrange.json", "●", "EQP_MODEL_CD, PLAN_PROD_ATTR_VAL, OPER_ID, ST  (모델-제품 적합성)", False),
         ("lot_master.json", "○", "LOT_ID, LOT_CD, TEMP  (전환 그룹 판별)", False),
         ("tool_capacity.json", "○", "LOT_CD, TEMP, MAX_TOOL  (동시 가공 공구 한도)", False),
-        ("batch_info.json", "○", "PLAN_PROD_KEY, OPER_ID, LOT_CD, TEMP", False),
+        ("batch_info.json", "○", "PLAN_PROD_ATTR_VAL, OPER_ID, LOT_CD, TEMP", False),
     ]
     y = 1.95
     widths = [3.2, 0.65, 7.65]
@@ -632,7 +632,7 @@ def input_data_slide(idx: int):
         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
     txt(s, 1.05, 5.9, 5.25, 0.95, [[
         R('{"EQP_ID":"EQP001","LOT_ID":"LOT001",', 9.5, INK),
-        R('"PLAN_PROD_KEY":"PPK001","OPER_ID":"OPER001",', 9.5, INK),
+        R('"PLAN_PROD_ATTR_VAL":"PPK001","OPER_ID":"OPER001",', 9.5, INK),
         R('"ST":60,"EQP_MODEL_CD":"A","WF_QTY":1}', 9.5, NAVY, True),
     ]], line_spacing=1.05)
 

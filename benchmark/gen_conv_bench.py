@@ -91,7 +91,7 @@ for ppk in PPKS:
         discrete_rows.append({
             "EQP_ID":        home_eqp,
             "LOT_ID":        lot["lot_id"],
-            "PLAN_PROD_KEY": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "OPER_ID":       OPER,
             "ST":            ST,
             "EQP_MODEL_CD":  MODEL,
@@ -102,7 +102,7 @@ for ppk in PPKS:
 
 # ── abstract_arrange ─────────────────────────────────────────────────────────
 abstract_rows = [
-    {"EQP_MODEL_CD": MODEL, "PLAN_PROD_KEY": ppk, "OPER_ID": OPER, "ST": ST}
+    {"EQP_MODEL_CD": MODEL, "PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": OPER, "ST": ST}
     for ppk in PPKS
 ]
 
@@ -114,7 +114,7 @@ lot_master_rows = [
 
 # ── plan ─────────────────────────────────────────────────────────────────────
 plan_rows = [
-    {"PLAN_PROD_KEY": ppk, "OPER_ID": OPER,
+    {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": OPER,
      "D0_PLAN_QTY": N_CARRIER_PER_PPK, "D1_PLAN_QTY": N_CARRIER_PER_PPK,
      "PLAN_PRIORITY": 1}
     for ppk in PPKS
@@ -122,15 +122,15 @@ plan_rows = [
 
 # ── flow / split / batch_info / tool_capacity ─────────────────────────────────
 flow_rows = [
-    {"PLAN_PROD_KEY": ppk, "OPER_SEQ": 1, "OPER_ID": OPER}
+    {"PLAN_PROD_ATTR_VAL": ppk, "OPER_SEQ": 1, "OPER_ID": OPER}
     for ppk in PPKS
 ]
 split_rows = [
-    {"PLAN_PROD_KEY": ppk, "OPER_ID": OPER, "EQP_MODEL_CD": MODEL, "SPLIT_QTY": 1}
+    {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": OPER, "EQP_MODEL_CD": MODEL, "SPLIT_QTY": 1}
     for ppk in PPKS
 ]
 batch_rows = [
-    {"PLAN_PROD_KEY": ppk, "OPER_ID": OPER, "LOT_CD": LOT_CD_BY_PPK[ppk], "TEMP": TEMP}
+    {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": OPER, "LOT_CD": LOT_CD_BY_PPK[ppk], "TEMP": TEMP}
     for ppk in PPKS
 ]
 tool_rows = [{"LOT_CD": lc, "TEMP": TEMP, "MAX_TOOL": 99}

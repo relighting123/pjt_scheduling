@@ -38,13 +38,13 @@ def kpi_line(rows, sim, conv_plans):
     from collections import defaultdict
     by = defaultdict(lambda: defaultdict(int))
     for r in rows:
-        by[r["EQP_ID"]][r["PLAN_PROD_KEY"]] += 1
+        by[r["EQP_ID"]][r["PLAN_PROD_ATTR_VAL"]] += 1
     ded = sum(1 for e in eqps if by[e] and max(by[e].values()) / max(sum(by[e].values()), 1) >= 0.8)
     return prod, conv, ded, len(eqps)
 
 
 def render(name, data, meta):
-    ppks = sorted({r["PLAN_PROD_KEY"] for a in data.values() for r in a["schedule"]})
+    ppks = sorted({r["PLAN_PROD_ATTR_VAL"] for a in data.values() for r in a["schedule"]})
     color_of = {p: PPK_COLORS[i % len(PPK_COLORS)] for i, p in enumerate(ppks)}
 
     sim = next(iter(data.values()))["sim"]
@@ -65,7 +65,7 @@ def render(name, data, meta):
         for r in rows:
             y = ypos.get(r["EQP_ID"], 0)
             st = r["START_TM"]; w = r["END_TM"] - r["START_TM"]
-            ax.barh(y, w, left=st, height=0.62, color=color_of.get(r["PLAN_PROD_KEY"], "#999"),
+            ax.barh(y, w, left=st, height=0.62, color=color_of.get(r["PLAN_PROD_ATTR_VAL"], "#999"),
                     edgecolor="white", linewidth=0.6, zorder=3)
         for c in conv_plans:
             y = ypos.get(c["eqp_id"], 0)

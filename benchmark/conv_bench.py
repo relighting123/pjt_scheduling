@@ -54,7 +54,7 @@ def summarize(result: dict, label: str) -> dict:
     in_time = [r for r in sched if r.get("END_TM", 0) <= SIM_MINUTES]
     by_eqp: dict = defaultdict(lambda: defaultdict(int))
     for r in in_time:
-        by_eqp[r["EQP_ID"]][r.get("PLAN_PROD_KEY", "?")] += 1
+        by_eqp[r["EQP_ID"]][r.get("PLAN_PROD_ATTR_VAL", "?")] += 1
 
     eqp_ids  = sorted(by_eqp.keys()) or sorted({r["EQP_ID"] for r in sched})
     carriers = [sum(by_eqp[e].values()) for e in eqp_ids]

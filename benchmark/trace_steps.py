@@ -30,7 +30,7 @@ def _schedule_snapshot(schedule: list) -> list:
         {
             "EQP_ID": r["EQP_ID"],
             "LOT_ID": r.get("LOT_ID", ""),
-            "PPK": r["PLAN_PROD_KEY"],
+            "PPK": r["PLAN_PROD_ATTR_VAL"],
             "OPER": r.get("OPER_ID", ""),
             "START_TM": int(r["START_TM"]),
             "END_TM": int(r["END_TM"]),
@@ -154,7 +154,7 @@ def main() -> None:
         proc_min = 60
         if sim.schedule:
             last = sim.schedule[-1]
-            if last.get("EQP_ID") == eqp_before and last.get("PLAN_PROD_KEY") == ppk:
+            if last.get("EQP_ID") == eqp_before and last.get("PLAN_PROD_ATTR_VAL") == ppk:
                 wf_qty = int(last.get("WF_QTY") or 1)
                 proc_min = max(int(last.get("END_TM", 0) - last.get("START_TM", 0)), 1)
 
@@ -183,7 +183,7 @@ def main() -> None:
             ends = [
                 int(b["END_TM"])
                 for b in sim.schedule
-                if b["EQP_ID"] == eqp_key and b["PLAN_PROD_KEY"] == ppk
+                if b["EQP_ID"] == eqp_key and b["PLAN_PROD_ATTR_VAL"] == ppk
             ]
             if ends:
                 blk["scheduled_end_tm"] = max(ends)

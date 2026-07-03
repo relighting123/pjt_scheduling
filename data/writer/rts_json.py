@@ -71,7 +71,7 @@ def _build_rts_rslt_rows(
                 "EQP_ID":         eqp_id,
                 "EQP_MODEL_CD":   rec.get("EQP_MODEL", ""),
                 "SEQ_NO":         seq_no,
-                "PLAN_PROD_KEY":  rec["PLAN_PROD_KEY"],
+                "PLAN_PROD_ATTR_VAL":  rec["PLAN_PROD_ATTR_VAL"],
                 "OPER_ID":        rec.get("OPER_ID", ""),
                 "LOT_ID":         rec["LOT_ID"],
                 "CARRIER_ID":     rec.get("CARRIER_ID", ""),

@@ -92,18 +92,18 @@ def gen_one(spec):
                 he = eqps[(pi + ci) % ne]
             else:
                 he = eqps[pi % ne]
-            discrete.append(dict(EQP_ID=he, LOT_ID=lot["lot_id"], PLAN_PROD_KEY=ppk,
+            discrete.append(dict(EQP_ID=he, LOT_ID=lot["lot_id"], PLAN_PROD_ATTR_VAL=ppk,
                                  OPER_ID=OPER, ST=lot["st"], EQP_MODEL_CD=MODEL,
                                  WF_QTY=1, SEQ=1, CARRIER_ID=lot["car_id"]))
 
-    abstract = [dict(EQP_MODEL_CD=MODEL, PLAN_PROD_KEY=ppk, OPER_ID=OPER, ST=sts[pi])
+    abstract = [dict(EQP_MODEL_CD=MODEL, PLAN_PROD_ATTR_VAL=ppk, OPER_ID=OPER, ST=sts[pi])
                 for pi, ppk in enumerate(ppks)]
     lot_master = [dict(LOT_ID=l["lot_id"], LOT_CD=l["lot_cd"], TEMP=TEMP) for l in lots]
-    plan = [dict(PLAN_PROD_KEY=ppk, OPER_ID=OPER, D0_PLAN_QTY=carriers[pi],
+    plan = [dict(PLAN_PROD_ATTR_VAL=ppk, OPER_ID=OPER, D0_PLAN_QTY=carriers[pi],
                  D1_PLAN_QTY=carriers[pi], PLAN_PRIORITY=1) for pi, ppk in enumerate(ppks)]
-    flow = [dict(PLAN_PROD_KEY=ppk, OPER_SEQ=1, OPER_ID=OPER) for ppk in ppks]
-    split = [dict(PLAN_PROD_KEY=ppk, OPER_ID=OPER, EQP_MODEL_CD=MODEL, SPLIT_QTY=1) for ppk in ppks]
-    batch = [dict(PLAN_PROD_KEY=ppk, OPER_ID=OPER, LOT_CD=lot_cd_by_ppk[ppk], TEMP=TEMP) for ppk in ppks]
+    flow = [dict(PLAN_PROD_ATTR_VAL=ppk, OPER_SEQ=1, OPER_ID=OPER) for ppk in ppks]
+    split = [dict(PLAN_PROD_ATTR_VAL=ppk, OPER_ID=OPER, EQP_MODEL_CD=MODEL, SPLIT_QTY=1) for ppk in ppks]
+    batch = [dict(PLAN_PROD_ATTR_VAL=ppk, OPER_ID=OPER, LOT_CD=lot_cd_by_ppk[ppk], TEMP=TEMP) for ppk in ppks]
     tool_rows = [dict(LOT_CD=lc, TEMP=TEMP, MAX_TOOL=tool) for lc in lot_cd_by_ppk.values()]
 
     files = {

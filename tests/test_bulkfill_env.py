@@ -18,7 +18,7 @@ ST, WF = 5, 25
 
 
 def _disc(eqp, lot, ppk, oper, seq, carrier):
-    return {"EQP_ID": eqp, "LOT_ID": lot, "PLAN_PROD_KEY": ppk, "OPER_ID": oper,
+    return {"EQP_ID": eqp, "LOT_ID": lot, "PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper,
             "ST": ST, "EQP_MODEL_CD": "A", "WF_QTY": WF, "SEQ": seq, "CARRIER_ID": carrier}
 
 
@@ -28,8 +28,8 @@ def _build_s1(tmp_path: Path, n_lots=6, plan=150, max_tool=3):
     disc, pl, flow = [], [], []
     lc = 0
     for ppk in prods:
-        flow.append({"PLAN_PROD_KEY": ppk, "OPER_SEQ": 1, "OPER_ID": "OPER001"})
-        pl.append({"PLAN_PROD_KEY": ppk, "OPER_ID": "OPER001",
+        flow.append({"PLAN_PROD_ATTR_VAL": ppk, "OPER_SEQ": 1, "OPER_ID": "OPER001"})
+        pl.append({"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": "OPER001",
                    "D0_PLAN_QTY": plan, "D1_PLAN_QTY": plan, "PLAN_PRIORITY": 1})
         for _ in range(n_lots):
             lc += 1
@@ -100,7 +100,7 @@ def test_bulkfill_forms_blocks(tmp_path):
     _info, sched = _rollout(env)
     by_eqp = defaultdict(list)
     for row in sorted(sched, key=lambda r: (r["EQP_ID"], r["START_TM"])):
-        by_eqp[row["EQP_ID"]].append(row["PLAN_PROD_KEY"])
+        by_eqp[row["EQP_ID"]].append(row["PLAN_PROD_ATTR_VAL"])
     max_run = max((max(_runs(seq)) for seq in by_eqp.values() if seq), default=0)
     assert max_run >= 2, f"블록이 형성되지 않음 (최대 run={max_run})"
 
@@ -164,8 +164,8 @@ def test_initial_setup_does_not_consume_tool_net(tmp_path):
     from config import CONFIG
 
     disc, pl, flow = [], [], []
-    flow.append({"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"})
-    pl.append({"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001",
+    flow.append({"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"})
+    pl.append({"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
                "D0_PLAN_QTY": 100, "D1_PLAN_QTY": 100, "PLAN_PRIORITY": 1})
     lc = 0
     for _ in range(4):
@@ -174,7 +174,7 @@ def test_initial_setup_does_not_consume_tool_net(tmp_path):
             disc.append(_disc(e, f"L{lc:03d}", "PPK001", "OPER001", 1, f"C{lc:03d}"))
     tc = build_tool_capacity_from_lots(build_lot_master_from_discrete(disc), max_tool=1)
     eqp_init = [{"EQP_ID": "EQP001", "LOT_CD": "LC001", "TEMP": "T700",
-                 "PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001"}]
+                 "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001"}]
     out = tmp_path / "init"
     write_json_bundle(out, disc, pl, flow, tool_capacity=tc, eqp_initial_state=eqp_init)
     ed = preprocess(load_data(out))

@@ -38,7 +38,7 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
     for r in rows:
         cols = [
             "RULE_TIMEKEY", "LOT_CD", "TEMPER_VAL", "EQP_ID", "EQP_MODEL_CD",
-            "SEQ_NO", "PLAN_PROD_KEY", "OPER_ID", "LOT_ID", "CARRIER_ID",
+            "SEQ_NO", "PLAN_PROD_ATTR_VAL", "OPER_ID", "LOT_ID", "CARRIER_ID",
             "START_TIME", "END_TIME", "PRODUCE_QTY", "CRT_USER_ID",
         ]
         vals = [
@@ -48,7 +48,7 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
             _sql_str(r["EQP_ID"]),
             _sql_str(r["EQP_MODEL_CD"]),
             _sql_num(r["SEQ_NO"]),
-            _sql_str(r["PLAN_PROD_KEY"]),
+            _sql_str(r["PLAN_PROD_ATTR_VAL"]),
             _sql_str(r["OPER_ID"]),
             _sql_str(r["LOT_ID"]),
             _sql_str(r["CARRIER_ID"]),

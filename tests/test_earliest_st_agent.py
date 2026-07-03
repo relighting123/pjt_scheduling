@@ -11,7 +11,7 @@ def _minimal_env():
       {
           "EQP_ID": "EQP001",
           "LOT_ID": "LOT_SHORT",
-          "PLAN_PROD_KEY": "PPK001",
+          "PLAN_PROD_ATTR_VAL": "PPK001",
           "OPER_ID": "OPER001",
           "ST": 10,
           "EQP_MODEL_CD": "A",
@@ -20,7 +20,7 @@ def _minimal_env():
       {
           "EQP_ID": "EQP001",
           "LOT_ID": "LOT_LONG",
-          "PLAN_PROD_KEY": "PPK001",
+          "PLAN_PROD_ATTR_VAL": "PPK001",
           "OPER_ID": "OPER001",
           "ST": 10,
           "EQP_MODEL_CD": "A",
@@ -30,21 +30,21 @@ def _minimal_env():
   raw = {
       "discrete_arrange": discrete,
       "abstract_arrange": [
-          {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
+          {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
       ],
       "plan": [
           {
-              "PLAN_PROD_KEY": "PPK001",
+              "PLAN_PROD_ATTR_VAL": "PPK001",
               "OPER_ID": "OPER001",
               "D0_PLAN_QTY": 12,
               "D1_PLAN_QTY": 12,
               "PLAN_PRIORITY": 1,
           },
       ],
-      "flow": [{"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
+      "flow": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
       "split": [
           {
-              "PLAN_PROD_KEY": "PPK001",
+              "PLAN_PROD_ATTR_VAL": "PPK001",
               "OPER_ID": "OPER001",
               "EQP_MODEL_CD": "A",
               "SPLIT_QTY": 10,
@@ -53,7 +53,7 @@ def _minimal_env():
       "lot_master": [{"LOT_ID": "LC001", "LOT_CD": "LC001", "TEMP": "T700"}],
       "batch_info": [
           {
-              "PLAN_PROD_KEY": "PPK001",
+              "PLAN_PROD_ATTR_VAL": "PPK001",
               "OPER_ID": "OPER001",
               "LOT_CD": "LC001",
               "TEMP": "T700",
@@ -96,7 +96,7 @@ def test_earliest_st_picks_global_eqp_carrier_combo():
         {
             "EQP_ID": "EQP_FAST",
             "LOT_ID": "LOT_FAST",
-            "PLAN_PROD_KEY": "PPK001",
+            "PLAN_PROD_ATTR_VAL": "PPK001",
             "OPER_ID": "OPER001",
             "ST": 5,
             "EQP_MODEL_CD": "A",
@@ -105,7 +105,7 @@ def test_earliest_st_picks_global_eqp_carrier_combo():
         {
             "EQP_ID": "EQP_SLOW",
             "LOT_ID": "LOT_SLOW",
-            "PLAN_PROD_KEY": "PPK001",
+            "PLAN_PROD_ATTR_VAL": "PPK001",
             "OPER_ID": "OPER001",
             "ST": 100,
             "EQP_MODEL_CD": "A",
@@ -115,21 +115,21 @@ def test_earliest_st_picks_global_eqp_carrier_combo():
     raw = {
         "discrete_arrange": discrete,
         "abstract_arrange": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
         ],
         "plan": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "D0_PLAN_QTY": 12,
                 "D1_PLAN_QTY": 12,
                 "PLAN_PRIORITY": 1,
             },
         ],
-        "flow": [{"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
+        "flow": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
         "split": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "EQP_MODEL_CD": "A",
                 "SPLIT_QTY": 10,
@@ -138,7 +138,7 @@ def test_earliest_st_picks_global_eqp_carrier_combo():
         "lot_master": [{"LOT_ID": "LC001", "LOT_CD": "LC001", "TEMP": "T700"}],
         "batch_info": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "LOT_CD": "LC001",
                 "TEMP": "T700",

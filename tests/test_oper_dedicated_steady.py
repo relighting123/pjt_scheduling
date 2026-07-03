@@ -53,7 +53,7 @@ def oper_completed_qty(
         end = int(row.get("END_TM", 0))
         if horizon is not None and end > horizon:
             continue
-        key = (row["PLAN_PROD_KEY"], row["OPER_ID"])
+        key = (row["PLAN_PROD_ATTR_VAL"], row["OPER_ID"])
         totals[key] += int(row.get("WF_QTY", 0))
     return dict(totals)
 
@@ -77,7 +77,7 @@ def plan_achievement_ratio(
     ratios: Dict[str, float] = {}
     for p in plan:
         op = p.get("oper_id") or p.get("OPER_ID")
-        ppk = p.get("plan_prod_key") or p.get("PLAN_PROD_KEY")
+        ppk = p.get("plan_prod_key") or p.get("PLAN_PROD_ATTR_VAL")
         target = max(int(p.get("d0_plan_qty", p.get("D0_PLAN_QTY", 0))), 1)
         done = completed.get((ppk, op), 0)
         ratios[op] = done / target

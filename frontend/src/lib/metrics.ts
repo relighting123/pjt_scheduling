@@ -4,7 +4,7 @@ export interface EqpUtil {
   eqp_id: string;
   model?: string;
   busyMin: number;
-  totalMin: number;
+  makespanMin: number;
   utilPct: number;
 }
 
@@ -27,8 +27,10 @@ export interface AchievementRow {
   prod: string;
   oper: string;
   planQty: number;
+  targetQty: number;
   doneQty: number;
   pct: number;
+  targetPct: number;
 }
 
 export interface EqpScheduleSummary {
@@ -36,6 +38,7 @@ export interface EqpScheduleSummary {
   model?: string;
   firstStart: number | null;
   lastEnd: number | null;
+  makespanMin: number;
   jobCount: number;
   busyMin: number;
   convMin: number;
@@ -58,21 +61,30 @@ export function buildEqpModelMap(events: SimEvent[]): Record<string, string> {
 export function computeEqpUtil(
   schedule: ScheduleRecord[],
   eqpIds: string[],
-  simEndMin: number,
+  _simEndMin: number,
   modelMap: Record<string, string> = {},
+  conversionPlans: ConversionPlan[] = [],
 ): EqpUtil[] {
-  const busyMap: Record<string, number> = {};
-  schedule.forEach((r) => {
-    busyMap[r.EQP_ID] = (busyMap[r.EQP_ID] ?? 0) + (r.END_TM - r.START_TM);
-  });
+  const byEqp: Record<string, ScheduleRecord[]> = {};
+  eqpIds.forEach((id) => { byEqp[id] = []; });
+  schedule.forEach((r) => { (byEqp[r.EQP_ID] ??= []).push(r); });
+
   return eqpIds.map((id) => {
-    const busy = busyMap[id] ?? 0;
+    const recs = byEqp[id];
+    const convs = conversionPlans.filter((p) => p.eqp_id === id);
+    const busy = recs.reduce((s, r) => s + (r.END_TM - r.START_TM), 0);
+
+    const firstStart = recs.length > 0 ? Math.min(...recs.map((r) => r.START_TM)) : null;
+    const allEnds = [...recs.map((r) => r.END_TM), ...convs.map((p) => p.conv_end_min)];
+    const lastEnd = allEnds.length > 0 ? Math.max(...allEnds) : null;
+    const makespanMin = firstStart !== null && lastEnd !== null ? lastEnd - firstStart : 0;
+
     return {
       eqp_id: id,
       model: modelMap[id],
       busyMin: busy,
-      totalMin: simEndMin,
-      utilPct: simEndMin > 0 ? Math.round((busy / simEndMin) * 1000) / 10 : 0,
+      makespanMin,
+      utilPct: makespanMin > 0 ? Math.round((busy / makespanMin) * 1000) / 10 : 0,
     };
   }).sort((a, b) => b.utilPct - a.utilPct);
 }
@@ -80,7 +92,7 @@ export function computeEqpUtil(
 export function computeEqpScheduleSummary(
   schedule: ScheduleRecord[],
   eqpIds: string[],
-  simEndMin: number,
+  _simEndMin: number,
   modelMap: Record<string, string> = {},
   conversionPlans: ConversionPlan[] = [],
 ): EqpScheduleSummary[] {
@@ -98,7 +110,7 @@ export function computeEqpScheduleSummary(
     let prodSwitches = 0;
     for (let i = 1; i < recs.length; i++) {
       if ((recs[i].OPER_ID ?? "") !== (recs[i - 1].OPER_ID ?? "")) operSwitches++;
-      if (recs[i].PLAN_PROD_KEY !== recs[i - 1].PLAN_PROD_KEY) prodSwitches++;
+      if (recs[i].PLAN_PROD_ATTR_VAL !== recs[i - 1].PLAN_PROD_ATTR_VAL) prodSwitches++;
     }
 
     const convEnds = convs.map((p) => p.conv_end_min);
@@ -106,19 +118,22 @@ export function computeEqpScheduleSummary(
     const lastEnd = schedEnds.length || convEnds.length
       ? Math.max(0, ...schedEnds, ...convEnds)
       : null;
+    const firstStart = recs.length ? recs[0].START_TM : null;
 
-    const activeMin = busyMin + convMin;
-    const idleMin = Math.max(0, simEndMin - activeMin);
-    const utilPct = simEndMin > 0 ? Math.round((activeMin / simEndMin) * 1000) / 10 : 0;
-    // idle 률 = makespan 대비 (중간 유휴 시간 + conversion 시간) 비율. 가동률(busy+conv)과 달리
-    // conversion 시간은 실제 생산이 없는 구간이므로 idle 쪽으로 집계한다.
-    const idlePct = simEndMin > 0 ? Math.round(((idleMin + convMin) / simEndMin) * 1000) / 10 : 0;
+    const makespanMin = firstStart !== null && lastEnd !== null ? lastEnd - firstStart : 0;
+    // 유휴 = makespan 내에서 가동도 전환도 아닌 구간 (재공 빈 시간)
+    const idleMin = Math.max(0, makespanMin - busyMin - convMin);
+    // 가동률 = busy / makespan (전환·빈 시간은 비가동으로 처리)
+    const utilPct = makespanMin > 0 ? Math.round((busyMin / makespanMin) * 1000) / 10 : 0;
+    // 유휴율 = (전환 + 빈 시간) / makespan
+    const idlePct = makespanMin > 0 ? Math.round(((makespanMin - busyMin) / makespanMin) * 1000) / 10 : 0;
 
     return {
       eqp_id,
       model: modelMap[eqp_id],
-      firstStart: recs.length ? recs[0].START_TM : null,
+      firstStart,
       lastEnd,
+      makespanMin,
       jobCount: recs.length,
       busyMin,
       convMin,
@@ -150,7 +165,7 @@ export function computeTAT(schedule: ScheduleRecord[]): TatRow[] {
   schedule.forEach((r) => {
     const prev = lotTimes[r.LOT_ID];
     if (!prev) {
-      lotTimes[r.LOT_ID] = { start: r.START_TM, end: r.END_TM, prod: r.PLAN_PROD_KEY };
+      lotTimes[r.LOT_ID] = { start: r.START_TM, end: r.END_TM, prod: r.PLAN_PROD_ATTR_VAL };
     } else {
       lotTimes[r.LOT_ID].start = Math.min(prev.start, r.START_TM);
       lotTimes[r.LOT_ID].end = Math.max(prev.end, r.END_TM);
@@ -204,29 +219,40 @@ export function computeAchievement(
 ): AchievementRow[] {
   const doneMap: Record<string, number> = {};
   schedule.forEach((r) => {
-    const key = achievementKey(r.PLAN_PROD_KEY, r.OPER_ID);
+    const key = achievementKey(r.PLAN_PROD_ATTR_VAL, r.OPER_ID);
     doneMap[key] = (doneMap[key] ?? 0) + (r.WF_QTY ?? 25);
   });
 
-  const merged = new Map<string, AchievementRow>();
+  // Accumulate plan qty (D0) and target qty (D1: 재공 고려 타겟)
+  const qtyMap = new Map<string, { prod: string; oper: string; planQty: number; targetQty: number }>();
   for (const p of plan) {
     const prod = achievementKeyPart(p.plan_prod_key);
     const oper = achievementKeyPart(p.oper_id);
     const key = achievementKey(prod, oper);
+    const prev = qtyMap.get(key);
+    qtyMap.set(key, {
+      prod,
+      oper,
+      planQty: (prev?.planQty ?? 0) + p.d0_plan_qty,
+      targetQty: (prev?.targetQty ?? 0) + (p.d1_plan_qty ?? p.d0_plan_qty),
+    });
+  }
+
+  const rows: AchievementRow[] = [];
+  for (const [key, { prod, oper, planQty, targetQty }] of qtyMap) {
     const done = doneMap[key] ?? 0;
-    const prev = merged.get(key);
-    const planQty = (prev?.planQty ?? 0) + p.d0_plan_qty;
-    merged.set(key, {
+    rows.push({
       key,
       prod,
       oper,
       planQty,
+      targetQty,
       doneQty: done,
       pct: Math.round((done / Math.max(planQty, 1)) * 1000) / 10,
+      targetPct: Math.round((done / Math.max(targetQty, 1)) * 1000) / 10,
     });
   }
 
-  const rows = [...merged.values()];
   const prodKeys = order?.prodKeys ?? [];
   const operIds = order?.operIds ?? [];
   if (prodKeys.length || operIds.length) {
@@ -256,8 +282,9 @@ export function countToolSwitches(
 }
 
 export function computeAvgUtil(utils: EqpUtil[]): number {
-  if (!utils.length) return 0;
-  return Math.round((utils.reduce((s, u) => s + u.utilPct, 0) / utils.length) * 10) / 10;
+  const active = utils.filter((u) => u.makespanMin > 0);
+  if (!active.length) return 0;
+  return Math.round((active.reduce((s, u) => s + u.utilPct, 0) / active.length) * 10) / 10;
 }
 
 export function computeAvgIdle(rows: EqpScheduleSummary[]): number {
@@ -270,6 +297,11 @@ export function computeAvgAchievement(rows: AchievementRow[]): number {
   return Math.round((rows.reduce((s, r) => s + Math.min(r.pct, 100), 0) / rows.length) * 10) / 10;
 }
 
+export function computeAvgTargetAchievement(rows: AchievementRow[]): number {
+  if (!rows.length) return 0;
+  return Math.round((rows.reduce((s, r) => s + Math.min(r.targetPct, 100), 0) / rows.length) * 10) / 10;
+}
+
 export interface InferenceKpi {
   makespan: number;
   avgUtilPct: number;
@@ -277,7 +309,10 @@ export interface InferenceKpi {
   operSwitches: number;
   prodSwitches: number;
   toolSwitches: number;
+  /** 계획 달성률: 실제 계획(D0) 기준 */
   avgAchPct: number;
+  /** 타겟 달성률: 재공 고려 타겟(D1) 기준 */
+  avgTargetAchPct: number;
 }
 
 export function computeInferenceKpi(
@@ -285,20 +320,21 @@ export function computeInferenceKpi(
   modelMap: Record<string, string> = {},
 ): InferenceKpi {
   const sched = result.schedule;
+  const convPlans = result.conversion_plans ?? [];
   const makespan = sched.length ? Math.max(...sched.map((r) => r.END_TM)) : 0;
-  const utils = computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, modelMap);
+  const utils = computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, modelMap, convPlans);
   const eqpSummary = computeEqpScheduleSummary(
     sched,
     result.eqp_ids,
     result.sim_end_minutes,
     modelMap,
-    result.conversion_plans ?? [],
+    convPlans,
   );
   const ach = computeAchievement(sched, result.plan, {
     prodKeys: result.prod_keys,
     operIds: result.oper_ids,
   });
-  const toolSw = countToolSwitches(sched, result.conversion_plans ?? []);
+  const toolSw = countToolSwitches(sched, convPlans);
   return {
     makespan,
     avgUtilPct: computeAvgUtil(utils),
@@ -307,5 +343,6 @@ export function computeInferenceKpi(
     prodSwitches: result.stats.prod_switches,
     toolSwitches: toolSw,
     avgAchPct: computeAvgAchievement(ach),
+    avgTargetAchPct: computeAvgTargetAchievement(ach),
   };
 }

@@ -10,6 +10,7 @@ import {
 import {
   computeAchievement,
   computeAvgAchievement,
+  computeAvgTargetAchievement,
   computeAvgIdle,
   computeAvgUtil,
   computeEqpScheduleSummary,
@@ -43,7 +44,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   const sched = result.schedule;
   const makespan = sched.length ? Math.max(...sched.map((r) => r.END_TM)) : 0;
 
-  const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap), [sched, result, eqpModelMap]);
+  const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? []), [sched, result, eqpModelMap]);
   const models = useMemo(() => computeModelUtil(utils), [utils]);
   const eqpSummary = useMemo(
     () => computeEqpScheduleSummary(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? []),
@@ -59,18 +60,20 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   const tat    = useMemo(() => computeTAT(sched), [sched]);
   const toolSw = countToolSwitches(sched, result.conversion_plans ?? []);
 
-  const avgUtil = computeAvgUtil(utils);
-  const avgIdle = computeAvgIdle(eqpSummary);
-  const avgAch  = computeAvgAchievement(ach);
+  const avgUtil      = computeAvgUtil(utils);
+  const avgIdle      = computeAvgIdle(eqpSummary);
+  const avgAch       = computeAvgAchievement(ach);
+  const avgTargetAch = computeAvgTargetAchievement(ach);
 
   const kpis = [
-    { label: "Makespan",  value: `${makespan}분`,                cls: "" },
-    { label: "평균 가동률", value: `${avgUtil}%`,                 cls: avgUtil >= 80 ? "ok" : avgUtil >= 50 ? "warn" : "bad" },
-    { label: "평균 유휴율", value: `${avgIdle}%`,                 cls: avgIdle <= 20 ? "ok" : avgIdle <= 50 ? "warn" : "bad" },
-    { label: "공정 전환",  value: `${result.stats.oper_switches}회`, cls: "" },
-    { label: "제품 전환",  value: `${result.stats.prod_switches}회`, cls: "" },
-    { label: "Tool 전환",  value: `${toolSw}회`,                  cls: "" },
-    { label: "평균 달성률", value: `${avgAch}%`,                  cls: avgAch >= 90 ? "ok" : avgAch >= 70 ? "warn" : "bad" },
+    { label: "Makespan",      value: `${makespan}분`,                    cls: "" },
+    { label: "평균 가동률",    value: `${avgUtil}%`,                      cls: avgUtil >= 80 ? "ok" : avgUtil >= 50 ? "warn" : "bad" },
+    { label: "평균 유휴율",    value: `${avgIdle}%`,                      cls: avgIdle <= 20 ? "ok" : avgIdle <= 50 ? "warn" : "bad" },
+    { label: "공정 전환",      value: `${result.stats.oper_switches}회`,  cls: "" },
+    { label: "제품 전환",      value: `${result.stats.prod_switches}회`,  cls: "" },
+    { label: "Tool 전환",      value: `${toolSw}회`,                      cls: "" },
+    { label: "계획 달성률",    value: `${avgAch}%`,                       cls: avgAch >= 90 ? "ok" : avgAch >= 70 ? "warn" : "bad" },
+    { label: "타겟 달성률",    value: `${avgTargetAch}%`,                 cls: avgTargetAch >= 90 ? "ok" : avgTargetAch >= 70 ? "warn" : "bad" },
   ];
 
   return (

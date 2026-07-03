@@ -12,7 +12,7 @@ def _minimal_raw(**overrides):
             {
                 "EQP_ID": "EQP001",
                 "LOT_ID": "LOT001",
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "ST": 10,
                 "EQP_MODEL_CD": "A",
@@ -20,11 +20,11 @@ def _minimal_raw(**overrides):
             },
         ],
         "abstract_arrange": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 10},
         ],
         "plan": [
             {
-                "PLAN_PROD_KEY": "PPK001",
+                "PLAN_PROD_ATTR_VAL": "PPK001",
                 "OPER_ID": "OPER001",
                 "D0_PLAN_QTY": 25,
                 "D1_PLAN_QTY": 25,
@@ -32,7 +32,7 @@ def _minimal_raw(**overrides):
             },
         ],
         "flow": [
-            {"PLAN_PROD_KEY": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
         ],
     }
     base.update(overrides)
