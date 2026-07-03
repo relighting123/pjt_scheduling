@@ -32,6 +32,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "전역 (Global)",
         "title": "obs[0] time_norm  ·  obs[1] takt_margin",
+        "diagram": "obs01",
+        "diagram_desc": "0~sim_end(480) 축 위에서 지금(t=120)이 어디쯤인지를 두 구간으로 나눠 본다 — "
+                         "왼쪽(0→t) 길이 비율이 time_norm, 오른쪽(t→soft_cutoff) 길이 비율이 takt_margin이다.",
         "lines": [
             "2357  group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)",
             "2358  group_global[1] = min(",
@@ -52,6 +55,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "전역 (Global)",
         "title": "obs[2] remaining_lots  ·  obs[3] plan_progress",
+        "diagram": "obs23",
+        "diagram_desc": "서로 다른 두 저장고를 나란히 본다 — LOT 풀(25/40 남음)과 계획 달성(10/60 완료). "
+                         "같은 '진행률'처럼 보여도 분모가 완전히 다른 두 값임을 강조한다.",
         "lines": [
             "2331  initial_lot_count = max(len(data[\"lots\"]), 1)",
             "2332  total_plan = max(",
@@ -80,6 +86,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "전역 (Global)",
         "title": "obs[4] conv_idle_ratio  ·  obs[5] tool_util",
+        "diagram": "obs45",
+        "diagram_desc": "3대 설비의 t=120분 시점 busy/idle 상태를 간트로 펼쳐 본다 — "
+                         "EQP002가 방금(rem=0) idle이 되어 conv_idle_ratio 카운트에서 빠지는 장면을 직접 확인.",
         "lines": [
             "2367  conv_eqps = 0",
             "2368  for eqp_id, eqp in self.eqps.items():",
@@ -105,6 +114,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch0 valid",
+        "diagram": "ch0",
+        "diagram_desc": "(공정, 모델) 조합을 처리할 수 있는 설비가 하나라도 있는지를 연결선으로 본다 — "
+                         "OPER002는 EQP001·EQP002·EQP003 모두와 연결되어 valid_mis가 비지 않는다.",
         "lines": [
             "2261  for mi in range(min(K, len(eqp_models))):",
             "2262      model = eqp_models[mi]",
@@ -129,6 +141,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch1 wip_ratio_total  ·  ch2 wip_ratio_ppk",
+        "diagram": "ch1_2",
+        "diagram_desc": "175장짜리 팹 전체 WIP 막대 안에서 이 버킷(15장)의 위치와, "
+                         "PPK001만 따로 뗀 155장 막대 안에서의 위치를 나란히 비교한다 — 분모가 다르면 비율도 달라진다.",
         "lines": [
             "2159  for key, q in self.get_wip_waiting().items():",
             "2160      ppk_w, op_w = key.split(\"|\", 1)",
@@ -157,6 +172,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch3 min_end_time",
+        "diagram": "ch3",
+        "diagram_desc": "(OPER002,M1)을 처리 가능한 3대의 free_at을 막대로 나란히 비교한다 — "
+                         "EQP002(120)가 가장 짧아 min_end_time이 곧 'EQP002는 지금 당장 비어있다'는 신호가 된다.",
         "lines": [
             "2139  min_end_by_om: Dict[tuple, int] = {",
             "2140      key: min(self.eqps[e].free_at for e in eqp_list)",
@@ -180,6 +198,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch4 throughput_ratio",
+        "diagram": "ch4",
+        "diagram_desc": "이 버킷만 보면 125(=min_end_time+처리시간)에 끝나 보이지만, "
+                         "팹 전체에서 가장 늦게 끝나는 스케줄(320)이 분모를 눌러버리는 모습을 두 막대로 비교한다.",
         "lines": [
             "2166  max_gantt_end = max((r[\"END_TM\"] for r in self.schedule), default=0)",
             "2167  T_avail = max(self.soft_cutoff - self.current_time, 1)",
@@ -205,6 +226,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch5 same_ppk",
+        "diagram": "ch5",
+        "diagram_desc": "직전 배정 PPK와 이 버킷의 PPK를 카드 두 장으로 맞대어 본다 — "
+                         "둘 다 PPK001이면 same=1.0(일치), 다른 제품이었다면 0.0(불일치)이 됐을 것이다.",
         "lines": [
             "2170  last_ppk = (",
             "2171      self._last_assigned.get(\"plan_prod_key\") if self._last_assigned else None",
@@ -225,6 +249,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — OPER001 vs OPER002 버킷 비교",
         "title": "ch6 prev_takt  ·  ch7 post_takt",
+        "diagram": "ch6_7",
+        "diagram_desc": "PPK001의 공정 흐름 OPER001→OPER002를 화살표로 그리고, 각 공정의 eff_takt(여유도)를 "
+                         "노드 위에 적어 두 버킷(OPER001 버킷 / OPER002 버킷)이 서로 다른 prev/post_takt를 갖는 이유를 본다.",
         "lines": [
             "2185  def eff_takt(ppk, op):",
             "2189      lst = arranges_by.get((ppk, op))",
@@ -261,6 +288,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch8 self_st",
+        "diagram": "ch8",
+        "diagram_desc": "OPER001(2분/장)과 OPER002(5분/장)의 장당 가공시간을 막대로 비교한다 — "
+                         "OPER002가 이 예시의 최댓값이라 정규화하면 self_st=1.0(가장 느린 공정)이 된다.",
         "lines": [
             "2126  max_arrange_st = max(data.get(\"max_arrange_st\", 1), 1)",
             "  ...",
@@ -281,6 +311,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch9 plan_urgency",
+        "diagram": "ch9",
+        "diagram_desc": "같은 gap=50이라도 남은 시간(T_avail)이 360일 때와 30일 때 urgency 게이지가 "
+                         "얼마나 달라지는지 두 게이지를 나란히 비교한다 — 시간이 줄면 12배 뛴다.",
         "lines": [
             "2224  pm = plan_meta.get((ppk, op))",
             "2225  if pm and pm.get(\"d0_plan_qty\", 0) > 0:",
@@ -301,6 +334,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch10 wip_lot_cd  ·  ch11 wip_temp",
+        "diagram": "ch10_11",
+        "diagram_desc": "LOT_CD 인덱스({B:0,A:1})와 TEMP 인덱스(미사용) 위에 이 버킷의 값(A, 없음)을 "
+                         "점으로 찍어 encode_normalized가 0~1 스케일 위 어디로 보내는지 눈으로 확인한다.",
         "lines": [
             "2129  lot_cd_idx = data.get(\"lot_cd_idx\", {})",
             "2130  temp_idx = data.get(\"temp_idx\", {})",
@@ -325,6 +361,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — current_eqp=EQP002 기준",
         "title": "ch12 needs_conversion  ·  ch13 tool_can_assign",
+        "diagram": "ch12_13",
+        "diagram_desc": "EQP002의 현재 세팅(B)과 이 버킷이 요구하는 세팅(A)을 맞대어 불일치(✗)를 보여주고, "
+                         "그래도 공구는 바로 배정 가능(✓)하다는 두 번째 판정을 나란히 카드로 정리한다.",
         "lines": [
             "2144  current_eqp_model = eqp_model_map.get(current_eqp) if current_eqp else None",
             "  ...",
@@ -358,6 +397,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch14 achievable_ratio",
+        "diagram": "ch14",
+        "diagram_desc": "완료(10)+자기 WIP(15)+상류 OPER001 WIP(140)를 쌓아가는 누적 막대가 "
+                         "plan_qty=60 기준선을 훌쩍 넘는 모습을 보여준다 — 그래서 achievable_ratio가 1.0으로 캡핑된다.",
         "lines": [
             "2239  achievable_ratio = 1.0",
             "2240  if pm and pm.get(\"d0_plan_qty\", 0) > 0:",
@@ -386,6 +428,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "버킷 (Bucket) — (PPK001, OPER002) 기준",
         "title": "ch15 projected_cover_ratio",
+        "diagram": "ch15",
+        "diagram_desc": "current_eqp(EQP002)를 뺀 나머지 설비 중 '이 버킷과 같은 흐름(PPK001·OPER002)'이던 "
+                         "EQP003만 커버량(72)에 반영되고 EQP001은 제외되는 모습을, 필요량(50)과 비교해 본다.",
         "lines": [
             "2289  # 채널 15: 투영 커버 비율 — 다른 장비(current_eqp 제외)가 이 버킷을",
             "2290  # 하루 끝까지 덮는 양 / 남은 필요량. 1에 가까울수록 '이미 덮임' → 회피 유도.",
@@ -412,6 +457,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "현재 설비 (EQP local) — current_eqp=EQP002",
         "title": "eqp[0] needs_conversion  ·  eqp[1] avoidable_frac",
+        "diagram": "eqp",
+        "diagram_desc": "세팅A 수요 155장을 다른 설비가 얼마나 대신 커버할 수 있는지(alt_cap=96) 막대로 쪼개 본다 — "
+                         "그 몫(62%)이 곧 이 전환을 감행했을 때 손해 보는 avoidable_frac이다.",
         "lines": [
             "2340  eqp_local = np.zeros(2, dtype=np.float32)",
             "2341  current_eqp_id = self._current_eqp",
@@ -450,6 +498,9 @@ STATE_WALKTHROUGH = [
     {
         "group": "직전 맥락 (Context) — 직전 배정: EQP003 → PPK001/OPER002/세팅A",
         "title": "ctx[0~3] last_ppk · last_oper · last_eqp · last_lot_cd",
+        "diagram": "ctx",
+        "diagram_desc": "직전 배정 레코드(PPK001·OPER002·EQP003·세팅A) 카드 4장이 각자의 인덱스맵을 거쳐 "
+                         "0~1 스케일 위 어느 지점으로 인코딩되는지를 화살표로 연결해 본다.",
         "lines": [
             "2375  context = np.zeros(4, dtype=np.float32)",
             "2376  if self._last_assigned:",

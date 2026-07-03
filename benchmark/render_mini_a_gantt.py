@@ -47,7 +47,7 @@ def _setup_font():
         if Path(fp).exists():
             name = fm.FontProperties(fname=fp).get_name()
             fm.fontManager.addfont(fp)
-            matplotlib.rcParams["font.family"] = name
+            matplotlib.rcParams["font.family"] = "sans-serif"
             matplotlib.rcParams["font.sans-serif"] = [name, "DejaVu Sans"]
             break
     matplotlib.rcParams["axes.unicode_minus"] = False
