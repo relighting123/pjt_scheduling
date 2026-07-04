@@ -56,7 +56,7 @@ STATE_TERM_PAGES = [
     {
         "key": "bucket",
         "title": "버킷 특징 (Bucket)",
-        "obs_slice": "obs[6 : 6+O×P×K×13]",
+        "obs_slice": "obs[6 : 6 + O×P×10 + O×P×K×3]",
         "plain": "(OPER×PPK×모델) 격자마다 13채널 — \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
         "why": "보상(페이싱·중복커버·전환) 판단의 근거가 되는 핵심 특징입니다.",
         "trace_step": 1,

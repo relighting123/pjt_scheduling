@@ -2092,18 +2092,16 @@ class SchedulingSimulator:
         self._pending_step_events = []
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
-    BUCKET_FEATURES = 13
+    PPK_OPER_FEATURES = 10
+    PPK_OPER_MODEL_FEATURES = 3
+    BUCKET_FEATURES = PPK_OPER_FEATURES + PPK_OPER_MODEL_FEATURES
 
     def get_bucket_features(self) -> np.ndarray:
         """
-        Bucket = (oper, ppk, model) 단위 feature 텐서. shape (O, P, K, F).
-        채널: 0 wip/total, 1 wip/ppk, 2 prev_takt, 3 post_takt,
-              4 self_st(per-wafer), 5 plan_urgency,
-              6 wip_lot_cd, 7 wip_temp,
-              8 needs_conversion(current_eqp), 9 tool_can_assign(current_eqp),
-              10 achievable_ratio (Step C: 달성가능 상한/계획량),
-              11 projected_cover_ratio (다른 장비(current_eqp 제외)의 하루 투영 커버/남은 필요량),
-              12 starve_time_normalized (재공 소진 시간: wip / (consume_rate - supply_rate) if consume_rate > supply_rate else 1.0).
+        Bucket = (oper, ppk, model) 단위 feature 텐서.
+        po_feats: shape (O, P, 10) -> (PPK, OPER) 종속 피처 10개
+        pom_feats: shape (O, P, K, 3) -> (PPK, OPER, MODEL) 종속 피처 3개
+        이 둘을 각각 flatten하여 결합한 np.ndarray를 반환합니다.
         """
         # 버전 + current_eqp 가 같으면 캐시 반환
         cache_state = (self._state_version, self._current_eqp)
@@ -2113,7 +2111,6 @@ class SchedulingSimulator:
         data = self._env_data
         cfg = CONFIG.env
         O, P, K = cfg.max_oper_count, cfg.max_prod_count, cfg.max_model_count
-        F = self.BUCKET_FEATURES
 
         eqp_models = data.get("eqp_models", [])
         eqp_model_map = data.get("eqp_model_map", {})
@@ -2132,16 +2129,16 @@ class SchedulingSimulator:
         n_tp = max(len(temp_idx), 1)
         current_eqp = self._current_eqp
 
-        feats = np.zeros((O, P, K, F), dtype=np.float32)
+        po_feats = np.zeros((O, P, 10), dtype=np.float32)
+        pom_feats = np.zeros((O, P, K, 3), dtype=np.float32)
 
-        # (oper, model) → min(free_at) 사전 계산: 이전엔 mi 루프 안에서 매번 계산했음
-        # self._eqps_by_om 은 reset() 시 1회 구성 (정적 구조)
+        # (oper, model) → min(free_at) 사전 계산
         min_end_by_om: Dict[tuple, int] = {
             key: min(self.eqps[e].free_at for e in eqp_list)
             for key, eqp_list in self._eqps_by_om.items()
         }
 
-        # current_eqp 의 모델/인덱스 (channels 12, 13 처리용)
+        # current_eqp 의 모델/인덱스
         current_eqp_model: Optional[str] = eqp_model_map.get(current_eqp) if current_eqp else None
         current_mi: int = -1
         if current_eqp_model:
@@ -2196,13 +2193,11 @@ class SchedulingSimulator:
         prod_keys = data["prod_keys"]
         for oi in range(min(O, len(oper_ids))):
             op = oper_ids[oi]
-            # 이 oper에서 current_eqp가 유효한지 미리 판단 (ch12/13용)
             curr_eqp_in_om: bool = (
                 current_eqp is not None
                 and current_eqp_model is not None
                 and current_eqp in self._eqps_by_om.get((op, current_eqp_model), [])
             )
-            ppk_flow_prev_map = flow_prev.get(op, {})  # per-oper 캐시
             for pi in range(min(P, len(prod_keys))):
                 ppk = prod_keys[pi]
                 is_step = (
@@ -2221,14 +2216,12 @@ class SchedulingSimulator:
                     plan_qty = max(pm["d0_plan_qty"], 1)
                     gap = max(plan_qty - completed.get((ppk, op), 0), 0)
                     urgency = min(gap / T_avail / plan_qty, 1.0)
-                # flow_prev/post 는 ppk 키 기준이므로 안쪽에서 추출
                 ppk_fp = flow_prev.get(ppk, {})
                 ppk_fpo = flow_post.get(ppk, {})
                 prev_takt = eff_takt(ppk, ppk_fp.get(op)) / max_takt
                 post_takt = eff_takt(ppk, ppk_fpo.get(op)) / max_takt
 
-                # Step C: achievable_ratio — flow_prev 체인 순회
-                # ppk_fp 를 재사용해 불필요한 dict 접근 제거
+                # Step C: achievable_ratio
                 achievable_ratio = 1.0
                 if pm and pm.get("d0_plan_qty", 0) > 0:
                     plan_qty = max(pm["d0_plan_qty"], 1)
@@ -2242,12 +2235,37 @@ class SchedulingSimulator:
                         prev_op = ppk_fp.get(prev_op)
                     achievable_ratio = min(min(plan_qty, done + reachable) / plan_qty, 1.0)
 
-                # LOT_CD / TEMP: mi 루프 밖으로 이동 (모델에 무관)
+                # LOT_CD / TEMP
                 lc, tp = self._bucket_lot_cd_temp(ppk, op)
                 lc_enc = encode_normalized(lc or None, lot_cd_idx, n_lc)
                 tp_enc = encode_normalized(tp or None, temp_idx, n_tp)
 
-                # 유효 모델 인덱스·값을 수집한 뒤 NumPy 배치 할당
+                # po_feats 할당
+                po_feats[oi, pi, 0] = wip_q / total_wip
+                po_feats[oi, pi, 1] = wip_q / ppk_total
+                po_feats[oi, pi, 2] = min(prev_takt, 1.0)
+                po_feats[oi, pi, 3] = min(post_takt, 1.0)
+                po_feats[oi, pi, 4] = urgency
+                po_feats[oi, pi, 5] = lc_enc
+                po_feats[oi, pi, 6] = tp_enc
+                po_feats[oi, pi, 7] = achievable_ratio
+                
+                done11 = completed.get((ppk, op), 0)
+                need11 = max(self._achievable_qty(ppk, op) - done11, 1.0)
+                cov11 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
+                po_feats[oi, pi, 8] = min(cov11 / need11, 2.0) / 2.0
+
+                consume_rate = self._oper_capacity_per_min(ppk, op)
+                supply_rate = self._oper_supply_rate(ppk, op)
+                if consume_rate > supply_rate:
+                    net_rate = consume_rate - supply_rate
+                    starve_time = wip_q / net_rate
+                    starve_time_norm = min(starve_time / T_avail, 1.0)
+                else:
+                    starve_time_norm = 1.0
+                po_feats[oi, pi, 9] = starve_time_norm
+
+                # 유효 모델 인덱스·값을 수집한 뒤 pom_feats 할당
                 valid_mis: List[int] = []
                 valid_sts: List[float] = []
                 for mi in range(min(K, len(eqp_models))):
@@ -2264,46 +2282,20 @@ class SchedulingSimulator:
                 vmis = np.array(valid_mis, dtype=np.intp)
                 vsts = np.array(valid_sts, dtype=np.float32)
 
-                # 모델 독립 채널: 한 번에 broadcast 할당
-                feats[oi, pi, vmis, 0] = wip_q / total_wip
-                feats[oi, pi, vmis, 1] = wip_q / ppk_total
-                feats[oi, pi, vmis, 2] = min(prev_takt, 1.0)
-                feats[oi, pi, vmis, 3] = min(post_takt, 1.0)
-                feats[oi, pi, vmis, 5] = urgency
-                feats[oi, pi, vmis, 6] = lc_enc
-                feats[oi, pi, vmis, 7] = tp_enc
-                feats[oi, pi, vmis, 10] = achievable_ratio
-                # 채널 11: 투영 커버 비율 — 다른 장비(current_eqp 제외)가 이 버킷을
-                # 하루 끝까지 덮는 양 / 남은 필요량. 1에 가까울수록 '이미 덮임' → 회피 유도.
-                done11 = completed.get((ppk, op), 0)
-                need11 = max(self._achievable_qty(ppk, op) - done11, 1.0)
-                cov11 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
-                feats[oi, pi, vmis, 11] = min(cov11 / need11, 2.0) / 2.0
+                # pom_feats: 채널 4 (index 0) 할당
+                pom_feats[oi, pi, vmis, 0] = vsts / max_arrange_st
 
-                # 채널 12: starve_time_normalized (재공 소진 시간)
-                consume_rate = self._oper_capacity_per_min(ppk, op)
-                supply_rate = self._oper_supply_rate(ppk, op)
-                if consume_rate > supply_rate:
-                    net_rate = consume_rate - supply_rate
-                    starve_time = wip_q / net_rate
-                    starve_time_norm = min(starve_time / T_avail, 1.0)
-                else:
-                    starve_time_norm = 1.0
-                feats[oi, pi, vmis, 12] = starve_time_norm
-
-                # 모델별 채널: numpy 벡터 연산
-                feats[oi, pi, vmis, 4] = vsts / max_arrange_st
-
-                # channels 8, 9: current_eqp 가 이 (op, model) 에 속할 때만
+                # pom_feats: 채널 8 (index 1), 채널 9 (index 2) 할당
                 if curr_eqp_in_om and current_mi >= 0 and current_mi in valid_mis and lc:
-                    feats[oi, pi, current_mi, 8] = (
+                    pom_feats[oi, pi, current_mi, 1] = (
                         1.0 if self._would_need_conversion(current_eqp, lc, tp) else 0.0
                     )
-                    feats[oi, pi, current_mi, 9] = (
+                    pom_feats[oi, pi, current_mi, 2] = (
                         1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
                         or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
                     )
 
+        feats = np.concatenate([po_feats.flatten(), pom_feats.flatten()])
         self._bucket_feats_cache = feats
         self._bucket_feats_state = cache_state
         return feats
