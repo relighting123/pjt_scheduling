@@ -86,7 +86,8 @@ def _dedicated_bucket(sim, eqp_id: str, ed: dict) -> int:
 def _load_agent(ed: dict):
     try:
         return SchedulingAgent.load(env_data=ed, algorithm="bulkfill")
-    except FileNotFoundError:
+    except (FileNotFoundError, ValueError):
+        # 모델 없음 또는 obs_dim 불일치(구버전 모델) → 스크립트 정책 폴백
         return None
 
 
