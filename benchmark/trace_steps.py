@@ -39,7 +39,38 @@ def _schedule_snapshot(schedule: list) -> list:
     ]
 
 
-def _state_summary(obs: np.ndarray, sim, total_plan: int) -> dict:
+def _bucket_state(sim, ppk: str, oper: str, eqp_id: str) -> dict:
+    """선택된 (ppk, oper, eqp의 model) 버킷 — 13채널 실측치."""
+    ed = sim._env_data
+    oper_ids = list(ed["oper_ids"])
+    prod_keys = list(ed["prod_keys"])
+    if oper not in oper_ids or ppk not in prod_keys:
+        return {}
+    oi = oper_ids.index(oper)
+    pi = prod_keys.index(ppk)
+    eqp_models = list(ed.get("eqp_models", []))
+    eqp_model_map = ed.get("eqp_model_map", {})
+    model = eqp_model_map.get(eqp_id)
+    mi = eqp_models.index(model) if model in eqp_models else 0
+    feats = sim.get_bucket_features()
+    if oi >= feats.shape[0] or pi >= feats.shape[1] or mi >= feats.shape[2]:
+        return {}
+    v = feats[oi, pi, mi]
+    r = lambda x: round(float(x), 3)
+    return {
+        "wip_ratio": f"{r(v[0])}/{r(v[1])}",
+        "takt": f"prev={r(v[2])}, post={r(v[3])}",
+        "self_st": r(v[4]),
+        "plan_urgency": r(v[5]),
+        "needs_conversion": r(v[8]),
+        "tool_can_assign": r(v[9]),
+        "achievable_ratio": r(v[10]),
+        "projected_cover_ratio": r(v[11]),
+        "starve_time_norm": r(v[12]),
+    }
+
+
+def _state_summary(obs: np.ndarray, sim, total_plan: int, ppk: str = "", oper: str = "", eqp_id: str = "") -> dict:
     from config import CONFIG
     from simulation.simulator import SchedulingSimulator
 
@@ -63,6 +94,7 @@ def _state_summary(obs: np.ndarray, sim, total_plan: int) -> dict:
             "conv_idle_ratio": round(float(obs[4]), 3),
             "tool_util": round(float(obs[5]), 3),
         },
+        "obs_bucket": _bucket_state(sim, ppk, oper, eqp_id),
         "obs_eqp_local": {
             "needs_conversion": round(float(obs[base]), 3),
             "avoidable_frac": round(float(obs[base + 1]), 3),
@@ -138,7 +170,7 @@ def main() -> None:
         ppk, oper = sim.ppk_oper_from_flat(
             bucket % (CONFIG.env.max_oper_count * CONFIG.env.max_prod_count),
         )
-        state_before = _state_summary(obs, sim, total_plan)
+        state_before = _state_summary(obs, sim, total_plan, ppk=ppk, oper=oper, eqp_id=eqp_before or "")
         eqp_obj = sim.eqps.get(eqp_before) if eqp_before else None
         done_before = sim.stats["completed_qty"].get((ppk, oper), 0)
         prev_prod = eqp_obj.prev_prod if eqp_obj else None
