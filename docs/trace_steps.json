@@ -251,11 +251,22 @@
         "idle_eqps": 3,
         "obs_global": {
           "time_norm": 0.0,
+          "takt_margin": 1.0,
           "remaining_lots": 1.0,
           "plan_progress": 0.0,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 1.0
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.333/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.121
         },
         "obs_eqp_local": {
           "needs_conversion": 0.0,
@@ -595,11 +606,22 @@
         "idle_eqps": 2,
         "obs_global": {
           "time_norm": 0.0,
+          "takt_margin": 1.0,
           "remaining_lots": 1.0,
           "plan_progress": 0.042,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 1.0
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.348/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.121
         },
         "obs_eqp_local": {
           "needs_conversion": 0.0,
@@ -960,11 +982,22 @@
         "idle_eqps": 1,
         "obs_global": {
           "time_norm": 0.0,
+          "takt_margin": 1.0,
           "remaining_lots": 1.0,
           "plan_progress": 0.083,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 1.0
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.364/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.121
         },
         "obs_eqp_local": {
           "needs_conversion": 0.0,
@@ -1333,11 +1366,22 @@
         "idle_eqps": 0,
         "obs_global": {
           "time_norm": 0.0,
+          "takt_margin": 1.0,
           "remaining_lots": 1.0,
           "plan_progress": 0.125,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 1.0
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.333/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 0.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 1.0,
+          "starve_time_norm": 0.106
         },
         "obs_eqp_local": {
           "needs_conversion": 0.0,
@@ -1711,16 +1755,27 @@
         "idle_eqps": 2,
         "obs_global": {
           "time_norm": 0.125,
+          "takt_margin": 0.955,
           "remaining_lots": 0.958,
           "plan_progress": 0.167,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.875
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.35/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.111
         },
         "obs_eqp_local": {
           "needs_conversion": 1.0,
           "avoidable_frac": 1.0,
-          "prev_prod": 0.0,
+          "prev_prod": 0.111,
           "prev_oper": 0.0
         },
         "obs_context": {
@@ -2032,7 +2087,7 @@
         "block_continuation": true,
         "block_done": 2,
         "block_total": 6,
-        "assigned_lot": "LOT018",
+        "assigned_lot": "LOT020",
         "wf_qty": 1
       },
       "block": {
@@ -2097,16 +2152,27 @@
         "idle_eqps": 1,
         "obs_global": {
           "time_norm": 0.125,
+          "takt_margin": 0.955,
           "remaining_lots": 0.917,
           "plan_progress": 0.208,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.875
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.368/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.111
         },
         "obs_eqp_local": {
           "needs_conversion": 1.0,
           "avoidable_frac": 1.0,
-          "prev_prod": 0.0,
+          "prev_prod": 0.222,
           "prev_oper": 0.0
         },
         "obs_context": {
@@ -2404,7 +2470,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -2491,11 +2557,22 @@
         "idle_eqps": 0,
         "obs_global": {
           "time_norm": 0.125,
+          "takt_margin": 0.955,
           "remaining_lots": 0.875,
           "plan_progress": 0.25,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.875
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.333/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 0.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 1.0,
+          "starve_time_norm": 0.095
         },
         "obs_eqp_local": {
           "needs_conversion": 0.0,
@@ -2798,7 +2875,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -2893,16 +2970,27 @@
         "idle_eqps": 2,
         "obs_global": {
           "time_norm": 0.25,
+          "takt_margin": 0.909,
           "remaining_lots": 0.833,
           "plan_progress": 0.292,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.75
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.353/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.1
         },
         "obs_eqp_local": {
           "needs_conversion": 1.0,
           "avoidable_frac": 1.0,
-          "prev_prod": 0.0,
+          "prev_prod": 0.111,
           "prev_oper": 0.0
         },
         "obs_context": {
@@ -3200,7 +3288,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -3238,7 +3326,7 @@
         "block_continuation": true,
         "block_done": 3,
         "block_total": 6,
-        "assigned_lot": "LOT020",
+        "assigned_lot": "LOT023",
         "wf_qty": 1
       },
       "block": {
@@ -3303,16 +3391,27 @@
         "idle_eqps": 1,
         "obs_global": {
           "time_norm": 0.25,
+          "takt_margin": 0.909,
           "remaining_lots": 0.792,
           "plan_progress": 0.333,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.75
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.375/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.1
         },
         "obs_eqp_local": {
           "needs_conversion": 1.0,
           "avoidable_frac": 1.0,
-          "prev_prod": 0.0,
+          "prev_prod": 0.222,
           "prev_oper": 0.0
         },
         "obs_context": {
@@ -3610,7 +3709,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -3634,7 +3733,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -3721,11 +3820,22 @@
         "idle_eqps": 0,
         "obs_global": {
           "time_norm": 0.25,
+          "takt_margin": 0.909,
           "remaining_lots": 0.75,
           "plan_progress": 0.375,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.75
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.333/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 0.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 1.0,
+          "starve_time_norm": 0.083
         },
         "obs_eqp_local": {
           "needs_conversion": 0.0,
@@ -4028,7 +4138,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -4052,7 +4162,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -4147,16 +4257,27 @@
         "idle_eqps": 2,
         "obs_global": {
           "time_norm": 0.375,
+          "takt_margin": 0.864,
           "remaining_lots": 0.708,
           "plan_progress": 0.417,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.625
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.357/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.088
         },
         "obs_eqp_local": {
           "needs_conversion": 1.0,
           "avoidable_frac": 1.0,
-          "prev_prod": 0.0,
+          "prev_prod": 0.111,
           "prev_oper": 0.0
         },
         "obs_context": {
@@ -4454,7 +4575,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -4478,7 +4599,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -4516,7 +4637,7 @@
         "block_continuation": true,
         "block_done": 4,
         "block_total": 6,
-        "assigned_lot": "LOT023",
+        "assigned_lot": "LOT024",
         "wf_qty": 1
       },
       "block": {
@@ -4581,16 +4702,27 @@
         "idle_eqps": 1,
         "obs_global": {
           "time_norm": 0.375,
+          "takt_margin": 0.864,
           "remaining_lots": 0.667,
           "plan_progress": 0.458,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.625
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.385/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.001,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.088
         },
         "obs_eqp_local": {
           "needs_conversion": 1.0,
           "avoidable_frac": 1.0,
-          "prev_prod": 0.0,
+          "prev_prod": 0.222,
           "prev_oper": 0.0
         },
         "obs_context": {
@@ -4888,7 +5020,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -4912,7 +5044,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -4936,7 +5068,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT023",
+          "LOT_ID": "LOT024",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 180,
@@ -5023,11 +5155,22 @@
         "idle_eqps": 0,
         "obs_global": {
           "time_norm": 0.375,
+          "takt_margin": 0.864,
           "remaining_lots": 0.625,
           "plan_progress": 0.5,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.625
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.333/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.0,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 0.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 1.0,
+          "starve_time_norm": 0.07
         },
         "obs_eqp_local": {
           "needs_conversion": 0.0,
@@ -5330,7 +5473,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -5354,7 +5497,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -5378,7 +5521,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT023",
+          "LOT_ID": "LOT024",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 180,
@@ -5473,16 +5616,27 @@
         "idle_eqps": 2,
         "obs_global": {
           "time_norm": 0.5,
+          "takt_margin": 0.818,
           "remaining_lots": 0.583,
           "plan_progress": 0.542,
           "conv_idle_ratio": 0.0,
-          "tool_util": 0.0,
-          "takt_margin": 0.5
+          "tool_util": 0.0
+        },
+        "obs_bucket": {
+          "wip_ratio": "0.364/1.0",
+          "takt": "prev=0.0, post=0.0",
+          "self_st": 1.0,
+          "plan_urgency": 0.0,
+          "needs_conversion": 0.0,
+          "tool_can_assign": 1.0,
+          "achievable_ratio": 1.0,
+          "projected_cover_ratio": 0.0,
+          "starve_time_norm": 0.074
         },
         "obs_eqp_local": {
           "needs_conversion": 1.0,
           "avoidable_frac": 1.0,
-          "prev_prod": 0.0,
+          "prev_prod": 0.111,
           "prev_oper": 0.0
         },
         "obs_context": {
@@ -5780,7 +5934,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT018",
+          "LOT_ID": "LOT020",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 60,
@@ -5804,7 +5958,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT020",
+          "LOT_ID": "LOT023",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 120,
@@ -5828,7 +5982,7 @@
         },
         {
           "EQP_ID": "EQP003",
-          "LOT_ID": "LOT023",
+          "LOT_ID": "LOT024",
           "PPK": "PPK003",
           "OPER": "OPER001",
           "START_TM": 180,
