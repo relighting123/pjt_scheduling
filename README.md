@@ -115,9 +115,9 @@ run_inference(env_data, algorithm="earliest_st")
 |------|-----|
 | Action | `Discrete(O×P)` = `(OPER, PPK)` bucket |
 | Mask | 현재 idle EQP feasible bucket |
-| obs_dim | `6 + O×P×K×15 + 6 + 4` = **2266** (O=3, P=10, K=5) |
+| obs_dim | `5 + O×P×K×14 + 2` = **2107** (O=3, P=10, K=5) |
 
-**Bucket feature (15ch)**: WIP 비율, min_end, throughput, takt(prev/post), ST, urgency, LOT_CD/TEMP, conversion/tool, achievable_ratio 등
+**Bucket feature (14ch)**: valid, WIP 비율(전체/PPK), min_end, throughput, same_setup(현재 EQP 직전 셋업), takt(prev/post), ST, urgency, conversion/tool(현재 EQP), achievable_ratio, projected_cover
 
 ### Reward (`config.py` 기본값)
 

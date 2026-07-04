@@ -51,12 +51,10 @@ def test_bucket_needs_conversion_for_ppk002_on_eqp001():
     pi2 = env_data["prod_idx"]["PPK002"]
     mi = env_data["model_idx"]["A"]
 
-    assert bucket[oi, pi2, mi, 10] > 0, "wip lot_cd channel"
-    assert bucket[oi, pi2, mi, 11] > 0, "wip temp channel"
-    assert bucket[oi, pi2, mi, 12] == 1.0, "PPK002 on EQP001 should need conversion"
+    assert bucket[oi, pi2, mi, 10] == 1.0, "PPK002 on EQP001 should need conversion"
 
     pi1 = env_data["prod_idx"]["PPK001"]
-    assert bucket[oi, pi1, mi, 12] == 0.0, "PPK001 same LOT_CD should not need conversion"
+    assert bucket[oi, pi1, mi, 10] == 0.0, "PPK001 same LOT_CD should not need conversion"
 
 
 def test_obs_dim_with_extended_bucket():

@@ -12,7 +12,6 @@ from env.scheduling_env import (
     _factor_opk_triples,
     _OBS_GLOBAL_DIM,
     _OBS_EQP_LOCAL_DIM,
-    _OBS_CONTEXT_DIM,
 )
 from simulation.simulator import SchedulingSimulator
 
@@ -24,7 +23,6 @@ def test_obs_dim_components_formula():
         _OBS_GLOBAL_DIM
         + comp["O"] * comp["P"] * comp["K"] * F
         + _OBS_EQP_LOCAL_DIM
-        + _OBS_CONTEXT_DIM
     )
     assert comp["total"] == compute_obs_dim()
 
@@ -47,7 +45,7 @@ def test_factor_opk_triples_same_product_as_default():
 
 def test_format_obs_dim_mismatch_contains_config_and_formula():
     expected = compute_obs_dim()
-    actual = expected - 750  # 다른 O×P×K 조합을 시뮬레이션
+    actual = expected - 50 * SchedulingSimulator.BUCKET_FEATURES  # 다른 O×P×K 조합을 시뮬레이션
     env_data = {
         "oper_ids": ["OP01", "OP02"],
         "prod_keys": ["PPK_A", "PPK_B"],

@@ -21,7 +21,7 @@ from simulation.events import (
     EVENT_PRIORITY,
     EVENT_PROCESS_END,
 )
-from utils.helpers import effective_proc_time, encode_normalized
+from utils.helpers import effective_proc_time
 
 
 @dataclass(order=True)
@@ -2092,18 +2092,18 @@ class SchedulingSimulator:
         self._pending_step_events = []
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
-    BUCKET_FEATURES = 16
+    BUCKET_FEATURES = 14
 
     def get_bucket_features(self) -> np.ndarray:
         """
         Bucket = (oper, ppk, model) 단위 feature 텐서. shape (O, P, K, F).
         채널: 0 valid, 1 wip/total, 2 wip/ppk, 3 min_end_time,
-              4 throughput_ratio, 5 same_ppk, 6 prev_takt, 7 post_takt,
+              4 throughput_ratio, 5 same_setup(current_eqp 직전 ppk·oper 일치),
+              6 prev_takt, 7 post_takt,
               8 self_st(per-wafer), 9 plan_urgency,
-              10 wip_lot_cd, 11 wip_temp,
-              12 needs_conversion(current_eqp), 13 tool_can_assign(current_eqp),
-              14 achievable_ratio (Step C: 달성가능 상한/계획량),
-              15 projected_cover_ratio (다른 장비(current_eqp 제외)의 하루 투영 커버/남은 필요량).
+              10 needs_conversion(current_eqp), 11 tool_can_assign(current_eqp),
+              12 achievable_ratio (Step C: 달성가능 상한/계획량),
+              13 projected_cover_ratio (다른 장비(current_eqp 제외)의 하루 투영 커버/남은 필요량).
         """
         # 버전 + current_eqp 가 같으면 캐시 반환
         cache_state = (self._state_version, self._current_eqp)
@@ -2126,10 +2126,6 @@ class SchedulingSimulator:
         max_arrange_st = max(data.get("max_arrange_st", 1), 1)
         wf_unit = max(data.get("max_wf_qty", 1), 1)
         completed = self.stats["completed_qty"]
-        lot_cd_idx = data.get("lot_cd_idx", {})
-        temp_idx = data.get("temp_idx", {})
-        n_lc = max(len(lot_cd_idx), 1)
-        n_tp = max(len(temp_idx), 1)
         current_eqp = self._current_eqp
 
         feats = np.zeros((O, P, K, F), dtype=np.float32)
@@ -2141,7 +2137,7 @@ class SchedulingSimulator:
             for key, eqp_list in self._eqps_by_om.items()
         }
 
-        # current_eqp 의 모델/인덱스 (channels 12, 13 처리용)
+        # current_eqp 의 모델/인덱스 (channels 5, 10, 11 처리용)
         current_eqp_model: Optional[str] = eqp_model_map.get(current_eqp) if current_eqp else None
         current_mi: int = -1
         if current_eqp_model:
@@ -2167,9 +2163,13 @@ class SchedulingSimulator:
         T_avail = max(self.soft_cutoff - self.current_time, 1)
         max_takt = max(T_avail * wf_unit, 1.0)
         sim_end_norm = max(self.sim_end, 1)
-        last_ppk = (
-            self._last_assigned.get("plan_prod_key") if self._last_assigned else None
-        )
+        # same_setup(ch5): 지금 결정하는 장비의 직전 셋업(ppk·oper) 기준.
+        # (보상 _same_setup_reward 와 동일 기준 — 전역 '마지막 배정'이 아님)
+        curr_prev_prod: Optional[str] = None
+        curr_prev_oper: Optional[str] = None
+        if current_eqp and current_eqp in self.eqps:
+            curr_prev_prod = self.eqps[current_eqp].prev_prod
+            curr_prev_oper = self.eqps[current_eqp].prev_oper
 
         def st_per_wafer(ppk: str, op: Optional[str], model: str) -> Optional[float]:
             if op is None:
@@ -2226,7 +2226,7 @@ class SchedulingSimulator:
                     plan_qty = max(pm["d0_plan_qty"], 1)
                     gap = max(plan_qty - completed.get((ppk, op), 0), 0)
                     urgency = min(gap / T_avail / plan_qty, 1.0)
-                same = 1.0 if ppk == last_ppk else 0.0
+                same = 1.0 if (ppk == curr_prev_prod and op == curr_prev_oper) else 0.0
 
                 # flow_prev/post 는 ppk 키 기준이므로 안쪽에서 추출
                 ppk_fp = flow_prev.get(ppk, {})
@@ -2249,10 +2249,8 @@ class SchedulingSimulator:
                         prev_op = ppk_fp.get(prev_op)
                     achievable_ratio = min(min(plan_qty, done + reachable) / plan_qty, 1.0)
 
-                # LOT_CD / TEMP: mi 루프 밖으로 이동 (모델에 무관)
+                # LOT_CD / TEMP: ch10/11(전환·tool 판정)용 — mi 루프 밖 (모델에 무관)
                 lc, tp = self._bucket_lot_cd_temp(ppk, op)
-                lc_enc = encode_normalized(lc or None, lot_cd_idx, n_lc)
-                tp_enc = encode_normalized(tp or None, temp_idx, n_tp)
 
                 # 유효 모델 인덱스·값을 수집한 뒤 NumPy 배치 할당
                 valid_mis: List[int] = []
@@ -2283,15 +2281,13 @@ class SchedulingSimulator:
                 feats[oi, pi, vmis, 6] = min(prev_takt, 1.0)
                 feats[oi, pi, vmis, 7] = min(post_takt, 1.0)
                 feats[oi, pi, vmis, 9] = urgency
-                feats[oi, pi, vmis, 10] = lc_enc
-                feats[oi, pi, vmis, 11] = tp_enc
-                feats[oi, pi, vmis, 14] = achievable_ratio
-                # 채널 15: 투영 커버 비율 — 다른 장비(current_eqp 제외)가 이 버킷을
+                feats[oi, pi, vmis, 12] = achievable_ratio
+                # 채널 13: 투영 커버 비율 — 다른 장비(current_eqp 제외)가 이 버킷을
                 # 하루 끝까지 덮는 양 / 남은 필요량. 1에 가까울수록 '이미 덮임' → 회피 유도.
-                done15 = completed.get((ppk, op), 0)
-                need15 = max(self._achievable_qty(ppk, op) - done15, 1.0)
-                cov15 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
-                feats[oi, pi, vmis, 15] = min(cov15 / need15, 2.0) / 2.0
+                done13 = completed.get((ppk, op), 0)
+                need13 = max(self._achievable_qty(ppk, op) - done13, 1.0)
+                cov13 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
+                feats[oi, pi, vmis, 13] = min(cov13 / need13, 2.0) / 2.0
 
                 # 모델별 채널: numpy 벡터 연산
                 feats[oi, pi, vmis, 3] = np.minimum(vends / sim_end_norm, 1.0)
@@ -2302,12 +2298,12 @@ class SchedulingSimulator:
                 )
                 feats[oi, pi, vmis, 4] = max(wip_q, 0.0) / denom_arr
 
-                # channels 12, 13: current_eqp 가 이 (op, model) 에 속할 때만
+                # channels 10, 11: current_eqp 가 이 (op, model) 에 속할 때만
                 if curr_eqp_in_om and current_mi >= 0 and current_mi in valid_mis and lc:
-                    feats[oi, pi, current_mi, 12] = (
+                    feats[oi, pi, current_mi, 10] = (
                         1.0 if self._would_need_conversion(current_eqp, lc, tp) else 0.0
                     )
-                    feats[oi, pi, current_mi, 13] = (
+                    feats[oi, pi, current_mi, 11] = (
                         1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
                         or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
                     )
@@ -2316,18 +2312,11 @@ class SchedulingSimulator:
         self._bucket_feats_state = cache_state
         return feats
 
-    # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
+    # --- 관측 벡터 생성 (Global + Bucket + EQP local) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(2) + Context(4)."""
+        """관측: Global(5) + Bucket(O×P×K×F) + current EQP(2)."""
         data = self._env_data
-        cfg = CONFIG.env
-        O, P = cfg.max_oper_count, cfg.max_prod_count
-        oper_idx = data["oper_idx"]
-        prod_idx = data["prod_idx"]
-        eqp_idx = data.get("eqp_idx", {eid: i for i, eid in enumerate(data["eqp_ids"])})
-        lot_cd_idx = data.get("lot_cd_idx", {})
-        temp_idx = data.get("temp_idx", {})
         initial_lot_count = max(len(data["lots"]), 1)
         total_plan = max(
             sum(p["d0_plan_qty"] for p in data.get("plan", []) if p.get("d0_plan_qty", 0) > 0),
@@ -2353,44 +2342,25 @@ class SchedulingSimulator:
                         max_avoidable = av
             eqp_local[1] = max_avoidable
 
-        group_global = np.zeros(6, dtype=np.float32)
+        group_global = np.zeros(5, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)
-        group_global[1] = min(
-            max(self.soft_cutoff - self.current_time, 0) / max(self.soft_cutoff, 1), 1.0,
-        )
-        group_global[2] = min(len(self.lot_pool) / initial_lot_count, 1.0)
+        group_global[1] = min(len(self.lot_pool) / initial_lot_count, 1.0)
         produced = sum(self.stats["completed_qty"].values())
         if total_plan > 0:
-            group_global[3] = min(produced / total_plan, 1.0)
+            group_global[2] = min(produced / total_plan, 1.0)
         else:
-            group_global[3] = min(produced / max(self._initial_wip_total, 1), 1.0)
+            group_global[2] = min(produced / max(self._initial_wip_total, 1), 1.0)
         conv_eqps = 0
         for eqp_id, eqp in self.eqps.items():
             rem = max(eqp.free_at - self.current_time, 0)
             if rem > 0 and eqp.status == "idle" and eqp.prev_lot_cd is not None:
                 conv_eqps += 1
-        group_global[4] = conv_eqps / max(len(self.eqps), 1)
-        group_global[5] = min(self._tool_tracker.utilization(), 1.0)
-
-        context = np.zeros(4, dtype=np.float32)
-        if self._last_assigned:
-            la = self._last_assigned
-            context[0] = encode_normalized(
-                la.get("plan_prod_key"), prod_idx, P,
-            )
-            oper_guess = None
-            for ld in data.get("lots", []):
-                if ld["lot_id"] == la.get("lot_id"):
-                    oper_guess = ld.get("oper_id")
-                    break
-            context[1] = encode_normalized(oper_guess, oper_idx, O)
-            context[2] = encode_normalized(la.get("eqp_id"), eqp_idx, len(data["eqp_ids"]))
-            context[3] = encode_normalized(la.get("lot_cd"), lot_cd_idx, max(len(lot_cd_idx), 1))
+        group_global[3] = conv_eqps / max(len(self.eqps), 1)
+        group_global[4] = min(self._tool_tracker.utilization(), 1.0)
 
         obs = np.concatenate([
             group_global,
             bucket,
             eqp_local,
-            context,
         ])
         return np.clip(obs, 0.0, 1.0).astype(np.float32)

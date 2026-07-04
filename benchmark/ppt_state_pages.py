@@ -4,8 +4,8 @@ STATE_TERM_PAGES = [
     {
         "key": "global",
         "title": "전역 상태 (Global)",
-        "obs_slice": "obs[0:6]",
-        "plain": "라인 전체 상황 — 시간·재공·계획·전환·공구를 6개 숫자로 요약합니다.",
+        "obs_slice": "obs[0:5]",
+        "plain": "라인 전체 상황 — 시간·재공·계획·전환·공구를 5개 숫자로 요약합니다.",
         "why": "정책이 \"지금 몇 시쯤인지, 얼마나 급한지\"를 전역적으로 파악하게 합니다.",
         "trace_step": 1,
         "items": [
@@ -18,34 +18,27 @@ STATE_TERM_PAGES = [
             },
             {
                 "idx": "obs[1]",
-                "name": "takt_margin",
-                "formula": "(soft_cutoff − t) / soft_cutoff",
-                "meaning": "남은 horizon 여유 (1→여유 많음)",
-                "trace_path": ("obs_global", "takt_margin"),
-            },
-            {
-                "idx": "obs[2]",
                 "name": "remaining_lots",
                 "formula": "|lot_pool| / 초기 LOT 수",
                 "meaning": "미배정 재공 비율 (↓=소진)",
                 "trace_path": ("obs_global", "remaining_lots"),
             },
             {
-                "idx": "obs[3]",
+                "idx": "obs[2]",
                 "name": "plan_progress",
                 "formula": "Σ완료 / Σ계획",
                 "meaning": "전체 계획 달성률",
                 "trace_path": ("obs_global", "plan_progress"),
             },
             {
-                "idx": "obs[4]",
+                "idx": "obs[3]",
                 "name": "conv_idle_ratio",
                 "formula": "전환대기 idle 설비 / 전체",
                 "meaning": "셋업 바꾸느라 대기 중인 설비 비율",
                 "trace_path": ("obs_global", "conv_idle_ratio"),
             },
             {
-                "idx": "obs[5]",
+                "idx": "obs[4]",
                 "name": "tool_util",
                 "formula": "공구 동시가공 사용률",
                 "meaning": "tool cap 포화 정도",
@@ -56,8 +49,8 @@ STATE_TERM_PAGES = [
     {
         "key": "bucket",
         "title": "버킷 특징 (Bucket)",
-        "obs_slice": "obs[6 : 6+O×P×K×16]",
-        "plain": "(OPER×PPK×모델) 격자마다 16채널 — \"이 버킷을 지금 잡으면 유효·시급·중복인가\"를 알려줍니다.",
+        "obs_slice": "obs[5 : 5+O×P×K×14]",
+        "plain": "(OPER×PPK×모델) 격자마다 14채널 — \"이 버킷을 지금 잡으면 유효·시급·중복인가\"를 알려줍니다.",
         "why": "보상(페이싱·중복커버) 판단의 근거가 되는 핵심 특징입니다.",
         "trace_step": 1,
         "items": [
@@ -95,25 +88,31 @@ STATE_TERM_PAGES = [
                 "trace_path": None,
             },
             {
-                "idx": "ch12", "name": "needs_conversion",
+                "idx": "ch5", "name": "same_setup",
+                "formula": "1[현재 EQP의 직전 (PPK, OPER)와 동일]",
+                "meaning": "이 버킷 잡으면 셋업 연속(보상 same_setup과 동일 기준)",
+                "trace_path": None,
+            },
+            {
+                "idx": "ch10", "name": "needs_conversion",
                 "formula": "1[현재 EQP에서 이 LOT_CD/TEMP로 전환 필요]",
                 "meaning": "이 버킷 잡으면 셋업 변경?",
                 "trace_path": None,
             },
             {
-                "idx": "ch13", "name": "tool_can_assign",
+                "idx": "ch11", "name": "tool_can_assign",
                 "formula": "1[공구 교체 불필요 또는 공구 슬롯 여유]",
                 "meaning": "tool cap 통과 여부",
                 "trace_path": None,
             },
             {
-                "idx": "ch14", "name": "achievable_ratio",
+                "idx": "ch12", "name": "achievable_ratio",
                 "formula": "min(min(계획량, 완료+상류WIP) / 계획량, 1)",
                 "meaning": "재공 한도 내 달성 가능한 상한 비율",
                 "trace_path": None,
             },
             {
-                "idx": "ch15", "name": "projected_cover_ratio",
+                "idx": "ch13", "name": "projected_cover_ratio",
                 "formula": "min(cover / need, 2) / 2  ;  need=달성상한−완료, cover=타EQP 하루 투영생산",
                 "meaning": "중복 커버 신호 — 클수록 다른 설비가 이미 커버 중(회피 유도)",
                 "trace_path": None,
@@ -142,20 +141,6 @@ STATE_TERM_PAGES = [
                 "meaning": "전환 시 회피가능 정도 (0~1, 보상 α와 동일 개념)",
                 "trace_path": ("obs_eqp_local", "avoidable_frac"),
             },
-        ],
-    },
-    {
-        "key": "context",
-        "title": "직전 맥락 (Context)",
-        "obs_slice": "obs[…+2:…+6]",
-        "plain": "직전 스텝에서 누가·무엇을·어느 설비에 배정했는지 정규화 인덱스 4개.",
-        "why": "동일 셋업 연속·전환 여부 판단의 단서.",
-        "trace_step": 4,
-        "items": [
-            {"idx": "ctx[0]", "name": "last_ppk", "formula": "encode(PPK)", "meaning": "직전 배정 제품 인덱스", "trace_path": ("obs_context", "last_ppk")},
-            {"idx": "ctx[1]", "name": "last_oper", "formula": "encode(OPER)", "meaning": "직전 배정 공정 인덱스", "trace_path": ("obs_context", "last_oper")},
-            {"idx": "ctx[2]", "name": "last_eqp", "formula": "encode(EQP)", "meaning": "직전 배정 설비 인덱스", "trace_path": ("obs_context", "last_eqp")},
-            {"idx": "ctx[3]", "name": "last_lot_cd", "formula": "encode(LOT_CD)", "meaning": "직전 LOT_CD (셋업 그룹)", "trace_path": ("obs_context", "last_lot_cd")},
         ],
     },
 ]
@@ -205,12 +190,5 @@ def trace_state_detail(trace: dict, step_no: int, trace_path) -> str:
         total_plan = trace.get("total_plan")
         if produced is not None and total_plan:
             return f"min({produced}/{total_plan}, 1) = {value}"
-
-    if group == "obs_context" and name in ("last_ppk", "last_oper", "last_eqp"):
-        prev = next((s for s in steps if s.get("step") == step_no - 1), None)
-        key_map = {"last_ppk": "ppk", "last_oper": "oper", "last_eqp": "eqp"}
-        label = prev.get(key_map[name]) if prev else None
-        if label:
-            return f"직전 배정 {label} → 정규화 {value}"
 
     return f"= {value}"

@@ -18,10 +18,9 @@ from config import CONFIG
 from simulation.simulator import SchedulingSimulator
 from simulation.decision_log import build_step_decision_entry
 
-_OBS_GLOBAL_DIM = 6
+_OBS_GLOBAL_DIM = 5
 _OBS_EQP_LOCAL_DIM = 2
-_OBS_CONTEXT_DIM = 4
-_OBS_FIXED_DIM = _OBS_GLOBAL_DIM + _OBS_EQP_LOCAL_DIM + _OBS_CONTEXT_DIM
+_OBS_FIXED_DIM = _OBS_GLOBAL_DIM + _OBS_EQP_LOCAL_DIM
 
 
 def obs_dim_components() -> dict:
@@ -39,18 +38,17 @@ def obs_dim_components() -> dict:
         "global": _OBS_GLOBAL_DIM,
         "bucket": bucket,
         "eqp_local": _OBS_EQP_LOCAL_DIM,
-        "context": _OBS_CONTEXT_DIM,
         "total": _OBS_FIXED_DIM + bucket,
     }
 
 
 def compute_obs_dim() -> int:
-    """Global(6) + Bucket(O×P×K×F) + current EQP(2) + Context(4)"""
+    """Global(5) + Bucket(O×P×K×F) + current EQP(2)"""
     return obs_dim_components()["total"]
 
 
 def _opk_product_from_obs_dim(dim: int) -> Optional[int]:
-    """obs_dim에서 O×P×K 곱을 역산. 고정 16차원(Global+EQP+Context) 제외."""
+    """obs_dim에서 O×P×K 곱을 역산. 고정 7차원(Global+EQP) 제외."""
     inner = dim - _OBS_FIXED_DIM
     F = SchedulingSimulator.BUCKET_FEATURES
     if inner < 0 or inner % F != 0:
@@ -95,7 +93,7 @@ def _describe_obs_dim_side(
     opk = _opk_product_from_obs_dim(dim)
     if opk is None:
         lines.append(
-            f"  ※ {dim}은 표준 공식(6+O×P×K×{F}+6+4)과 맞지 않습니다."
+            f"  ※ {dim}은 표준 공식({_OBS_GLOBAL_DIM}+O×P×K×{F}+{_OBS_EQP_LOCAL_DIM})과 맞지 않습니다."
         )
         return lines
 
@@ -105,7 +103,7 @@ def _describe_obs_dim_side(
         O, P, K = comp["O"], comp["P"], comp["K"]
         lines.append(
             f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}={O}×{P}×{K}×{F}) "
-            f"+ EQP({_OBS_EQP_LOCAL_DIM}) + Context({_OBS_CONTEXT_DIM})"
+            f"+ EQP({_OBS_EQP_LOCAL_DIM})"
         )
         lines.append(
             f"  config: max_oper_count(O)={O}, max_prod_count(P)={P}, "
@@ -114,7 +112,7 @@ def _describe_obs_dim_side(
     else:
         lines.append(
             f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}=O×P×K×{F}) "
-            f"+ EQP({_OBS_EQP_LOCAL_DIM}) + Context({_OBS_CONTEXT_DIM})"
+            f"+ EQP({_OBS_EQP_LOCAL_DIM})"
         )
         triples = _factor_opk_triples(opk)
         if triples:
@@ -201,7 +199,7 @@ def format_obs_dim_mismatch(
     lines.append("  2. 현재 config로 python main.py train (또는 UI 학습) 재실행")
     lines.append(
         f"  ※ 공식: obs_dim = {_OBS_GLOBAL_DIM} + O×P×K×{SchedulingSimulator.BUCKET_FEATURES} "
-        f"+ {_OBS_EQP_LOCAL_DIM} + {_OBS_CONTEXT_DIM}"
+        f"+ {_OBS_EQP_LOCAL_DIM}"
     )
     return "\n".join(lines)
 
