@@ -494,6 +494,9 @@ class RewardConfig:
     w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
     w_completion:      float = 0.0       # 미사용
     w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
+    # PLAN_PRIORITY 기반 배정 보너스: reward += w_priority / priority (작을수록 우선).
+    # PLAN_PRIORITY가 null인 (PPK,OPER)은 보너스 없음(최하위 취급). 0이면 비활성.
+    w_priority:        float = 1.0
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
     # 생산(coverage)'으로 봄 → 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주해
@@ -538,6 +541,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_idle_per_min": r.w_idle_per_min,
         "w_completion": r.w_completion,
         "w_plan_hit": r.w_plan_hit,
+        "w_priority": r.w_priority,
         "w_pacing": r.w_pacing,
         "pacing_coverage_scale": r.pacing_coverage_scale,
         "w_conversion": r.w_conversion,
@@ -559,7 +563,7 @@ def apply_reward_params(params: dict) -> None:
     r = CONFIG.reward
     float_keys = (
         "w_same_setup", "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
-        "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
+        "w_completion", "w_plan_hit", "w_priority", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
         "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",

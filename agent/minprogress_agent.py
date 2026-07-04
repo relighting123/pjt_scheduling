@@ -2,6 +2,7 @@
 agent/minprogress_agent.py – 최소 진행률(Min-Progress) 휴리스틱
 현재 idle EQP 기준 (PPK/OPER) 선택 – 계획 있으면 계획 기준, 없으면 WIP 기준
 """
+import math
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -23,9 +24,11 @@ class MinProgressAgent:
         row = self._plan_row(prod, oper_id)
         return bool(row and row.get("d0_plan_qty", 0) > 0)
 
-    def _plan_priority(self, prod: str, oper_id: str) -> int:
+    def _plan_priority(self, prod: str, oper_id: str) -> float:
+        """정렬용 우선순위 키. null(또는 계획 없음)은 +inf → 항상 최하위(마지막)."""
         row = self._plan_row(prod, oper_id)
-        return row["priority"] if row else 99
+        priority = row["priority"] if row else None
+        return math.inf if priority is None else priority
 
     def _chart_max_x(self, sim: SchedulingSimulator) -> int:
         max_end = max((rec["END_TM"] for rec in sim.schedule), default=0)

@@ -302,6 +302,7 @@ class RewardParams(BaseModel):
     w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
     w_completion: float = Field(default=CONFIG.reward.w_completion)
     w_plan_hit: float = Field(default=CONFIG.reward.w_plan_hit)
+    w_priority: float = Field(default=CONFIG.reward.w_priority)
     w_pacing: float = Field(default=CONFIG.reward.w_pacing)
     pacing_coverage_scale: float = Field(default=CONFIG.reward.pacing_coverage_scale)
     w_conversion: float = Field(default=CONFIG.reward.w_conversion)

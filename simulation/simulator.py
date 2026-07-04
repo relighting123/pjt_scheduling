@@ -96,7 +96,7 @@ class Lot:
     seq:             int
     wf_qty:          int
     processing_time: int   # 장당 ST(분/장). 실제 소요는 proc_time_matrix × wf_qty
-    priority:        int   = 1
+    priority:        Optional[int] = None   # null=최하위(마지막) 취급
     original_eqp:    str   = ""
     parent_lot_id:   str   = ""
     lot_cd:          str   = ""
@@ -189,7 +189,7 @@ class SchedulingSimulator:
                 seq=ld["seq"],
                 wf_qty=ld["wf_qty"],
                 processing_time=ld["processing_time"],
-                priority=ld.get("priority", 1),
+                priority=ld.get("priority"),
                 original_eqp=ld.get("original_eqp", ""),
                 parent_lot_id=ld.get("parent_lot_id", ""),
                 lot_cd=ld.get("lot_cd", ""),
@@ -980,6 +980,50 @@ class SchedulingSimulator:
         pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
         return bool(pm and pm.get("d0_plan_qty", 0) > 0)
 
+    def _plan_priority(self, ppk: str, oper_id: str) -> Optional[int]:
+        """(PPK, OPER) PLAN_PRIORITY. 계획이 없거나 null이면 None(최하위 취급)."""
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        return pm.get("priority") if pm else None
+
+    def _overproduction_allowed(self, ppk: str, oper_id: str) -> bool:
+        """OVER_PRODUCTION_YN. 계획이 없거나 미지정이면 True(제약 없음)."""
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        if not pm:
+            return True
+        return pm.get("over_production_yn", "Y") != "N"
+
+    def _is_over_quota(self, ppk: str, oper_id: str) -> bool:
+        """계획(D0_PLAN_QTY)을 이미 달성(done >= 계획)했는지."""
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        if not pm or pm.get("d0_plan_qty", 0) <= 0:
+            return False
+        done = self.stats["completed_qty"].get((ppk, oper_id), 0)
+        return done >= pm["d0_plan_qty"]
+
+    def _has_pending_overproducible_wip(self, exclude: Tuple[str, str]) -> bool:
+        """OVER_PRODUCTION_YN='Y'이면서 ready WIP이 남은 (PPK,OPER)이 하나라도 있는지."""
+        for key in self._wip_pool:
+            if key == exclude:
+                continue
+            ppk, oper_id = key
+            if not self._overproduction_allowed(ppk, oper_id):
+                continue
+            if self._ready_wip_qty(ppk, oper_id) > 0:
+                return True
+        return False
+
+    def _overproduction_blocked(self, ppk: str, oper_id: str) -> bool:
+        """
+        초과생산 제약: OVER_PRODUCTION_YN='N'이고 이미 계획을 달성한 (PPK,OPER)은
+        OVER_PRODUCTION_YN='Y'이면서 아직 ready WIP이 남은 다른 (PPK,OPER)이
+        하나라도 있으면 배정을 지연(차단)한다. 그런 재공이 하나도 없을 때만 생산.
+        """
+        if self._overproduction_allowed(ppk, oper_id):
+            return False
+        if not self._is_over_quota(ppk, oper_id):
+            return False
+        return self._has_pending_overproducible_wip(exclude=(ppk, oper_id))
+
     def _flow_post(self, ppk: str, oper_id: str) -> Optional[str]:
         """같은 PPK의 다음(후속) 공정 OPER (없으면 None)."""
         return self._env_data.get("flow_post", {}).get(ppk, {}).get(oper_id)
@@ -1165,6 +1209,10 @@ class SchedulingSimulator:
         Step C: 오늘 실제 달성 가능한 상한 추정.
         = min(계획량, 이미생산 + 현 공정 WIP + 선행 공정들에서 흘러올 수 있는 WIP)
         재공이 부족하면 계획을 그 수준으로 낮춰 무리한 전환을 막는다.
+
+        단, 계획을 이미 달성(done >= 계획)했고 OVER_PRODUCTION_YN='Y'이면 계획
+        상한에 묶지 않고 done+reachable까지 목표를 늘려, takt 기준으로 계속
+        고르게 생산되도록 한다(OVER_PRODUCTION_YN='N'이면 기존처럼 계획에서 멈춤).
         """
         pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
         plan_qty = max(pm["d0_plan_qty"], 1) if pm else 1
@@ -1179,7 +1227,10 @@ class SchedulingSimulator:
             seen.add(prev)
             reachable += self._wip_wafers(ppk, prev)
             prev = self._flow_prev(ppk, prev)
-        return min(plan_qty, done + reachable)
+        total = done + reachable
+        if done >= plan_qty and self._overproduction_allowed(ppk, oper_id):
+            return max(total, 1)
+        return min(plan_qty, total)
 
     def _plan_hit_reward(self, ppk: str, oper_id: str, wf_qty: int, end_time: int) -> float:
         """계획 달성 진척 보너스.
@@ -1262,6 +1313,20 @@ class SchedulingSimulator:
         err_before = abs(ideal - eff_before)
         err_after = abs(ideal - eff_after)
         return cfg.w_pacing * (err_before - err_after) / target
+
+    def _priority_reward(self, ppk: str, oper_id: str) -> float:
+        """PLAN_PRIORITY 기반 배정 보너스.
+
+        식: reward = w_priority / priority   (priority가 작을수록(=우선순위 높음) 큰 보너스)
+        PLAN_PRIORITY가 null이거나 계획이 없으면 보너스 없음(0) → null은 최하위로 취급.
+        """
+        cfg = self._reward_cfg
+        if cfg.w_priority == 0:
+            return 0.0
+        priority = self._plan_priority(ppk, oper_id)
+        if priority is None or priority <= 0:
+            return 0.0
+        return cfg.w_priority / priority
 
     def _ppk_has_feasible_assignment(self, ppk: str) -> bool:
         """현재 시점에 해당 PPK로 투입 가능한 (OPER, EQP) 조합이 있는지."""
@@ -1615,6 +1680,8 @@ class SchedulingSimulator:
             )
             if self._assign_blocked(eqp_id, lot_cd, temp):
                 continue
+            if self._overproduction_blocked(ppk, oper_id):
+                continue
             feasible.append(self.ppk_oper_flat_index(oper_id, ppk))
         return feasible
 
@@ -1689,7 +1756,7 @@ class SchedulingSimulator:
                     "wf_qty":          wf_qty,
                     "priority":        (
                         lot.priority if lot
-                        else meta.get("priority", row.get("plan_priority", 1))
+                        else meta.get("priority", row.get("plan_priority"))
                     ),
                     "processing_time": pt,
                     "st_per_wafer":    st_per_wafer,
@@ -1875,6 +1942,9 @@ class SchedulingSimulator:
         reward += t
         t = self._flow_balance_reward(ppk, oper_id)                  # Step B
         if t: terms["flow_balance"] = round(float(t), 4)
+        reward += t
+        t = self._priority_reward(ppk, oper_id)
+        if t: terms["priority"] = round(float(t), 4)
         reward += t
 
         self._emit_event(

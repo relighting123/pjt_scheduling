@@ -8,7 +8,20 @@ from typing import Dict, List, Optional, Tuple
 from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
-from utils.helpers import build_index_map, coerce_int, effective_proc_time, normalize_tool_capacity_rows, split_wf_qty
+from utils.helpers import (
+    build_index_map, coerce_int, coerce_int_or_none, effective_proc_time,
+    normalize_tool_capacity_rows, split_wf_qty,
+)
+
+
+def _coerce_over_production_yn(value) -> str:
+    """OVER_PRODUCTION_YN → 'Y'/'N'. 생략/미지정 시 'Y'(제약 없음)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "Y"
+    v = str(value).strip().upper()
+    if v not in ("Y", "N"):
+        raise ValueError(f"OVER_PRODUCTION_YN 값 오류(Y/N만 허용): {value!r}")
+    return v
 
 
 def _coerce_proc_time(value) -> Optional[int]:
@@ -348,7 +361,8 @@ def _build_abstract_inventory(
             "seq":             seq_map.get((ppk, oper_id), 1),
             "proc_time":       arrange_map.get((ppk, oper_id, model), 60),
             "wf_qty":          ppk_wf.get(ppk, 25),
-            "plan_priority":   pm.get("priority", 1),
+            "plan_priority":   pm.get("priority"),
+            "over_production_yn": pm.get("over_production_yn", "Y"),
             "d0_plan_qty":     pm.get("d0_plan_qty", 0),
         })
 
@@ -407,7 +421,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         raw = {
             "discrete_arrange": [{EQP_ID, LOT_ID, PLAN_PROD_ATTR_VAL, OPER_ID, ST, EQP_MODEL_CD, WF_QTY, ...}, ...],
             "abstract_arrange": [{PLAN_PROD_ATTR_VAL, OPER_ID, EQP_MODEL_CD, ST}, ...],
-            "plan":         [{PLAN_PROD_ATTR_VAL, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY, PLAN_PRIORITY}, ...],
+            "plan":         [{PLAN_PROD_ATTR_VAL, OPER_ID, D0_PLAN_QTY, D1_PLAN_QTY,
+                              PLAN_PRIORITY(nullable), OVER_PRODUCTION_YN(optional, 기본 'Y')}, ...],
             "flow":         [{PLAN_PROD_ATTR_VAL, OPER_SEQ, OPER_ID}, ...]
         }
     Output:
@@ -486,10 +501,10 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         ppk = r["PLAN_PROD_ATTR_VAL"]
         wf_qty = coerce_int(r["WF_QTY"], field="WF_QTY")
 
-        priority = 1
+        priority = None
         for p in plan_raw:
             if p["PLAN_PROD_ATTR_VAL"] == ppk and p["OPER_ID"] == oper_id:
-                priority = coerce_int(p.get("PLAN_PRIORITY", 1), field="PLAN_PRIORITY")
+                priority = coerce_int_or_none(p.get("PLAN_PRIORITY"), field="PLAN_PRIORITY")
                 break
 
         st_per_wafer = _coerce_proc_time(r.get("ST")) or 60
@@ -513,7 +528,9 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "oper_id":       p["OPER_ID"],
             "d0_plan_qty":   coerce_int(p["D0_PLAN_QTY"], field="D0_PLAN_QTY"),
             "d1_plan_qty":   coerce_int(p["D1_PLAN_QTY"], field="D1_PLAN_QTY"),
-            "priority":      coerce_int(p.get("PLAN_PRIORITY", 1), field="PLAN_PRIORITY"),
+            # null이 아니면 작을수록 우선, null은 최하위(정렬/보상 계산 시 처리)
+            "priority":      coerce_int_or_none(p.get("PLAN_PRIORITY"), field="PLAN_PRIORITY"),
+            "over_production_yn": _coerce_over_production_yn(p.get("OVER_PRODUCTION_YN")),
         })
 
     # FLOW 데이터 정리
@@ -609,8 +626,9 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     plan_meta: Dict[Tuple[str, str], dict] = {}
     for p in plan_list:
         plan_meta[(p["plan_prod_key"], p["oper_id"])] = {
-            "priority":    p["priority"],
-            "d0_plan_qty": p["d0_plan_qty"],
+            "priority":            p["priority"],
+            "d0_plan_qty":         p["d0_plan_qty"],
+            "over_production_yn":  p["over_production_yn"],
         }
 
     split_lookup = _build_split_lookup(split_raw)

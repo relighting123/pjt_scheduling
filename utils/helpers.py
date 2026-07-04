@@ -46,6 +46,9 @@ REQUIRED_DISCRETE_ARRANGE_FIELDS = {
 REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD", "ST"}
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_ATTR_VAL", "OPER_ID",
                                  "D0_PLAN_QTY", "D1_PLAN_QTY", "PLAN_PRIORITY"}
+# PLAN_PRIORITY: null 허용 (null=최하위 우선순위). 값이 있으면 작을수록 우선.
+# OVER_PRODUCTION_YN: 필수 아님(생략 시 'Y' = 초과생산 제약 없음)이라 REQUIRED에 넣지 않음.
+NULLABLE_PLAN_FIELDS         = {"PLAN_PRIORITY"}
 REQUIRED_FLOW_FIELDS         = {"PLAN_PROD_ATTR_VAL", "OPER_SEQ", "OPER_ID"}
 REQUIRED_SPLIT_FIELDS        = {"PLAN_PROD_ATTR_VAL", "EQP_MODEL_CD", "SPLIT_QTY"}  # OPER_ID optional (defaults to *)
 REQUIRED_LOT_MASTER_FIELDS   = {"LOT_ID", "LOT_CD", "TEMP"}
@@ -123,6 +126,17 @@ def coerce_int(value, *, field: str = "값") -> int:
     raise ValueError(f"{field} 정수 변환 불가: {value!r}")
 
 
+def coerce_int_or_none(value, *, field: str = "값") -> Optional[int]:
+    """coerce_int와 동일하되 null(None/빈 문자열)은 그대로 None 유지.
+
+    PLAN_PRIORITY처럼 '값 없음'과 '값 있음'을 구분해야 하는 필드용
+    (없음은 최하위 우선순위로 취급 — 호출부에서 정렬 시 처리).
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return coerce_int(value, field=field)
+
+
 def split_wf_qty(total: int, split_qty: int) -> List[int]:
     """
     wafer 수량을 SPLIT_QTY(장) 단위로 분할.
@@ -147,11 +161,15 @@ def split_wf_qty(total: int, split_qty: int) -> List[int]:
     return [split_qty] * n_full + [remainder]
 
 
-def validate_records(records: List[dict], required: set, label: str) -> List[str]:
+def validate_records(
+    records: List[dict], required: set, label: str, nullable: set = frozenset(),
+) -> List[str]:
     """
     목적: 레코드 리스트가 필수 컬럼을 모두 갖추고 있는지 검사
     Input:  records=[{...}], required={"EQP_ID","LOT_ID",...}, label="discrete_arrange"
     Output: [] (오류 없음) 또는 ["discrete_arrange: 필드 누락 – {'ST'}"]
+    nullable: required에는 포함되지만 값 자체는 null(빈 값)을 허용할 필드 집합
+              (예: PLAN_PRIORITY — 키는 있어야 하되 값은 null일 수 있음).
     """
     errors = []
     if not records:
@@ -165,7 +183,7 @@ def validate_records(records: List[dict], required: set, label: str) -> List[str
 
         empty = {
             field
-            for field in required
+            for field in required - nullable
             if record[field] is None
             or (isinstance(record[field], str) and not record[field].strip())
         }

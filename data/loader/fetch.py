@@ -33,6 +33,7 @@ from utils.helpers import (
     REQUIRED_DISCRETE_ARRANGE_FIELDS,
     REQUIRED_ABSTRACT_ARRANGE_FIELDS,
     REQUIRED_PLAN_FIELDS,
+    NULLABLE_PLAN_FIELDS,
     REQUIRED_FLOW_FIELDS,
     REQUIRED_SPLIT_FIELDS,
     REQUIRED_LOT_MASTER_FIELDS,
@@ -191,7 +192,9 @@ def validate_data(raw: Dict[str, List[dict]]) -> List[str]:
     errors += validate_records(
         raw["abstract_arrange"], REQUIRED_ABSTRACT_ARRANGE_FIELDS, "abstract_arrange",
     )
-    errors += validate_records(raw["plan"], REQUIRED_PLAN_FIELDS, "plan")
+    errors += validate_records(
+        raw["plan"], REQUIRED_PLAN_FIELDS, "plan", nullable=NULLABLE_PLAN_FIELDS,
+    )
     errors += validate_records(raw["flow"], REQUIRED_FLOW_FIELDS, "flow")
     if raw.get("split"):
         errors += validate_records(raw["split"], REQUIRED_SPLIT_FIELDS, "split")
