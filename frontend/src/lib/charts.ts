@@ -11,6 +11,7 @@ import {
   minutesToTimestamp,
   parseSimBaseMs,
 } from "./ganttTime";
+import { computeInferenceKpi } from "./metrics";
 import type { EqpUtil, EqpScheduleSummary, ModelUtil, TatRow, AchievementRow } from "./metrics";
 
 export type GanttBarLabel = "lot" | "car" | "prod";
@@ -1040,7 +1041,6 @@ export function buildAlgorithmKpiComparison(
 
   const data: Data[] = metricDefs.map((metric, mi) => {
     const vals = rawByAlgo.map((r) => r[metric.key as RawKey] as number);
-    const maxVal = Math.max(...vals, 1);
     return {
       type: "bar" as const,
       x: algoNames,
@@ -1298,7 +1298,10 @@ export type TestMetricKey =
   | "idle_total"
   | "oper_switches"
   | "prod_switches"
-  | "avg_achievement";
+  | "tool_switches"
+  | "avg_util"
+  | "avg_achievement"
+  | "avg_target_achievement";
 
 export interface TestMetricDef {
   key: TestMetricKey;
@@ -1306,12 +1309,21 @@ export interface TestMetricDef {
   yTitle: string;
 }
 
+const PERCENT_METRIC_KEYS = new Set<TestMetricKey>([
+  "avg_util",
+  "avg_achievement",
+  "avg_target_achievement",
+]);
+
 export const TEST_METRICS: TestMetricDef[] = [
   { key: "makespan", label: "Makespan", yTitle: "분" },
   { key: "idle_total", label: "Idle 합계", yTitle: "분" },
   { key: "oper_switches", label: "공정 전환", yTitle: "횟수" },
   { key: "prod_switches", label: "제품 전환", yTitle: "횟수" },
+  { key: "tool_switches", label: "Tool 전환", yTitle: "횟수" },
+  { key: "avg_util", label: "평균 가동률", yTitle: "%" },
   { key: "avg_achievement", label: "평균 달성률", yTitle: "%" },
+  { key: "avg_target_achievement", label: "평균 타겟달성률", yTitle: "%" },
 ];
 
 export interface TestBenchmarkChartRow {
@@ -1324,20 +1336,25 @@ function metricValue(result: InferenceResult, key: TestMetricKey): number | null
   if (!result.schedule?.length) {
     return null;
   }
-  const s = resultScheduleStats(result);
   switch (key) {
     case "makespan":
-      return s.makespan;
+      return resultScheduleStats(result).makespan;
     case "idle_total":
-      return s.idle_total;
+      return resultScheduleStats(result).idle_total;
     case "oper_switches":
-      return s.oper_switches;
+      return resultScheduleStats(result).oper_switches;
     case "prod_switches":
-      return s.prod_switches;
+      return resultScheduleStats(result).prod_switches;
+    case "tool_switches":
+      return computeInferenceKpi(result).toolSwitches;
+    case "avg_util":
+      return computeInferenceKpi(result).avgUtilPct;
     case "avg_achievement": {
-      const vals = Object.values(s.achievement);
+      const vals = Object.values(resultScheduleStats(result).achievement);
       return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0;
     }
+    case "avg_target_achievement":
+      return computeInferenceKpi(result).avgTargetAchPct;
     default:
       return null;
   }
@@ -1368,8 +1385,8 @@ function buildTestMetricSingleDatasetChart(
     return entry ? (metricValue(entry.result, metric.key) ?? 0) : 0;
   });
 
-  const maxVal = Math.max(...values, metric.key === "avg_achievement" ? 100 : 1);
-  const yMax = metric.key === "avg_achievement" ? 110 : maxVal * 1.3;
+  const maxVal = Math.max(...values, PERCENT_METRIC_KEYS.has(metric.key) ? 100 : 1);
+  const yMax = PERCENT_METRIC_KEYS.has(metric.key) ? 110 : maxVal * 1.3;
 
   return {
     data: [{
@@ -1419,12 +1436,12 @@ function buildTestMetricLineChart(
   const allVals = yValues.flat().filter((v): v is number => v != null);
   const maxVal = allVals.length ? Math.max(...allVals) : 1;
   const yRange: [number, number] | undefined =
-    metric.key === "avg_achievement" ? [0, 110] : [0, maxVal * 1.25];
+    PERCENT_METRIC_KEYS.has(metric.key) ? [0, 110] : [0, maxVal * 1.25];
 
   const showText = rows.length <= 8;
   const data: Data[] = activeAlgos.map((algo, ai) => ({
     type: "scatter" as const,
-    mode: showText ? ("lines+markers+text" as const) : ("lines+markers" as const),
+    mode: showText ? ("text+lines+markers" as const) : ("lines+markers" as const),
     name: algoLabels[algo] ?? algo,
     x: categories,
     y: yValues[ai],
@@ -2085,7 +2102,7 @@ export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data
         hovertemplate: "%{y}<br>계획달성률: %{x}% (%{customdata}매/%{meta}매)<extra></extra>",
         customdata: rows.map((r) => r.doneQty),
         meta: rows.map((r) => r.planQty),
-      },
+      } as Data,
       {
         type: "bar",
         orientation: "h",
@@ -2098,7 +2115,7 @@ export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data
         hovertemplate: "%{y}<br>타겟달성률: %{x}% (%{customdata}매/%{meta}매)<extra></extra>",
         customdata: rows.map((r) => r.doneQty),
         meta: rows.map((r) => r.targetQty),
-      },
+      } as Data,
     ],
     layout: {
       title: { text: "제품/공정별 달성률 (계획 vs 타겟)", font: { size: 13 } },
