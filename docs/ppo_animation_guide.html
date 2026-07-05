@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PPO 제어반 — 스케줄링 에이전트는 어떻게 학습하는가</title>
+<style>
+  :root{
+    --bg: #eef1f0;
+    --panel: #ffffff;
+    --panel-2: #e4e9e7;
+    --text: #1b2126;
+    --text-dim: #566069;
+    --line: rgba(27,33,38,0.14);
+    --accent: #c97416;
+    --accent-soft: rgba(201,116,22,0.14);
+    --accent-2: #1f8672;
+    --accent-2-soft: rgba(31,134,114,0.14);
+    --danger: #b23f27;
+    --danger-soft: rgba(178,63,39,0.13);
+    --shadow: 0 1px 2px rgba(20,26,30,0.06), 0 8px 24px rgba(20,26,30,0.05);
+    --radius: 10px;
+    --font-kr: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, sans-serif;
+    --font-mono: ui-monospace, "D2Coding", "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg: #12161a;
+      --panel: #1a2028;
+      --panel-2: #212832;
+      --text: #e8ecef;
+      --text-dim: #93a1ac;
+      --line: rgba(232,236,239,0.12);
+      --accent: #e8952f;
+      --accent-soft: rgba(232,149,47,0.16);
+      --accent-2: #3db39d;
+      --accent-2-soft: rgba(61,179,157,0.14);
+      --danger: #d9694c;
+      --danger-soft: rgba(217,105,76,0.16);
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 28px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: #12161a; --panel: #1a2028; --panel-2: #212832; --text: #e8ecef; --text-dim: #93a1ac;
+    --line: rgba(232,236,239,0.12); --accent: #e8952f; --accent-soft: rgba(232,149,47,0.16);
+    --accent-2: #3db39d; --accent-2-soft: rgba(61,179,157,0.14); --danger: #d9694c; --danger-soft: rgba(217,105,76,0.16);
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 28px rgba(0,0,0,0.35);
+  }
+  :root[data-theme="light"]{
+    --bg: #eef1f0; --panel: #ffffff; --panel-2: #e4e9e7; --text: #1b2126; --text-dim: #566069;
+    --line: rgba(27,33,38,0.14); --accent: #c97416; --accent-soft: rgba(201,116,22,0.14);
+    --accent-2: #1f8672; --accent-2-soft: rgba(31,134,114,0.14); --danger: #b23f27; --danger-soft: rgba(178,63,39,0.13);
+    --shadow: 0 1px 2px rgba(20,26,30,0.06), 0 8px 24px rgba(20,26,30,0.05);
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--font-kr); line-height:1.7; font-size:16.5px;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--accent-soft); }
+  a{ color:inherit; }
+  .eyebrow{
+    font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--accent); font-weight:600;
+  }
+  h1,h2,h3{ text-wrap:balance; font-weight:700; margin:0; }
+  p{ margin:0; }
+  .wrap{ max-width:840px; margin:0 auto; padding:0 24px; }
+  .wide{ max-width:960px; }
+
+  /* ---- nav ---- */
+  .topnav{
+    position:sticky; top:0; z-index:50; backdrop-filter: blur(10px);
+    background:color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom:1px solid var(--line);
+  }
+  .topnav-inner{
+    max-width:960px; margin:0 auto; padding:10px 24px; display:flex; gap:6px;
+    overflow-x:auto; scrollbar-width:none;
+  }
+  .topnav-inner::-webkit-scrollbar{ display:none; }
+  .navpill{
+    flex:0 0 auto; font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.03em;
+    padding:6px 11px; border-radius:999px; color:var(--text-dim); text-decoration:none;
+    border:1px solid transparent; white-space:nowrap; transition:all .15s ease;
+  }
+  .navpill:hover{ color:var(--text); border-color:var(--line); }
+  .navpill.active{ color:var(--accent); background:var(--accent-soft); border-color:var(--accent-soft); }
+
+  /* ---- hero ---- */
+  .hero{ padding:64px 24px 40px; }
+  .hero h1{ font-size:clamp(28px,4.4vw,42px); line-height:1.22; margin:14px 0 16px; }
+  .hero .lede{ color:var(--text-dim); font-size:17.5px; max-width:640px; }
+  .hero .lede b{ color:var(--text); font-weight:600; }
+  .hero-diagram{ margin-top:36px; }
+
+  /* ---- module cards ---- */
+  .module{ padding:56px 24px; border-top:1px solid var(--line); }
+  .module-head{ display:flex; gap:14px; align-items:baseline; margin-bottom:6px; }
+  .module-num{ font-family:var(--font-mono); color:var(--text-dim); font-size:13px; }
+  .module h2{ font-size:clamp(21px,2.6vw,27px); }
+  .module .dek{ color:var(--text-dim); margin-top:10px; max-width:620px; }
+  .module .body{ margin-top:26px; display:flex; flex-direction:column; gap:20px; }
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:22px;
+  }
+  .panel-title{ font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim); margin-bottom:14px; }
+  .formula-title{ font-family:var(--font-mono); font-size:13.5px; letter-spacing:0.01em; text-transform:none; color:var(--text-dim); margin-bottom:14px; }
+  .callout{
+    border-left:3px solid var(--accent); background:var(--accent-soft); border-radius:0 8px 8px 0;
+    padding:14px 16px; font-size:15px; color:var(--text);
+  }
+  .callout b{ color:var(--accent); }
+  .callout.good{ border-color:var(--accent-2); background:var(--accent-2-soft); }
+  .callout.good b{ color:var(--accent-2); }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:640px){ .grid2{ grid-template-columns:1fr; } }
+
+  code, .mono{ font-family:var(--font-mono); }
+  .kbd-term{
+    font-family:var(--font-mono); font-size:0.92em; background:var(--panel-2);
+    padding:1px 6px; border-radius:5px; border:1px solid var(--line);
+  }
+
+  svg text{ font-family:var(--font-kr); fill:var(--text); }
+  svg .mono-label{ font-family:var(--font-mono); fill:var(--text-dim); }
+
+  canvas{ display:block; max-width:100%; }
+  .canvas-wrap{ overflow-x:auto; }
+
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius); }
+  table{ border-collapse:collapse; width:100%; min-width:560px; font-size:14.5px; }
+  thead th{
+    text-align:left; font-family:var(--font-mono); font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--text-dim); background:var(--panel-2); padding:10px 14px; border-bottom:1px solid var(--line);
+  }
+  tbody td{ padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tbody tr:last-child td{ border-bottom:none; }
+  td.num{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td .filepath{ font-family:var(--font-mono); font-size:12.5px; color:var(--text-dim); }
+
+  .btnrow{ display:flex; gap:8px; flex-wrap:wrap; }
+  button.toggle{
+    font-family:var(--font-mono); font-size:12.5px; letter-spacing:0.02em;
+    padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:var(--panel-2);
+    color:var(--text-dim); cursor:pointer; transition:all .15s ease;
+  }
+  button.toggle:hover{ color:var(--text); }
+  button.toggle:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  button.toggle.on.pos{ background:var(--accent-2-soft); color:var(--accent-2); border-color:var(--accent-2-soft); }
+  button.toggle.on.neg{ background:var(--danger-soft); color:var(--danger); border-color:var(--danger-soft); }
+
+  .caption{ font-size:13.5px; color:var(--text-dim); margin-top:10px; }
+  .legend{ display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--text-dim); margin-top:8px; }
+  .legend .sw{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+
+  .cycle-labels{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:18px; }
+  @media (max-width:720px){ .cycle-labels{ grid-template-columns:1fr 1fr; } }
+  .cycle-step{ padding:12px; border-radius:8px; border:1px solid var(--line); background:var(--panel-2); transition:all .25s ease; }
+  .cycle-step.active{ border-color:var(--accent); background:var(--accent-soft); }
+  .cycle-step .n{ font-family:var(--font-mono); font-size:11px; color:var(--text-dim); }
+  .cycle-step.active .n{ color:var(--accent); }
+  .cycle-step .t{ font-size:13.5px; margin-top:4px; }
+
+  .mask-grid{ display:flex; flex-wrap:wrap; gap:8px; }
+  .mask-cell{
+    flex:0 0 auto; width:84px; padding:9px 8px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel-2); text-align:center; position:relative;
+  }
+  .mask-cell .lbl{ font-family:var(--font-mono); font-size:11px; color:var(--text-dim); }
+  .mask-cell .bar-track{ margin-top:8px; height:6px; border-radius:3px; background:var(--line); overflow:hidden; }
+  .mask-cell .bar-fill{ height:100%; background:var(--accent-2); transition:width .5s ease; }
+  .mask-cell.invalid{ opacity:0.55; }
+  .mask-cell.invalid .bar-fill{ background:var(--text-dim); }
+  .mask-cell.invalid::after{
+    content:""; position:absolute; left:8px; right:8px; top:50%; height:1px; background:var(--danger); opacity:.7;
+  }
+  .mask-cell .reason{ font-size:10px; color:var(--danger); margin-top:4px; min-height:12px; }
+
+  .glossary{ display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+  @media (max-width:640px){ .glossary{ grid-template-columns:1fr; } }
+  .gterm{ background:var(--panel); padding:16px 18px; }
+  .gterm dt{ font-weight:700; font-size:14.5px; }
+  .gterm dt .en{ font-family:var(--font-mono); font-weight:400; font-size:12px; color:var(--text-dim); margin-left:6px; }
+  .gterm dd{ margin:6px 0 0; color:var(--text-dim); font-size:13.8px; }
+
+  footer{ padding:40px 24px 80px; color:var(--text-dim); font-size:13px; border-top:1px solid var(--line); }
+  footer .filepath{ font-family:var(--font-mono); }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-inner" id="navpills">
+    <a class="navpill" href="#m1">01 강화학습 기초</a>
+    <a class="navpill" href="#m2">02 액터-크리틱</a>
+    <a class="navpill" href="#m3">03 어드밴티지</a>
+    <a class="navpill" href="#m4">04 클리핑</a>
+    <a class="navpill" href="#m5">05 학습 루프</a>
+    <a class="navpill" href="#m6">06 액션 마스킹</a>
+    <a class="navpill" href="#m7">07 이 프로젝트</a>
+    <a class="navpill" href="#m8">08 용어집</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">REINFORCEMENT LEARNING · MASKABLE PPO</div>
+    <h1>정책을 아주 조금씩, 안전하게 업데이트하는 법</h1>
+    <p class="lede">
+      <b>PPO(Proximal Policy Optimization)</b>는 이 프로젝트의 설비 스케줄링 에이전트
+      (<code class="kbd-term">agent/rl_agent.py</code>)를 학습시키는 알고리즘입니다.
+      기억할 아이디어는 하나뿐입니다 — <b>정책이 한 번의 업데이트로 너무 멀리 움직이지 못하게 클립(clip)을 씌운다.</b>
+      이 문서는 그 아이디어가 어떻게 작동하는지 애니메이션으로 단계별로 보여주고,
+      마지막에는 실제 이 저장소의 코드·하이퍼파라미터와 연결합니다.
+    </p>
+
+    <div class="hero-diagram panel">
+      <div class="panel-title">에이전트 ⇄ 환경 순환 루프</div>
+      <svg viewBox="0 0 720 200" width="100%" height="200" role="img" aria-label="에이전트와 환경이 상태, 행동, 보상을 주고받는 순환 다이어그램">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--text-dim)"></path>
+          </marker>
+        </defs>
+        <rect x="30" y="70" width="160" height="60" rx="10" fill="var(--panel-2)" stroke="var(--line)"></rect>
+        <text x="110" y="95" text-anchor="middle" font-size="14" font-weight="700">에이전트</text>
+        <text x="110" y="113" text-anchor="middle" font-size="11" class="mono-label">MaskablePPO π</text>
+
+        <rect x="530" y="70" width="160" height="60" rx="10" fill="var(--panel-2)" stroke="var(--line)"></rect>
+        <text x="610" y="95" text-anchor="middle" font-size="14" font-weight="700">환경</text>
+        <text x="610" y="113" text-anchor="middle" font-size="11" class="mono-label">SchedulingEnv</text>
+
+        <path d="M190,88 C 320,88 400,88 528,88" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)"></path>
+        <text x="360" y="76" text-anchor="middle" font-size="12" fill="var(--accent)">행동 aₜ (공정×제품 선택)</text>
+
+        <path d="M528,112 C 400,112 320,112 190,112" fill="none" stroke="var(--accent-2)" stroke-width="2" marker-end="url(#arrow)"></path>
+        <text x="360" y="140" text-anchor="middle" font-size="12" fill="var(--accent-2)">상태 sₜ₊₁, 보상 rₜ</text>
+
+        <circle id="heroDot" r="5" fill="var(--accent)">
+          <animateMotion dur="3.2s" repeatCount="indefinite" path="M190,88 C 320,88 400,88 528,88 L528,112 C 400,112 320,112 190,112 Z"></animateMotion>
+        </circle>
+      </svg>
+      <p class="caption">에이전트가 관측(상태)을 보고 행동을 고르면, 환경(설비 시뮬레이터)이 다음 상태와 보상을 돌려줍니다. 이 순환을 수천 번 반복하며 정책을 개선합니다.</p>
+    </div>
+  </div>
+</header>
+
+<!-- ================= MODULE 01 ================= -->
+<section class="module" id="m1">
+  <div class="wrap">
+    <div class="module-head"><span class="module-num">01</span><h2>강화학습 기초 — 상태·행동·보상</h2></div>
+    <p class="dek">PPO를 이해하려면 먼저 이 세 가지 재료가 필요합니다. 이 프로젝트에서는 각각이 구체적으로 무엇을 가리키는지 짚고 시작합니다.</p>
+    <div class="body">
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-title">상태 (State)</div>
+          <p>설비·제품·공정의 현재 상황을 0~1로 정규화한 벡터입니다. 전역 지표, PPK(제품)/OPER(공정)/MODEL 버킷 상태, 그리고 지금 비어있는(idle) 설비 정보가 들어갑니다.</p>
+        </div>
+        <div class="panel">
+          <div class="panel-title">행동 (Action)</div>
+          <p><code class="kbd-term">Discrete(O×P)</code> — 다음에 투입할 <b>공정×제품</b> 조합을 고르는 것입니다. 실제로 어느 설비에, 어느 재공(LOT)을 배정할지는 규칙 기반 로직이 자동으로 정합니다.</p>
+        </div>
+        <div class="panel">
+          <div class="panel-title">보상 (Reward)</div>
+          <p>페이싱(생산 목표 추종) 보너스, 동일 세팅 유지 보너스, 전환(conversion) 패널티 등을 가중합해서 매 스텝 계산합니다. <code class="kbd-term">reward_clip=10</code>으로 값 범위를 제한합니다.</p>
+        </div>
+        <div class="panel">
+          <div class="panel-title">에피소드 (Episode)</div>
+          <p>하루 치(또는 설정된 기간)의 스케줄링을 처음부터 끝까지 진행하는 한 번의 시뮬레이션입니다. 끝나면 환경이 리셋되고 다시 시작됩니다.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <b>왜 그냥 규칙(rule)을 안 쓰고 학습을 시킬까?</b> 전환 패널티, 페이싱, idle 최소화처럼 서로 상충하는 목표를 사람이 손으로 튜닝하는 대신,
+        에이전트가 수많은 시뮬레이션을 통해 <i>장기적으로</i> 가장 보상이 높은 선택 패턴을 스스로 찾아내도록 하는 것이 PPO의 목적입니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MODULE 02 ================= -->
+<section class="module" id="m2">
+  <div class="wrap">
+    <div class="module-head"><span class="module-num">02</span><h2>액터-크리틱 — 두 개의 눈</h2></div>
+    <p class="dek">PPO는 하나의 신경망(<code class="kbd-term">MlpPolicy</code>) 안에 서로 다른 역할을 하는 두 개의 출력을 둡니다: <b>행동을 고르는 눈</b>과 <b>상황을 평가하는 눈</b>.</p>
+    <div class="body">
+      <div class="panel">
+        <div class="panel-title">네트워크 구조</div>
+        <svg viewBox="0 0 720 260" width="100%" height="260" role="img" aria-label="관측이 공유 신경망을 거쳐 정책 헤드와 가치 헤드로 나뉘는 다이어그램">
+          <rect x="20" y="105" width="120" height="50" rx="8" fill="var(--panel-2)" stroke="var(--line)"></rect>
+          <text x="80" y="126" text-anchor="middle" font-size="12" font-weight="700">관측 s</text>
+          <text x="80" y="142" text-anchor="middle" font-size="10" class="mono-label">obs_dim 벡터</text>
+
+          <rect x="200" y="95" width="140" height="70" rx="8" fill="var(--panel-2)" stroke="var(--line)"></rect>
+          <text x="270" y="122" text-anchor="middle" font-size="12" font-weight="700">공유 MLP</text>
+          <text x="270" y="140" text-anchor="middle" font-size="10" class="mono-label">은닉층</text>
+          <circle class="pulse-node" cx="230" cy="150" r="3" fill="var(--accent)"></circle>
+          <circle class="pulse-node" cx="270" cy="152" r="3" fill="var(--accent)"></circle>
+          <circle class="pulse-node" cx="310" cy="150" r="3" fill="var(--accent)"></circle>
+
+          <path d="M140,130 L198,130" stroke="var(--line)" stroke-width="2" marker-end="url(#arrow)" fill="none"></path>
+          <path d="M340,120 C 380,90 400,70 440,55" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow)" fill="none"></path>
+          <path d="M340,140 C 380,170 400,190 440,205" stroke="var(--accent-2)" stroke-width="2" marker-end="url(#arrow)" fill="none"></path>
+
+          <rect x="440" y="25" width="230" height="62" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"></rect>
+          <text x="455" y="47" font-size="12" font-weight="700" fill="var(--accent)">정책 헤드 (Actor)</text>
+          <text x="455" y="63" font-size="10.5" class="mono-label">πθ(a|s) — O×P개 행동 확률</text>
+          <g id="policyBars"></g>
+
+          <rect x="440" y="178" width="230" height="55" rx="8" fill="var(--accent-2-soft)" stroke="var(--accent-2)"></rect>
+          <text x="455" y="200" font-size="12" font-weight="700" fill="var(--accent-2)">가치 헤드 (Critic)</text>
+          <text x="455" y="216" font-size="10.5" class="mono-label">Vθ(s) — 이 상황의 기대 리턴 추정치 하나</text>
+        </svg>
+        <p class="caption">같은 관측을 공유 은닉층에 통과시킨 뒤, 정책 헤드는 "어떤 행동을 할지"에 대한 확률분포를, 가치 헤드는 "이 상황이 앞으로 얼마나 좋을지" 스칼라 하나를 냅니다.</p>
+      </div>
+      <div class="callout good">
+        <b>왜 두 개가 필요한가?</b> 정책만 있으면 "이 행동이 평균보다 좋았는지 나빴는지" 비교 기준이 없습니다.
+        가치 헤드가 그 기준선(baseline) 역할을 해서, 다음 모듈의 <b>어드밴티지</b> 계산을 가능하게 합니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MODULE 03 ================= -->
+<section class="module" id="m3">
+  <div class="wrap">
+    <div class="module-head"><span class="module-num">03</span><h2>어드밴티지 — 기대보다 얼마나 더 좋았나</h2></div>
+    <p class="dek">보상 자체가 아니라 <b>"예상(critic이 추정한 가치)보다 실제로 얼마나 더/덜 좋았는가"</b>를 학습 신호로 씁니다. 이게 Advantage 입니다.</p>
+    <div class="body">
+      <div class="panel">
+        <div class="formula-title">Aₜ = 리턴(실측) − Vθ(s) (예상)</div>
+        <div class="canvas-wrap"><canvas id="advCanvas" height="220"></canvas></div>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--text-dim)"></span>가치 함수 추정 V(s)</span>
+          <span><span class="sw" style="background:var(--accent-2)"></span>양(+)의 어드밴티지 — 기대보다 좋았음</span>
+          <span><span class="sw" style="background:var(--danger)"></span>음(-)의 어드밴티지 — 기대보다 나빴음</span>
+        </div>
+        <p class="caption">막대는 매 스텝의 실제 결과와 critic의 예상치 차이를 보여줍니다. PPO는 이 저장소에서 GAE(Generalized Advantage Estimation, λ 가중 평균)로 여러 스텝의 TD 오차를 부드럽게 합쳐 Aₜ를 계산하고, <code class="kbd-term">gamma=0.99</code>로 미래 보상을 할인합니다.</p>
+      </div>
+      <div class="callout">
+        <b>핵심:</b> 좋은 행동이어도 어드밴티지가 작으면(이미 예상했던 정도로만 좋았으면) 조금만 강화하고,
+        예상 밖으로 좋았던 행동은 크게 강화합니다. 다음 모듈의 클리핑은 바로 이 A값에 곱해지는 계수를 제한합니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MODULE 04 ================= -->
+<section class="module" id="m4">
+  <div class="wrap">
+    <div class="module-head"><span class="module-num">04</span><h2>PPO의 핵심 — Clipped Surrogate Objective</h2></div>
+    <p class="dek">
+      정책이 업데이트 전/후로 얼마나 달라졌는지를 비율
+      <span class="mono">rₜ(θ) = πnew(a|s) / πold(a|s)</span>
+      로 재고, 이 비율이 <span class="mono">[1−ε, 1+ε]</span> (ε=0.2, SB3 기본값) 범위를 벗어나면 더 이상의 보상을 주지 않습니다. 이게 "Proximal(가까운)"의 의미입니다.
+    </p>
+    <div class="body">
+      <div class="panel">
+        <div class="formula-title">L<sup>CLIP</sup>(θ) = min( rₜ·Aₜ, clip(rₜ, 1−ε, 1+ε)·Aₜ )</div>
+        <div class="btnrow" role="group" aria-label="어드밴티지 부호 전환">
+          <button class="toggle on pos" id="btnPos" type="button">A &gt; 0 · 좋은 행동이었음</button>
+          <button class="toggle neg" id="btnNeg" type="button">A &lt; 0 · 나쁜 행동이었음</button>
+        </div>
+        <div class="canvas-wrap"><canvas id="clipCanvas" height="300"></canvas></div>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--text-dim)"></span>클리핑 없는 목적함수 (rₜ·Aₜ)</span>
+          <span><span class="sw" style="background:var(--accent)"></span>PPO의 실제 목적함수 (min 적용)</span>
+        </div>
+        <p class="caption" id="clipCaption"></p>
+      </div>
+      <div class="grid2">
+        <div class="callout good">
+          <b>A &gt; 0 (좋은 행동)</b> — 이 행동의 확률을 더 높이고 싶지만, rₜ가 1.2를 넘어서면(너무 급격히 확률을 올리면) 목적함수가 평평해져 더 밀어붙일 유인이 사라집니다.
+        </div>
+        <div class="callout">
+          <b>A &lt; 0 (나쁜 행동)</b> — 이 행동의 확률을 낮추고 싶지만, rₜ가 0.8 아래로(너무 급격히 확률을 낮추면) 내려가면 마찬가지로 평평해집니다.
+        </div>
+      </div>
+      <div class="callout">
+        <b>비유:</b> 이 저장소의 스케줄링 에이전트가 "전환(conversion) 회피"가 매우 좋은 보상을 받았다고 해서,
+        한 번의 업데이트로 갑자기 그 행동만 90% 확률로 몰아주지 않도록 막는 안전벨트입니다.
+        급격한 변화는 다음 롤아웃에서 예상 못 한 붕괴로 이어질 수 있기 때문입니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MODULE 05 ================= -->
+<section class="module" id="m5">
+  <div class="wrap">
+    <div class="module-head"><span class="module-num">05</span><h2>학습 루프 — 수집 → 계산 → 업데이트 → 반복</h2></div>
+    <p class="dek"><code class="kbd-term">agent/rl_agent.py</code>의 <code class="kbd-term">SchedulingAgent.train()</code>이 실제로 도는 방식입니다.</p>
+    <div class="body">
+      <div class="panel">
+        <div class="panel-title">한 번의 PPO 업데이트 사이클</div>
+        <svg viewBox="0 0 400 400" width="100%" height="320" style="max-width:340px;margin:0 auto;display:block;" role="img" aria-label="롤아웃 수집, 어드밴티지 계산, 클립 업데이트, 반복의 4단계 순환 다이어그램">
+          <circle cx="200" cy="200" r="140" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="2 8"></circle>
+          <g id="cycleNodes"></g>
+          <circle id="cycleDot" r="7" fill="var(--accent)"></circle>
+        </svg>
+        <div class="cycle-labels" id="cycleLabels">
+          <div class="cycle-step" data-i="0"><div class="n">① ROLLOUT</div><div class="t">n_steps=2048 만큼 환경과 상호작용하며 (s,a,r,s′) 수집</div></div>
+          <div class="cycle-step" data-i="1"><div class="n">② GAE</div><div class="t">모아둔 궤적으로 각 스텝의 어드밴티지 Aₜ 계산</div></div>
+          <div class="cycle-step" data-i="2"><div class="n">③ CLIP UPDATE</div><div class="t">n_epochs=10회, 미니배치 단위로 L<sup>CLIP</sup> 경사상승</div></div>
+          <div class="cycle-step" data-i="3"><div class="n">④ REPEAT</div><div class="t">새 정책으로 되돌아가 total_timesteps=200,000까지 반복</div></div>
+        </div>
+      </div>
+      <div class="callout">
+        <b>왜 같은 데이터로 10번(n_epochs)이나 업데이트할까?</b> 롤아웃 수집이 가장 비싼 연산이라, 한 번 모은 데이터를 여러 epoch 재사용해 효율을 높입니다.
+        단, 여러 번 재사용하면 πold와 πnew가 점점 벌어질 위험이 커지는데 — 이걸 막는 장치가 바로 04번 모듈의 클리핑입니다. 두 아이디어는 세트로 동작합니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MODULE 06 ================= -->
+<section class="module" id="m6">
+  <div class="wrap">
+    <div class="module-head"><span class="module-num">06</span><h2>액션 마스킹 — 왜 "Maskable" PPO인가</h2></div>
+    <p class="dek">일반 PPO라면 불가능한 행동에도 확률을 배정한 뒤, 그 행동을 고르지 않는 법을 학습으로 익혀야 합니다. 이 프로젝트처럼 매 스텝 대부분의 조합이 무효인 환경에서는 낭비가 큽니다.</p>
+    <div class="body">
+      <div class="panel">
+        <div class="panel-title">softmax 이전에 무효 행동을 제거</div>
+        <div class="mask-grid" id="maskGrid"></div>
+        <p class="caption">
+          회색으로 표시된 칸은 <code class="kbd-term">env.action_masks()</code>가 반환한 마스크에 의해 확률이 0으로 고정된 조합입니다.
+          <code class="kbd-term">agent/rl_agent.py</code>의 <code class="kbd-term">_mask_fn()</code>과 <code class="kbd-term">ActionMasker</code> 래퍼가 매 스텝 이 마스크를 정책에 전달합니다.
+        </p>
+      </div>
+      <div class="callout good">
+        <b>효과:</b> 탐색 공간이 "물리적으로 가능한 행동"으로만 좁혀지므로, 같은 학습 시간(200,000 timesteps) 안에
+        훨씬 더 빠르게 유효한 스케줄링 전략을 찾아냅니다. "이미 재공이 없는 제품을 고르지 않기"를 굳이 시행착오로 배울 필요가 없습니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MODULE 07 ================= -->
+<section class="module" id="m7">
+  <div class="wrap wide">
+    <div class="module-head"><span class="module-num">07</span><h2>이 프로젝트에서의 실제 구현</h2></div>
+    <p class="dek">지금까지의 개념이 저장소 어디에, 어떤 값으로 들어있는지 정리한 표입니다.</p>
+    <div class="body">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>개념</th><th>이 프로젝트의 구현</th><th>위치</th></tr></thead>
+          <tbody>
+            <tr><td>상태 s</td><td>전역 지표 + PPK/OPER/MODEL 버킷 + idle 설비 상태 (0~1 정규화)</td><td class="filepath">env/scheduling_env.py · compute_obs_dim()</td></tr>
+            <tr><td>행동 a</td><td>Discrete(O×P) — 공정×제품 버킷 선택. EQP·LOT은 규칙 기반 자동 배정</td><td class="filepath">env/scheduling_env.py · SchedulingEnv</td></tr>
+            <tr><td>행동 마스크</td><td>불가능한 (공정,제품) 조합을 매 스텝 배제</td><td class="filepath">env/scheduling_env.py · action_masks() / agent/rl_agent.py · _mask_fn()</td></tr>
+            <tr><td>보상 r</td><td>pacing(+2.5) + same_setup(+1.0) − conversion(−10) − avoidable_conversion(−8) 등 가중합. reward_clip=10으로 클리핑</td><td class="filepath">config.py · RewardConfig</td></tr>
+            <tr><td>알고리즘</td><td>MaskablePPO (sb3_contrib), MlpPolicy</td><td class="filepath">agent/rl_agent.py · SchedulingAgent.train()</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>하이퍼파라미터</th><th>값</th><th>의미</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">learning_rate</td><td class="num">3e-4</td><td>경사 업데이트 보폭</td></tr>
+            <tr><td class="mono">n_steps</td><td class="num">2,048</td><td>업데이트 1회당 수집하는 환경 스텝 수 (롤아웃 길이)</td></tr>
+            <tr><td class="mono">batch_size</td><td class="num">64 (×env 수로 스케일)</td><td>미니배치 크기 — rollout buffer의 약수로 자동 보정</td></tr>
+            <tr><td class="mono">n_epochs</td><td class="num">10</td><td>같은 롤아웃 데이터를 재사용하는 epoch 수</td></tr>
+            <tr><td class="mono">gamma</td><td class="num">0.99</td><td>미래 보상 할인율 (GAE·리턴 계산에 사용)</td></tr>
+            <tr><td class="mono">clip_range (ε)</td><td class="num">0.2</td><td>SB3 기본값 — 04번 모듈의 클리핑 범위</td></tr>
+            <tr><td class="mono">total_timesteps</td><td class="num">200,000</td><td>전체 학습 스텝 예산 (에피소드 예산 모드도 지원)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">값 출처: <span class="filepath">config.py · RLConfig / RewardConfig</span>. 실제 학습 시 UI에서 에피소드 예산(<span class="mono">n_episodes</span>) 모드로 timesteps 대신 에피소드 수 기준으로 학습을 멈출 수도 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MODULE 08 ================= -->
+<section class="module" id="m8">
+  <div class="wrap">
+    <div class="module-head"><span class="module-num">08</span><h2>용어집</h2></div>
+    <div class="body">
+      <dl class="glossary">
+        <div class="gterm"><dt>정책<span class="en">Policy π</span></dt><dd>상태를 받아 행동의 확률분포를 내는 함수. 여기서는 신경망(MlpPolicy)이 이 역할을 합니다.</dd></div>
+        <div class="gterm"><dt>가치함수<span class="en">Value Function V(s)</span></dt><dd>어떤 상태에서 앞으로 기대되는 누적 보상. 어드밴티지 계산의 기준선입니다.</dd></div>
+        <div class="gterm"><dt>어드밴티지<span class="en">Advantage A</span></dt><dd>실제 결과가 가치함수의 예측보다 얼마나 더/덜 좋았는지의 차이.</dd></div>
+        <div class="gterm"><dt>확률 비율<span class="en">Ratio rₜ</span></dt><dd>업데이트 후 정책과 이전 정책이 같은 행동에 부여한 확률의 비. πnew/πold.</dd></div>
+        <div class="gterm"><dt>클리핑<span class="en">Clipping</span></dt><dd>rₜ를 [1−ε, 1+ε] 밖으로 못 나가게 잘라, 한 번의 업데이트 폭을 제한하는 장치.</dd></div>
+        <div class="gterm"><dt>롤아웃<span class="en">Rollout</span></dt><dd>현재 정책으로 환경과 상호작용하며 경험(궤적)을 모으는 구간. 길이는 n_steps.</dd></div>
+        <div class="gterm"><dt>GAE<span class="en">Generalized Advantage Estimation</span></dt><dd>여러 시점의 TD 오차를 λ로 가중 평균해 어드밴티지를 부드럽게 추정하는 방법.</dd></div>
+        <div class="gterm"><dt>액션 마스킹<span class="en">Action Masking</span></dt><dd>특정 상태에서 불가능한 행동의 확률을 0으로 고정하는 것. MaskablePPO의 핵심 기능.</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap wide">
+    참고 코드: <span class="filepath">agent/rl_agent.py</span> · <span class="filepath">env/scheduling_env.py</span> · <span class="filepath">config.py</span>
+    &nbsp;·&nbsp; 알고리즘: MaskablePPO (sb3-contrib), 원 논문: Schulman et al., "Proximal Policy Optimization Algorithms" (2017)
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var root = document.documentElement;
+  function cssVar(name){ return getComputedStyle(root).getPropertyValue(name).trim(); }
+
+  /* ---- active nav pill on scroll ---- */
+  (function(){
+    var sections = Array.prototype.slice.call(document.querySelectorAll(".module"));
+    var pills = {};
+    document.querySelectorAll("#navpills .navpill").forEach(function(p){
+      pills[p.getAttribute("href").slice(1)] = p;
+    });
+    if ("IntersectionObserver" in window){
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          if (e.isIntersecting){
+            Object.values(pills).forEach(function(p){ p.classList.remove("active"); });
+            var p = pills[e.target.id];
+            if (p) p.classList.add("active");
+          }
+        });
+      }, { rootMargin: "-40% 0px -55% 0px" });
+      sections.forEach(function(s){ io.observe(s); });
+    }
+  })();
+
+  /* ---- module 02: policy head probability bars (mini animation) ---- */
+  (function(){
+    var g = document.getElementById("policyBars");
+    if (!g) return;
+    var n = 6, x0 = 458, w = 26, gap = 6, baseY = 82, maxH = 0;
+    var bars = [];
+    for (var i=0;i<n;i++){
+      var rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
+      rect.setAttribute("x", x0 + i*(w+gap));
+      rect.setAttribute("width", w);
+      rect.setAttribute("fill", "var(--accent)");
+      rect.setAttribute("rx", 2);
+      g.appendChild(rect);
+      bars.push(rect);
+    }
+    function randomize(){
+      var vals = [];
+      var sum = 0;
+      for (var i=0;i<n;i++){ vals[i] = Math.random()+0.15; sum += vals[i]; }
+      for (var i=0;i<n;i++){
+        var h = (vals[i]/sum) * 34;
+        bars[i].setAttribute("height", h.toFixed(1));
+        bars[i].setAttribute("y", (baseY - h).toFixed(1));
+      }
+    }
+    randomize();
+    if (!reduceMotion) setInterval(randomize, 1800);
+  })();
+
+  /* ---- module 02: pulse nodes ---- */
+  (function(){
+    var nodes = document.querySelectorAll(".pulse-node");
+    if (!nodes.length || reduceMotion) return;
+    var t = 0;
+    function tick(){
+      t += 0.05;
+      nodes.forEach(function(n, i){
+        var s = 1 + 0.6*Math.max(0, Math.sin(t*2 - i*0.8));
+        n.setAttribute("r", (3*s).toFixed(2));
+      });
+      requestAnimationFrame(tick);
+    }
+    tick();
+  })();
+
+  /* ---- module 03: advantage bars canvas ---- */
+  (function(){
+    var canvas = document.getElementById("advCanvas");
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    var dpr = window.devicePixelRatio || 1;
+
+    var steps = [
+      {ret:0.62, val:0.45}, {ret:0.30, val:0.50}, {ret:0.71, val:0.40},
+      {ret:0.48, val:0.55}, {ret:0.20, val:0.35}, {ret:0.66, val:0.30},
+      {ret:0.38, val:0.60}, {ret:0.80, val:0.42}
+    ];
+
+    function resize(){
+      var w = canvas.clientWidth || canvas.parentElement.clientWidth;
+      canvas.width = w*dpr; canvas.height = 220*dpr;
+      draw();
+    }
+    function draw(){
+      var w = canvas.width/dpr, h = canvas.height/dpr;
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.clearRect(0,0,w,h);
+      var pad = 30, plotH = h - pad*2, baseline = h - pad;
+      var n = steps.length, colW = (w-pad*2)/n;
+      var textDim = cssVar("--text-dim"), good = cssVar("--accent-2"), bad = cssVar("--danger");
+
+      ctx.strokeStyle = "rgba(120,120,120,0.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad, baseline); ctx.lineTo(w-pad, baseline); ctx.stroke();
+
+      steps.forEach(function(s, i){
+        var cx = pad + colW*i + colW/2;
+        var retY = baseline - s.ret*plotH;
+        var valY = baseline - s.val*plotH;
+        var adv = s.ret - s.val;
+
+        // return bar (advantage)
+        var barW = colW*0.36;
+        ctx.fillStyle = adv >= 0 ? good : bad;
+        var top = Math.min(retY, valY);
+        var bh = Math.abs(retY - valY);
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(cx - barW/2, top, barW, Math.max(bh,2));
+        ctx.globalAlpha = 1;
+
+        // value marker
+        ctx.strokeStyle = textDim;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - barW*0.9, valY); ctx.lineTo(cx + barW*0.9, valY);
+        ctx.stroke();
+
+        ctx.fillStyle = textDim;
+        ctx.font = "10px " + (getComputedStyle(document.body).fontFamily);
+        ctx.textAlign = "center";
+        ctx.fillText("t"+(i+1), cx, h-10);
+      });
+    }
+    window.addEventListener("resize", resize);
+    resize();
+  })();
+
+  /* ---- module 04: clipped surrogate objective canvas ---- */
+  (function(){
+    var canvas = document.getElementById("clipCanvas");
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    var dpr = window.devicePixelRatio || 1;
+    var eps = 0.2;
+    var A = 1; // toggled sign, magnitude 1
+    var t0 = performance.now();
+    var caption = document.getElementById("clipCaption");
+
+    function obj(r, a){
+      var clipped = Math.min(Math.max(r, 1-eps), 1+eps);
+      return Math.min(r*a, clipped*a);
+    }
+
+    function toX(r, w, pad){ return pad + (r/2)*(w-2*pad); }
+    function toY(v, h, pad, vmin, vmax){
+      var t = (v - vmin)/(vmax - vmin);
+      return h - pad - t*(h-2*pad);
+    }
+
+    function draw(now){
+      var w = canvas.clientWidth || canvas.parentElement.clientWidth;
+      var h = 300;
+      canvas.width = w*dpr; canvas.height = h*dpr;
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.clearRect(0,0,w,h);
+
+      var pad = 34;
+      var vmin = -1.6, vmax = 1.6;
+      var text = cssVar("--text"), textDim = cssVar("--text-dim"), accent = cssVar("--accent"), line = cssVar("--line");
+
+      // trust-region band
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.08;
+      ctx.fillRect(toX(1-eps,w,pad), pad*0.4, toX(1+eps,w,pad)-toX(1-eps,w,pad), h-pad*1.4);
+      ctx.globalAlpha = 1;
+
+      // axes
+      ctx.strokeStyle = line; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, toY(0,h,pad,vmin,vmax)); ctx.lineTo(w-pad, toY(0,h,pad,vmin,vmax)); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(toX(1,w,pad), pad*0.4); ctx.lineTo(toX(1,w,pad), h-pad*1.4); ctx.stroke();
+
+      ctx.fillStyle = textDim;
+      ctx.font = "11px " + getComputedStyle(document.body).fontFamily;
+      ctx.textAlign = "center";
+      ctx.fillText("rₜ=1 (변화 없음)", toX(1,w,pad), pad*0.28);
+      ctx.fillText("1-ε", toX(1-eps,w,pad), h-pad*1.15);
+      ctx.fillText("1+ε", toX(1+eps,w,pad), h-pad*1.15);
+      ctx.fillText("0", toX(0,w,pad), h-pad*1.15);
+      ctx.fillText("2", toX(2,w,pad), h-pad*1.15);
+
+      // unclipped line r*A (dashed)
+      ctx.strokeStyle = textDim; ctx.lineWidth = 1.5; ctx.setLineDash([4,4]);
+      ctx.beginPath();
+      for (var i=0;i<=100;i++){
+        var r = (i/100)*2;
+        var v = r*A;
+        var x = toX(r,w,pad), y = toY(Math.max(vmin,Math.min(vmax,v)),h,pad,vmin,vmax);
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // clipped objective (solid, thick, accent)
+      ctx.strokeStyle = accent; ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (var i=0;i<=200;i++){
+        var r = (i/200)*2;
+        var v = obj(r, A);
+        var x = toX(r,w,pad), y = toY(Math.max(vmin,Math.min(vmax,v)),h,pad,vmin,vmax);
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      // moving marker illustrating gradient direction / flat zone
+      var phase = reduceMotion ? 0.5 : (Math.sin((now-t0)/1400)+1)/2; // 0..1
+      var rMark = phase*2;
+      var vMark = obj(rMark, A);
+      var mx = toX(rMark,w,pad), my = toY(Math.max(vmin,Math.min(vmax,vMark)),h,pad,vmin,vmax);
+      ctx.fillStyle = text;
+      ctx.beginPath(); ctx.arc(mx,my,5,0,Math.PI*2); ctx.fill();
+
+      if (!reduceMotion) requestAnimationFrame(draw);
+    }
+
+    function updateCaption(){
+      if (A > 0){
+        caption.innerHTML = "지금 A &gt; 0 (좋은 행동) 그래프: rₜ가 오른쪽으로 <b style='color:"+cssVar('--accent')+"'>1.2를 넘으면</b> 목적함수가 평평해집니다 — 이미 충분히 확률을 높였으니 더는 밀어붙이지 않습니다.";
+      } else {
+        caption.innerHTML = "지금 A &lt; 0 (나쁜 행동) 그래프: rₜ가 왼쪽으로 <b style='color:"+cssVar('--accent')+"'>0.8 아래로</b> 내려가면 목적함수가 평평해집니다 — 이미 충분히 확률을 낮췄으니 더는 낮추지 않습니다.";
+      }
+    }
+
+    document.getElementById("btnPos").addEventListener("click", function(){
+      A = 1;
+      this.classList.add("on","pos"); this.classList.remove("neg");
+      var neg = document.getElementById("btnNeg"); neg.classList.remove("on","neg");
+      updateCaption();
+      if (reduceMotion) draw(performance.now());
+    });
+    document.getElementById("btnNeg").addEventListener("click", function(){
+      A = -1;
+      this.classList.add("on","neg"); this.classList.remove("pos");
+      var pos = document.getElementById("btnPos"); pos.classList.remove("on","pos");
+      updateCaption();
+      if (reduceMotion) draw(performance.now());
+    });
+
+    window.addEventListener("resize", function(){ if (reduceMotion) draw(performance.now()); });
+    updateCaption();
+    requestAnimationFrame(draw);
+  })();
+
+  /* ---- module 05: training cycle ---- */
+  (function(){
+    var svgNodes = document.getElementById("cycleNodes");
+    var dot = document.getElementById("cycleDot");
+    var steps = document.querySelectorAll(".cycle-step");
+    if (!svgNodes) return;
+    var cx=200, cy=200, R=140;
+    var positions = [0,1,2,3].map(function(i){
+      var ang = -Math.PI/2 + i*(Math.PI/2);
+      return { x: cx + R*Math.cos(ang), y: cy + R*Math.sin(ang), ang: ang };
+    });
+    var labels = ["①", "②", "③", "④"];
+    positions.forEach(function(p, i){
+      var c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+      c.setAttribute("cx", p.x); c.setAttribute("cy", p.y); c.setAttribute("r", 26);
+      c.setAttribute("fill", "var(--panel-2)"); c.setAttribute("stroke","var(--line)");
+      svgNodes.appendChild(c);
+      var t = document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x", p.x); t.setAttribute("y", p.y+6);
+      t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","18");
+      t.textContent = labels[i];
+      svgNodes.appendChild(t);
+    });
+
+    var idx = 0;
+    function setActive(i){
+      steps.forEach(function(s){ s.classList.toggle("active", parseInt(s.dataset.i,10) === i); });
+      var p = positions[i];
+      dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y);
+    }
+    setActive(0);
+    if (!reduceMotion){
+      setInterval(function(){
+        idx = (idx+1) % 4;
+        setActive(idx);
+      }, 2400);
+    }
+  })();
+
+  /* ---- module 06: action masking grid ---- */
+  (function(){
+    var grid = document.getElementById("maskGrid");
+    if (!grid) return;
+    var cells = [
+      {label:"OP1·PRD-A", invalid:false},
+      {label:"OP1·PRD-B", invalid:true, reason:"재공 없음"},
+      {label:"OP2·PRD-A", invalid:false},
+      {label:"OP2·PRD-C", invalid:true, reason:"진행 중"},
+      {label:"OP3·PRD-A", invalid:false},
+      {label:"OP3·PRD-B", invalid:false},
+      {label:"OP4·PRD-C", invalid:true, reason:"타 설비 점유"},
+      {label:"OP4·PRD-D", invalid:false},
+      {label:"OP5·PRD-B", invalid:true, reason:"재공 없음"},
+      {label:"OP5·PRD-D", invalid:false},
+    ];
+    var els = [];
+    cells.forEach(function(c){
+      var div = document.createElement("div");
+      div.className = "mask-cell" + (c.invalid ? " invalid" : "");
+      div.innerHTML =
+        '<div class="lbl">'+c.label+'</div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>' +
+        '<div class="reason">'+(c.invalid ? c.reason : "&nbsp;")+'</div>';
+      grid.appendChild(div);
+      els.push({el:div, invalid:c.invalid, fill:div.querySelector(".bar-fill")});
+    });
+
+    function updateProbs(){
+      var validEls = els.filter(function(e){ return !e.invalid; });
+      var raw = validEls.map(function(){ return Math.random()+0.2; });
+      var sum = raw.reduce(function(a,b){ return a+b; }, 0);
+      validEls.forEach(function(e, i){
+        var pct = (raw[i]/sum)*100;
+        e.fill.style.width = pct.toFixed(1)+"%";
+      });
+      els.filter(function(e){ return e.invalid; }).forEach(function(e){ e.fill.style.width = "0%"; });
+    }
+    updateProbs();
+    if (!reduceMotion) setInterval(updateProbs, 2200);
+  })();
+
+})();
+</script>
+</body>
+</html>
