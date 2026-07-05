@@ -22,7 +22,7 @@ def test_obs_dim_components_formula():
     assert comp["total"] == (
         _OBS_GLOBAL_DIM
         + comp["O"] * comp["P"] * 10
-        + comp["O"] * comp["P"] * comp["K"] * 3
+        + comp["O"] * comp["P"] * comp["K"] * 4
         + _OBS_EQP_LOCAL_DIM
         + _OBS_CONTEXT_DIM
     )
@@ -68,7 +68,7 @@ def test_format_obs_dim_mismatch_contains_config_and_formula():
     assert "OP01" in msg
     assert "PPK_A" in msg
     assert "old_model.zip" in msg
-    assert "O×P×10 + O×P×K×3" in msg
+    assert "O×P×10 + O×P×K×4" in msg
 
 
 def test_validate_obs_shape_raises_detailed_error():

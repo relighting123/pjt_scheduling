@@ -2093,14 +2093,14 @@ class SchedulingSimulator:
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
     PPK_OPER_FEATURES = 10
-    PPK_OPER_MODEL_FEATURES = 3
+    PPK_OPER_MODEL_FEATURES = 4
     BUCKET_FEATURES = PPK_OPER_FEATURES + PPK_OPER_MODEL_FEATURES
 
     def get_bucket_features(self) -> np.ndarray:
         """
         Bucket = (oper, ppk, model) 단위 feature 텐서.
         po_feats: shape (O, P, 10) -> (PPK, OPER) 종속 피처 10개
-        pom_feats: shape (O, P, K, 3) -> (PPK, OPER, MODEL) 종속 피처 3개
+        pom_feats: shape (O, P, K, 4) -> (PPK, OPER, MODEL) 종속 피처 4개
         이 둘을 각각 flatten하여 결합한 np.ndarray를 반환합니다.
         """
         # 버전 + current_eqp 가 같으면 캐시 반환
@@ -2130,7 +2130,7 @@ class SchedulingSimulator:
         current_eqp = self._current_eqp
 
         po_feats = np.zeros((O, P, 10), dtype=np.float32)
-        pom_feats = np.zeros((O, P, K, 3), dtype=np.float32)
+        pom_feats = np.zeros((O, P, K, 4), dtype=np.float32)
 
         # (oper, model) → min(free_at) 사전 계산
         min_end_by_om: Dict[tuple, int] = {
@@ -2285,15 +2285,18 @@ class SchedulingSimulator:
                 # pom_feats: 채널 4 (index 0) 할당
                 pom_feats[oi, pi, vmis, 0] = vsts / max_arrange_st
 
-                # pom_feats: 채널 8 (index 1), 채널 9 (index 2) 할당
+                # pom_feats: 채널 8 (index 1), 채널 9 (index 2), avoidable_frac (index 3) 할당
                 if curr_eqp_in_om and current_mi >= 0 and current_mi in valid_mis and lc:
-                    pom_feats[oi, pi, current_mi, 1] = (
-                        1.0 if self._would_need_conversion(current_eqp, lc, tp) else 0.0
-                    )
+                    needs_conv = self._would_need_conversion(current_eqp, lc, tp)
+                    pom_feats[oi, pi, current_mi, 1] = 1.0 if needs_conv else 0.0
                     pom_feats[oi, pi, current_mi, 2] = (
                         1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
                         or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
                     )
+                    if needs_conv:
+                        pom_feats[oi, pi, current_mi, 3] = self._conversion_avoidable_fraction(
+                            current_eqp, ppk, op, lc, tp,
+                        )
 
         feats = np.concatenate([po_feats.flatten(), pom_feats.flatten()])
         self._bucket_feats_cache = feats
@@ -2303,7 +2306,7 @@ class SchedulingSimulator:
     # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(3) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(2) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P = cfg.max_oper_count, cfg.max_prod_count
@@ -2320,30 +2323,19 @@ class SchedulingSimulator:
 
         bucket = self.get_bucket_features().flatten()
 
-        # EQP local: [0] 회피 가능, [1] prev_prod, [2] prev_oper
-        # needs_conversion(feasible 중 전환 필요 존재)은 bucket의 pom_feats needs_conversion
-        # 채널과 중복이라 제거 — 버킷별 정보가 이미 더 세밀하게 담고 있음.
-        eqp_local = np.zeros(3, dtype=np.float32)
+        # EQP local: [0] prev_prod, [1] prev_oper
+        # needs_conversion·avoidable_frac은 bucket의 pom_feats(needs_conversion,
+        # avoidable_frac) 채널과 중복이라 제거 — 버킷별 정보가 이미 더 세밀하게 담고 있음.
+        eqp_local = np.zeros(2, dtype=np.float32)
         current_eqp_id = self._current_eqp
         if current_eqp_id and current_eqp_id in self.eqps:
             eqp_obj = self.eqps[current_eqp_id]
-            eqp_local[1] = encode_normalized(
+            eqp_local[0] = encode_normalized(
                 eqp_obj.prev_prod, prod_idx, P,
             )
-            eqp_local[2] = encode_normalized(
+            eqp_local[1] = encode_normalized(
                 eqp_obj.prev_oper, oper_idx, O,
             )
-            max_avoidable = 0.0
-            for flat in self.get_feasible_ppk_oper(current_eqp_id):
-                ppk_f, oper_f = self.ppk_oper_from_flat(flat)
-                lc, tp = self._bucket_lot_cd_temp(ppk_f, oper_f)
-                if self._would_need_conversion(current_eqp_id, lc, tp):
-                    av = self._conversion_avoidable_fraction(
-                        current_eqp_id, ppk_f, oper_f, lc, tp,
-                    )
-                    if av > max_avoidable:
-                        max_avoidable = av
-            eqp_local[0] = max_avoidable
 
         group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)

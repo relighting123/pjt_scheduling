@@ -56,8 +56,8 @@ STATE_TERM_PAGES = [
     {
         "key": "bucket",
         "title": "버킷 특징 (Bucket)",
-        "obs_slice": "obs[6 : 6 + O×P×10 + O×P×K×3]",
-        "plain": "(OPER×PPK×모델) 격자마다 13채널 — \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
+        "obs_slice": "obs[6 : 6 + O×P×10 + O×P×K×4]",
+        "plain": "(OPER×PPK×모델) 격자마다 14채널 — \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
         "why": "보상(페이싱·중복커버·전환) 판단의 근거가 되는 핵심 특징입니다.",
         "trace_step": 1,
         "items": [
@@ -118,32 +118,31 @@ STATE_TERM_PAGES = [
                 "meaning": "안전재공 소진 시간 (몇 시간 후 재공이 말라 안전재공이 사라지는지)",
                 "trace_path": ("obs_bucket", "starve_time_norm"),
             },
+            {
+                "idx": "ch13", "name": "avoidable_frac",
+                "formula": "conversion_avoidable_fraction(현재 EQP, 이 버킷) — needs_conversion일 때만",
+                "meaning": "이 버킷을 잡을 때 전환이 회피 가능한 정도 (0~1, 보상 α와 동일 개념)",
+                "trace_path": ("obs_bucket", "avoidable_frac"),
+            },
         ],
     },
     {
         "key": "eqp_local",
         "title": "현재 설비 (EQP local)",
-        "obs_slice": "obs[…+0:…+3]",
-        "plain": "지금 결정하는 그 설비의 전환 회피·동일 셋업 맥락 3개.",
-        "why": "회피가능 전환·same_setup 보상 학습에 직접 쓰입니다.",
+        "obs_slice": "obs[…+0:…+2]",
+        "plain": "지금 결정하는 그 설비의 동일 셋업 맥락 2개.",
+        "why": "same_setup 보상 학습에 직접 쓰입니다.",
         "trace_step": 1,
         "items": [
             {
                 "idx": "eqp[0]",
-                "name": "avoidable_frac",
-                "formula": "max α over feasible 전환 버킷",
-                "meaning": "전환 시 회피가능 정도 (0~1, 보상 α와 동일 개념)",
-                "trace_path": ("obs_eqp_local", "avoidable_frac"),
-            },
-            {
-                "idx": "eqp[1]",
                 "name": "prev_prod",
                 "formula": "encode(현재 EQP.prev_prod)",
                 "meaning": "이 설비 직전 배정 PPK (same_setup 판단용)",
                 "trace_path": ("obs_eqp_local", "prev_prod"),
             },
             {
-                "idx": "eqp[2]",
+                "idx": "eqp[1]",
                 "name": "prev_oper",
                 "formula": "encode(현재 EQP.prev_oper)",
                 "meaning": "이 설비 직전 배정 OPER (same_setup 판단용)",
@@ -154,7 +153,7 @@ STATE_TERM_PAGES = [
     {
         "key": "context",
         "title": "직전 맥락 (Context)",
-        "obs_slice": "obs[…+3:…+7]",
+        "obs_slice": "obs[…+2:…+6]",
         "plain": "직전 스텝에서 누가·무엇을·어느 설비에 배정했는지 정규화 인덱스 4개.",
         "why": "라인 전역 직전 배정 맥락.",
         "trace_step": 4,

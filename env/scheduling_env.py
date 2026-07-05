@@ -19,7 +19,7 @@ from simulation.simulator import SchedulingSimulator
 from simulation.decision_log import build_step_decision_entry
 
 _OBS_GLOBAL_DIM = 6
-_OBS_EQP_LOCAL_DIM = 3
+_OBS_EQP_LOCAL_DIM = 2
 _OBS_CONTEXT_DIM = 4
 _OBS_FIXED_DIM = _OBS_GLOBAL_DIM + _OBS_EQP_LOCAL_DIM + _OBS_CONTEXT_DIM
 
@@ -30,7 +30,7 @@ def obs_dim_components() -> dict:
     P = CONFIG.env.max_prod_count
     K = CONFIG.env.max_model_count
     F_po = 10
-    F_pom = 3
+    F_pom = 4
     bucket = O * P * F_po + O * P * K * F_pom
     return {
         "O": O,
@@ -47,7 +47,7 @@ def obs_dim_components() -> dict:
 
 
 def compute_obs_dim() -> int:
-    """Global(6) + Bucket(O×P×10 + O×P×K×3) + current EQP(3) + Context(4)"""
+    """Global(6) + Bucket(O×P×10 + O×P×K×4) + current EQP(2) + Context(4)"""
     return obs_dim_components()["total"]
 
 
@@ -55,7 +55,7 @@ def _opk_product_from_obs_dim(dim: int) -> Optional[int]:
     """obs_dim에서 O×P×K 곱을 역산. 고정 16차원(Global+EQP+Context) 제외."""
     inner = dim - _OBS_FIXED_DIM
     K = CONFIG.env.max_model_count
-    factor = 10 + K * 3
+    factor = 10 + K * 4
     if inner < 0 or inner % factor != 0:
         return None
     op = inner // factor
@@ -98,7 +98,7 @@ def _describe_obs_dim_side(
     opk = _opk_product_from_obs_dim(dim)
     if opk is None:
         lines.append(
-            f"  ※ {dim}은 표준 공식(6 + O×P×10 + O×P×K×3 + EQP + Context)과 맞지 않습니다."
+            f"  ※ {dim}은 표준 공식(6 + O×P×10 + O×P×K×4 + EQP + Context)과 맞지 않습니다."
         )
         return lines
 
@@ -107,7 +107,7 @@ def _describe_obs_dim_side(
         comp = obs_dim_components()
         O, P, K = comp["O"], comp["P"], comp["K"]
         lines.append(
-            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}={O}×{P}×10 + {O}×{P}×{K}×3) "
+            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}={O}×{P}×10 + {O}×{P}×{K}×4) "
             f"+ EQP({_OBS_EQP_LOCAL_DIM}) + Context({_OBS_CONTEXT_DIM})"
         )
         lines.append(
@@ -118,7 +118,7 @@ def _describe_obs_dim_side(
         K_cfg = CONFIG.env.max_model_count
         op_val = opk // K_cfg if K_cfg > 0 else 0
         lines.append(
-            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}=O×P×10 + O×P×K×3) "
+            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}=O×P×10 + O×P×K×4) "
             f"+ EQP({_OBS_EQP_LOCAL_DIM}) + Context({_OBS_CONTEXT_DIM})"
         )
         triples = _factor_opk_triples(opk)
@@ -205,7 +205,7 @@ def format_obs_dim_mismatch(
     )
     lines.append("  2. 현재 config로 python main.py train (또는 UI 학습) 재실행")
     lines.append(
-        f"  ※ 공식: obs_dim = {_OBS_GLOBAL_DIM} + (O×P×10 + O×P×K×3) "
+        f"  ※ 공식: obs_dim = {_OBS_GLOBAL_DIM} + (O×P×10 + O×P×K×4) "
         f"+ {_OBS_EQP_LOCAL_DIM} + {_OBS_CONTEXT_DIM}"
     )
     return "\n".join(lines)
