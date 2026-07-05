@@ -277,90 +277,12 @@ def state_term_detail_slide(idx: int, meta: dict):
         txt(s, 6.8, y + 1.62, 5.65, 2.2, [
             [R("핵심 제약 조건 및 케이스별 산식", 11.5, NAVY, True)],
             [R("▪ 가공 속도(self_st) : ", 10.5, NAVY, True), R("st_per_wafer / max_st  (모델별 가공속도)", 10, GRAY)],
-            [R("▪ 셋업 전환(needs_conversion) : ", 10.5, NAVY, True), R("1 [prev_lot_cd != lot_cd]  (1회당 패널티)", 10, GRAY)],
+            [R("▪ 셋업 전환(needs_conversion) : ", 10.5, NAVY, True), R("1 [lot_cd 또는 temp 상이]  (1회당 패널티)", 10, GRAY)],
             [R("▪ 공구 포화(tool_can_assign) : ", 10.5, NAVY, True), R("1 [net capa 잔여]  (부족 시 배정 차단)", 10, GRAY)],
             [R("▪ 달성 목표(achievable_ratio) : ", 10.5, NAVY, True), R("min(계획, 완료+상류WIP) / 계획", 10, GRAY)],
             [R("▪ 안전재공 소진(starve_time_norm) : ", 10.5, NAVY, True), R("wip / (현재capa - 상류capa) / T_avail", 10, GRAY)]
         ], line_spacing=1.15, space_after=3)
         
-    elif key == "eqp_local":
-        box(s, 6.45, y, 6.35, 4.15, LIGHT, line_color=LINE, line_w=1.0)
-        txt(s, 6.65, y + 0.15, 5.95, 0.4, [[R("설비 의사결정 시 셋업 전환 케이스 (미니 간트차트)", 12.5, NAVY, True)]])
-        
-        # 케이스 1: 무변환 배정 (Same Setup)
-        txt(s, 6.65, y + 0.65, 5.95, 0.3, [[R("Case A. 무변환 배정 (연속 가공 → Setup 보너스 +1.0 대상)", 10.5, GREEN, True)]])
-        box(s, 6.65, y + 0.95, 2.4, 0.5, NAVY, line_color=LINE)
-        txt(s, 6.65, y + 1.08, 2.4, 0.3, [[R("prev_lot (LC01)", 9.5, WHITE, True)]], align=PP_ALIGN.CENTER)
-        
-        arrow(s, 9.15, y + 1.08, 0.35, 0.25, color=GREEN)
-        
-        box(s, 9.6, y + 0.95, 2.4, 0.5, ACCENT, line_color=LINE)
-        txt(s, 9.6, y + 1.08, 2.4, 0.3, [[R("current_lot (LC01)", 9.5, WHITE, True)]], align=PP_ALIGN.CENTER)
-        
-        # 케이스 2: 전환 배정 (Conversion)
-        txt(s, 6.65, y + 1.75, 5.95, 0.3, [[R("Case B. 전환 배정 (셋업 교체 발생 → Conversion 패널티 -10.0 부과)", 10.5, RED, True)]])
-        box(s, 6.65, y + 2.05, 1.9, 0.5, NAVY, line_color=LINE)
-        txt(s, 6.65, y + 2.18, 1.9, 0.3, [[R("prev_lot (LC01)", 9.5, WHITE, True)]], align=PP_ALIGN.CENTER)
-        
-        arrow(s, 8.65, y + 2.18, 0.2, 0.25, color=RED)
-        
-        box(s, 8.95, y + 2.05, 1.4, 0.5, AMBER, line_color=LINE)
-        txt(s, 8.95, y + 2.18, 1.4, 0.3, [[R("Conversion", 9.5, WHITE, True)]], align=PP_ALIGN.CENTER)
-        
-        arrow(s, 10.45, y + 2.18, 0.2, 0.25, color=RED)
-        
-        box(s, 10.75, y + 2.05, 1.7, 0.5, STEEL, line_color=LINE)
-        txt(s, 10.75, y + 2.18, 1.7, 0.3, [[R("current_lot (LC02)", 9.5, WHITE, True)]], align=PP_ALIGN.CENTER)
-        
-        # 하단 텍스트 설명
-        box(s, 6.65, y + 2.85, 5.95, 1.05, WHITE, line_color=LINE, line_w=0.75)
-        txt(s, 6.75, y + 2.92, 5.75, 0.9, [
-            [R("▪ needs_conversion = 1 ", 10, NAVY, True), R(": 직전과 다음의 LOT_CD 또는 TEMP가 다른 경우", 9.5, GRAY)],
-            [R("▪ avoidable_frac (회피가능비율) ", 10, NAVY, True), R(": 내 설비가 변환할 때, 동일 셋업을 이미", 9.5, GRAY)],
-            [R("  가진 다른 설비들이 시간 내에 이 재공을 다 처리할 수 있는 비율", 9.5, GRAY)]
-        ], line_spacing=1.1)
-        
-    elif key == "context":
-        box(s, 6.45, y, 6.35, 4.15, LIGHT, line_color=LINE, line_w=1.0)
-        txt(s, 6.65, y + 0.15, 5.95, 0.4, [[R("Decision Steps 간의 Context (직전 맥락) 전이 구조", 12.5, NAVY, True)]])
-        
-        # Step t-1 카드
-        box(s, 6.65, y + 0.75, 2.2, 2.5, WHITE, line_color=LINE, line_w=1.0)
-        box(s, 6.65, y + 0.75, 2.2, 0.4, STEEL)
-        txt(s, 6.65, y + 0.82, 2.2, 0.3, [[R("Step t − 1 (직전)", 11, WHITE, True)]], align=PP_ALIGN.CENTER)
-        txt(s, 6.75, y + 1.22, 2.0, 1.9, [
-            [R("의사결정 결과 :", 10, NAVY, True)],
-            [R("▪ EQP002 설비에", 9.5, GRAY)],
-            [R("▪ PPK001 제품의", 9.5, GRAY)],
-            [R("▪ OPER001 공정을", 9.5, GRAY)],
-            [R("▪ LC01 셋업으로", 9.5, GRAY)],
-            [R("  배정 완료", 9.5, GRAY)]
-        ], line_spacing=1.1)
-        
-        # 전이 화살표 + 칩
-        arrow(s, 8.95, y + 1.8, 1.45, 0.4, color=ACCENT)
-        txt(s, 8.95, y + 1.32, 1.45, 0.45, [[R("인덱스 인코딩\n(Context 피처)", 9.5, ACCENT, True)]], align=PP_ALIGN.CENTER)
-        
-        # Step t 카드
-        box(s, 10.5, y + 0.75, 2.1, 2.5, WHITE, line_color=LINE, line_w=1.0)
-        box(s, 10.5, y + 0.75, 2.1, 0.4, NAVY)
-        txt(s, 10.5, y + 0.82, 2.1, 0.3, [[R("Step t (현재 결정)", 11, WHITE, True)]], align=PP_ALIGN.CENTER)
-        txt(s, 10.6, y + 1.22, 1.9, 1.9, [
-            [R("수신 피처 (obs) :", 10, NAVY, True)],
-            [R("▪ last_ppk (ctx[0])", 9.5, INK)],
-            [R("▪ last_oper (ctx[1])", 9.5, INK)],
-            [R("▪ last_eqp (ctx[2])", 9.5, INK)],
-            [R("▪ last_lot_cd (ctx[3])", 9.5, INK)],
-            [R("→ 현재 의사결정의\n  컨텍스트로 주입", 9.5, GRAY)]
-        ], line_spacing=1.1)
-        
-        # 하단 텍스트 설명
-        box(s, 6.65, y + 3.4, 5.95, 0.55, WHITE, line_color=LINE, line_w=0.75)
-        txt(s, 6.75, y + 3.45, 5.75, 0.45, [[
-            R("의의  ", 10.5, ACCENT, True),
-            R("에이전트가 단일 설비의 상태뿐만 아니라, 직전 스텝의 라인 전역 스케줄링 결정 흐름을 학습에 반영할 수 있도록 돕습니다.", 10, INK)
-        ]], line_spacing=1.1)
-
     return s
 
 
@@ -423,14 +345,10 @@ def state_multi_eqp_slide(idx: int):
          lambda st: st["state"]["obs_global"]["remaining_lots"]),
         ("plan_progress", "min(produced / total_plan, 1)",
          lambda st: st["state"]["obs_global"]["plan_progress"]),
-        ("needs_conversion", "1[feasible 중 전환 필요 버킷 존재]",
-         lambda st: st["state"]["obs_eqp_local"]["needs_conversion"]),
-        ("avoidable_frac", "max α over feasible 전환 버킷",
-         lambda st: st["state"]["obs_eqp_local"]["avoidable_frac"]),
-        ("prev_prod", "encode(현재 EQP.prev_prod)",
-         lambda st: st["state"]["obs_eqp_local"].get("prev_prod", "—")),
-        ("prev_oper", "encode(현재 EQP.prev_oper)",
-         lambda st: st["state"]["obs_eqp_local"].get("prev_oper", "—")),
+        ("needs_conversion", "1[현재 EQP에서 이 버킷 LOT_CD/TEMP로 전환 필요]",
+         lambda st: st["state"]["obs_bucket"].get("needs_conversion", "—")),
+        ("avoidable_frac", "conversion_avoidable_fraction(현재 EQP, 이 버킷)",
+         lambda st: st["state"]["obs_bucket"].get("avoidable_frac", "—")),
         ("reward (이 결정)", "8항목 보상 합",
          lambda st: st["reward"]),
     ]

@@ -64,6 +64,7 @@ def _bucket_state(sim, ppk: str, oper: str, eqp_id: str) -> dict:
         "plan_urgency": r(v[5]),
         "needs_conversion": r(v[8]),
         "tool_can_assign": r(v[9]),
+        "avoidable_frac": r(v[13]),
         "achievable_ratio": r(v[10]),
         "projected_cover_ratio": r(v[11]),
         "starve_time_norm": r(v[12]),
@@ -71,15 +72,7 @@ def _bucket_state(sim, ppk: str, oper: str, eqp_id: str) -> dict:
 
 
 def _state_summary(obs: np.ndarray, sim, total_plan: int, ppk: str = "", oper: str = "", eqp_id: str = "") -> dict:
-    from config import CONFIG
-    from simulation.simulator import SchedulingSimulator
-
     produced = sum(sim.stats["completed_qty"].values())
-    O = CONFIG.env.max_oper_count
-    P = CONFIG.env.max_prod_count
-    K = CONFIG.env.max_model_count
-    F = SchedulingSimulator.BUCKET_FEATURES
-    base = 6 + O * P * K * F
     return {
         "time_min": int(sim.current_time),
         "progress_pct": round(100 * produced / max(total_plan, 1), 1),
@@ -95,18 +88,6 @@ def _state_summary(obs: np.ndarray, sim, total_plan: int, ppk: str = "", oper: s
             "tool_util": round(float(obs[5]), 3),
         },
         "obs_bucket": _bucket_state(sim, ppk, oper, eqp_id),
-        "obs_eqp_local": {
-            "needs_conversion": round(float(obs[base]), 3),
-            "avoidable_frac": round(float(obs[base + 1]), 3),
-            "prev_prod": round(float(obs[base + 2]), 3),
-            "prev_oper": round(float(obs[base + 3]), 3),
-        },
-        "obs_context": {
-            "last_ppk": round(float(obs[base + 4]), 3),
-            "last_oper": round(float(obs[base + 5]), 3),
-            "last_eqp": round(float(obs[base + 6]), 3),
-            "last_lot_cd": round(float(obs[base + 7]), 3),
-        },
     }
 
 
