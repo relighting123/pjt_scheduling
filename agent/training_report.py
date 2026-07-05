@@ -151,7 +151,7 @@ def _plot_png(
 
 def save_training_convergence_report(
     model_dir: Path,
-    algorithm: str = "rl",
+    algorithm: str = "bulkfill",
     progress_series: Optional[dict[str, list]] = None,
     eval_metrics: Optional[dict[str, Any]] = None,
 ) -> dict:

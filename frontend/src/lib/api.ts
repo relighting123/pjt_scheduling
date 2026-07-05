@@ -149,7 +149,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        algorithm: opts.algorithm ?? "rl",
+        algorithm: opts.algorithm ?? "bulkfill",
         decision_log: opts.decision_log ?? false,
         include_history: opts.include_history ?? false,
         enable_wip_inflow: opts.enable_wip_inflow ?? false,

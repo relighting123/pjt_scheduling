@@ -988,6 +988,7 @@ export function buildAchievementComparison(
 
 export const ALGO_CHART_COLORS: Record<string, string> = {
   rl: "#4C72B0",
+  bulkfill: "#8172B3",
   minprogress: "#55A868",
   earliest_st: "#DD8452",
 };

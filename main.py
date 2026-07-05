@@ -186,7 +186,7 @@ def cmd_train(
     nodb: bool = False,
     lot_cd: str = None,
     all_folders: bool = False,
-    algorithm: str = "rl",
+    algorithm: str = "bulkfill",
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
 
@@ -362,6 +362,7 @@ def cmd_inference(
     *,
     nodb: bool = False,
     lot_cd: str = None,
+    algorithm: str = "bulkfill",
     decision_log: bool = False,
     enable_wip_inflow: bool = False,
     include_history: bool = False,
@@ -389,7 +390,7 @@ def cmd_inference(
     set_input_folder(f"{fac_id}/infer")
 
     try:
-        agent = SchedulingAgent.load()
+        agent = SchedulingAgent.load(algorithm=algorithm)
     except (FileNotFoundError, ValueError) as exc:
         print(f"[오류] {exc}")
         sys.exit(1)
@@ -414,7 +415,7 @@ def cmd_inference(
         print(f"[inference] 전환 소요 시간: {conversion_minutes}분")
     result = run_inference(
         env_data,
-        algorithm="rl",
+        algorithm=algorithm,
         agent=agent,
         record_history=include_history,
         record_decision_log=decision_log,
@@ -661,8 +662,8 @@ def parse_args():
         help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
     )
     train_p.add_argument(
-        "--algorithm", default="rl", choices=["rl", "bulkfill"],
-        help="학습 환경: rl (기본, SchedulingEnv) | bulkfill (BulkFillEnv)",
+        "--algorithm", default="bulkfill", choices=["rl", "bulkfill"],
+        help="학습 환경: bulkfill (기본, BulkFillEnv) | rl (SchedulingEnv)",
     )
     val_p = sub.add_parser("validate", help="test 데이터 전체 검증")
     val_p.add_argument("--facid", required=True, help="공장 ID")
@@ -685,6 +686,10 @@ def parse_args():
     inf_p.add_argument(
         "--nodb", action="store_true",
         help="Oracle 조회 생략, dataset 기존 JSON 사용",
+    )
+    inf_p.add_argument(
+        "--algorithm", default="bulkfill", choices=["rl", "bulkfill"],
+        help="추론 모델: bulkfill (기본) | rl",
     )
     inf_p.add_argument(
         "--decision-log", action="store_true",
@@ -874,7 +879,7 @@ def main():
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
                 all_folders=args.all_folders,
-                algorithm=getattr(args, "algorithm", "rl"),
+                algorithm=getattr(args, "algorithm", "bulkfill"),
             )
 
         elif args.command == "validate":
@@ -886,6 +891,7 @@ def main():
                 rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
+                algorithm=getattr(args, "algorithm", "bulkfill"),
                 decision_log=args.decision_log,
                 enable_wip_inflow=args.enable_wip_inflow,
                 include_history=args.include_history,

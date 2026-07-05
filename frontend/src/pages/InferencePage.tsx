@@ -142,7 +142,7 @@ function csv(sched: InferenceResult["schedule"], name: string) {
 export default function InferencePage({ modelExists, config, summary, folderLoading, onInputFolderChange }: Props) {
   const [result, setResult]           = useState<InferenceResult | null>(null);
   const [compareData, setCompareData] = useState<AlgorithmCompareResponse | null>(null);
-  const [algorithm, setAlgorithm]     = useState<AlgorithmId>("rl");
+  const [algorithm, setAlgorithm]     = useState<AlgorithmId>("bulkfill");
   const [algorithms, setAlgorithms]   = useState<AlgorithmInfo[]>([]);
   const [compareAlgos, setCompareAlgos] = useState<Set<AlgorithmId>>(new Set());
   const [loading, setLoading]         = useState(false);

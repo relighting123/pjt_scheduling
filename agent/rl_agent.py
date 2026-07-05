@@ -265,7 +265,7 @@ class SchedulingAgent:
 
     @classmethod
     def load(cls, path: str = None, env_data: Optional[dict] = None,
-             algorithm: str = "rl") -> "SchedulingAgent":
+             algorithm: str = "bulkfill") -> "SchedulingAgent":
         """
         목적: 저장된 모델 파일을 로드하여 에이전트 반환
         Input:  path (str)       – 명시적 경로. None이면 알고리즘별 기본값 탐색
@@ -282,12 +282,17 @@ class SchedulingAgent:
         print(f"[agent] 모델 로드 ← {load_path} (obs_dim={_model_obs_dim(model)})")
         return cls(model=model)
 
-    def model_exists(self, path: str = None) -> bool:
+    def model_exists(self, path: str = None, algorithm: str = "bulkfill") -> bool:
         """
         목적: 저장된 모델 파일 존재 여부 확인
         Input:  path (str)
+                algorithm (str) – "rl" | "bulkfill" (path 미지정 시 파일명 결정에 사용)
         Output: bool
         """
+        if path is None and algorithm != "rl":
+            algo_path = CONFIG.path.model_dir / _model_name_for_algorithm(algorithm)
+            if (algo_path.with_suffix(".zip")).exists():
+                path = str(algo_path)
         try:
             _load_compatible_model(path)
             return True
