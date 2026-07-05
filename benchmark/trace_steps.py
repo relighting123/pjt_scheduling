@@ -96,16 +96,15 @@ def _state_summary(obs: np.ndarray, sim, total_plan: int, ppk: str = "", oper: s
         },
         "obs_bucket": _bucket_state(sim, ppk, oper, eqp_id),
         "obs_eqp_local": {
-            "needs_conversion": round(float(obs[base]), 3),
-            "avoidable_frac": round(float(obs[base + 1]), 3),
-            "prev_prod": round(float(obs[base + 2]), 3),
-            "prev_oper": round(float(obs[base + 3]), 3),
+            "avoidable_frac": round(float(obs[base]), 3),
+            "prev_prod": round(float(obs[base + 1]), 3),
+            "prev_oper": round(float(obs[base + 2]), 3),
         },
         "obs_context": {
-            "last_ppk": round(float(obs[base + 4]), 3),
-            "last_oper": round(float(obs[base + 5]), 3),
-            "last_eqp": round(float(obs[base + 6]), 3),
-            "last_lot_cd": round(float(obs[base + 7]), 3),
+            "last_ppk": round(float(obs[base + 3]), 3),
+            "last_oper": round(float(obs[base + 4]), 3),
+            "last_eqp": round(float(obs[base + 5]), 3),
+            "last_lot_cd": round(float(obs[base + 6]), 3),
         },
     }
 

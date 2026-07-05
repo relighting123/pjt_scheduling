@@ -277,7 +277,7 @@ def state_term_detail_slide(idx: int, meta: dict):
         txt(s, 6.8, y + 1.62, 5.65, 2.2, [
             [R("핵심 제약 조건 및 케이스별 산식", 11.5, NAVY, True)],
             [R("▪ 가공 속도(self_st) : ", 10.5, NAVY, True), R("st_per_wafer / max_st  (모델별 가공속도)", 10, GRAY)],
-            [R("▪ 셋업 전환(needs_conversion) : ", 10.5, NAVY, True), R("1 [prev_lot_cd != lot_cd]  (1회당 패널티)", 10, GRAY)],
+            [R("▪ 셋업 전환(needs_conversion) : ", 10.5, NAVY, True), R("1 [lot_cd 또는 temp 상이]  (1회당 패널티)", 10, GRAY)],
             [R("▪ 공구 포화(tool_can_assign) : ", 10.5, NAVY, True), R("1 [net capa 잔여]  (부족 시 배정 차단)", 10, GRAY)],
             [R("▪ 달성 목표(achievable_ratio) : ", 10.5, NAVY, True), R("min(계획, 완료+상류WIP) / 계획", 10, GRAY)],
             [R("▪ 안전재공 소진(starve_time_norm) : ", 10.5, NAVY, True), R("wip / (현재capa - 상류capa) / T_avail", 10, GRAY)]

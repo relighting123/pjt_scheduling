@@ -123,34 +123,27 @@ STATE_TERM_PAGES = [
     {
         "key": "eqp_local",
         "title": "현재 설비 (EQP local)",
-        "obs_slice": "obs[…+0:…+4]",
-        "plain": "지금 결정하는 그 설비의 전환·동일 셋업 맥락 4개.",
+        "obs_slice": "obs[…+0:…+3]",
+        "plain": "지금 결정하는 그 설비의 전환 회피·동일 셋업 맥락 3개.",
         "why": "회피가능 전환·same_setup 보상 학습에 직접 쓰입니다.",
         "trace_step": 1,
         "items": [
             {
                 "idx": "eqp[0]",
-                "name": "needs_conversion",
-                "formula": "1[feasible 중 전환 필요 버킷 존재]",
-                "meaning": "이 설비가 feasible한 선택 중 셋업 변경이 필요한 게 있나",
-                "trace_path": ("obs_eqp_local", "needs_conversion"),
-            },
-            {
-                "idx": "eqp[1]",
                 "name": "avoidable_frac",
                 "formula": "max α over feasible 전환 버킷",
                 "meaning": "전환 시 회피가능 정도 (0~1, 보상 α와 동일 개념)",
                 "trace_path": ("obs_eqp_local", "avoidable_frac"),
             },
             {
-                "idx": "eqp[2]",
+                "idx": "eqp[1]",
                 "name": "prev_prod",
                 "formula": "encode(현재 EQP.prev_prod)",
                 "meaning": "이 설비 직전 배정 PPK (same_setup 판단용)",
                 "trace_path": ("obs_eqp_local", "prev_prod"),
             },
             {
-                "idx": "eqp[3]",
+                "idx": "eqp[2]",
                 "name": "prev_oper",
                 "formula": "encode(현재 EQP.prev_oper)",
                 "meaning": "이 설비 직전 배정 OPER (same_setup 판단용)",
@@ -161,7 +154,7 @@ STATE_TERM_PAGES = [
     {
         "key": "context",
         "title": "직전 맥락 (Context)",
-        "obs_slice": "obs[…+4:…+8]",
+        "obs_slice": "obs[…+3:…+7]",
         "plain": "직전 스텝에서 누가·무엇을·어느 설비에 배정했는지 정규화 인덱스 4개.",
         "why": "라인 전역 직전 배정 맥락.",
         "trace_step": 4,

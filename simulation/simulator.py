@@ -2303,7 +2303,7 @@ class SchedulingSimulator:
     # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(4) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(3) + Context(4)."""
         data = self._env_data
         cfg = CONFIG.env
         O, P = cfg.max_oper_count, cfg.max_prod_count
@@ -2320,15 +2320,17 @@ class SchedulingSimulator:
 
         bucket = self.get_bucket_features().flatten()
 
-        # EQP local: [0] 변환 필요 feasible 존재, [1] 회피 가능, [2] prev_prod, [3] prev_oper
-        eqp_local = np.zeros(4, dtype=np.float32)
+        # EQP local: [0] 회피 가능, [1] prev_prod, [2] prev_oper
+        # needs_conversion(feasible 중 전환 필요 존재)은 bucket의 pom_feats needs_conversion
+        # 채널과 중복이라 제거 — 버킷별 정보가 이미 더 세밀하게 담고 있음.
+        eqp_local = np.zeros(3, dtype=np.float32)
         current_eqp_id = self._current_eqp
         if current_eqp_id and current_eqp_id in self.eqps:
             eqp_obj = self.eqps[current_eqp_id]
-            eqp_local[2] = encode_normalized(
+            eqp_local[1] = encode_normalized(
                 eqp_obj.prev_prod, prod_idx, P,
             )
-            eqp_local[3] = encode_normalized(
+            eqp_local[2] = encode_normalized(
                 eqp_obj.prev_oper, oper_idx, O,
             )
             max_avoidable = 0.0
@@ -2336,13 +2338,12 @@ class SchedulingSimulator:
                 ppk_f, oper_f = self.ppk_oper_from_flat(flat)
                 lc, tp = self._bucket_lot_cd_temp(ppk_f, oper_f)
                 if self._would_need_conversion(current_eqp_id, lc, tp):
-                    eqp_local[0] = 1.0
                     av = self._conversion_avoidable_fraction(
                         current_eqp_id, ppk_f, oper_f, lc, tp,
                     )
                     if av > max_avoidable:
                         max_avoidable = av
-            eqp_local[1] = max_avoidable
+            eqp_local[0] = max_avoidable
 
         group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)
