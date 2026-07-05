@@ -2263,7 +2263,16 @@ class SchedulingSimulator:
                 if consume_rate > supply_rate:
                     net_rate = consume_rate - supply_rate
                     starve_time = wip_q / net_rate
-                    starve_time_norm = min(starve_time / T_avail, 1.0)
+                    # 계층값: 소진까지 남은 시간을 1시간/2시간/4시간 구간으로 나눠
+                    # 0 / 0.25 / 0.5 / 0.75 중 하나로 이산화 (급할수록 값이 작음)
+                    if starve_time <= 60:
+                        starve_time_norm = 0.0
+                    elif starve_time <= 120:
+                        starve_time_norm = 0.25
+                    elif starve_time <= 240:
+                        starve_time_norm = 0.5
+                    else:
+                        starve_time_norm = 0.75
                 else:
                     starve_time_norm = 1.0
                 po_feats[oi, pi, 9] = starve_time_norm
