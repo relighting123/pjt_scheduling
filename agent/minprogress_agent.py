@@ -37,16 +37,24 @@ class MinProgressAgent:
         """현재 장비에서 처리 중(배정됐지만 완료 전)인 lot 수."""
         return sim.get_in_flight_qty(prod, oper_id)
 
+    def _expected_by_now(
+        self, sim: SchedulingSimulator, prod: str, oper_id: str,
+    ) -> float:
+        """간트차트 max end time(x축) 시점까지 capa 기준 도달 가능했을 생산량."""
+        cap_rate = sim._oper_capacity_per_min(prod, oper_id)  # 매/분
+        t_end = self._chart_max_x(sim)
+        expected = cap_rate * t_end
+        row = self._plan_row(prod, oper_id)
+        if row and row.get("d0_plan_qty", 0) > 0:
+            expected = min(expected, row["d0_plan_qty"])
+        return max(expected, 1.0)
+
     def _normalized_slope(
         self, sim: SchedulingSimulator, prod: str, oper_id: str,
     ) -> float:
         # completed_qty는 배정 시점에 증가하므로 처리 중(in-flight) 포함
         cum = sim.stats["completed_qty"].get((prod, oper_id), 0)
-        t_end = self._chart_max_x(sim)
-        row = self._plan_row(prod, oper_id)
-        if row and row.get("d0_plan_qty", 0) > 0:
-            return (cum / max(row["d0_plan_qty"], 1)) / t_end
-        return cum / t_end
+        return cum / self._expected_by_now(sim, prod, oper_id)
 
     def _remaining_work(
         self, sim: SchedulingSimulator, prod: str, oper_id: str,
@@ -60,11 +68,20 @@ class MinProgressAgent:
 
     def _score_assignment(self, sim: SchedulingSimulator, flat: int) -> Tuple:
         ppk, oper_id = sim.ppk_oper_from_flat(flat)
+        eqp_id = sim.current_idle_eqp()
+        # 동일 setup(전환 불필요) 우선 + ST 짧은 조합 우선 → 불필요한 전환 최소화
+        lot_cd, temp = sim._bucket_lot_cd_temp(ppk, oper_id)
+        needs_conversion = sim._would_need_conversion(eqp_id, lot_cd, temp)
+        st = sim._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
+        if st is None:
+            st = float("inf")
         # in_flight: 이미 다른 EQP가 처리 중인 (ppk, oper) → 추가 배정 후순위
         in_flight = self._in_flight_qty(sim, ppk, oper_id)
         return (
             self._plan_priority(ppk, oper_id),
             self._normalized_slope(sim, ppk, oper_id),
+            int(needs_conversion),
+            st,
             in_flight,
             -self._remaining_work(sim, ppk, oper_id),
             flat,
