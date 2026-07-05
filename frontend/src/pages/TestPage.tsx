@@ -9,10 +9,10 @@ import {
   buildAlgorithmAchievementComparison,
   buildAlgorithmGanttComparison,
   buildTestMetricChart,
-  resultScheduleStats,
   TEST_METRICS,
   type AlgoCompareEntry,
 } from "../lib/charts";
+import { computeInferenceKpi } from "../lib/metrics";
 import type {
   AlgorithmId, AlgorithmInfo, AppConfig,
   TestBenchmarkResponse, TestDatasetInfo,
@@ -274,18 +274,17 @@ export default function TestPage({ config, modelExists }: Props) {
                   <div className="card-title">KPI 비교 — {selectedDataset.label}</div>
                   <div className="table-wrap">
                     <table>
-                      <thead><tr><th>알고리즘</th><th>Makespan</th><th>Idle</th><th>공정전환</th><th>제품전환</th><th>평균달성률</th></tr></thead>
+                      <thead><tr><th>알고리즘</th><th>Makespan</th><th>가동률</th><th>유휴율</th><th>공정전환</th><th>제품전환</th><th>Tool전환</th><th>계획달성률</th><th>타겟달성률</th></tr></thead>
                       <tbody>
                         {detailEntries.map(e => {
-                          const s = resultScheduleStats(e.result);
-                          const achV = Object.values(s.achievement);
-                          const avg = achV.length ? Math.round(achV.reduce((a,b)=>a+b,0)/achV.length*10)/10 : 0;
+                          const k = computeInferenceKpi(e.result);
                           return (
                             <tr key={e.algorithm}>
                               <td style={{ fontFamily:"var(--font)", fontWeight:700, color: ALGO_CHART_COLORS[e.algorithm] }}>{e.label}</td>
-                              <td>{s.makespan}분</td><td>{s.idle_total}분</td>
-                              <td>{s.oper_switches}회</td><td>{s.prod_switches}회</td>
-                              <td style={{ color: avg>=90?"var(--ok)":avg>=70?"var(--warn)":"var(--err)" }}>{avg}%</td>
+                              <td>{k.makespan}분</td><td>{k.avgUtilPct}%</td><td>{k.avgIdlePct}%</td>
+                              <td>{k.operSwitches}회</td><td>{k.prodSwitches}회</td><td>{k.toolSwitches}회</td>
+                              <td style={{ color: k.avgAchPct>=90?"var(--ok)":k.avgAchPct>=70?"var(--warn)":"var(--err)" }}>{k.avgAchPct}%</td>
+                              <td style={{ color: k.avgTargetAchPct>=90?"var(--ok)":k.avgTargetAchPct>=70?"var(--warn)":"var(--err)" }}>{k.avgTargetAchPct}%</td>
                             </tr>
                           );
                         })}
