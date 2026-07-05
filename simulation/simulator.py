@@ -2093,14 +2093,14 @@ class SchedulingSimulator:
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
     PPK_OPER_FEATURES = 10
-    PPK_OPER_MODEL_FEATURES = 4
+    PPK_OPER_MODEL_FEATURES = 5
     BUCKET_FEATURES = PPK_OPER_FEATURES + PPK_OPER_MODEL_FEATURES
 
     def get_bucket_features(self) -> np.ndarray:
         """
         Bucket = (oper, ppk, model) 단위 feature 텐서.
         po_feats: shape (O, P, 10) -> (PPK, OPER) 종속 피처 10개
-        pom_feats: shape (O, P, K, 4) -> (PPK, OPER, MODEL) 종속 피처 4개
+        pom_feats: shape (O, P, K, 5) -> (PPK, OPER, MODEL) 종속 피처 5개
         이 둘을 각각 flatten하여 결합한 np.ndarray를 반환합니다.
         """
         # 버전 + current_eqp 가 같으면 캐시 반환
@@ -2130,7 +2130,7 @@ class SchedulingSimulator:
         current_eqp = self._current_eqp
 
         po_feats = np.zeros((O, P, 10), dtype=np.float32)
-        pom_feats = np.zeros((O, P, K, 4), dtype=np.float32)
+        pom_feats = np.zeros((O, P, K, 5), dtype=np.float32)
 
         # (oper, model) → min(free_at) 사전 계산
         min_end_by_om: Dict[tuple, int] = {
@@ -2285,18 +2285,24 @@ class SchedulingSimulator:
                 # pom_feats: 채널 4 (index 0) 할당
                 pom_feats[oi, pi, vmis, 0] = vsts / max_arrange_st
 
-                # pom_feats: 채널 8 (index 1), 채널 9 (index 2), avoidable_frac (index 3) 할당
-                if curr_eqp_in_om and current_mi >= 0 and current_mi in valid_mis and lc:
-                    needs_conv = self._would_need_conversion(current_eqp, lc, tp)
-                    pom_feats[oi, pi, current_mi, 1] = 1.0 if needs_conv else 0.0
-                    pom_feats[oi, pi, current_mi, 2] = (
-                        1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
-                        or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
-                    )
-                    if needs_conv:
-                        pom_feats[oi, pi, current_mi, 3] = self._conversion_avoidable_fraction(
-                            current_eqp, ppk, op, lc, tp,
+                # pom_feats: 채널 8 (index 1), 채널 9 (index 2), avoidable_frac (index 3),
+                # setup_changed (index 4) 할당
+                if curr_eqp_in_om and current_mi >= 0 and current_mi in valid_mis:
+                    eqp_obj = self.eqps.get(current_eqp)
+                    if eqp_obj is not None:
+                        setup_changed = (eqp_obj.prev_prod != ppk) or (eqp_obj.prev_oper != op)
+                        pom_feats[oi, pi, current_mi, 4] = 1.0 if setup_changed else 0.0
+                    if lc:
+                        needs_conv = self._would_need_conversion(current_eqp, lc, tp)
+                        pom_feats[oi, pi, current_mi, 1] = 1.0 if needs_conv else 0.0
+                        pom_feats[oi, pi, current_mi, 2] = (
+                            1.0 if not self._needs_tool_swap(current_eqp, lc, tp)
+                            or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
                         )
+                        if needs_conv:
+                            pom_feats[oi, pi, current_mi, 3] = self._conversion_avoidable_fraction(
+                                current_eqp, ppk, op, lc, tp,
+                            )
 
         feats = np.concatenate([po_feats.flatten(), pom_feats.flatten()])
         self._bucket_feats_cache = feats

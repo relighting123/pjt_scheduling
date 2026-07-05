@@ -28,7 +28,7 @@ def obs_dim_components() -> dict:
     P = CONFIG.env.max_prod_count
     K = CONFIG.env.max_model_count
     F_po = 10
-    F_pom = 4
+    F_pom = 5
     bucket = O * P * F_po + O * P * K * F_pom
     return {
         "O": O,
@@ -43,7 +43,7 @@ def obs_dim_components() -> dict:
 
 
 def compute_obs_dim() -> int:
-    """Global(6) + Bucket(O×P×10 + O×P×K×4)"""
+    """Global(6) + Bucket(O×P×10 + O×P×K×5)"""
     return obs_dim_components()["total"]
 
 
@@ -51,7 +51,7 @@ def _opk_product_from_obs_dim(dim: int) -> Optional[int]:
     """obs_dim에서 O×P×K 곱을 역산. 고정 6차원(Global) 제외."""
     inner = dim - _OBS_FIXED_DIM
     K = CONFIG.env.max_model_count
-    factor = 10 + K * 4
+    factor = 10 + K * 5
     if inner < 0 or inner % factor != 0:
         return None
     op = inner // factor
@@ -94,7 +94,7 @@ def _describe_obs_dim_side(
     opk = _opk_product_from_obs_dim(dim)
     if opk is None:
         lines.append(
-            f"  ※ {dim}은 표준 공식(6 + O×P×10 + O×P×K×4)과 맞지 않습니다."
+            f"  ※ {dim}은 표준 공식(6 + O×P×10 + O×P×K×5)과 맞지 않습니다."
         )
         return lines
 
@@ -103,7 +103,7 @@ def _describe_obs_dim_side(
         comp = obs_dim_components()
         O, P, K = comp["O"], comp["P"], comp["K"]
         lines.append(
-            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}={O}×{P}×10 + {O}×{P}×{K}×4)"
+            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}={O}×{P}×10 + {O}×{P}×{K}×5)"
         )
         lines.append(
             f"  config: max_oper_count(O)={O}, max_prod_count(P)={P}, "
@@ -113,7 +113,7 @@ def _describe_obs_dim_side(
         K_cfg = CONFIG.env.max_model_count
         op_val = opk // K_cfg if K_cfg > 0 else 0
         lines.append(
-            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}=O×P×10 + O×P×K×4)"
+            f"  구성: Global({_OBS_GLOBAL_DIM}) + Bucket({bucket}=O×P×10 + O×P×K×5)"
         )
         triples = _factor_opk_triples(opk)
         if triples:
@@ -199,7 +199,7 @@ def format_obs_dim_mismatch(
     )
     lines.append("  2. 현재 config로 python main.py train (또는 UI 학습) 재실행")
     lines.append(
-        f"  ※ 공식: obs_dim = {_OBS_GLOBAL_DIM} + (O×P×10 + O×P×K×4)"
+        f"  ※ 공식: obs_dim = {_OBS_GLOBAL_DIM} + (O×P×10 + O×P×K×5)"
     )
     return "\n".join(lines)
 
