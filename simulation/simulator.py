@@ -531,15 +531,18 @@ class SchedulingSimulator:
             t += self._conversion_minutes
         return t + int(lot.get("processing_time", 0))
 
-    def earliest_st_combo_score(self, eqp_id: str, lot: dict) -> Tuple[int, str, str]:
+    def earliest_st_combo_score(self, eqp_id: str, lot: dict) -> Tuple[int, int, str, str]:
         """
-        EQP×carrier(LOT) 조합 점수: 예상 종료 시각(현재+conversion+장수×ST).
+        EQP×carrier(LOT) 조합 점수: 예상 종료 시각(현재+conversion+장수×ST) 최소 →
+        동률이면 전환(conversion) 불필요한(=동일 setup) 조합 우선.
         lot['processing_time']은 split 이후 wf_qty×ST.
         """
-        proc = int(lot.get("processing_time", 0))
         end = self.estimate_lot_end_time(eqp_id, lot)
+        lot_cd = lot.get("lot_cd", "")
+        temp = lot.get("temp", "")
+        needs_conv = self._would_need_conversion(eqp_id, lot_cd, temp)
         carrier = str(lot.get("carrier_id") or lot.get("lot_id", ""))
-        return (end, carrier, str(lot.get("lot_id", "")))
+        return (end, int(needs_conv), carrier, str(lot.get("lot_id", "")))
 
     def pick_earliest_st_assignment(self) -> Optional[Tuple[str, str, dict]]:
         """
@@ -547,7 +550,7 @@ class SchedulingSimulator:
         PPK/OPER 버킷 없이 실제 재공 단위로 선택.
         """
         best: Optional[Tuple[str, str, dict]] = None
-        best_score = (10**9, "", "")
+        best_score = (10**9, 1, "", "")
 
         for eqp_id in self.get_idle_eqps():
             for lot in self.available_lots(eqp_id):
