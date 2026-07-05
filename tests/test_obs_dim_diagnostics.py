@@ -11,8 +11,6 @@ from env.scheduling_env import (
     _opk_product_from_obs_dim,
     _factor_opk_triples,
     _OBS_GLOBAL_DIM,
-    _OBS_EQP_LOCAL_DIM,
-    _OBS_CONTEXT_DIM,
 )
 from simulation.simulator import SchedulingSimulator
 
@@ -23,8 +21,6 @@ def test_obs_dim_components_formula():
         _OBS_GLOBAL_DIM
         + comp["O"] * comp["P"] * 10
         + comp["O"] * comp["P"] * comp["K"] * 4
-        + _OBS_EQP_LOCAL_DIM
-        + _OBS_CONTEXT_DIM
     )
     assert comp["total"] == compute_obs_dim()
 

@@ -57,7 +57,8 @@ STATE_TERM_PAGES = [
         "key": "bucket",
         "title": "버킷 특징 (Bucket)",
         "obs_slice": "obs[6 : 6 + O×P×10 + O×P×K×4]",
-        "plain": "(OPER×PPK×모델) 격자마다 14채널 — \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
+        "plain": "(OPER×PPK) 격자마다 10채널(모델 무관) + (OPER×PPK×모델) 격자마다 4채널(모델별) "
+                 "— \"이 버킷을 지금 잡으면 시급·전환·중복인가\"를 알려줍니다.",
         "why": "보상(페이싱·중복커버·전환) 판단의 근거가 되는 핵심 특징입니다.",
         "trace_step": 1,
         "items": [
@@ -126,44 +127,6 @@ STATE_TERM_PAGES = [
             },
         ],
     },
-    {
-        "key": "eqp_local",
-        "title": "현재 설비 (EQP local)",
-        "obs_slice": "obs[…+0:…+2]",
-        "plain": "지금 결정하는 그 설비의 동일 셋업 맥락 2개.",
-        "why": "same_setup 보상 학습에 직접 쓰입니다.",
-        "trace_step": 1,
-        "items": [
-            {
-                "idx": "eqp[0]",
-                "name": "prev_prod",
-                "formula": "encode(현재 EQP.prev_prod)",
-                "meaning": "이 설비 직전 배정 PPK (same_setup 판단용)",
-                "trace_path": ("obs_eqp_local", "prev_prod"),
-            },
-            {
-                "idx": "eqp[1]",
-                "name": "prev_oper",
-                "formula": "encode(현재 EQP.prev_oper)",
-                "meaning": "이 설비 직전 배정 OPER (same_setup 판단용)",
-                "trace_path": ("obs_eqp_local", "prev_oper"),
-            },
-        ],
-    },
-    {
-        "key": "context",
-        "title": "직전 맥락 (Context)",
-        "obs_slice": "obs[…+2:…+6]",
-        "plain": "직전 스텝에서 누가·무엇을·어느 설비에 배정했는지 정규화 인덱스 4개.",
-        "why": "라인 전역 직전 배정 맥락.",
-        "trace_step": 4,
-        "items": [
-            {"idx": "ctx[0]", "name": "last_ppk", "formula": "encode(PPK)", "meaning": "직전 배정 제품 인덱스", "trace_path": ("obs_context", "last_ppk")},
-            {"idx": "ctx[1]", "name": "last_oper", "formula": "encode(OPER)", "meaning": "직전 배정 공정 인덱스", "trace_path": ("obs_context", "last_oper")},
-            {"idx": "ctx[2]", "name": "last_eqp", "formula": "encode(EQP)", "meaning": "직전 배정 설비 인덱스", "trace_path": ("obs_context", "last_eqp")},
-            {"idx": "ctx[3]", "name": "last_lot_cd", "formula": "encode(LOT_CD)", "meaning": "직전 LOT_CD (셋업 그룹)", "trace_path": ("obs_context", "last_lot_cd")},
-        ],
-    },
 ]
 
 
@@ -211,17 +174,5 @@ def trace_state_detail(trace: dict, step_no: int, trace_path) -> str:
         total_plan = trace.get("total_plan")
         if produced is not None and total_plan:
             return f"min({produced}/{total_plan}, 1) = {value}"
-
-    if group == "obs_context" and name in ("last_ppk", "last_oper", "last_eqp"):
-        prev = next((s for s in steps if s.get("step") == step_no - 1), None)
-        key_map = {"last_ppk": "ppk", "last_oper": "oper", "last_eqp": "eqp"}
-        label = prev.get(key_map[name]) if prev else None
-        if label:
-            return f"직전 배정 {label} → 정규화 {value}"
-
-    if group == "obs_eqp_local" and name in ("prev_prod", "prev_oper"):
-        eqp = st.get("eqp")
-        if eqp:
-            return f"{eqp} prev_{name.split('_')[1]} → 정규화 {value}"
 
     return f"= {value}"

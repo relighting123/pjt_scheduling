@@ -2303,18 +2303,17 @@ class SchedulingSimulator:
         self._bucket_feats_state = cache_state
         return feats
 
-    # --- 관측 벡터 생성 (Global + Bucket + EQP local + Context) ---
+    # --- 관측 벡터 생성 (Global + Bucket) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(6) + Bucket(O×P×K×F) + current EQP(2) + Context(4)."""
+        """관측: Global(6) + Bucket(O×P×K×F).
+
+        EQP local(prev_prod/prev_oper)과 Context(last_ppk/oper/eqp/lot_cd)는
+        bucket의 pom_feats(needs_conversion/avoidable_frac 등)와 정보가 겹치거나
+        전역 마지막 배정 스칼라로 뭉개져 있어 제거 — bucket 채널이 이미 더
+        세밀한 정보를 제공한다.
+        """
         data = self._env_data
-        cfg = CONFIG.env
-        O, P = cfg.max_oper_count, cfg.max_prod_count
-        oper_idx = data["oper_idx"]
-        prod_idx = data["prod_idx"]
-        eqp_idx = data.get("eqp_idx", {eid: i for i, eid in enumerate(data["eqp_ids"])})
-        lot_cd_idx = data.get("lot_cd_idx", {})
-        temp_idx = data.get("temp_idx", {})
         initial_lot_count = max(len(data["lots"]), 1)
         total_plan = max(
             sum(p["d0_plan_qty"] for p in data.get("plan", []) if p.get("d0_plan_qty", 0) > 0),
@@ -2322,20 +2321,6 @@ class SchedulingSimulator:
         )
 
         bucket = self.get_bucket_features().flatten()
-
-        # EQP local: [0] prev_prod, [1] prev_oper
-        # needs_conversion·avoidable_frac은 bucket의 pom_feats(needs_conversion,
-        # avoidable_frac) 채널과 중복이라 제거 — 버킷별 정보가 이미 더 세밀하게 담고 있음.
-        eqp_local = np.zeros(2, dtype=np.float32)
-        current_eqp_id = self._current_eqp
-        if current_eqp_id and current_eqp_id in self.eqps:
-            eqp_obj = self.eqps[current_eqp_id]
-            eqp_local[0] = encode_normalized(
-                eqp_obj.prev_prod, prod_idx, P,
-            )
-            eqp_local[1] = encode_normalized(
-                eqp_obj.prev_oper, oper_idx, O,
-            )
 
         group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)
@@ -2356,25 +2341,8 @@ class SchedulingSimulator:
         group_global[4] = conv_eqps / max(len(self.eqps), 1)
         group_global[5] = min(self._tool_tracker.utilization(), 1.0)
 
-        context = np.zeros(4, dtype=np.float32)
-        if self._last_assigned:
-            la = self._last_assigned
-            context[0] = encode_normalized(
-                la.get("plan_prod_key"), prod_idx, P,
-            )
-            oper_guess = None
-            for ld in data.get("lots", []):
-                if ld["lot_id"] == la.get("lot_id"):
-                    oper_guess = ld.get("oper_id")
-                    break
-            context[1] = encode_normalized(oper_guess, oper_idx, O)
-            context[2] = encode_normalized(la.get("eqp_id"), eqp_idx, len(data["eqp_ids"]))
-            context[3] = encode_normalized(la.get("lot_cd"), lot_cd_idx, max(len(lot_cd_idx), 1))
-
         obs = np.concatenate([
             group_global,
             bucket,
-            eqp_local,
-            context,
         ])
         return np.clip(obs, 0.0, 1.0).astype(np.float32)
