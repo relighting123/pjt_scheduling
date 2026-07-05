@@ -40,7 +40,10 @@ def _schedule_snapshot(schedule: list) -> list:
 
 
 def _bucket_state(sim, ppk: str, oper: str, eqp_id: str) -> dict:
-    """선택된 (ppk, oper, eqp의 model) 버킷 — 13채널 실측치."""
+    """선택된 (ppk, oper, eqp의 model) 버킷 실측치 (po_feats 10 + pom_feats 5, flat 배열 직접 인덱싱)."""
+    from config import CONFIG
+    from simulation.simulator import SchedulingSimulator
+
     ed = sim._env_data
     oper_ids = list(ed["oper_ids"])
     prod_keys = list(ed["prod_keys"])
@@ -52,22 +55,27 @@ def _bucket_state(sim, ppk: str, oper: str, eqp_id: str) -> dict:
     eqp_model_map = ed.get("eqp_model_map", {})
     model = eqp_model_map.get(eqp_id)
     mi = eqp_models.index(model) if model in eqp_models else 0
+
+    O, P, K = CONFIG.env.max_oper_count, CONFIG.env.max_prod_count, CONFIG.env.max_model_count
+    F_po, F_pom = SchedulingSimulator.PPK_OPER_FEATURES, SchedulingSimulator.PPK_OPER_MODEL_FEATURES
     feats = sim.get_bucket_features()
-    if oi >= feats.shape[0] or pi >= feats.shape[1] or mi >= feats.shape[2]:
-        return {}
-    v = feats[oi, pi, mi]
+    po_base = (oi * P + pi) * F_po
+    pom_base = O * P * F_po + ((oi * P + pi) * K + mi) * F_pom
+    po = feats[po_base:po_base + F_po]
+    pom = feats[pom_base:pom_base + F_pom]
     r = lambda x: round(float(x), 3)
     return {
-        "wip_ratio": f"{r(v[0])}/{r(v[1])}",
-        "takt": f"prev={r(v[2])}, post={r(v[3])}",
-        "self_st": r(v[4]),
-        "plan_urgency": r(v[5]),
-        "needs_conversion": r(v[8]),
-        "tool_can_assign": r(v[9]),
-        "avoidable_frac": r(v[13]),
-        "achievable_ratio": r(v[10]),
-        "projected_cover_ratio": r(v[11]),
-        "starve_time_norm": r(v[12]),
+        "wip_ratio": f"{r(po[0])}/{r(po[1])}",
+        "takt": f"prev={r(po[2])}, post={r(po[3])}",
+        "self_st": r(pom[0]),
+        "plan_urgency": r(po[4]),
+        "needs_conversion": r(pom[1]),
+        "tool_can_assign": r(pom[2]),
+        "avoidable_frac": r(pom[3]),
+        "setup_changed": r(pom[4]),
+        "achievable_ratio": r(po[7]),
+        "projected_cover_ratio": r(po[8]),
+        "starve_time_norm": r(po[9]),
     }
 
 
