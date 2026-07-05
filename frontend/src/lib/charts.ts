@@ -1360,6 +1360,43 @@ function metricValue(result: InferenceResult, key: TestMetricKey): number | null
   }
 }
 
+export interface MetricSummaryStat {
+  avg: number;
+  min: number;
+  max: number;
+  n: number;
+}
+
+export interface MetricSummaryRow {
+  key: TestMetricKey;
+  label: string;
+  yTitle: string;
+  perAlgo: Record<string, MetricSummaryStat>;
+}
+
+/** 전체 기간(rows)에 대해 KPI별·알고리즘별 평균/최댓값/최솟값 집계. */
+export function buildMetricSummaryRows(
+  rows: TestBenchmarkChartRow[],
+  algorithms: string[],
+): MetricSummaryRow[] {
+  return TEST_METRICS.map((metric) => {
+    const perAlgo: Record<string, MetricSummaryStat> = {};
+    algorithms.forEach((algo) => {
+      const vals: number[] = [];
+      rows.forEach((row) => {
+        const entry = row.entries.find((e) => e.algorithm === algo);
+        const v = entry ? metricValue(entry.result, metric.key) : null;
+        if (v != null) vals.push(v);
+      });
+      if (vals.length) {
+        const avg = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+        perAlgo[algo] = { avg, min: Math.min(...vals), max: Math.max(...vals), n: vals.length };
+      }
+    });
+    return { key: metric.key, label: metric.label, yTitle: metric.yTitle, perAlgo };
+  });
+}
+
 export function buildTestMetricChart(
   metric: TestMetricDef,
   rows: TestBenchmarkChartRow[],
@@ -1435,8 +1472,8 @@ function buildTestMetricLineChart(
   );
   const allVals = yValues.flat().filter((v): v is number => v != null);
   const maxVal = allVals.length ? Math.max(...allVals) : 1;
-  const yRange: [number, number] | undefined =
-    PERCENT_METRIC_KEYS.has(metric.key) ? [0, 110] : [0, maxVal * 1.25];
+  const yRange: [number, number] =
+    PERCENT_METRIC_KEYS.has(metric.key) ? [0, 110] : [0, Math.max(maxVal, 1) * 1.25];
 
   const showText = rows.length <= 8;
   const data: Data[] = activeAlgos.map((algo, ai) => ({
@@ -1467,7 +1504,7 @@ function buildTestMetricLineChart(
 
   return {
     data,
-    layout: {
+    layout: mergeSharedLayout({
       title: { text: metric.label, font: { size: 14 } },
       xaxis: {
         title: { text: "데이터셋 (RULE_TIMEKEY)" },
@@ -1478,8 +1515,7 @@ function buildTestMetricLineChart(
         tickvals: categories,
         ticktext: tickText,
       },
-      ...SHARED_DARK,
-      yaxis: { ...SHARED_DARK.yaxis, title: { text: metric.yTitle }, ...(yRange ? { range: yRange } : { rangemode: "tozero" as const }) },
+      yaxis: { title: { text: metric.yTitle }, range: yRange, rangemode: "tozero" as const },
       legend: { orientation: "h", y: -0.44 },
       height: 340,
       margin: { t: 50, b: 120, l: 55, r: 20 },
@@ -1497,7 +1533,7 @@ function buildTestMetricLineChart(
             }],
           }
         : {}),
-    },
+    }),
   };
 }
 
