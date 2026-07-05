@@ -34,6 +34,7 @@ def run_validation(
     fac_id: str,
     agent: Optional[SchedulingAgent] = None,
     *,
+    algorithm: str = "bulkfill",
     refresh_sql: bool = True,
 ) -> dict:
     """
@@ -50,9 +51,9 @@ def run_validation(
 
     if agent is None:
         agent = SchedulingAgent()
-        if not agent.model_exists():
+        if not agent.model_exists(algorithm=algorithm):
             raise ValueError("학습된 모델이 없습니다. 먼저 train을 실행하세요.")
-        agent = SchedulingAgent.load()
+        agent = SchedulingAgent.load(algorithm=algorithm)
 
     results: List[dict] = []
     errors: List[dict] = []
@@ -63,7 +64,7 @@ def run_validation(
                 _refresh_test_sql(fac_id, folder)
             env_data = _load_env_data(folder)
             result = run_inference(
-                env_data, algorithm="rl", agent=agent, record_history=False,
+                env_data, algorithm=algorithm, agent=agent, record_history=False,
             )
             stats = result["stats"]
             results.append({

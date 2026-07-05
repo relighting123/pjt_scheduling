@@ -35,7 +35,7 @@ def _inference_max_steps(env_data: dict) -> int:
 
 def run_inference(
     env_data: dict,
-    algorithm: str = "rl",
+    algorithm: str = "bulkfill",
     agent: Optional[SchedulingAgent] = None,
     model_path: Optional[str] = None,
     deterministic: bool = True,
@@ -51,7 +51,7 @@ def run_inference(
     목적: 선택한 알고리즘으로 Scheduling 추론 실행
     Input:
         env_data      (dict): preprocessor.preprocess() 반환값
-        algorithm     (str):  "rl" | "minprogress" | "earliest_st"
+        algorithm     (str):  "rl" | "bulkfill" | "minprogress" | "earliest_st"
         agent         (SchedulingAgent|None): RL용 (None이면 model_path로 로드)
         model_path    (str|None): 모델 파일 경로
         deterministic (bool): RL 예측 시 greedy 여부

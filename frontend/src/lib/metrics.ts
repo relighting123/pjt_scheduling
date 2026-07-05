@@ -266,7 +266,12 @@ export function countToolSwitches(
   convPlans: ConversionPlan[],
 ): number {
   if (convPlans.length > 0) return convPlans.length;
-  // Fallback: count ST changes per EQP
+  // Fallback 1: 행마다 백엔드가 이미 판정한 CONVERSION 플래그가 있으면 그대로 집계
+  // (_would_need_conversion 결과 그대로 — LOT_CD 또는 TEMP 중 하나라도 바뀌면 true)
+  if (schedule.some((r) => r.CONVERSION !== undefined)) {
+    return schedule.filter((r) => r.CONVERSION).length;
+  }
+  // Fallback 2: EQP_ID 기준으로 직전 LOT_CD 또는 TEMP 중 하나라도 바뀌면 tool 교체로 집계
   const eqpSeq: Record<string, ScheduleRecord[]> = {};
   schedule.forEach((r) => {
     (eqpSeq[r.EQP_ID] ??= []).push(r);
@@ -275,7 +280,10 @@ export function countToolSwitches(
   Object.values(eqpSeq).forEach((recs) => {
     recs.sort((a, b) => a.START_TM - b.START_TM);
     for (let i = 1; i < recs.length; i++) {
-      if (recs[i].ST && recs[i - 1].ST && recs[i].ST !== recs[i - 1].ST) count++;
+      const prev = recs[i - 1];
+      const cur = recs[i];
+      if (cur.LOT_CD == null && cur.TEMP == null) continue;
+      if (cur.LOT_CD !== prev.LOT_CD || (cur.TEMP ?? "") !== (prev.TEMP ?? "")) count++;
     }
   });
   return count;

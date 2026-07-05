@@ -320,8 +320,8 @@ class RewardParams(BaseModel):
 
 class TrainRequest(RewardParams):
     algorithm: str = Field(
-        default="rl",
-        description="학습 환경 유형: rl (SchedulingEnv) | bulkfill (BulkFillEnv)",
+        default="bulkfill",
+        description="학습 환경 유형: bulkfill (BulkFillEnv) | rl (SchedulingEnv)",
     )
     total_timesteps: int = Field(default=CONFIG.rl.total_timesteps, ge=1000)
     learning_rate: float = Field(default=CONFIG.rl.learning_rate, gt=0)
@@ -404,7 +404,7 @@ class InferFetchOptions(BaseModel):
 
 
 class InferenceRequest(InferFetchOptions):
-    algorithm: str = Field(default="rl", description="rl | minprogress | earliest_st")
+    algorithm: str = Field(default="bulkfill", description="bulkfill | rl | minprogress | earliest_st")
     input_folder: Optional[str] = Field(
         default=None,
         description="FAC_ID 추론용 (미지정 시 현재 선택). fetch 후에는 {FAC_ID}/infer 로 고정",

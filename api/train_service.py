@@ -43,7 +43,7 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
         train_kwargs = {"verbose": 0, "progress_state": train_progress, "env_cls": env_cls}
         if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
             train_kwargs["n_episodes"] = int(n_episodes)
-        algorithm = params.get("algorithm", "rl")
+        algorithm = params.get("algorithm", "bulkfill")
         agent.train(payload, **train_kwargs)
         if train_progress.is_stop_requested():
             train_progress.add_log("학습 중지됨 – 부분 모델 저장 중…")
