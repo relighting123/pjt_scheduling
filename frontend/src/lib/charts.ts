@@ -1540,7 +1540,6 @@ function buildTestMetricLineChart(
     layout: mergeSharedLayout({
       title: { text: metric.label, font: { size: 14 } },
       xaxis: {
-        title: { text: "데이터셋 (RULE_TIMEKEY)" },
         tickangle: -35,
         type: "category",
         categoryorder: "array",
