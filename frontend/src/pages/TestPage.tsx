@@ -8,6 +8,7 @@ import {
   benchmarkRowsFromResponse,
   buildAlgorithmAchievementComparison,
   buildAlgorithmGanttComparison,
+  buildMetricSummaryRows,
   buildTestMetricChart,
   TEST_METRICS,
   type AlgoCompareEntry,
@@ -68,6 +69,8 @@ export default function TestPage({ config, modelExists }: Props) {
   }, [config?.fac_id, facIdOverride]);
 
   const chartRows = useMemo(() => benchmark?.datasets?.length ? benchmarkRowsFromResponse(benchmark.datasets, algoLabels) : [], [benchmark, algoLabels]);
+
+  const summaryRows = useMemo(() => buildMetricSummaryRows(chartRows, displayAlgos), [chartRows, displayAlgos]);
 
   const selectedDataset = useMemo(() => selected ? benchmark?.datasets?.find(d => d.input_folder === selected) ?? null : null, [selected, benchmark]);
 
@@ -235,6 +238,38 @@ export default function TestPage({ config, modelExists }: Props) {
 
             {tab === "summary" && (
               <div className="tab-panel">
+                <div className="card mb-2">
+                  <div className="card-title">전체 기간 요약 — KPI별 평균 / 최소 / 최대 ({chartRows.length}개 기간)</div>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>KPI</th>
+                          {displayAlgos.map(a => (
+                            <th key={a} style={{ color: ALGO_CHART_COLORS[a] }}>{algoLabels[a] ?? a}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summaryRows.map(r => (
+                          <tr key={r.key}>
+                            <td style={{ fontWeight: 700 }}>{r.label}</td>
+                            {displayAlgos.map(a => {
+                              const s = r.perAlgo[a];
+                              return (
+                                <td key={a}>
+                                  {s
+                                    ? <>{s.avg}{r.yTitle} <span className="hint">(최소 {s.min} · 최대 {s.max})</span></>
+                                    : "—"}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
                   {TEST_METRICS.map(m => (
                     <div key={m.key} className="card chart-wrap">
