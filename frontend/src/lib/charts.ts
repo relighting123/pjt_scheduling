@@ -1295,7 +1295,6 @@ export function buildAlgorithmGanttComparison(
 
 export type TestMetricKey =
   | "makespan"
-  | "idle_total"
   | "oper_switches"
   | "prod_switches"
   | "tool_switches"
@@ -1317,7 +1316,6 @@ const PERCENT_METRIC_KEYS = new Set<TestMetricKey>([
 
 export const TEST_METRICS: TestMetricDef[] = [
   { key: "makespan", label: "Makespan", yTitle: "분" },
-  { key: "idle_total", label: "Idle 합계", yTitle: "분" },
   { key: "oper_switches", label: "공정 전환", yTitle: "횟수" },
   { key: "prod_switches", label: "제품 전환", yTitle: "횟수" },
   { key: "tool_switches", label: "Tool 전환", yTitle: "횟수" },
@@ -1339,8 +1337,6 @@ function metricValue(result: InferenceResult, key: TestMetricKey): number | null
   switch (key) {
     case "makespan":
       return resultScheduleStats(result).makespan;
-    case "idle_total":
-      return resultScheduleStats(result).idle_total;
     case "oper_switches":
       return resultScheduleStats(result).oper_switches;
     case "prod_switches":
