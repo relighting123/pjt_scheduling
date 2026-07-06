@@ -1393,7 +1393,7 @@ export function buildMetricSummaryRows(
   });
 }
 
-/** 요약 행(평균/최소/최대) 하나를 알고리즘별 막대 + 최소~최대 오차막대로 시각화. */
+/** 요약 행(전체 기간 평균)을 알고리즘별 막대로 시각화. */
 export function buildMetricSummaryChart(
   row: MetricSummaryRow,
   algorithms: string[],
@@ -1402,13 +1402,9 @@ export function buildMetricSummaryChart(
   const activeAlgos = algorithms.filter((a) => row.perAlgo[a]);
   const algoNames = activeAlgos.map((a) => algoLabels[a] ?? a);
   const avgs = activeAlgos.map((a) => row.perAlgo[a].avg);
-  const mins = activeAlgos.map((a) => row.perAlgo[a].min);
-  const maxs = activeAlgos.map((a) => row.perAlgo[a].max);
-  const errPlus = activeAlgos.map((_, i) => Math.max(maxs[i] - avgs[i], 0));
-  const errMinus = activeAlgos.map((_, i) => Math.max(avgs[i] - mins[i], 0));
 
   const isPercent = PERCENT_METRIC_KEYS.has(row.key);
-  const maxVal = Math.max(...maxs, isPercent ? 100 : 1);
+  const maxVal = Math.max(...avgs, isPercent ? 100 : 1);
   const yRange: [number, number] = isPercent ? [0, 110] : [0, Math.max(maxVal, 1) * 1.25];
 
   return {
@@ -1417,27 +1413,15 @@ export function buildMetricSummaryChart(
       x: algoNames,
       y: avgs,
       marker: { color: activeAlgos.map((a) => ALGO_CHART_COLORS[a] ?? "#888") },
-      error_y: {
-        type: "data" as const,
-        symmetric: false,
-        array: errPlus,
-        arrayminus: errMinus,
-        color: "#475569",
-        thickness: 1.5,
-        width: 5,
-      },
       text: avgs.map((v) => v.toLocaleString()),
       textposition: "outside" as const,
       textfont: { size: 12 },
       cliponaxis: false,
-      hovertemplate:
-        `<b>%{x}</b><br>평균: %{y}${row.yTitle}<br>` +
-        `최소 %{customdata[0]}${row.yTitle} · 최대 %{customdata[1]}${row.yTitle}<extra></extra>`,
-      customdata: activeAlgos.map((_, i) => [mins[i], maxs[i]]),
+      hovertemplate: `<b>%{x}</b><br>평균: %{y}${row.yTitle}<extra></extra>`,
       showlegend: false,
     }],
     layout: mergeSharedLayout({
-      title: { text: `${row.label} — 평균 (최소~최대)`, font: { size: 14 } },
+      title: { text: `${row.label} — 평균`, font: { size: 14 } },
       xaxis: { title: { text: "알고리즘" } },
       yaxis: { title: { text: row.yTitle }, range: yRange },
       height: 300,

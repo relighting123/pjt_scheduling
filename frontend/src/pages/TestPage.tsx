@@ -35,6 +35,7 @@ export default function TestPage({ config, modelExists }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ current: number; total: number; label: string } | null>(null);
   const [tab, setTab]           = useState<TestTab>("summary");
+  const [compareView, setCompareView] = useState<"summary" | "period">("summary");
 
   const [ganttFixed, setGanttFixed] = useState(false);
   const [ganttStart, setGanttStart] = useState(0);
@@ -239,56 +240,30 @@ export default function TestPage({ config, modelExists }: Props) {
 
             {tab === "summary" && (
               <div className="tab-panel">
-                <div className="card mb-2">
-                  <div className="card-title">전체 기간 요약 — KPI별 평균 / 최소 / 최대 ({chartRows.length}개 기간)</div>
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>KPI</th>
-                          {displayAlgos.map(a => (
-                            <th key={a} style={{ color: ALGO_CHART_COLORS[a] }}>{algoLabels[a] ?? a}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {summaryRows.map(r => (
-                          <tr key={r.key}>
-                            <td style={{ fontWeight: 700 }}>{r.label}</td>
-                            {displayAlgos.map(a => {
-                              const s = r.perAlgo[a];
-                              return (
-                                <td key={a}>
-                                  {s
-                                    ? <>{s.avg}{r.yTitle} <span className="hint">(최소 {s.min} · 최대 {s.max})</span></>
-                                    : "—"}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <div className="tabs mb-2">
+                  <button type="button" className={`tab-btn${compareView === "summary" ? " active" : ""}`} onClick={() => setCompareView("summary")}>요약</button>
+                  <button type="button" className={`tab-btn${compareView === "period" ? " active" : ""}`} onClick={() => setCompareView("period")}>기간별</button>
+                </div>
+
+                {compareView === "summary" && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
+                    {summaryRows.map(r => (
+                      <div key={r.key} className="card chart-wrap">
+                        <PlotChart {...buildMetricSummaryChart(r, displayAlgos, algoLabels)} />
+                      </div>
+                    ))}
                   </div>
-                </div>
+                )}
 
-                <div className="card-title mb-1">전체 기간 요약 차트 (평균 · 최소~최대 오차막대)</div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem", marginBottom:"1.5rem" }}>
-                  {summaryRows.map(r => (
-                    <div key={r.key} className="card chart-wrap">
-                      <PlotChart {...buildMetricSummaryChart(r, displayAlgos, algoLabels)} />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="card-title mb-1">기간별 추이</div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
-                  {TEST_METRICS.map(m => (
-                    <div key={m.key} className="card chart-wrap">
-                      <PlotChart {...buildTestMetricChart(m, chartRows, displayAlgos, algoLabels, selected ?? undefined)} />
-                    </div>
-                  ))}
-                </div>
+                {compareView === "period" && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
+                    {TEST_METRICS.map(m => (
+                      <div key={m.key} className="card chart-wrap">
+                        <PlotChart {...buildTestMetricChart(m, chartRows, displayAlgos, algoLabels, selected ?? undefined)} />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
