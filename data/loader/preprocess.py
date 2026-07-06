@@ -8,7 +8,10 @@ from typing import Dict, List, Optional, Tuple
 from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
-from utils.helpers import build_index_map, coerce_int, effective_proc_time, normalize_tool_capacity_rows, split_wf_qty
+from utils.helpers import (
+    build_index_map, coerce_int, effective_proc_time, normalize_lot_stat_cd,
+    normalize_tool_capacity_rows, split_wf_qty,
+)
 
 
 def _coerce_proc_time(value) -> Optional[int]:
@@ -224,6 +227,7 @@ def _apply_wafer_lot_split(
     discrete_raw: List[dict],
     eqp_model_map: Dict[str, str],
     split_lookup: Dict[Tuple[str, str, str], int],
+    eqp_forced_queue: Optional[Dict[str, List[str]]] = None,
 ) -> None:
     """PPK×OPER×MODEL SPLIT_QTY 규칙에 따라 LOT을 wafer sub-lot으로 분할"""
     if not split_lookup:
@@ -260,6 +264,12 @@ def _apply_wafer_lot_split(
             }
 
         for eid, lots in eqp_lot_map.items():
+            if parent_id not in lots:
+                continue
+            idx = lots.index(parent_id)
+            lots[idx:idx + 1] = child_ids
+
+        for eid, lots in (eqp_forced_queue or {}).items():
             if parent_id not in lots:
                 continue
             idx = lots.index(parent_id)
@@ -378,6 +388,7 @@ def _build_abstract_inventory(
             "wf_qty":        ld["wf_qty"],
             "carrier_id":    ld.get("carrier_id", ""),
             "oper_in_time":  st_tm,
+            "lot_stat_cd":   ld.get("lot_stat_cd", "WAIT"),
         }
 
     return inventory, wip_init, lot_meta
@@ -419,8 +430,9 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "prod_keys": [str],              # 정렬된 제품 목록
             "oper_idx": {oper: int},         # OPER → 인덱스
             "prod_idx": {prod: int},         # PROD → 인덱스
-            "lots": [LotDict],               # LOT 세부 정보
+            "lots": [LotDict],               # LOT 세부 정보 (lot_stat_cd 포함)
             "eqp_lot_map": {eqp: [lot_id]}, # EQP별 배정 가능 LOT
+            "eqp_forced_queue": {eqp: [lot_id]}, # LOT_STAT_CD!=WAIT LOT을 입력 순서대로 강제 배정
             "plan": [PlanDict],              # 계획 데이터
             "flow": {prod: [{seq, oper}]},   # 제품별 FLOW 순서
         }
@@ -476,6 +488,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # LOT 정보 빌드 (discrete_arrange LOT당 1행)
     lot_info: Dict[str, dict] = {}
     seen_lots: set = set()
+    eqp_forced_queue: Dict[str, List[str]] = {}
     for r in discrete_raw:
         lot_id = r["LOT_ID"]
         if lot_id in seen_lots:
@@ -493,6 +506,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
                 break
 
         st_per_wafer = _coerce_proc_time(r.get("ST")) or 60
+        eqp_id = r["EQP_ID"]
+        lot_stat_cd = normalize_lot_stat_cd(r.get("LOT_STAT_CD"), lot_id=lot_id)
         lot_info[lot_id] = {
             "lot_id":          lot_id,
             "carrier_id":      r.get("CARRIER_ID", f"CAR{lot_id[-3:]}"),
@@ -502,8 +517,11 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "wf_qty":          wf_qty,
             "processing_time": st_per_wafer,
             "priority":        priority,
-            "original_eqp":    r["EQP_ID"],
+            "original_eqp":    eqp_id,
+            "lot_stat_cd":     lot_stat_cd,
         }
+        if lot_stat_cd != "WAIT":
+            eqp_forced_queue.setdefault(eqp_id, []).append(lot_id)
 
     # 계획 데이터 정리
     plan_list = []
@@ -621,6 +639,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         discrete_raw,
         eqp_model_map,
         split_lookup,
+        eqp_forced_queue,
     )
     eqp_oper_cap = _rebuild_eqp_oper_cap(discrete_raw, lot_info)
 
@@ -672,6 +691,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "eqp_model":        row_model,
             "initial_start_tm": 0,
             "wf_qty":           wf_qty_row,
+            "lot_stat_cd":      lot_info.get(lot_id, {}).get("lot_stat_cd", "WAIT"),
         })
 
     max_wf_qty = max((v["wf_qty"] for v in lot_info.values()), default=1)
@@ -714,6 +734,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "tool_capacity":    tool_capacity,
         "lots":             list(lot_info.values()),
         "eqp_lot_map":      eqp_lot_map,
+        "eqp_forced_queue": eqp_forced_queue,
         "proc_time_matrix": proc_time_matrix,
         "eqp_oper_avg":     eqp_oper_avg_val,
         "eqp_oper_cap":     eqp_oper_cap,

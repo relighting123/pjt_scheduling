@@ -43,6 +43,9 @@ def encode_normalized(value: Optional[str], index_map: Dict[str, int], total: in
 REQUIRED_DISCRETE_ARRANGE_FIELDS = {
     "EQP_ID", "LOT_ID", "PLAN_PROD_ATTR_VAL", "OPER_ID", "ST", "EQP_MODEL_CD", "WF_QTY",
 }
+# LOT_STAT_CD: WAIT만 알고리즘이 자유 배정. 나머지는 지정 EQP_ID에 입력 순서대로 강제 배정.
+FORCED_LOT_STAT_CDS = {"PROC", "LOAD", "SELE", "RESV"}
+VALID_LOT_STAT_CDS = FORCED_LOT_STAT_CDS | {"WAIT"}
 REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD", "ST"}
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_ATTR_VAL", "OPER_ID",
                                  "D0_PLAN_QTY", "D1_PLAN_QTY", "PLAN_PRIORITY"}
@@ -121,6 +124,19 @@ def coerce_int(value, *, field: str = "값") -> int:
         except ValueError as exc:
             raise ValueError(f"{field} 정수 변환 불가: {value!r}") from exc
     raise ValueError(f"{field} 정수 변환 불가: {value!r}")
+
+
+def normalize_lot_stat_cd(value, *, lot_id: str = "") -> str:
+    """discrete_arrange LOT_STAT_CD 정규화. 비어 있으면 WAIT(기본값)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "WAIT"
+    code = str(value).strip().upper()
+    if code not in VALID_LOT_STAT_CDS:
+        raise ValueError(
+            f"discrete_arrange LOT {lot_id}: 알 수 없는 LOT_STAT_CD {value!r} "
+            f"(허용값: {sorted(VALID_LOT_STAT_CDS)})"
+        )
+    return code
 
 
 def split_wf_qty(total: int, split_qty: int) -> List[int]:

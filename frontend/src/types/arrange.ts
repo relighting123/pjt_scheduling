@@ -12,6 +12,8 @@ export interface ArrangeRow {
   /** 초기 스케줄 START_TM (분) */
   initial_start_tm?: number;
   wf_qty: number;
+  /** PROC/LOAD/SELE/RESV/WAIT – WAIT만 알고리즘이 자유 배정, 나머지는 이 EQP에 입력 순서대로 강제 배정 */
+  lot_stat_cd?: string;
 }
 
 export interface AbstractLotUnit {

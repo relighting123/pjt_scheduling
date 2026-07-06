@@ -101,6 +101,7 @@ class Lot:
     parent_lot_id:   str   = ""
     lot_cd:          str   = ""
     temp:            str   = ""
+    lot_stat_cd:     str   = "WAIT"
 
 
 @dataclass
@@ -194,7 +195,14 @@ class SchedulingSimulator:
                 parent_lot_id=ld.get("parent_lot_id", ""),
                 lot_cd=ld.get("lot_cd", ""),
                 temp=ld.get("temp", ""),
+                lot_stat_cd=ld.get("lot_stat_cd", "WAIT"),
             )
+
+        # LOT_STAT_CD != WAIT LOT: 지정 EQP_ID에 입력 순서대로 강제 배정(자유 스케줄링 불가)
+        self._eqp_forced_queue: Dict[str, List[str]] = {
+            eid: list(lot_ids)
+            for eid, lot_ids in data.get("eqp_forced_queue", {}).items()
+        }
 
         self.eqp_queues: Dict[str, List[str]] = {
             eid: list(lots)
@@ -1703,15 +1711,33 @@ class SchedulingSimulator:
                     "is_abstract":     not has_discrete,
                     "is_initial_wip":  lid in self._initial_lot_ids,
                     "oper_in_time":    oper_in_time,
+                    "lot_stat_cd":     (
+                        lot.lot_stat_cd if lot else meta.get("lot_stat_cd", "WAIT")
+                    ),
                 })
         return lots
+
+    def _forced_lot_pending(self, eqp_id: str) -> Optional[str]:
+        """LOT_STAT_CD!=WAIT LOT 중 이 EQP에서 다음에(입력 순서대로) 강제 배정할 LOT."""
+        queue = self._eqp_forced_queue.get(eqp_id)
+        return queue[0] if queue else None
 
     def available_lots(self, eqp_id: str) -> List[dict]:
         """
         목적: 에이전트 선택을 위한 LOT 상세 정보 리스트 반환.
         abstract WIP 풀 + MODEL arrange 기준 (discrete eqp 없어도 가능).
+
+        LOT_STAT_CD!=WAIT LOT은 지정된 EQP에서만, 입력 순서대로 한 번에 하나씩만 노출된다
+        (다른 EQP·다른 순번에서는 후보에서 완전히 제외되어 알고리즘이 자유 배정할 수 없다).
         """
         lots = self._lot_candidates_for_eqp(eqp_id)
+        forced_lot_id = self._forced_lot_pending(eqp_id)
+        lots = [
+            l for l in lots
+            if l.get("lot_stat_cd", "WAIT") == "WAIT" or l["lot_id"] == forced_lot_id
+        ]
+        if forced_lot_id is not None:
+            lots = [l for l in lots if l["lot_id"] == forced_lot_id]
         for item in lots:
             if not item.get("lot_cd"):
                 lot_cd, temp = self._lot_cd_temp(
@@ -1895,6 +1921,12 @@ class SchedulingSimulator:
         terms.update(self._cur_conv_terms)
         self._last_reward_breakdown = terms
         self._consume_wip(ppk, oper_id, lot_id)
+
+        # LOT_STAT_CD 강제 큐 소진 (shaped reward가 음수여도 배정 자체는 확정된 상태이므로
+        # assign_lot()의 reward<0 얼리 리턴과 무관하게 여기서 즉시 처리해야 다음 순번이 풀린다)
+        forced_queue = self._eqp_forced_queue.get(eqp_id)
+        if forced_queue and forced_queue[0] == lot_id:
+            forced_queue.pop(0)
 
         pending = {
             "lot_id": lot_id,
