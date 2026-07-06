@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PlotChart from "../components/PlotChart";
 import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
+import FullscreenPanel from "../components/FullscreenPanel";
 import GanttKpiPanel from "../components/GanttKpiPanel";
 import GanttLegendPanel from "../components/GanttLegendPanel";
 import GanttSummaryPanel from "../components/GanttSummaryPanel";
@@ -8,6 +9,7 @@ import StepDebugger from "../components/StepDebugger";
 import { EventTimeline } from "../components/EventTimeline";
 import { api } from "../lib/api";
 import { loadResultFromFile } from "../lib/resultFile";
+import { downloadExcel } from "../lib/exportExcel";
 import {
   buildEnhancedGantt,
   buildGanttLegendItems,
@@ -137,6 +139,18 @@ function csv(sched: InferenceResult["schedule"], name: string) {
   const blob = new Blob(["﻿"+H.join(",")+"\n"+body], { type: "text/csv;charset=utf-8" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
   a.click(); URL.revokeObjectURL(a.href);
+}
+
+function excelSchedule(sched: InferenceResult["schedule"], name: string) {
+  const H = ["EQP_ID","LOT_ID","CARRIER_ID","PLAN_PROD_ATTR_VAL","OPER_ID","ST","START_TM","END_TM","PROC_TIME","WF_QTY"];
+  const rows = sched.map(r => H.map(h => r[h as keyof typeof r] ?? ""));
+  downloadExcel(name, H, rows);
+}
+
+function excelEventLog(events: NonNullable<InferenceResult["event_log"]>, name: string) {
+  const H = ["시각(분)", "이벤트", "장비", "LOT", "제품", "공정"];
+  const rows = events.map(ev => [ev.time, ev.kind, ev.eqp_id, ev.lot_id ?? "", ev.plan_prod_key ?? "", ev.oper_id ?? ""]);
+  downloadExcel(name, H, rows);
 }
 
 export default function InferencePage({ modelExists, config, summary, folderLoading, onInputFolderChange }: Props) {
@@ -821,9 +835,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 )}
 
                 {ganttChart && (
-                  <div className="chart-wrap gantt-chart-panel">
-                    <PlotChart {...ganttChart} scrollable />
-                  </div>
+                  <FullscreenPanel title="간트 차트" className="gantt-chart-panel-wrap">
+                    <div className="chart-wrap gantt-chart-panel">
+                      <PlotChart {...ganttChart} scrollable />
+                    </div>
+                  </FullscreenPanel>
                 )}
 
                 {hasForcedLotStat && (
@@ -847,27 +863,25 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 )}
 
                 {productionChart && (
-                  <div className="card gantt-production-panel">
-                    <div className="gantt-summary-section-title">시간별 제품·공정 누적 생산</div>
+                  <FullscreenPanel title="시간별 제품·공정 누적 생산" className="card gantt-production-panel">
                     <p className="gantt-production-hint">
                       제품별 서브플롯에 공정(O) 실적(실선)과 계획(점선)을 표시합니다. X축은 간트 차트와 동일합니다.
                     </p>
                     <div className="chart-wrap gantt-production-chart">
                       <PlotChart {...productionChart} scrollable />
                     </div>
-                  </div>
+                  </FullscreenPanel>
                 )}
 
                 {wipChart && (
-                  <div className="card gantt-production-panel">
-                    <div className="gantt-summary-section-title">재공 처리 현황</div>
+                  <FullscreenPanel title="재공 처리 현황" className="card gantt-production-panel">
                     <p className="gantt-production-hint">
                       제품/공정별 완료 수량, 잔여 재공(미처리 대기), 계획 미달을 표시합니다. 세로 점선이 계획 목표입니다.
                     </p>
                     <div className="chart-wrap">
                       <PlotChart {...wipChart} />
                     </div>
-                  </div>
+                  </FullscreenPanel>
                 )}
 
                 <GanttSummaryPanel result={result} eqpModelMap={eqpModelMap} />
@@ -876,24 +890,40 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
             {/* EVENTS TAB */}
             {tab === "events" && result?.event_log && (
-              <div className="tab-panel card">
-                <div className="card-title">이벤트 이력 ({result.event_log.length.toLocaleString()}건)</div>
+              <FullscreenPanel
+                title={`이벤트 이력 (${result.event_log.length.toLocaleString()}건)`}
+                className="card tab-panel"
+                actions={
+                  <button type="button" className="btn btn-ghost btn-sm"
+                    onClick={() => excelEventLog(result.event_log!, `event_log_${result.algorithm ?? "result"}.xls`)}>
+                    엑셀 다운로드
+                  </button>
+                }
+              >
                 <EventTimeline events={result.event_log} highlightKinds={new Set<string>()} title="" />
-              </div>
+              </FullscreenPanel>
             )}
 
             {/* TABLE TAB */}
             {tab === "table" && result && (
-              <div className="tab-panel card">
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"0.75rem" }}>
-                  <div className="card-title" style={{ marginBottom:0 }}>스케줄 테이블</div>
-                  <button type="button" className="btn btn-ghost btn-sm"
-                    onClick={() => csv(result.schedule, `schedule_${result.algorithm ?? "result"}.csv`)}>
-                    CSV 다운로드
-                  </button>
-                </div>
+              <FullscreenPanel
+                title="스케줄 테이블"
+                className="card tab-panel"
+                actions={
+                  <>
+                    <button type="button" className="btn btn-ghost btn-sm"
+                      onClick={() => csv(result.schedule, `schedule_${result.algorithm ?? "result"}.csv`)}>
+                      CSV 다운로드
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm"
+                      onClick={() => excelSchedule(result.schedule, `schedule_${result.algorithm ?? "result"}.xls`)}>
+                      엑셀 다운로드
+                    </button>
+                  </>
+                }
+              >
                 <VirtualTable rows={result.schedule} />
-              </div>
+              </FullscreenPanel>
             )}
 
             {/* STEP DEBUGGER TAB */}
@@ -916,8 +946,28 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             {/* COMPARE TAB */}
             {tab === "compare" && compareData && canShowCompare && (
               <div className="tab-panel">
-                <div className="card mb-2">
-                  <div className="card-title">알고리즘 KPI 요약</div>
+                <FullscreenPanel
+                  title="알고리즘 KPI 요약"
+                  className="card mb-2"
+                  actions={
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                      const H = ["알고리즘","Makespan(분)","Idle(분)","공정전환","제품전환","평균달성률(%)"];
+                      const rows = compareEntries.map(e => {
+                        const s = e.result.schedule;
+                        const ms = s.length ? Math.max(...s.map(r => r.END_TM)) : 0;
+                        const achV = e.result.plan.map(p => {
+                          const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.plan_prod_key && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
+                          return Math.min((done/Math.max(p.d0_plan_qty,1))*100,100);
+                        });
+                        const avg = achV.length ? Math.round(achV.reduce((a,b)=>a+b,0)/achV.length*10)/10 : 0;
+                        return [e.label, ms, e.result.stats.idle_total, e.result.stats.oper_switches, e.result.stats.prod_switches, avg];
+                      });
+                      downloadExcel("algorithm_kpi_summary.xls", H, rows);
+                    }}>
+                      엑셀 다운로드
+                    </button>
+                  }
+                >
                   <div className="table-wrap">
                     <table>
                       <thead><tr><th>알고리즘</th><th>Makespan</th><th>Idle</th><th>공정전환</th><th>제품전환</th><th>평균달성률</th></tr></thead>
@@ -942,19 +992,20 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </FullscreenPanel>
                 {compareChartRows.length > 0 && (
                   <div className="grid-2 mb-2">
                     {TEST_METRICS.map(m => (
-                      <div key={m.key} className="card chart-wrap compare-chart-panel">
-                        <PlotChart {...buildTestMetricChart(m, compareChartRows, compareChartAlgos, algoLabels)} />
-                      </div>
+                      <FullscreenPanel key={m.key} title={m.label} className="card compare-chart-panel">
+                        <div className="chart-wrap">
+                          <PlotChart {...buildTestMetricChart(m, compareChartRows, compareChartAlgos, algoLabels)} />
+                        </div>
+                      </FullscreenPanel>
                     ))}
                   </div>
                 )}
                 {compareShowGantt && compareGanttChart && (
-                  <div className="card gantt-chart-panel">
-                    <div className="card-title">알고리즘 비교 간트</div>
+                  <FullscreenPanel title="알고리즘 비교 간트" className="card gantt-chart-panel">
                     <div className="gantt-toolbar">
                       <div className="gantt-toolbar-group time-range-group">
                         <label className="check-label">
@@ -1023,7 +1074,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     <div className="chart-wrap">
                       <PlotChart {...compareGanttChart} scrollable />
                     </div>
-                  </div>
+                  </FullscreenPanel>
                 )}
               </div>
             )}

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PlotChart from "../components/PlotChart";
 import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
+import FullscreenPanel from "../components/FullscreenPanel";
 import { api } from "../lib/api";
+import { downloadExcel } from "../lib/exportExcel";
 import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey } from "../lib/ganttTime";
 import {
   ALGO_CHART_COLORS,
@@ -248,9 +250,9 @@ export default function TestPage({ config, modelExists }: Props) {
                 {compareView === "summary" && (
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
                     {summaryRows.map(r => (
-                      <div key={r.key} className="card chart-wrap">
+                      <FullscreenPanel key={r.key} title={r.label} className="card chart-wrap">
                         <PlotChart {...buildMetricSummaryChart(r, displayAlgos, algoLabels)} />
-                      </div>
+                      </FullscreenPanel>
                     ))}
                   </div>
                 )}
@@ -258,9 +260,9 @@ export default function TestPage({ config, modelExists }: Props) {
                 {compareView === "period" && (
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
                     {TEST_METRICS.map(m => (
-                      <div key={m.key} className="card chart-wrap">
+                      <FullscreenPanel key={m.key} title={m.label} className="card chart-wrap">
                         <PlotChart {...buildTestMetricChart(m, chartRows, displayAlgos, algoLabels, selected ?? undefined)} />
-                      </div>
+                      </FullscreenPanel>
                     ))}
                   </div>
                 )}
@@ -284,16 +286,30 @@ export default function TestPage({ config, modelExists }: Props) {
                     </>}
                   </div>
                 </div>
-                <div className="chart-wrap gantt-chart-panel">
+                <FullscreenPanel title={selectedDataset.label} className="chart-wrap gantt-chart-panel">
                   <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} scrollable />
-                </div>
+                </FullscreenPanel>
               </div>
             )}
 
             {tab === "detail" && selectedDataset && detailEntries.length > 0 && (
               <div className="tab-panel">
-                <div className="card mb-2">
-                  <div className="card-title">KPI 비교 — {selectedDataset.label}</div>
+                <FullscreenPanel
+                  title={`KPI 비교 — ${selectedDataset.label}`}
+                  className="card mb-2"
+                  actions={
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                      const H = ["알고리즘","Makespan(분)","가동률(%)","유휴율(%)","공정전환","제품전환","Tool전환","계획달성률(%)","타겟달성률(%)"];
+                      const rows = detailEntries.map(e => {
+                        const k = computeInferenceKpi(e.result);
+                        return [e.label, k.makespan, k.avgUtilPct, k.avgIdlePct, k.operSwitches, k.prodSwitches, k.toolSwitches, k.avgAchPct, k.avgTargetAchPct];
+                      });
+                      downloadExcel(`kpi_compare_${selectedDataset.label}.xls`, H, rows);
+                    }}>
+                      엑셀 다운로드
+                    </button>
+                  }
+                >
                   <div className="table-wrap">
                     <table>
                       <thead><tr><th>알고리즘</th><th>Makespan</th><th>가동률</th><th>유휴율</th><th>공정전환</th><th>제품전환</th><th>Tool전환</th><th>계획달성률</th><th>타겟달성률</th></tr></thead>
@@ -313,10 +329,14 @@ export default function TestPage({ config, modelExists }: Props) {
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </FullscreenPanel>
                 {(() => {
                   const ach = buildAlgorithmAchievementComparison(detailEntries);
-                  return ach ? <div className="chart-wrap"><PlotChart {...ach} /></div> : null;
+                  return ach ? (
+                    <FullscreenPanel title="달성률 비교" className="chart-wrap">
+                      <PlotChart {...ach} />
+                    </FullscreenPanel>
+                  ) : null;
                 })()}
               </div>
             )}

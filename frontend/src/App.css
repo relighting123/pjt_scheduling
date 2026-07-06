@@ -2063,3 +2063,34 @@ tbody tr:last-child td { border-bottom: none; }
   display: inline-block; width: 10px; height: 10px; border-radius: 2px;
   margin-right: 0.35rem; vertical-align: middle;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   FULLSCREEN PANEL (간트/차트/테이블 항목별 전체화면 보기)
+   ══════════════════════════════════════════════════════════════════ */
+.fullscreen-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.75rem; margin-bottom: 0.6rem;
+}
+.fullscreen-panel-title {
+  font-size: 0.78rem; font-weight: 600; color: var(--text-muted); letter-spacing: 0.01em;
+}
+.fullscreen-panel-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+.fullscreen-panel-body { min-height: 0; }
+
+.fullscreen-panel:fullscreen {
+  width: 100vw; height: 100vh; max-width: none; max-height: none;
+  padding: 1.1rem 1.4rem; overflow: auto;
+  display: flex; flex-direction: column;
+  background: var(--bg-card, #ffffff);
+}
+.fullscreen-panel:fullscreen .fullscreen-panel-body {
+  flex: 1; min-height: 0; overflow: auto;
+}
+.fullscreen-panel:fullscreen .fullscreen-panel-title { font-size: 0.95rem; }
+.fullscreen-panel:fullscreen .gantt-chart-scroll { max-height: 86vh; }
+.fullscreen-panel:fullscreen .gantt-chart-panel { min-height: 86vh; }
+.fullscreen-panel:fullscreen .table-wrap { max-height: none; }
+.fullscreen-panel:fullscreen .chart-wrap .plot-chart,
+.fullscreen-panel:fullscreen .chart-wrap .js-plotly-plot {
+  min-height: 80vh;
+}
