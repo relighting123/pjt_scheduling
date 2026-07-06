@@ -8,6 +8,7 @@ import {
   benchmarkRowsFromResponse,
   buildAlgorithmAchievementComparison,
   buildAlgorithmGanttComparison,
+  buildMetricSummaryChart,
   buildMetricSummaryRows,
   buildTestMetricChart,
   TEST_METRICS,
@@ -270,6 +271,17 @@ export default function TestPage({ config, modelExists }: Props) {
                     </table>
                   </div>
                 </div>
+
+                <div className="card-title mb-1">전체 기간 요약 차트 (평균 · 최소~최대 오차막대)</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem", marginBottom:"1.5rem" }}>
+                  {summaryRows.map(r => (
+                    <div key={r.key} className="card chart-wrap">
+                      <PlotChart {...buildMetricSummaryChart(r, displayAlgos, algoLabels)} />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="card-title mb-1">기간별 추이</div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
                   {TEST_METRICS.map(m => (
                     <div key={m.key} className="card chart-wrap">
