@@ -145,6 +145,18 @@ function ganttProdOperColorMap(pairKeys: string[]): Record<string, string> {
   return buildColorMap(pairKeys, GANTT_PROD_OPER_PALETTE);
 }
 
+// LOT_STAT_CD 강제 배정(PROC/LOAD/SELE/RESV) 색상. WAIT은 기존 제품×공정 색상 유지.
+const FORCED_LOT_STAT_FILL: Record<string, string> = {
+  PROC: "#16a34a",
+  LOAD: "#ca8a04",
+  SELE: "#ca8a04",
+  RESV: "#ca8a04",
+};
+
+function forcedLotStatFillColor(lotStatCd?: string): string | undefined {
+  return lotStatCd ? FORCED_LOT_STAT_FILL[lotStatCd] : undefined;
+}
+
 function ganttBarMarker(fillColor: string, visible: boolean) {
   return {
     color: fillColor,
@@ -335,13 +347,14 @@ function ganttTraces(
     const width = rec.END_TM - rec.START_TM;
     const { base, x } = ganttBarAxisCoords(rec.START_TM, width, baseMs);
     const pairKey = ganttProdOperKey(rec.PLAN_PROD_ATTR_VAL, rec.OPER_ID ?? "");
+    const forcedColor = forcedLotStatFillColor(rec.LOT_STAT_CD);
     traces.push({
       type: "bar",
       orientation: "h",
       x: [x],
       y: [rec.EQP_ID],
       base: [base],
-      marker: ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", visible),
+      marker: ganttBarMarker(forcedColor ?? prodOperColorMap[pairKey] ?? "#94a3b8", visible),
       text: visible && width >= 20 ? rec.LOT_ID : "",
       textposition: "inside",
       insidetextanchor: "middle",
@@ -351,6 +364,7 @@ function ganttTraces(
         `EQP: ${rec.EQP_ID}<br>` +
         `제품: ${rec.PLAN_PROD_ATTR_VAL}<br>` +
         `공정: ${rec.OPER_ID ?? "N/A"}<br>` +
+        (rec.LOT_STAT_CD ? `상태: ${rec.LOT_STAT_CD}<br>` : "") +
         `시작: ${formatGanttMinuteLabel(rec.START_TM, baseMs)}<br>` +
         `종료: ${formatGanttMinuteLabel(rec.END_TM, baseMs)}<br>` +
         `소요: ${width}분<extra></extra>`,
@@ -1828,6 +1842,7 @@ function segmentHoverTemplate(
       `EQP: ${rec.EQP_ID}<br>` +
       `제품: ${prodLabel} (${rec.PLAN_PROD_ATTR_VAL})<br>` +
       `공정: ${operLabel}<br>` +
+      (rec.LOT_STAT_CD ? `상태: ${rec.LOT_STAT_CD}<br>` : "") +
       `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
       inflowLines +
       `<extra></extra>`
@@ -1951,7 +1966,8 @@ export function buildEnhancedGantt(
     const { base, x } = ganttBarAxisCoords(start, width, baseMs);
     // 유입 재공 = 시뮬 중 투입(OPER_IN_TIME>0)만. ABSTRACT(초기 재공 출처)는 유입이 아님.
     const isInflowSeg = segment.records.some((r) => (r.OPER_IN_TIME ?? 0) > 0);
-    const baseMarker = ganttBarMarker(prodOperColorMap[pairKey] ?? "#94a3b8", true);
+    const forcedColor = forcedLotStatFillColor(rec.LOT_STAT_CD);
+    const baseMarker = ganttBarMarker(forcedColor ?? prodOperColorMap[pairKey] ?? "#94a3b8", true);
     const marker = isInflowSeg
       ? { ...baseMarker, opacity: 0.82, line: { ...(baseMarker.line as object), width: 0 } }
       : baseMarker;

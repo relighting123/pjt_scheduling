@@ -57,4 +57,6 @@ export interface AssignedLot {
   oper_in_time?: number;
   oper_id?: string;
   start_tm: number;
+  /** PROC/LOAD/SELE/RESV/WAIT */
+  lot_stat_cd?: string;
 }

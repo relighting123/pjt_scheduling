@@ -1781,6 +1781,7 @@ class SchedulingSimulator:
         is_abstract = pending["is_abstract"]
         lot_cd = pending["lot_cd"]
         temp = pending["temp"]
+        lot_stat_cd = pending.get("lot_stat_cd", "WAIT")
 
         end_time = start_time + proc_time
         plan_hit = self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
@@ -1845,6 +1846,7 @@ class SchedulingSimulator:
             "CONVERSION":    had_conv,
             "ABSTRACT":      is_abstract,
             "OPER_IN_TIME":  oper_in_time,
+            "LOT_STAT_CD":   lot_stat_cd,
         })
 
         self._last_assigned = {
@@ -1858,6 +1860,7 @@ class SchedulingSimulator:
             "wf_qty":        wf_qty,
             "lot_cd":        lot_cd,
             "temp":          temp,
+            "lot_stat_cd":   lot_stat_cd,
             "conversion":    had_conv,
             "start_tm":      start_time,
             "oper_in_time":  oper_in_time,
@@ -1879,6 +1882,7 @@ class SchedulingSimulator:
         row: dict,
         oper_in_time: int,
         is_abstract: bool,
+        lot_stat_cd: str = "WAIT",
     ) -> float:
         """공통 배정: conversion + tool + WIP -1."""
         eqp = self.eqps[eqp_id]
@@ -1945,6 +1949,7 @@ class SchedulingSimulator:
             "from_lot_cd": eqp.prev_lot_cd,
             "had_conversion": needs_conv,
             "proc_reward": reward,
+            "lot_stat_cd": lot_stat_cd,
         }
         self._last_decision_assignment = {
             "eqp_id":        eqp_id,
@@ -1988,9 +1993,11 @@ class SchedulingSimulator:
             seq = meta.get("seq", 1)
             wf_qty = meta.get("wf_qty", 25)
             carrier_id = meta.get("carrier_id", "")
+            lot_stat_cd = lot.lot_stat_cd if lot else meta.get("lot_stat_cd", "WAIT")
         else:
             ppk, oper_id = lot.plan_prod_key, lot.oper_id
             seq, wf_qty, carrier_id = lot.seq, lot.wf_qty, lot.carrier_id
+            lot_stat_cd = lot.lot_stat_cd
 
         row = self._abstract_row_for(eqp_id, ppk, oper_id)
         if row is None:
@@ -2004,7 +2011,7 @@ class SchedulingSimulator:
         oper_in_time = meta.get("oper_in_time", 0)
         reward = self._execute_assignment(
             eqp_id, lot_id, ppk, oper_id, seq, wf_qty, st_per_wafer,
-            carrier_id, row, oper_in_time, is_abstract,
+            carrier_id, row, oper_in_time, is_abstract, lot_stat_cd,
         )
         if reward < 0:
             return reward
