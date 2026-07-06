@@ -2057,3 +2057,9 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .gantt-base-rtk b { color: var(--accent); font-variant-numeric: tabular-nums; }
 .gantt-base-time b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.gantt-forced-legend { gap: 1rem; }
+.gantt-forced-swatch {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 0.35rem; vertical-align: middle;
+}

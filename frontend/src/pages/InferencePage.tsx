@@ -284,6 +284,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     return buildGanttLegendItems(result.schedule, result.prod_keys, result.oper_ids);
   }, [result]);
 
+  const hasForcedLotStat = useMemo(
+    () => (result?.schedule ?? []).some((r) => r.LOT_STAT_CD && r.LOT_STAT_CD !== "WAIT"),
+    [result],
+  );
+
   const toggleLegendKey = useCallback((pairKey: string) => {
     setHiddenLegendKeys((prev) => {
       const next = new Set(prev);
@@ -818,6 +823,13 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 {ganttChart && (
                   <div className="chart-wrap gantt-chart-panel">
                     <PlotChart {...ganttChart} scrollable />
+                  </div>
+                )}
+
+                {hasForcedLotStat && (
+                  <div className="gantt-base-info gantt-forced-legend">
+                    <span><span className="gantt-forced-swatch" style={{ background: "#16a34a" }} /> PROC(강제 배정)</span>
+                    <span><span className="gantt-forced-swatch" style={{ background: "#ca8a04" }} /> LOAD/SELE/RESV(강제 배정)</span>
                   </div>
                 )}
 

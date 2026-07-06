@@ -32,6 +32,8 @@ export interface ScheduleRecord {
   LOT_CD?: string;
   TEMP?: string;
   CONVERSION?: boolean;
+  /** PROC/LOAD/SELE/RESV/WAIT – WAIT 외에는 강제 배정(간트에서 색상 구분) */
+  LOT_STAT_CD?: string;
 }
 
 export interface PlanRecord {
