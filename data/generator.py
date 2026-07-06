@@ -102,6 +102,7 @@ def _discrete_row(
     eqp_model: str = "A",
     seq: Optional[int] = None,
     carrier_id: Optional[str] = None,
+    lot_stat_cd: str = "WAIT",
 ) -> dict:
     row = {
         "EQP_ID": eqp_id,
@@ -111,6 +112,7 @@ def _discrete_row(
         "ST": st_per_wafer,
         "EQP_MODEL_CD": eqp_model,
         "WF_QTY": wf_qty,
+        "LOT_STAT_CD": lot_stat_cd,
     }
     if seq is not None:
         row["SEQ"] = seq

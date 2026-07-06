@@ -47,11 +47,21 @@ pjt_scheduling/
 
 | 레이어 | 단위 | 설명 |
 |--------|------|------|
-| `discrete_arrange` | `(EQP, LOT, OPER)` | 실제 EQP×carrier 조합, ST, WF_QTY |
+| `discrete_arrange` | `(EQP, LOT, OPER)` | 실제 EQP×carrier 조합, ST, WF_QTY, `LOT_STAT_CD` |
 | `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿 |
 | Runtime WIP | `(PPK, OPER)` + LOT list | 현재/유입 재공, `oper_in_time` |
 
 부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`
+
+#### LOT_STAT_CD (`discrete_arrange`, 선택 – 미지정 시 `WAIT`)
+
+LOT의 현재 상태 코드로 `PROC` / `LOAD` / `SELE` / `RESV` / `WAIT` 중 하나입니다.
+
+- `WAIT`: 알고리즘이 자유롭게 스케줄링(장비·순서 결정)할 수 있는 재공(기존 동작과 동일).
+- `PROC`/`LOAD`/`SELE`/`RESV`: 이미 확정된 재공. 반드시 해당 행의 `EQP_ID`에만 배정되며,
+  같은 장비에 여러 건이 있으면 `discrete_arrange.json`에 적힌 순서대로 하나씩 강제 배정됩니다.
+  이 LOT들은 다른 장비의 배정 후보로는 전혀 노출되지 않고, 자신의 순번이 될 때까지는
+  자기 장비에서도 다른 어떤 재공보다 우선 처리되어야 합니다.
 
 #### 전환 그룹 제약 (`conversion_group.json`, 선택)
 

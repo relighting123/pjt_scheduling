@@ -46,7 +46,7 @@ export default function ArrangeTable({
         <table className="arrange-table" key={step}>
           <thead>
             <tr>
-              {["EQP_ID", "LOT_ID", "OPER", "LOT_CD", "TEMP", "PLAN_PROD_ATTR_VAL", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
+              {["EQP_ID", "LOT_ID", "OPER", "LOT_STAT_CD", "LOT_CD", "TEMP", "PLAN_PROD_ATTR_VAL", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
                 <th key={h}>{h}</th>
               ))}
             </tr>
@@ -74,6 +74,7 @@ export default function ArrangeTable({
                   <td>{row.eqp_id}</td>
                   <td>{row.lot_id}</td>
                   <td>{row.oper_id ?? "-"}</td>
+                  <td>{row.lot_stat_cd ?? "WAIT"}</td>
                   <td>{row.lot_cd ?? "-"}</td>
                   <td>{row.temp ?? "-"}</td>
                   <td>{row.plan_prod_key}</td>
@@ -91,6 +92,8 @@ export default function ArrangeTable({
         초기 재공의 구체적 EQP×LOT 조합입니다. ST는 해당 장비 투입 시 소요시간(분),
         EQP MODEL은 장비 모델, START_TM은 초기 스케줄 시작 시각(분)입니다.
         LOT 투입 시 해당 LOT의 모든 EQP 조합이 제거됩니다.
+        LOT_STAT_CD가 WAIT인 재공만 알고리즘이 자유롭게 배정하며, PROC/LOAD/SELE/RESV는
+        지정된 EQP_ID에 입력된 순서대로 강제 배정됩니다.
       </p>
     </div>
   );
