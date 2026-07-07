@@ -106,7 +106,7 @@ def _build_rts_conv_rows(
             "RULE_TIMEKEY":           meta["RULE_TIMEKEY"],
             "PRCS_STAT_CD":           "PLAN",
             "JOB_ID":                 job_id,
-            "RTS_GBN_CD":             "CONV",
+            "RTS_GBN_CD_VAL":             "CONV",
             "EQP_ID":                 eqp_id,
             "EQP_MODEL_CD":           eqp_model,
             "TESTER_EQP_MODEL_CD":    eqp_model,

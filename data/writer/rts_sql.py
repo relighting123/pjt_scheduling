@@ -75,7 +75,7 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
     event_key = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
         cols = [
-            "FAC_ID", "RULE_TIMEKEY", "PRCS_STAT_CD", "JOB_ID", "RTS_GBN_CD",
+            "FAC_ID", "RULE_TIMEKEY", "PRCS_STAT_CD", "JOB_ID", "RTS_GBN_CD_VAL",
             "EQP_ID", "EQP_MODEL_CD", "TESTER_EQP_MODEL_CD",
             "CONV_START_TM", "CONV_END_TM", "CONV_TIME",
             "LOT_CD", "PRB_CARD_NO", "TEMPER_VAL", "PLAN_PROD_ATTR_VAL",
@@ -90,7 +90,7 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
             _sql_str(r["RULE_TIMEKEY"]),
             _sql_str(r.get("PRCS_STAT_CD", "PLAN")),
             _sql_str(r["JOB_ID"]),
-            _sql_str(r.get("RTS_GBN_CD", "CONV")),
+            _sql_str(r.get("RTS_GBN_CD_VAL", "CONV")),
             _sql_str(r["EQP_ID"]),
             _sql_str(r["EQP_MODEL_CD"]),
             _sql_str(r.get("TESTER_EQP_MODEL_CD", r["EQP_MODEL_CD"])),
