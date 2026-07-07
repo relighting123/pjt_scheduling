@@ -181,6 +181,29 @@ def _load_many(folders: List[str]) -> List[dict]:
     return datasets
 
 
+def _validate_period_selectors(
+    args: argparse.Namespace,
+    *,
+    has_ruletimekey: bool = False,
+    require_one: bool = False,
+    one_of_label: str = "--prevcnt, --from/--to",
+) -> None:
+    """train/test/infer 공통: --ruletimekey(있으면)/--prevcnt/--from,--to 상호배타 검증."""
+    rtk = getattr(args, "ruletimekey", None) if has_ruletimekey else None
+    if bool(args.from_key) != bool(args.to_key):
+        print("[오류] --from 와 --to 를 함께 지정하세요.")
+        sys.exit(1)
+    if rtk and (args.prevcnt is not None or args.from_key or args.to_key):
+        print("[오류] --ruletimekey 는 --prevcnt, --from/--to 와 함께 쓸 수 없습니다.")
+        sys.exit(1)
+    if args.prevcnt is not None and args.from_key and args.to_key:
+        print("[오류] --prevcnt 와 --from/--to 는 함께 쓸 수 없습니다.")
+        sys.exit(1)
+    if require_one and rtk is None and args.prevcnt is None and not (args.from_key and args.to_key):
+        print(f"[오류] {one_of_label} 중 하나가 필요합니다.")
+        sys.exit(1)
+
+
 def cmd_train(
     fac_id: str,
     prevcnt: int = None,
@@ -276,7 +299,7 @@ def cmd_train(
 
     from env.scheduling_rl_env import SchedulingRLEnv
     env_cls = SchedulingRLEnv
-    print(f"  알고리즘: scheduling_rl (SchedulingRLEnv)")
+    print("  알고리즘: scheduling_rl (SchedulingRLEnv)")
 
     agent = SchedulingAgent()
     agent.train(env_data, verbose=1, env_cls=env_cls)
@@ -908,21 +931,10 @@ def main():
     try:
         if args.command == "train":
             if not args.all_folders:
-                if args.ruletimekey and (
-                    args.prevcnt is not None or args.from_key or args.to_key
-                ):
-                    print("[오류] --ruletimekey 는 --prevcnt, --from/--to 와 함께 쓸 수 없습니다.")
-                    sys.exit(1)
-                if (
-                    args.ruletimekey is None
-                    and args.prevcnt is None
-                    and not (args.from_key and args.to_key)
-                ):
-                    print("[오류] --ruletimekey, --prevcnt, --from/--to, --all 중 하나가 필요합니다.")
-                    sys.exit(1)
-                if args.prevcnt is not None and (args.from_key or args.to_key):
-                    print("[오류] --prevcnt 와 --from/--to 는 함께 쓸 수 없습니다.")
-                    sys.exit(1)
+                _validate_period_selectors(
+                    args, has_ruletimekey=True, require_one=True,
+                    one_of_label="--ruletimekey, --prevcnt, --from/--to, --all",
+                )
             cmd_train(
                 fac_id=args.facid,
                 prevcnt=args.prevcnt,
@@ -935,6 +947,7 @@ def main():
             )
 
         elif args.command == "test":
+            _validate_period_selectors(args)
             cmd_test(
                 fac_id=args.facid,
                 prevcnt=args.prevcnt,
@@ -945,14 +958,7 @@ def main():
             )
 
         elif args.command == "infer":
-            if args.ruletimekey and (
-                args.prevcnt is not None or args.from_key or args.to_key
-            ):
-                print("[오류] --ruletimekey 는 --prevcnt, --from/--to 와 함께 쓸 수 없습니다.")
-                sys.exit(1)
-            if args.prevcnt is not None and (args.from_key or args.to_key):
-                print("[오류] --prevcnt 와 --from/--to 는 함께 쓸 수 없습니다.")
-                sys.exit(1)
+            _validate_period_selectors(args, has_ruletimekey=True)
             cmd_inference(
                 fac_id=args.facid,
                 rule_timekey=args.ruletimekey,
