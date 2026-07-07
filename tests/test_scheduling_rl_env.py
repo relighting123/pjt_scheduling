@@ -140,7 +140,7 @@ def test_bulk_block_size_bounded_by_plan_and_wip(tmp_path):
     ppk, oper = sim.ppk_oper_from_flat(feasible[0])
 
     lots = [l for l in sim.available_lots(eqp)
-            if l["plan_prod_attr_val"] == ppk and l["oper_id"] == oper]
+            if l["PLAN_PROD_ATTR_VAL"] == ppk and l["oper_id"] == oper]
     wip = len(lots)
     wf_unit = max(ed.get("max_wf_qty", 1), 1)
     plan_carriers = int(np.ceil(200 / wf_unit))  # = 8

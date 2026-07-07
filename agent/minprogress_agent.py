@@ -15,7 +15,7 @@ class MinProgressAgent:
 
     def _plan_row(self, prod: str, oper_id: str) -> Optional[dict]:
         for p in self._plan:
-            if p["plan_prod_attr_val"] == prod and p["oper_id"] == oper_id:
+            if p["PLAN_PROD_ATTR_VAL"] == prod and p["oper_id"] == oper_id:
                 return p
         return None
 

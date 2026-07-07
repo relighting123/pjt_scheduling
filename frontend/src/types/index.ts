@@ -84,7 +84,7 @@ export interface SimEvent {
   PLAN_PROD_ATTR_VAL?: string;
   oper_id?: string;
   next_oper_id?: string;
-  next_PLAN_PROD_ATTR_VAL?: string;
+  next_plan_prod_key?: string;
   next_oper_in_time?: number;
   from_lot_cd?: string;
   to_lot_cd?: string;

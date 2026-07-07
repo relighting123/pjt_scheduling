@@ -77,7 +77,7 @@ def plan_achievement_ratio(
     ratios: Dict[str, float] = {}
     for p in plan:
         op = p.get("oper_id") or p.get("OPER_ID")
-        ppk = p.get("plan_prod_attr_val") or p.get("PLAN_PROD_ATTR_VAL")
+        ppk = p.get("PLAN_PROD_ATTR_VAL") or p.get("PLAN_PROD_ATTR_VAL")
         target = max(int(p.get("d0_plan_qty", p.get("D0_PLAN_QTY", 0))), 1)
         done = completed.get((ppk, op), 0)
         ratios[op] = done / target

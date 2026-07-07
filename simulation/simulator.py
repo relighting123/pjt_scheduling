@@ -348,7 +348,7 @@ class SchedulingSimulator:
             }
             if next_wip:
                 move_payload["next_oper_id"] = next_wip["oper_id"]
-                move_payload["next_plan_prod_attr_val"] = next_wip["PLAN_PROD_ATTR_VAL"]
+                move_payload["next_plan_prod_key"] = next_wip["PLAN_PROD_ATTR_VAL"]
                 move_payload["next_oper_in_time"] = next_wip.get("oper_in_time")
             self._emit_event(EVENT_MOVE_OUT, eqp_id, **move_payload)
         eqp.status = "idle"
