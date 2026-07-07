@@ -15,21 +15,14 @@ import {
   buildGanttLegendItems,
   buildProductProductionCharts,
   buildInferenceWipChart,
-  buildTestMetricChart,
-  TEST_METRICS,
-  buildAlgorithmGanttComparison,
-  buildCompareGanttAxis,
-  resolveCompareTimeEndMinutes,
   ganttStepMarkerShape,
   type GanttBarLabel,
-  type AlgoCompareEntry,
-  type TestBenchmarkChartRow,
   ALGO_CHART_COLORS,
 } from "../lib/charts";
 import { buildEqpModelMap } from "../lib/metrics";
 import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey, parseSimBaseMs } from "../lib/ganttTime";
 import type {
-  AlgorithmCompareResponse, AlgorithmId, AlgorithmInfo,
+  AlgorithmId, AlgorithmInfo,
   AppConfig, DataSummary, InferenceResult, DecisionLogEntry,
 } from "../types";
 
@@ -101,7 +94,7 @@ function buildInferOptions(
   };
 }
 
-type MainTab = "gantt" | "events" | "table" | "debug" | "compare";
+type MainTab = "gantt" | "events" | "table" | "debug";
 const ROWS = 200;
 
 function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
@@ -165,12 +158,9 @@ function excelEventLog(events: NonNullable<InferenceResult["event_log"]>, name: 
 
 export default function InferencePage({ modelExists, config, summary, folderLoading, onInputFolderChange }: Props) {
   const [result, setResult]           = useState<InferenceResult | null>(null);
-  const [compareData, setCompareData] = useState<AlgorithmCompareResponse | null>(null);
   const [algorithm, setAlgorithm]     = useState<AlgorithmId>("scheduling_rl");
   const [algorithms, setAlgorithms]   = useState<AlgorithmInfo[]>([]);
-  const [compareAlgos, setCompareAlgos] = useState<Set<AlgorithmId>>(new Set());
   const [loading, setLoading]         = useState(false);
-  const [compareLoading, setCmpLoad]  = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [tab, setTab]                 = useState<MainTab>("gantt");
   const [fileSource, setFileSource]   = useState<string | null>(null);
@@ -201,10 +191,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ganttFixed, setGanttFixed]       = useState(false);
   const [ganttStart, setGanttStart]       = useState(0);
   const [ganttEnd, setGanttEnd]           = useState(1440);
-  const [compareGanttFixed, setCompareGanttFixed] = useState(false);
-  const [compareGanttStart, setCompareGanttStart] = useState(0);
-  const [compareGanttEnd, setCompareGanttEnd] = useState(1440);
-  const [compareShowGantt, setCompareShowGantt] = useState(true);
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<Set<string>>(new Set());
   const [showConversionBars, setShowConversionBars] = useState(true);
   const [debugStep, setDebugStep] = useState<DecisionLogEntry | null>(null);
@@ -229,10 +215,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, []);
 
   const algoList = algorithms;
-  const available = useMemo(() => algoList.filter(a => !a.requires_model || modelExists), [algoList, modelExists]);
-  const algoLabels = useMemo(() => { const m: Record<string,string>={}; algoList.forEach(a=>m[a.id]=a.name); return m; }, [algoList]);
-
-  useEffect(() => { setCompareAlgos(new Set(available.map(a => a.id))); }, [available]);
 
   // 간트 x축 기본 끝 = sim_end와 실제 스케줄 끝 중 큰 값.
   const dataEnd = useMemo(() => {
@@ -242,35 +224,15 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       : 0;
     return Math.max(result.sim_end_minutes ?? 0, schedEnd, 1);
   }, [result]);
-  const compareDataEnd = useMemo(
-    () => (compareData
-      ? resolveCompareTimeEndMinutes({
-          sim_end_minutes: compareData.sim_end_minutes,
-          results: compareData.results,
-        })
-      : 1440),
-    [compareData],
-  );
-  const compareScheduleEnd = useMemo(() => {
-    if (!compareData?.results.length) return 0;
-    const ends = compareData.results.flatMap((r) => r.schedule.map((row) => row.END_TM));
-    return ends.length ? Math.max(...ends) : 0;
-  }, [compareData]);
   // 스케줄이 지평선을 넘는 경우, 「X축 고정」 종료값 상한으로 안내
   const scheduleEnd = useMemo(
     () => (result?.schedule?.length ? Math.max(...result.schedule.map((r) => r.END_TM)) : 0),
     [result],
   );
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
-  useEffect(() => {
-    if (compareDataEnd > 0 && !compareGanttFixed) setCompareGanttEnd(compareDataEnd);
-  }, [compareDataEnd, compareGanttFixed]);
 
   const simBaseTime = useMemo(() => {
-    // 1순위: 추론 결과에 실린 sim_base_time(데이터 실제 기준시각, 폴더 형식 무관)
-    const resultBase = result?.sim_base_time
-      ?? compareData?.sim_base_time
-      ?? compareData?.results?.[0]?.sim_base_time;
+    const resultBase = result?.sim_base_time;
     if (resultBase && parseSimBaseMs(resultBase) != null) return resultBase;
     // 2순위: summary base(파싱 가능할 때만)
     if (summary?.sim_base_time && parseSimBaseMs(summary.sim_base_time) != null) {
@@ -279,7 +241,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     // 3순위: 폴더 경로의 RULE_TIMEKEY
     const rtk = ruleTimekeyFromFolder(selectedFolder);
     return rtk ? simBaseTimeFromRuleTimekey(rtk) : undefined;
-  }, [result, compareData, summary, selectedFolder]);
+  }, [result, summary, selectedFolder]);
 
   // 간트 기준 시각(0분) = RULE_TIMEKEY. 차트 상단 헤더로 표시.
   const ganttBaseInfo = useMemo(() => {
@@ -293,12 +255,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, [simBaseTime, selectedFolder]);
 
   const axis = useMemo(() => ({
-    eqpIds: result?.eqp_ids ?? compareData?.eqp_ids ?? [],
+    eqpIds: result?.eqp_ids ?? [],
     timeStartMinutes: ganttFixed ? ganttStart : 0,
     timeEndMinutes:   ganttFixed ? ganttEnd   : dataEnd,
     fixedRange: ganttFixed,
     simBaseTime,
-  }), [result, compareData, ganttFixed, ganttStart, ganttEnd, dataEnd, simBaseTime]);
+  }), [result, ganttFixed, ganttStart, ganttEnd, dataEnd, simBaseTime]);
 
   const eqpModelMap = useMemo(() => buildEqpModelMap(result?.event_log ?? []), [result]);
 
@@ -325,19 +287,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       return next;
     });
   }, []);
-
-  const compareEntries = useMemo((): AlgoCompareEntry[] =>
-    (compareData?.results ?? []).map(r => ({
-      algorithm: r.algorithm ?? "scheduling_rl",
-      label: algoList.find(a => a.id === r.algorithm)?.name ?? (r.algorithm ?? ""),
-      result: r,
-    })),
-  [compareData, algoList]);
-
-  const setResultAndCompare = (res: InferenceResult) => {
-    setResult(res);
-    setCompareData({ results:[res], errors:[], plan:res.plan, prod_keys:res.prod_keys, oper_ids:res.oper_ids, eqp_ids:res.eqp_ids, sim_end_minutes:res.sim_end_minutes });
-  };
 
   const syncInferFolder = useCallback(async (folder?: string) => {
     if (!folder) return;
@@ -370,7 +319,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           conversionMinutes,
         }),
       });
-      setResultAndCompare(res); setFileSource(null); setTab("gantt");
+      setResult(res); setFileSource(null); setTab("gantt");
       if (res.infer_meta) {
         const meta = res.infer_meta;
         const metaText = [
@@ -396,7 +345,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     setLoading(true); setError(null);
     try {
       const res = await api.getInferenceResult(selectedFolder);
-      setResultAndCompare(res); setFileSource(null); setTab("gantt");
+      setResult(res); setFileSource(null); setTab("gantt");
     } catch(e) { setError(e instanceof Error ? e.message : "저장 결과 없음"); }
     finally { setLoading(false); }
   }, [selectedFolder]);
@@ -405,56 +354,10 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     setLoading(true); setError(null);
     try {
       const res = await loadResultFromFile(file);
-      setResultAndCompare(res); setFileSource(file.name); setTab("gantt");
+      setResult(res); setFileSource(file.name); setTab("gantt");
     } catch(e) { setError(e instanceof Error ? e.message : "파일 오류"); }
     finally { setLoading(false); }
   }, []);
-
-  const runCompare = useCallback(async () => {
-    const ids = [...compareAlgos];
-    if (!ids.length) { setError("알고리즘을 선택하세요."); return; }
-    setCmpLoad(true); setError(null); setLastInferMeta(null);
-    try {
-      const res = await api.runCompare(ids, buildInferOptions(selectedFolder, {
-        facIdOverride,
-        ruleTimekey,
-        fromDate,
-        toDate,
-        prevcnt,
-        lotCd,
-        nodb,
-        decisionLog: false,
-        wipInflow,
-        includeHistory: false,
-        dbLoad: false,
-        dbAlias: "",
-        noHistory: false,
-        maxConversions,
-        maxConversionsPerEqp,
-        conversionMinutes,
-      }));
-      setCompareData(res);
-      const compareEnd = resolveCompareTimeEndMinutes({
-        sim_end_minutes: res.sim_end_minutes,
-        results: res.results,
-      });
-      setCompareGanttStart(0);
-      setCompareGanttEnd(compareEnd);
-      setCompareGanttFixed(false);
-      if (res.results.length === 1) setResult(res.results[0]);
-      if (res.infer_meta) {
-        const meta = res.infer_meta;
-        setLastInferMeta([
-          `FAC=${meta.fac_id}`,
-          `RULE_TIMEKEY=${meta.rule_timekey}`,
-          meta.fetched_from_db ? "DB 조회" : "기존 JSON",
-        ].join(" · "));
-        await syncInferFolder(meta.input_folder);
-      }
-      setTab("compare");
-    } catch(e) { setError(e instanceof Error ? e.message : "비교 실패"); }
-    finally { setCmpLoad(false); }
-  }, [compareAlgos, selectedFolder, facIdOverride, wipInflow, ruleTimekey, fromDate, toDate, prevcnt, lotCd, nodb, maxConversions, maxConversionsPerEqp, conversionMinutes, syncInferFolder]);
 
   const hasRuleTimekey = ruleTimekey.trim().length > 0;
   const hasDateRange = fromDate.trim().length > 0 || toDate.trim().length > 0;
@@ -462,7 +365,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const needsModel = algoList.find(a => a.id === algorithm)?.requires_model ?? false;
   const canRun = !needsModel || modelExists;
-  const hasResult = !!(result || compareData);
+  const hasResult = !!result;
 
   const ganttChart = useMemo(() => {
     if (!result) return null;
@@ -509,42 +412,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     return buildInferenceWipChart(result.stats, result.plan);
   }, [result]);
 
-  const compareGanttChart = useMemo(() => {
-    if (!compareShowGantt || compareEntries.length < 1) return null;
-    const compareAxis = buildCompareGanttAxis(compareEntries, compareData, simBaseTime, {
-      fixedRange: compareGanttFixed,
-      timeStartMinutes: compareGanttStart,
-      timeEndMinutes: compareGanttEnd,
-    });
-    return buildAlgorithmGanttComparison(compareEntries, compareAxis);
-  }, [
-    compareShowGantt,
-    compareEntries,
-    compareData,
-    simBaseTime,
-    compareGanttFixed,
-    compareGanttStart,
-    compareGanttEnd,
-  ]);
-
-  const compareChartRows = useMemo((): TestBenchmarkChartRow[] => {
-    if (compareEntries.length < 1) return [];
-    return [{ input_folder: selectedFolder ?? "", label: "", entries: compareEntries }];
-  }, [compareEntries, selectedFolder]);
-
-  const compareChartAlgos = useMemo(
-    () => compareEntries.map(e => e.algorithm),
-    [compareEntries],
-  );
-
-  const canShowCompare = compareEntries.length > 0;
-
-  useEffect(() => {
-    if (tab === "compare" && !canShowCompare) {
-      setTab(result ? "gantt" : "table");
-    }
-  }, [tab, canShowCompare, result]);
-
   return (
     <div className="detail-page">
       <div className="detail-page-title">
@@ -561,7 +428,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             onChange={e => void (async () => {
               const f = e.target.value;
               if (f === selectedFolder) return;
-              setSelectedFolder(f); setResult(null); setCompareData(null);
+              setSelectedFolder(f); setResult(null);
               await onInputFolderChange(f);
             })()}
             disabled={!config || folderLoading || !folders.length}
@@ -585,7 +452,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder={facIdFromFolder(selectedFolder) || "미지정 시 경로 첫 세그먼트"}
             value={facIdOverride}
             onChange={e => setFacIdOverride(e.target.value)}
-            disabled={loading || compareLoading}
+            disabled={loading}
           />
 
           <label className="field-label mt-2" htmlFor="infer-rule-timekey">RULE_TIMEKEY</label>
@@ -596,7 +463,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder="미지정 시 최신"
             value={ruleTimekey}
             onChange={e => setRuleTimekey(e.target.value)}
-            disabled={loading || compareLoading || hasDateRange || hasPrevcntVal}
+            disabled={loading || hasDateRange || hasPrevcntVal}
           />
 
           <label className="field-label mt-2">구간 (RULE_TIMEKEY, BETWEEN)</label>
@@ -608,7 +475,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               placeholder="시작"
               value={fromDate}
               onChange={e => setFromDate(e.target.value)}
-              disabled={loading || compareLoading || hasRuleTimekey || hasPrevcntVal}
+              disabled={loading || hasRuleTimekey || hasPrevcntVal}
             />
             <input
               id="infer-to"
@@ -617,7 +484,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               placeholder="종료"
               value={toDate}
               onChange={e => setToDate(e.target.value)}
-              disabled={loading || compareLoading || hasRuleTimekey || hasPrevcntVal}
+              disabled={loading || hasRuleTimekey || hasPrevcntVal}
             />
           </div>
 
@@ -630,7 +497,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder="미지정 시 최신 1건"
             value={prevcnt}
             onChange={e => setPrevcnt(e.target.value)}
-            disabled={loading || compareLoading || hasRuleTimekey || hasDateRange}
+            disabled={loading || hasRuleTimekey || hasDateRange}
           />
           <p className="hint mt-1">RULE_TIMEKEY / 구간 / PREVCNT 중 하나만 사용됩니다 (미지정 시 최신).</p>
 
@@ -642,7 +509,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder="미지정 시 전체 (discrete_arrange 제외)"
             value={lotCd}
             onChange={e => setLotCd(e.target.value)}
-            disabled={loading || compareLoading}
+            disabled={loading}
           />
 
           <label className="check-label mt-2">
@@ -650,7 +517,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               type="checkbox"
               checked={nodb}
               onChange={e => setNodb(e.target.checked)}
-              disabled={loading || compareLoading}
+              disabled={loading}
             />
             기존 JSON 사용 (--nodb, DB 조회 생략)
           </label>
@@ -660,7 +527,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               type="checkbox"
               checked={includeHistory}
               onChange={e => setIncludeHistory(e.target.checked)}
-              disabled={loading || compareLoading}
+              disabled={loading}
             />
             history/event 포함 (--include-history)
           </label>
@@ -670,7 +537,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               type="checkbox"
               checked={dbLoad}
               onChange={e => setDbLoad(e.target.checked)}
-              disabled={loading || compareLoading}
+              disabled={loading}
             />
             추론 후 DB 적재 (--db-load)
           </label>
@@ -685,14 +552,14 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 placeholder="미지정 시 default"
                 value={dbAlias}
                 onChange={e => setDbAlias(e.target.value)}
-                disabled={loading || compareLoading}
+                disabled={loading}
               />
               <label className="check-label mt-2">
                 <input
                   type="checkbox"
                   checked={noHistory}
                   onChange={e => setNoHistory(e.target.checked)}
-                  disabled={loading || compareLoading}
+                  disabled={loading}
                 />
                 HIS 테이블 적재 생략 (--no-history)
               </label>
@@ -719,7 +586,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder="무제한"
             value={maxConversions}
             onChange={e => setMaxConversions(e.target.value)}
-            disabled={loading || compareLoading}
+            disabled={loading}
           />
 
           <label className="field-label mt-2" htmlFor="infer-max-conv-eqp">컨버전 가능 횟수 (EQP별)</label>
@@ -731,7 +598,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder="무제한"
             value={maxConversionsPerEqp}
             onChange={e => setMaxConversionsPerEqp(e.target.value)}
-            disabled={loading || compareLoading}
+            disabled={loading}
           />
 
           <label className="field-label mt-2" htmlFor="infer-conv-min">전환 소요 시간 (분)</label>
@@ -743,7 +610,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder={`기본 ${defaultConversionMinutes}분`}
             value={conversionMinutes}
             onChange={e => setConversionMinutes(e.target.value)}
-            disabled={loading || compareLoading}
+            disabled={loading}
           />
         </div>
 
@@ -773,15 +640,15 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
           <div className="gap-row mt-2">
             <button type="button" className={`btn btn-primary${loading ? " loading" : ""}`}
-              onClick={runInference} disabled={loading || compareLoading || !canRun || folderLoading || !selectedFolder}>
+              onClick={runInference} disabled={loading || !canRun || folderLoading || !selectedFolder}>
               {loading ? "" : "▶ 추론 실행"}
             </button>
             <button type="button" className={`btn btn-ghost btn-sm${loading ? " loading" : ""}`}
-              onClick={loadSaved} disabled={loading || compareLoading || folderLoading || !selectedFolder}>
+              onClick={loadSaved} disabled={loading || folderLoading || !selectedFolder}>
               저장 로드
             </button>
             <button type="button" className="btn btn-ghost btn-sm"
-              onClick={() => fileRef.current?.click()} disabled={loading || compareLoading}>
+              onClick={() => fileRef.current?.click()} disabled={loading}>
               파일 열기
             </button>
             <input ref={fileRef} type="file" accept=".json" style={{ display:"none" }}
@@ -790,41 +657,13 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           {fileSource && <p className="hint mt-1">파일: <code>{fileSource}</code></p>}
           {needsModel && !modelExists && <p className="hint mt-1" style={{ color:"var(--warn)" }}>⚠ PPO는 모델이 필요합니다</p>}
         </div>
-
-        <div className="card">
-          <div className="card-title">알고리즘 비교</div>
-          <div className="algo-list mb-2">
-            {algoList.map(a => {
-              const dis = a.requires_model && !modelExists;
-              return (
-                <label key={a.id} className={`algo-option${compareAlgos.has(a.id) ? " selected" : ""}`}>
-                  <input type="checkbox" disabled={dis || compareLoading} checked={compareAlgos.has(a.id)}
-                    onChange={() => setCompareAlgos(prev => { const n = new Set(prev); n.has(a.id) ? n.delete(a.id) : n.add(a.id); return n; })} />
-                  <span className="algo-dot" style={{ background: ALGO_CHART_COLORS[a.id] ?? "#555" }} />
-                  <span className={`algo-name${dis ? " algo-name-dim" : ""}`}>{a.name}</span>
-                </label>
-              );
-            })}
-          </div>
-          <label className="check-label">
-            <input type="checkbox" checked={compareShowGantt} onChange={e => setCompareShowGantt(e.target.checked)} disabled={compareLoading} />
-            비교 시 간트 차트 표시
-          </label>
-          <button type="button" className={`btn btn-accent${compareLoading ? " loading" : ""}`}
-            onClick={runCompare} disabled={compareLoading || loading || compareAlgos.size === 0 || folderLoading || !selectedFolder}>
-            {compareLoading ? "" : `비교 실행 (${compareAlgos.size}개)`}
-          </button>
-        </div>
       </aside>
 
       {/* ── Main content ── */}
       <div className="content-area">
         {error && <ExpandableErrorBanner message={error} />}
-        {compareData?.errors?.length ? (
-          <div className="banner banner-warn">일부 알고리즘 실패: {compareData.errors.map(e => `${e.algorithm}: ${e.message}`).join(" / ")}</div>
-        ) : null}
 
-        {!hasResult && !loading && !compareLoading && (
+        {!hasResult && !loading && (
           <div className="empty-state">
             <div className="empty-state-icon">◌</div>
             <p>좌측 패널에서 추론을 실행하거나 저장된 결과를 불러오세요.</p>
@@ -854,9 +693,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               >
                 스텝 디버거
               </button>
-              {canShowCompare && (
-                <button type="button" className={`tab-btn${tab === "compare" ? " active" : ""}`} onClick={() => setTab("compare")}>알고리즘 비교</button>
-              )}
             </div>
 
             {/* GANTT TAB */}
@@ -1035,144 +871,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               </div>
             )}
 
-            {/* COMPARE TAB */}
-            {tab === "compare" && compareData && canShowCompare && (
-              <div className="tab-panel">
-                <FullscreenPanel
-                  title="알고리즘 KPI 요약"
-                  className="card mb-2"
-                  actions={
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
-                      const H = ["알고리즘","Makespan(분)","Idle(분)","공정전환","제품전환","평균달성률(%)"];
-                      const rows = compareEntries.map(e => {
-                        const s = e.result.schedule;
-                        const ms = s.length ? Math.max(...s.map(r => r.END_TM)) : 0;
-                        const achV = e.result.plan.map(p => {
-                          const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.PLAN_PROD_ATTR_VAL && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
-                          return Math.min((done/Math.max(p.d0_plan_qty,1))*100,100);
-                        });
-                        const avg = achV.length ? Math.round(achV.reduce((a,b)=>a+b,0)/achV.length*10)/10 : 0;
-                        return [e.label, ms, e.result.stats.idle_total, e.result.stats.oper_switches, e.result.stats.prod_switches, avg];
-                      });
-                      downloadExcel("algorithm_kpi_summary.xls", H, rows);
-                    }}>
-                      엑셀 다운로드
-                    </button>
-                  }
-                >
-                  <div className="table-wrap">
-                    <table>
-                      <thead><tr><th>알고리즘</th><th>Makespan</th><th>Idle</th><th>공정전환</th><th>제품전환</th><th>평균달성률</th></tr></thead>
-                      <tbody>
-                        {compareEntries.map(e => {
-                          const s = e.result.schedule;
-                          const ms = s.length ? Math.max(...s.map(r => r.END_TM)) : 0;
-                          const achV = e.result.plan.map(p => {
-                            const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.PLAN_PROD_ATTR_VAL && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
-                            return Math.min((done/Math.max(p.d0_plan_qty,1))*100,100);
-                          });
-                          const avg = achV.length ? Math.round(achV.reduce((a,b)=>a+b,0)/achV.length*10)/10 : 0;
-                          return (
-                            <tr key={e.algorithm}>
-                              <td style={{ color: ALGO_CHART_COLORS[e.algorithm] ?? "inherit", fontFamily:"var(--font)", fontWeight:700 }}>{e.label}</td>
-                              <td>{ms}분</td><td>{e.result.stats.idle_total}분</td>
-                              <td>{e.result.stats.oper_switches}회</td><td>{e.result.stats.prod_switches}회</td>
-                              <td style={{ color: avg>=90?"var(--ok)":avg>=70?"var(--warn)":"var(--err)" }}>{avg}%</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </FullscreenPanel>
-                {compareChartRows.length > 0 && (
-                  <div className="grid-2 mb-2">
-                    {TEST_METRICS.map(m => {
-                      const chart = buildTestMetricChart(m, compareChartRows, compareChartAlgos, algoLabels);
-                      return (
-                        <FullscreenPanel key={m.key} title={m.label} className="card compare-chart-panel">
-                          <div className="chart-wrap">
-                            {chart ? <PlotChart {...chart} /> : <p className="hint chart-empty-hint">표시할 데이터가 없습니다.</p>}
-                          </div>
-                        </FullscreenPanel>
-                      );
-                    })}
-                  </div>
-                )}
-                {compareShowGantt && compareGanttChart && (
-                  <FullscreenPanel title="알고리즘 비교 간트" className="card gantt-chart-panel">
-                    <div className="gantt-toolbar">
-                      <div className="gantt-toolbar-group time-range-group">
-                        <label className="check-label">
-                          <input
-                            type="checkbox"
-                            checked={compareGanttFixed}
-                            onChange={(e) => {
-                              setCompareGanttFixed(e.target.checked);
-                              if (e.target.checked) {
-                                setCompareGanttStart(0);
-                                setCompareGanttEnd(compareDataEnd);
-                              }
-                            }}
-                          />
-                          X축 고정
-                        </label>
-                        {compareGanttFixed && (
-                          <>
-                            <label className="field-label gantt-time-field">
-                              시작
-                              <input
-                                type="number"
-                                className="time-input"
-                                min={0}
-                                value={compareGanttStart}
-                                onChange={(e) => setCompareGanttStart(Math.max(0, Number(e.target.value)))}
-                              />
-                            </label>
-                            <label className="field-label gantt-time-field">
-                              종료
-                              <input
-                                type="number"
-                                className="time-input"
-                                value={compareGanttEnd}
-                                onChange={(e) => setCompareGanttEnd(Number(e.target.value))}
-                              />
-                            </label>
-                            {compareScheduleEnd > compareDataEnd && (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs"
-                                onClick={() => {
-                                  setCompareGanttStart(0);
-                                  setCompareGanttEnd(compareScheduleEnd);
-                                }}
-                              >
-                                전체({compareScheduleEnd}분)
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    {(ganttBaseInfo.rtk || ganttBaseInfo.baseText) && (
-                      <div className="gantt-base-info">
-                        {ganttBaseInfo.rtk && (
-                          <span className="gantt-base-rtk">RULE_TIMEKEY <b>{ganttBaseInfo.rtk}</b></span>
-                        )}
-                        {ganttBaseInfo.baseText && (
-                          <span className="gantt-base-time">
-                            기준 시각 <b>{ganttBaseInfo.baseText}</b> = 0분 · 이후 눈금은 실제 시각(HH:mm)
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div className="chart-wrap">
-                      <PlotChart {...compareGanttChart} scrollable />
-                    </div>
-                  </FullscreenPanel>
-                )}
-              </div>
-            )}
           </>
         )}
       </div>
