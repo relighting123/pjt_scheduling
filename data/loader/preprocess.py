@@ -101,13 +101,13 @@ def _resolve_lot_oper_seq(
     )
 
 
-def _default_lot_cd(lot_id: str, plan_prod_key: str) -> str:
-    suffix = plan_prod_key.replace("PPK", "") if "PPK" in plan_prod_key else lot_id[-3:]
+def _default_lot_cd(lot_id: str, plan_prod_attr_val: str) -> str:
+    suffix = plan_prod_attr_val.replace("PPK", "") if "PPK" in plan_prod_attr_val else lot_id[-3:]
     return f"LC{suffix.zfill(2)[-2:]}"
 
 
-def _default_temp(plan_prod_key: str) -> str:
-    n = sum(ord(c) for c in plan_prod_key)
+def _default_temp(plan_prod_attr_val: str) -> str:
+    n = sum(ord(c) for c in plan_prod_attr_val)
     return "T650" if n % 2 == 0 else "T700"
 
 
