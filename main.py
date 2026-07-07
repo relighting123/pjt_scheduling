@@ -3,16 +3,13 @@ main.py - 운영 CLI
 
 사용 예:
     python main.py train --facid FAC001 --prevcnt 3
-    python main.py train --facid FAC001 --prevcnt 3 --db
+    python main.py train --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
     python main.py test --facid FAC001
-    python main.py test --facid FAC001 --prevcnt 3 --lotcd LC001
-    python main.py test --facid FAC001 --from 20260621170000 --to 20260623170000
+    python main.py test --facid FAC001 --prevcnt 3
     python main.py infer --facid FAC001
     python main.py infer --facid FAC001 --ruletimekey 20260621170000
-    python main.py infer --facid FAC001 --from 20260621170000 --to 20260623170000
-    python main.py infer --facid FAC001 --prevcnt 3
-    python main.py infer --facid FAC001 --nodb --decision-log
+    python main.py infer --facid FAC001 --decision-log
     python main.py collect --facid FAC001 --prevcnt 1 --once
     python main.py collect --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v --debug
@@ -56,7 +53,6 @@ from data.collector import (
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.generator import generate_sample, list_sample_scenarios
 from data.loader import fetch_from_db, load_data, validate_data, preprocess
-from data.loader.rule_timekey_query import resolve_collect_periods
 from data.loader.sql_binds import resolve_lot_cd
 from agent.rl_agent import SchedulingAgent
 from agent.training_report import save_training_convergence_report
@@ -69,72 +65,6 @@ from data.writer.db_load import (
 )
 from validation.runner import run_validation
 from validation.output_checks import validate_schedule_output
-
-
-def _refresh_invalid_folders(
-    fac_id: str,
-    folders: List[str],
-    lot_cd: str | None = None,
-) -> List[str]:
-    """
-    폴더별 validate_data() 검사 → 실패한 폴더만 DB 재수집 후 유효 폴더 목록 반환.
-    유효한 폴더는 기존 JSON을 그대로 사용하고 재수집하지 않는다.
-    """
-    from config import parse_input_folder, resolve_dataset_path
-
-    valid: List[str] = []
-    to_refetch: List[str] = []
-
-    print("[train] 폴더별 데이터 유효성 검사")
-    for folder in folders:
-        set_input_folder(folder)
-        try:
-            raw = load_data()
-            errors = validate_data(raw)
-        except Exception as exc:
-            errors = [str(exc)]
-
-        if errors:
-            print(f"  [재수집 필요] {folder}")
-            for e in errors:
-                print(f"    · {e}")
-            to_refetch.append(folder)
-        else:
-            print(f"  [OK] {folder}")
-            valid.append(folder)
-
-    if not to_refetch:
-        print("[train] 모든 폴더 유효 – 재수집 없음")
-        return valid
-
-    print(f"\n[train] {len(to_refetch)}개 폴더 재수집 시작")
-    for folder in to_refetch:
-        _, split, period = parse_input_folder(folder)
-        out_dir, _ = resolve_dataset_path(fac_id, split, period)
-        try:
-            fetch_from_db(
-                fac_id=fac_id,
-                split=split,
-                period=period,
-                lot_cd=lot_cd,
-                output_dir=out_dir,
-                verbose=True,
-            )
-            # 재수집 후 재검증
-            set_input_folder(folder)
-            raw = load_data()
-            errors = validate_data(raw)
-            if errors:
-                print(f"  [경고] 재수집 후에도 오류 – 학습에서 제외: {folder}")
-                for e in errors:
-                    print(f"    · {e}")
-            else:
-                print(f"  [재수집 완료] {folder}")
-                valid.append(folder)
-        except Exception as exc:
-            print(f"  [오류] 재수집 실패 – 학습에서 제외: {folder}\n    {exc}")
-
-    return valid
 
 
 def _load_env_data(folder: str) -> dict:
@@ -210,51 +140,31 @@ def cmd_train(
     to_key: str = None,
     rule_timekey: str = None,
     *,
-    nodb: bool = True,
-    lot_cd: str = None,
     all_folders: bool = False,
     algorithm: str = "scheduling_rl",
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
+    start_key = end_key = None
 
     if all_folders:
         train_folders = list_split_folders(fac_id, "train")
         print("=" * 60)
         print(f"[train] FAC={fac_id}  --all: train 폴더 전체 {len(train_folders)}개")
-        if nodb:
-            print("[train] dataset JSON 사용 (Oracle 조회·자동 수집 없음)")
         if not train_folders:
             print("[오류] train 폴더가 없습니다. collect 로 데이터를 먼저 수집하세요.")
             sys.exit(1)
     else:
         if rule_timekey:
-            key = normalize_rule_timekey(rule_timekey)
-            start_key = end_key = key
-            range_source = "cli"
-        elif nodb:
+            start_key = end_key = normalize_rule_timekey(rule_timekey)
+        else:
             start_key, end_key = resolve_train_period_range(
                 prevcnt=prevcnt, from_key=from_key, to_key=to_key,
             )
-            range_source = "local"
-        else:
-            periods, range_source = resolve_collect_periods(
-                fac_id,
-                prevcnt=prevcnt or 1,
-                from_key=from_key,
-                to_key=to_key,
-                require_db=True,
-            )
-            start_key, end_key = periods[0], periods[-1]
 
         print("=" * 60)
         print(
-            f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key}"
-            f" ({range_source})",
+            f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)",
         )
-        if nodb:
-            print("[train] dataset JSON 사용 (Oracle 조회·자동 수집 없음)")
-        else:
-            print("[train] Oracle RULE_TIMEKEY 조회·자동 수집 사용 (--db)")
 
         train_folders = ensure_train_folders(
             fac_id,
@@ -262,30 +172,22 @@ def cmd_train(
             from_key=from_key,
             to_key=to_key,
             period=rule_timekey,
-            lot_cd=lot_cd,
-            nodb=nodb,
+            nodb=True,
         )
     if not train_folders:
         available = list_split_folders(fac_id, "train")
         print("[오류] 학습용 train 폴더가 없습니다.")
-        if not all_folders:
+        if not all_folders and start_key and end_key:
             print(f"  요청 구간: {start_key} ~ {end_key}")
         if available:
             print(f"  사용 가능한 train 폴더: {', '.join(available)}")
         else:
-            print("  collect 로 train 데이터를 수집하거나 --db 로 Oracle 조회·수집을 사용하세요.")
+            print("  collect 로 train 데이터를 먼저 수집하세요.")
         sys.exit(1)
 
     print(f"[train] train 폴더 {len(train_folders)}개 사용")
     for f in train_folders:
         print(f"  · {f}")
-
-    print("=" * 60)
-    if not nodb:
-        train_folders = _refresh_invalid_folders(fac_id, train_folders, lot_cd=lot_cd)
-        if not train_folders:
-            print("[오류] 유효한 train 폴더가 없습니다. 재수집 결과를 확인하세요.")
-            sys.exit(1)
 
     print("=" * 60)
     print("[train] 데이터 로드 및 전처리")
@@ -314,8 +216,8 @@ def cmd_train(
     print(f"  판정: {report['verdict']} — {report['note']}")
 
     print("=" * 60)
-    print("[train] validation (test 전체)")
-    run_validation(fac_id, agent=agent, refresh_sql=not nodb)
+    print("[train] validation (test 전체, dataset JSON)")
+    run_validation(fac_id, agent=agent, refresh_sql=False)
 
 
 def cmd_test(
@@ -323,35 +225,29 @@ def cmd_test(
     prevcnt: int = None,
     from_key: str = None,
     to_key: str = None,
-    *,
-    nodb: bool = False,
-    lot_cd: str = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     print("=" * 60)
 
     folders = None
-    if prevcnt is not None or (from_key and to_key) or lot_cd:
+    if prevcnt is not None or (from_key and to_key):
         folders = ensure_test_folders(
             fac_id,
             prevcnt=prevcnt,
             from_key=from_key,
             to_key=to_key,
-            lot_cd=lot_cd,
-            nodb=nodb,
+            nodb=True,
         )
-        print(f"[test] FAC={fac_id}  test 폴더 {len(folders)}개")
+        print(f"[test] FAC={fac_id}  test 폴더 {len(folders)}개 (dataset JSON)")
         for f in folders:
             print(f"  · {f}")
         if not folders:
             print("[오류] 조건에 맞는 test 폴더가 없습니다.")
             sys.exit(1)
     else:
-        print(f"[test] FAC={fac_id} (test 전체)")
+        print(f"[test] FAC={fac_id} (test 전체, dataset JSON)")
 
-    if nodb:
-        print("[test] --nodb: 기존 JSON 사용 (Oracle 조회 생략)")
-    payload = run_validation(fac_id, folders=folders, lot_cd=lot_cd, refresh_sql=not nodb)
+    payload = run_validation(fac_id, folders=folders, refresh_sql=False)
     if payload["errors"]:
         print(f"\n[test] {len(payload['errors'])}개 폴더 오류")
         sys.exit(1)
@@ -413,7 +309,6 @@ def cmd_inference(
     to_key: str = None,
     prevcnt: int = None,
     *,
-    nodb: bool = False,
     lot_cd: str = None,
     algorithm: str = "scheduling_rl",
     decision_log: bool = False,
@@ -430,7 +325,7 @@ def cmd_inference(
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(
         fac_id, rule_timekey,
-        from_key=from_key, to_key=to_key, prevcnt=prevcnt, nodb=nodb,
+        from_key=from_key, to_key=to_key, prevcnt=prevcnt,
     )
 
     print("=" * 60)
@@ -438,11 +333,8 @@ def cmd_inference(
     lcd = resolve_lot_cd(lot_cd)
     if lcd:
         print(f"[inference] LOT_CD={lcd}")
-    if nodb:
-        print("[inference] --nodb: 기존 JSON 사용 (Oracle 조회 생략)")
-    else:
-        print("[inference] Oracle SQL → JSON (infer)")
-        fetch_from_db(fac_id=fac_id, split="infer", period=rtk, lot_cd=lcd)
+    print("[inference] Oracle SQL → JSON (infer)")
+    fetch_from_db(fac_id=fac_id, split="infer", period=rtk, lot_cd=lcd)
     set_input_folder(f"{fac_id}/infer")
 
     try:
@@ -705,23 +597,10 @@ def parse_args():
         help="단일 RULE_TIMEKEY 학습 (미지정 시 --prevcnt 또는 --from/--to 필요)",
     )
     train_p.add_argument(
-        "--db", action="store_true",
-        help="Oracle RULE_TIMEKEY 조회·자동 수집·무효 폴더 재수집·validation SQL 갱신 (기본: dataset JSON만)",
-    )
-    train_p.add_argument(
-        "--nodb", action="store_true",
-        help="dataset 기존 JSON만 사용 (기본값, 명시용)",
-    )
-    train_p.add_argument(
         "--all", dest="all_folders", action="store_true",
         help="train 폴더 전체 학습 (--prevcnt/--from/--to/--ruletimekey 불필요)",
     )
-    train_p.add_argument(
-        "--lotcd",
-        default=None,
-        help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
-    )
-    test_p = sub.add_parser("test", help="test 데이터 검증")
+    test_p = sub.add_parser("test", help="test dataset JSON 검증")
     test_p.add_argument("--facid", required=True, help="공장 ID")
     test_p.add_argument(
         "--prevcnt", type=int, default=None,
@@ -735,17 +614,8 @@ def parse_args():
         "--to", dest="to_key", metavar="RULE_TIMEKEY", default=None,
         help="검증 종료 RULE_TIMEKEY",
     )
-    test_p.add_argument(
-        "--lotcd",
-        default=None,
-        help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
-    )
-    test_p.add_argument(
-        "--nodb", action="store_true",
-        help="Oracle 조회 생략, dataset 기존 JSON 사용",
-    )
 
-    inf_p = sub.add_parser("infer", help="SQL 조회 → 추론")
+    inf_p = sub.add_parser("infer", help="Oracle SQL 조회 → 추론")
     inf_p.add_argument("--facid", required=True, help="공장 ID")
     inf_p.add_argument(
         "--ruletimekey", default=None,
@@ -767,10 +637,6 @@ def parse_args():
         "--lotcd",
         default=None,
         help="SQL :LOT_CD 바인드 (discrete_arrange 제외, 기본: SQL_LOT_CD / COLLECTOR_LOT_CD)",
-    )
-    inf_p.add_argument(
-        "--nodb", action="store_true",
-        help="Oracle 조회 생략, dataset 기존 JSON 사용",
     )
     inf_p.add_argument(
         "--decision-log", action="store_true",
@@ -940,17 +806,12 @@ def main():
                     args, has_ruletimekey=True, require_one=True,
                     one_of_label="--ruletimekey, --prevcnt, --from/--to, --all",
                 )
-            if args.nodb and args.db:
-                print("[오류] --db 와 --nodb 는 함께 쓸 수 없습니다.")
-                sys.exit(1)
             cmd_train(
                 fac_id=args.facid,
                 prevcnt=args.prevcnt,
                 from_key=args.from_key,
                 to_key=args.to_key,
                 rule_timekey=args.ruletimekey,
-                nodb=not args.db,
-                lot_cd=args.lotcd,
                 all_folders=args.all_folders,
             )
 
@@ -961,8 +822,6 @@ def main():
                 prevcnt=args.prevcnt,
                 from_key=args.from_key,
                 to_key=args.to_key,
-                nodb=args.nodb,
-                lot_cd=args.lotcd,
             )
 
         elif args.command == "infer":
@@ -973,7 +832,6 @@ def main():
                 from_key=args.from_key,
                 to_key=args.to_key,
                 prevcnt=args.prevcnt,
-                nodb=args.nodb,
                 lot_cd=args.lotcd,
                 decision_log=args.decision_log,
                 enable_wip_inflow=args.enable_wip_inflow,

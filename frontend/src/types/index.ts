@@ -184,14 +184,12 @@ export interface InferMeta {
   lot_cd?: string | null;
   input_folder: string;
   fetched_from_db: boolean;
-  nodb: boolean;
   db_loaded?: boolean;
 }
 
 export interface InferRunOptions {
   fac_id?: string;
   rule_timekey?: string;
-  nodb?: boolean;
   lot_cd?: string;
   db_load?: boolean;
   db_alias?: string;

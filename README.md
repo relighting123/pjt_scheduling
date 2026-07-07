@@ -189,7 +189,7 @@ python main.py db-load --ddl --facid FAC001 --split infer
 
 ```bash
 # 추론 후 output/sql 적재
-python main.py infer --facid FAC001 --nodb --db-load
+python main.py infer --facid FAC001 --db-load
 
 # 기존 output 폴더 적재
 python main.py db-load --facid FAC001 --split test --period 20260624070000
@@ -223,14 +223,13 @@ DB 연결: `config/databases.yaml` + `python main.py db-check`
 # 데이터 수집
 python main.py collect --facid FAC001 --split train --prevcnt 3 --once
 
-# 학습
+# 학습 / 검증 (dataset JSON)
 python main.py train --facid FAC001 --prevcnt 3
-python main.py train --facid FAC001 --prevcnt 3 --db   # Oracle 조회·자동 수집
+python main.py test --facid FAC001
 
-# 검증 / 추론
-python main.py test --facid FAC001 --nodb
-python main.py test --facid FAC001 --prevcnt 3 --lotcd LC001
-python main.py infer --facid FAC001 --nodb --db-load
+# 추론 (Oracle SQL 조회)
+python main.py infer --facid FAC001
+python main.py infer --facid FAC001 --db-load
 python main.py infer --facid FAC001 --from 20260621170000 --to 20260623170000
 
 # 샘플 데이터

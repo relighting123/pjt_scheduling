@@ -67,7 +67,7 @@ def test_inference_fetches_db_by_default(client, monkeypatch, tmp_path):
   assert meta["input_folder"] == "FAC001/infer"
 
 
-def test_inference_nodb_skips_fetch(client, monkeypatch, tmp_path):
+def test_inference_always_fetches_from_db(client, monkeypatch, tmp_path):
   monkeypatch.setattr("config.DATASET_DIR", tmp_path / "dataset")
   infer_input = tmp_path / "dataset" / "FAC001" / "infer" / "input"
   infer_input.mkdir(parents=True)
@@ -91,14 +91,12 @@ def test_inference_nodb_skips_fetch(client, monkeypatch, tmp_path):
       json={
         "input_folder": "FAC001/infer",
         "algorithm": "minprogress",
-        "nodb": True,
       },
     )
 
   assert res.status_code == 200
-  fetch_mock.assert_not_called()
-  assert res.json()["infer_meta"]["nodb"] is True
-  assert res.json()["infer_meta"]["fetched_from_db"] is False
+  fetch_mock.assert_called_once()
+  assert res.json()["infer_meta"]["fetched_from_db"] is True
 
 
 def test_inference_db_load_after_save(client, monkeypatch, tmp_path):
@@ -182,7 +180,6 @@ def test_inference_passes_conversion_options_to_runner(client, monkeypatch, tmp_
             json={
                 "input_folder": "FAC001/infer",
                 "algorithm": "minprogress",
-                "nodb": True,
                 "max_conversions": 2,
                 "max_conversions_per_eqp": 1,
                 "conversion_minutes": 30,

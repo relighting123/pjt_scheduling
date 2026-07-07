@@ -8,23 +8,23 @@ from api.server import TrainRequest, _resolve_train_folders
 from main import parse_args
 
 
-def test_train_parse_args_default_json_mode():
+def test_train_parse_args_no_db_flags():
     argv = sys.argv
     try:
         sys.argv = ["main.py", "train", "--facid", "FAC001", "--prevcnt", "3"]
         args = parse_args()
-        assert args.db is False
-        assert not args.db
+        assert not hasattr(args, "db") or getattr(args, "db", False) is False
+        assert not hasattr(args, "nodb") or getattr(args, "nodb", False) is False
     finally:
         sys.argv = argv
 
 
-def test_train_parse_args_db_flag():
+def test_infer_parse_args_no_nodb_flag():
     argv = sys.argv
     try:
-        sys.argv = ["main.py", "train", "--facid", "FAC001", "--prevcnt", "3", "--db"]
+        sys.argv = ["main.py", "infer", "--facid", "FAC001"]
         args = parse_args()
-        assert args.db is True
+        assert not hasattr(args, "nodb")
     finally:
         sys.argv = argv
 

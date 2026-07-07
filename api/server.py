@@ -150,7 +150,6 @@ def _prepare_infer_input(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     prevcnt: Optional[int] = None,
-    nodb: bool = False,
     lot_cd: Optional[str] = None,
 ) -> dict:
     """CLI cmd_inference 와 동일한 input 준비 (Oracle fetch → infer 폴더 설정)."""
@@ -163,15 +162,12 @@ def _prepare_infer_input(
         raise ValueError("prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
     rtk = resolve_infer_rule_timekey(
         resolved_fac, rule_timekey,
-        from_key=from_date, to_key=to_date, prevcnt=prevcnt, nodb=nodb,
+        from_key=from_date, to_key=to_date, prevcnt=prevcnt,
     )
     lcd = resolve_lot_cd(lot_cd)
-    fetched = False
 
-    if not nodb:
-        fetch_from_db(fac_id=resolved_fac, split="infer", period=rtk, lot_cd=lcd)
-        _env_data_cache = None
-        fetched = True
+    fetch_from_db(fac_id=resolved_fac, split="infer", period=rtk, lot_cd=lcd)
+    _env_data_cache = None
 
     infer_folder = f"{resolved_fac}/infer"
     set_input_folder(infer_folder)
@@ -182,8 +178,7 @@ def _prepare_infer_input(
         "rule_timekey": rtk,
         "lot_cd": lcd,
         "input_folder": infer_folder,
-        "fetched_from_db": fetched,
-        "nodb": nodb,
+        "fetched_from_db": True,
     }
 
 
@@ -394,10 +389,6 @@ class InferFetchOptions(BaseModel):
         default=None,
         ge=1,
         description="최신 기준 최근 N개 RULE_TIMEKEY 조회 후 최신값 사용 (rule_timekey와 함께 쓸 수 없음)",
-    )
-    nodb: bool = Field(
-        default=False,
-        description="Oracle input 조회 생략, dataset 기존 JSON 사용",
     )
     lot_cd: Optional[str] = Field(
         default=None,
@@ -833,7 +824,6 @@ def inference(req: InferenceRequest):
             from_date=req.from_date,
             to_date=req.to_date,
             prevcnt=req.prevcnt,
-            nodb=req.nodb,
             lot_cd=req.lot_cd,
         )
     except (ValueError, FileNotFoundError, ImportError) as e:
@@ -910,7 +900,6 @@ def inference_compare(req: CompareRequest):
             from_date=req.from_date,
             to_date=req.to_date,
             prevcnt=req.prevcnt,
-            nodb=req.nodb,
             lot_cd=req.lot_cd,
         )
     except (ValueError, FileNotFoundError, ImportError) as e:
