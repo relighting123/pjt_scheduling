@@ -85,7 +85,7 @@ function resultFromRtsOutput(payload: Record<string, unknown>): InferenceResult 
       eqp_id: String(row.EQP_ID ?? ""),
       eqp_model_cd: String(row.EQP_MODEL_CD ?? ""),
       oper_id: String(row.OPER_ID ?? ""),
-      PLAN_PROD_ATTR_VAL: String(row.PLAN_PROD_ATTR_VAL ?? ""),
+      plan_prod_attr_val: String(row.PLAN_PROD_ATTR_VAL ?? ""),
       from_lot_cd: String(row.LOT_CD ?? ""),
       from_temp: String(row.TEMPER_VAL ?? ""),
       to_lot_cd: String(row.TO_LOT_CD ?? ""),

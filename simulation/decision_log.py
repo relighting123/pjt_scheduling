@@ -77,7 +77,7 @@ def diagnose_eqp(sim: "SchedulingSimulator", eqp_id: str) -> dict:
         ppk, oper_id = sim.ppk_oper_from_flat(flat)
         lots = [
             lot for lot in sim.available_lots(eqp_id)
-            if lot["PLAN_PROD_ATTR_VAL"] == ppk and lot["oper_id"] == oper_id
+            if lot["plan_prod_attr_val"] == ppk and lot["oper_id"] == oper_id
         ]
         lot_id = sim._auto_select_lot(eqp_id, lots)
         feasible_options.append({
@@ -95,7 +95,7 @@ def diagnose_eqp(sim: "SchedulingSimulator", eqp_id: str) -> dict:
     for tmpl in sim._abstract_template:
         if tmpl["eqp_model"] != model:
             continue
-        ppk = tmpl["PLAN_PROD_ATTR_VAL"]
+        ppk = tmpl["plan_prod_attr_val"]
         oper_id = tmpl["oper_id"]
         bucket = (ppk, oper_id)
         if bucket in seen:
@@ -160,7 +160,7 @@ def diagnose_assign_failure(
 ) -> Tuple[str, str]:
     lots = [
         lot for lot in sim.available_lots(eqp_id)
-        if lot["PLAN_PROD_ATTR_VAL"] == ppk and lot["oper_id"] == oper_id
+        if lot["plan_prod_attr_val"] == ppk and lot["oper_id"] == oper_id
     ]
     lot_id = sim._auto_select_lot(eqp_id, lots)
     if lot_id is None:
@@ -229,7 +229,7 @@ def build_step_decision_entry(
         assigned_lot_id = sim._last_assigned.get("lot_id")
 
     selected_eqp_id = selected.get("eqp_id") if selected_matches_eqp else eqp_id
-    selected_ppk = selected.get("PLAN_PROD_ATTR_VAL") if selected_matches_eqp else res_ppk
+    selected_ppk = selected.get("plan_prod_attr_val") if selected_matches_eqp else res_ppk
     selected_oper = selected.get("oper_id") if selected_matches_eqp else res_oper
 
     status = "no_idle_eqp"

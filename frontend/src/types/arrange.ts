@@ -2,7 +2,7 @@ export interface ArrangeRow {
   eqp_id: string;
   lot_id: string;
   oper_id?: string;
-  PLAN_PROD_ATTR_VAL: string;
+  plan_prod_attr_val: string;
   /** EQP×LOT 소요시간(분) – availability ST */
   st: number;
   proc_time?: number;
@@ -27,7 +27,7 @@ export interface AbstractLotUnit {
 
 export interface AbstractArrangeRow {
   abs_key: string;
-  PLAN_PROD_ATTR_VAL: string;
+  plan_prod_attr_val: string;
   eqp_model: string;
   wip_qty: number;
   wip_qty_init: number;
@@ -45,7 +45,7 @@ export interface AssignedLot {
   kind?: "actual" | "abstract";
   eqp_id: string;
   lot_id: string;
-  PLAN_PROD_ATTR_VAL: string;
+  plan_prod_attr_val: string;
   eqp_model?: string;
   lot_cd?: string;
   temp?: string;

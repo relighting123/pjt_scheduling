@@ -345,7 +345,7 @@ class SchedulingEnv(gym.Env):
                     assignment = self.sim._last_decision_assignment
                     if assignment and assignment.get("eqp_id") == eqp_id:
                         resolved_flat = self.sim.ppk_oper_flat_index(
-                            assignment["oper_id"], assignment["PLAN_PROD_ATTR_VAL"],
+                            assignment["oper_id"], assignment["plan_prod_attr_val"],
                         )
                 else:
                     reward = -0.5

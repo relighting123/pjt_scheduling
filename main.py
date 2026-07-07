@@ -500,7 +500,7 @@ def cmd_inference(
                 f"기대={m['expected_proc_time']}분 실제={m['actual_proc_time']}분"
             )
         for u in validation["unassigned_lots"][:10]:
-            print(f"    · [미배정] LOT={u['lot_id']} PPK={u['PLAN_PROD_ATTR_VAL']} OPER={u['oper_id']}")
+            print(f"    · [미배정] LOT={u['lot_id']} PPK={u['plan_prod_attr_val']} OPER={u['oper_id']}")
 
     path = save_result(result, env_data=env_data)
     stats = result["stats"]

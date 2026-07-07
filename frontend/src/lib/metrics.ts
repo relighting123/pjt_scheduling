@@ -226,7 +226,7 @@ export function computeAchievement(
   // Accumulate plan qty (D0) and target qty (D1: 재공 고려 타겟)
   const qtyMap = new Map<string, { prod: string; oper: string; planQty: number; targetQty: number }>();
   for (const p of plan) {
-    const prod = achievementKeyPart(p.PLAN_PROD_ATTR_VAL);
+    const prod = achievementKeyPart(p.plan_prod_attr_val);
     const oper = achievementKeyPart(p.oper_id);
     const key = achievementKey(prod, oper);
     const prev = qtyMap.get(key);

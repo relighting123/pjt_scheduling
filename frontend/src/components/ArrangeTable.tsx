@@ -77,7 +77,7 @@ export default function ArrangeTable({
                   <td>{row.lot_stat_cd ?? "WAIT"}</td>
                   <td>{row.lot_cd ?? "-"}</td>
                   <td>{row.temp ?? "-"}</td>
-                  <td>{row.PLAN_PROD_ATTR_VAL}</td>
+                  <td>{row.plan_prod_attr_val}</td>
                   <td>{row.eqp_model}</td>
                   <td className="num">{procTime(row)}</td>
                   <td className="num">{row.initial_start_tm ?? "-"}</td>
