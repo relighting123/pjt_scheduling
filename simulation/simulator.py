@@ -1525,7 +1525,7 @@ class SchedulingSimulator:
     def bulk_decision_shaping(
         self, eqp_id: str, ppk: str, oper_id: str, block_size: int,
     ) -> float:
-        """벌크 블록 '시작' 결정에 대한 추가 보상 shaping (BulkFillEnv 전용).
+        """벌크 블록 '시작' 결정에 대한 추가 보상 shaping (SchedulingRLEnv 전용).
 
         세 항(모두 가중치 0이면 비활성):
           ① 블록 크기 보너스(+): 같은 제품군을 큰 블록으로 커밋할수록 보상.

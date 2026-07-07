@@ -1,18 +1,12 @@
 """스케줄링 알고리즘 레지스트리."""
 from typing import Literal
 
-AlgorithmType = Literal["rl", "bulkfill", "minprogress", "earliest_st"]
+AlgorithmType = Literal["scheduling_rl", "minprogress", "earliest_st"]
 
 ALGORITHMS: list[dict] = [
     {
-        "id": "rl",
-        "name": "PPO (강화학습)",
-        "description": "Stable-Baselines3 PPO 학습 모델",
-        "requires_model": True,
-    },
-    {
-        "id": "bulkfill",
-        "name": "Bulk-Fill PPO (벌크 점유)",
+        "id": "scheduling_rl",
+        "name": "Scheduling RL (PPO)",
         "description": "(PPK/OPER, 블록 크기) 선택 — 같은 제품군 N carrier 연속 점유. "
                        "eligibility·takt·tool 잔여 고려",
         "requires_model": True,

@@ -1,4 +1,4 @@
-"""BulkFillEnv(벌크 점유 MDP) 스캐폴딩 단위 테스트."""
+"""SchedulingRLEnv(벌크 점유 MDP) 스캐폴딩 단위 테스트."""
 from collections import defaultdict
 from pathlib import Path
 
@@ -12,7 +12,7 @@ from data.generator import (
 )
 from data.loader.fetch import load_data
 from data.loader.preprocess import preprocess
-from env.bulkfill_env import BulkFillEnv
+from env.scheduling_rl_env import SchedulingRLEnv
 
 ST, WF = 5, 25
 
@@ -73,9 +73,9 @@ def _runs(seq):
     return [n for _, n in out]
 
 
-def test_bulkfill_action_space_multidiscrete(tmp_path):
+def test_scheduling_rl_action_space_multidiscrete(tmp_path):
     ed = _build_s1(tmp_path)
-    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     # MultiDiscrete([O*P, L])
     assert tuple(env.action_space.nvec) == (env._n_bucket, env._L)
     env.reset()
@@ -84,19 +84,19 @@ def test_bulkfill_action_space_multidiscrete(tmp_path):
     assert mask.dtype == bool
 
 
-def test_bulkfill_completes_and_produces(tmp_path):
+def test_scheduling_rl_completes_and_produces(tmp_path):
     ed = _build_s1(tmp_path)
-    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     info, sched = _rollout(env)
     assert len(sched) > 0
     produced = sum(info.get("completed_qty", {}).values())
     assert produced > 0
 
 
-def test_bulkfill_forms_blocks(tmp_path):
+def test_scheduling_rl_forms_blocks(tmp_path):
     """벌크 점유 → 장비별 동일 제품 연속 run이 1보다 길게 형성."""
     ed = _build_s1(tmp_path)
-    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     _info, sched = _rollout(env)
     by_eqp = defaultdict(list)
     for row in sorted(sched, key=lambda r: (r["EQP_ID"], r["START_TM"])):
@@ -105,10 +105,10 @@ def test_bulkfill_forms_blocks(tmp_path):
     assert max_run >= 2, f"블록이 형성되지 않음 (최대 run={max_run})"
 
 
-def test_bulkfill_respects_tool_cap(tmp_path):
+def test_scheduling_rl_respects_tool_cap(tmp_path):
     """동시 가동 장비 수가 MAX_TOOL을 넘지 않음 (블록 크기 = tool 잔여로 클램프)."""
     ed = _build_s1(tmp_path, max_tool=2)
-    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     _info, sched = _rollout(env)
     events = []
     for row in sched:
@@ -132,7 +132,7 @@ def test_bulk_block_size_bounded_by_plan_and_wip(tmp_path):
     _tool_cap_blocks가 별도로 보장. 계획 200매/25 = 8 carrier가 상한.
     """
     ed = _build_s1(tmp_path, n_lots=8, plan=200, max_tool=2)
-    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     env.reset()
     sim = env.sim
     eqp = sim.current_idle_eqp()
@@ -190,7 +190,7 @@ def test_bulk_decision_shaping_terms(tmp_path):
     from config import CONFIG
 
     ed = _build_s1(tmp_path, n_lots=8, plan=200)
-    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     env.reset()
     sim = env.sim
     eqp = sim.current_idle_eqp()
@@ -229,7 +229,7 @@ def test_bulk_decision_shaping_terms(tmp_path):
 
 def test_model_breadth_and_dedication(tmp_path):
     ed = _build_s1(tmp_path)
-    env = BulkFillEnv(ed, record_history=False, record_event_log=False)
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     env.reset()
     sim = env.sim
     # 단일 모델 A — 3제품×1공정 가공 가능 → breadth=3

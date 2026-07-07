@@ -156,7 +156,7 @@ function excelEventLog(events: NonNullable<InferenceResult["event_log"]>, name: 
 export default function InferencePage({ modelExists, config, summary, folderLoading, onInputFolderChange }: Props) {
   const [result, setResult]           = useState<InferenceResult | null>(null);
   const [compareData, setCompareData] = useState<AlgorithmCompareResponse | null>(null);
-  const [algorithm, setAlgorithm]     = useState<AlgorithmId>("bulkfill");
+  const [algorithm, setAlgorithm]     = useState<AlgorithmId>("scheduling_rl");
   const [algorithms, setAlgorithms]   = useState<AlgorithmInfo[]>([]);
   const [compareAlgos, setCompareAlgos] = useState<Set<AlgorithmId>>(new Set());
   const [loading, setLoading]         = useState(false);
@@ -314,7 +314,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const compareEntries = useMemo((): AlgoCompareEntry[] =>
     (compareData?.results ?? []).map(r => ({
-      algorithm: r.algorithm ?? "rl",
+      algorithm: r.algorithm ?? "scheduling_rl",
       label: algoList.find(a => a.id === r.algorithm)?.name ?? (r.algorithm ?? ""),
       result: r,
     })),

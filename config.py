@@ -506,7 +506,7 @@ class RewardConfig:
     # 변환 후 무변환으로 돌 가동시간이 (이 배수 × conversion_minutes) 이상이면
     # 변환을 정당한 것으로 보고 회피 패널티를 면제. 짧으면 패널티↑.
     conversion_amortize_factor: float = 1.0
-    # --- 벌크 점유(Bulk-Fill) 전용 보상항 (BulkFillEnv에서만 사용; 0이면 비활성) ---
+    # --- 벌크 점유(Bulk-Fill) 전용 보상항 (SchedulingRLEnv에서만 사용; 0이면 비활성) ---
     # ① 블록 크기 보너스: 같은 제품군을 큰 블록으로 커밋할수록 보상(전담 커밋 유도).
     w_bulk_block_bonus:   float = 0.0
     # ② 전용 오용 페널티(<0): 범용 장비가 더 전용적인 idle 장비도 가능한 버킷을
