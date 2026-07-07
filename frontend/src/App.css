@@ -2042,16 +2042,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.65rem;
-  height: 1.65rem;
+  width: 1.75rem;
+  height: 1.75rem;
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: 999px;
   line-height: 1;
+  font-size: 1.05rem;
 }
 
 .evt-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 1em;
+  height: 1em;
   display: block;
 }
 
