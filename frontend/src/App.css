@@ -2023,64 +2023,78 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   EVENT TIMELINE OVERRIDES (dark theme)
+   EVENT TIMELINE (matches schedule data-table)
    ══════════════════════════════════════════════════════════════════ */
-.event-timeline-scroll {
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--bg-panel);
-  overflow: auto;
-}
-
-.event-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8125rem;
+.event-data-table td.evt-extra {
+  color: var(--text-sec);
+  font-size: 0.78rem;
   line-height: 1.45;
-  letter-spacing: 0;
 }
 
-.event-table th {
-  padding: 0.55rem 0.8rem;
-  background: var(--bg-raised);
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-mid);
-  font-family: var(--font);
-  letter-spacing: 0;
-  text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
-  white-space: nowrap;
+.evt-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
-.event-table td {
-  padding: 0.5rem 0.8rem;
-  border-bottom: 1px solid var(--border);
-  font-family: var(--font);
+.evt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.evt-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
   color: var(--text);
-  letter-spacing: 0;
-  vertical-align: middle;
-}
-
-.event-table td.evt-time {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
   white-space: nowrap;
 }
 
-.event-table tbody tr:last-child td {
-  border-bottom: none;
+.evt-move .evt-icon {
+  background: rgba(34, 139, 230, 0.12);
+  color: #228be6;
 }
 
-.event-table tbody tr:hover td {
-  background: rgba(59, 110, 240, 0.04);
+.evt-decision .evt-icon {
+  background: rgba(134, 142, 150, 0.14);
+  color: #868e96;
 }
 
-.event-table td.mono,
-.event-table td.num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+.evt-assign .evt-icon {
+  background: rgba(64, 192, 87, 0.14);
+  color: #40c057;
+}
+
+.evt-conv .evt-icon {
+  background: rgba(250, 176, 5, 0.16);
+  color: #f08c00;
+}
+
+.evt-tool .evt-icon {
+  background: rgba(121, 80, 242, 0.14);
+  color: #7950f2;
+}
+
+.evt-wip .evt-icon {
+  background: rgba(18, 184, 134, 0.14);
+  color: #12b886;
+}
+
+.evt-process .evt-icon {
+  background: rgba(51, 154, 240, 0.14);
+  color: #339af0;
+}
+
+.evt-highlight td {
+  background: rgba(59, 110, 240, 0.06);
 }
 
 /* Arrange / batch tables (step debugger, dataset) */

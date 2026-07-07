@@ -23,17 +23,31 @@ export const SIM_EVENT_LABEL: Record<SimEventKind, string> = {
 };
 
 export const SIM_EVENT_LABEL_KO: Record<SimEventKind, string> = {
-  MOVE_OUT: "Move Out",
-  IDLE: "Idle",
-  JOB_ASSIGNED: "Job 배정",
-  CONV_ASSIGNED: "Conv 배정",
-  TOOL_RELEASE: "Tool 반환",
-  WIP_INJECT: "WIP 유입",
-  TOOL_OCCUPY: "Tool 점유",
+  MOVE_OUT: "작업 완료 · 배출",
+  IDLE: "장비 부하 발생",
+  JOB_ASSIGNED: "작업 시작",
+  CONV_ASSIGNED: "변환 배정",
+  TOOL_RELEASE: "툴 반환",
+  WIP_INJECT: "재공 유입",
+  TOOL_OCCUPY: "툴 점유",
   PROCESS_END: "공정 완료",
-  IDLE_DECISION: "Idle · 배정 결정",
-  CONV_START: "Conv Start",
-  CONV_END: "Conv End",
+  IDLE_DECISION: "유휴 · 배정 결정",
+  CONV_START: "변환 시작",
+  CONV_END: "변환 완료",
+};
+
+export const SIM_EVENT_ICON: Record<SimEventKind, string> = {
+  MOVE_OUT: "↗",
+  IDLE: "○",
+  JOB_ASSIGNED: "▶",
+  CONV_ASSIGNED: "⇄",
+  TOOL_RELEASE: "↩",
+  WIP_INJECT: "＋",
+  TOOL_OCCUPY: "⊕",
+  PROCESS_END: "✓",
+  IDLE_DECISION: "◈",
+  CONV_START: "⇄",
+  CONV_END: "✓",
 };
 
 export const SIM_EVENT_CLASS: Record<SimEventKind, string> = {
@@ -83,14 +97,15 @@ export function simEventLabel(kind: string, ko = false): string {
   return map[normalized as SimEventKind] ?? String(normalized);
 }
 
+export function simEventIcon(kind: string): string {
+  const normalized = normalizeSimEventKind(kind);
+  return SIM_EVENT_ICON[normalized as SimEventKind] ?? "•";
+}
+
 export function formatSimEventDetail(ev: SimEvent): string {
   const parts: string[] = [];
-  if (ev.eqp_id) parts.push(ev.eqp_id);
   if (ev.eqp_status) parts.push(ev.eqp_status);
-  if (ev.lot_id) parts.push(ev.lot_id);
   if (ev.lot_cd) parts.push(`LOT_CD=${ev.lot_cd}`);
-  if (ev.PLAN_PROD_ATTR_VAL) parts.push(ev.PLAN_PROD_ATTR_VAL);
-  if (ev.oper_id) parts.push(ev.oper_id);
   if (ev.next_oper_id) {
     parts.push(
       ev.next_plan_prod_key
@@ -111,4 +126,9 @@ export function formatSimEventDetail(ev: SimEvent): string {
   }
   if (ev.eqp_model) parts.push(`model ${ev.eqp_model}`);
   return parts.join(" · ");
+}
+
+/** Dedicated columns(EQP/LOT/PPK/OPER)에 없는 보조 정보만 */
+export function formatSimEventExtra(ev: SimEvent): string {
+  return formatSimEventDetail(ev) || "—";
 }

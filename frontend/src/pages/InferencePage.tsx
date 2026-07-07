@@ -814,7 +814,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             {/* EVENTS TAB */}
             {tab === "events" && result?.event_log && (
               <FullscreenPanel
-                title={`이벤트 이력 (${result.event_log.length.toLocaleString()}건)`}
+                title="이벤트 이력"
                 className="card tab-panel"
                 actions={
                   <button type="button" className="btn btn-ghost btn-sm"
