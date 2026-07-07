@@ -320,8 +320,8 @@ class RewardParams(BaseModel):
 
 class TrainRequest(RewardParams):
     algorithm: str = Field(
-        default="bulkfill",
-        description="학습 환경 유형: bulkfill (BulkFillEnv) | rl (SchedulingEnv)",
+        default="scheduling_rl",
+        description="학습 환경 유형: scheduling_rl (BulkFillEnv)",
     )
     total_timesteps: int = Field(default=CONFIG.rl.total_timesteps, ge=1000)
     learning_rate: float = Field(default=CONFIG.rl.learning_rate, gt=0)
@@ -404,7 +404,7 @@ class InferFetchOptions(BaseModel):
 
 
 class InferenceRequest(InferFetchOptions):
-    algorithm: str = Field(default="bulkfill", description="bulkfill | rl | minprogress | earliest_st")
+    algorithm: str = Field(default="scheduling_rl", description="scheduling_rl | minprogress | earliest_st")
     input_folder: Optional[str] = Field(
         default=None,
         description="FAC_ID 추론용 (미지정 시 현재 선택). fetch 후에는 {FAC_ID}/infer 로 고정",
@@ -744,18 +744,15 @@ def train(req: TrainRequest):
     CONFIG.rl.learning_rate = req.learning_rate
     apply_reward_params(req.model_dump())
 
-    env_cls = SchedulingEnv
-    if req.algorithm == "bulkfill":
-        from env.bulkfill_env import BulkFillEnv
-        env_cls = BulkFillEnv
+    from env.bulkfill_env import BulkFillEnv
 
     agent = SchedulingAgent()
     payload = env_list if len(env_list) > 1 else env_list[0]
-    train_kwargs: dict = {"verbose": 0, "env_cls": env_cls}
+    train_kwargs: dict = {"verbose": 0, "env_cls": BulkFillEnv}
     if req.train_budget_mode == "episodes" and req.n_episodes:
         train_kwargs["n_episodes"] = req.n_episodes
     agent.train(payload, **train_kwargs)
-    agent.save(algorithm=req.algorithm)
+    agent.save()
     eval_eps = req.n_episodes if req.train_budget_mode == "episodes" and req.n_episodes else 3
     metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
     return {"message": "학습 완료", "metrics": metrics, "input_folders": folders}
@@ -793,9 +790,9 @@ def inference(req: InferenceRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     agent = None
-    if req.algorithm in ("rl", "bulkfill"):
+    if req.algorithm == "scheduling_rl":
         try:
-            agent = SchedulingAgent.load(env_data=env_data, algorithm=req.algorithm)
+            agent = SchedulingAgent.load(env_data=env_data)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(
                 status_code=400,
@@ -1003,7 +1000,7 @@ def get_inference_result(input_folder: Optional[str] = None):
             "oper_ids": env_data["oper_ids"],
             "eqp_ids": env_data["eqp_ids"],
             "sim_end_minutes": env_data["sim_end_minutes"],
-            "algorithm": saved.get("algorithm", "rl"),
+            "algorithm": saved.get("algorithm", "scheduling_rl"),
             "validation": saved.get("validation"),
         }
         return serialize_inference_result(result, include_history=False)
@@ -1049,7 +1046,7 @@ def _benchmark_single_folder(folder: str, algorithms: list[str]) -> dict:
     label = folder.rsplit("/", 1)[-1]
     original_folder = CONFIG.path.input_folder_key
     global _env_data_cache
-    rl_agent = _get_benchmark_rl_agent() if "rl" in algorithms else None
+    rl_agent = _get_benchmark_rl_agent() if "scheduling_rl" in algorithms else None
     try:
         _apply_input_folder(folder)
         env_data = _load_env_data()

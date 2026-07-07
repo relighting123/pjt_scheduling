@@ -2,8 +2,8 @@
 BENCH_SUITE 평가 — 10개 데이터셋 × 3 알고리즘 KPI 비교
 =========================================================
 실행
-  python benchmark/bench_suite.py            # 휴리스틱만(빠름) — bulkfill은 저장 모델 사용
-  TS=300000 python benchmark/bench_suite.py  # bulkfill 공동 학습 후 평가
+  python benchmark/bench_suite.py            # 휴리스틱만(빠름) — scheduling_rl은 저장 모델 사용
+  TS=300000 python benchmark/bench_suite.py  # scheduling_rl 공동 학습 후 평가
 
 산출
   data/dataset/bench_suite_results.json  (PPT 장표용)
@@ -77,17 +77,17 @@ def main():
         CONFIG.rl.n_steps = 2048
         CONFIG.rl.device = "cpu"
         CONFIG.rl.n_envs = 1
-        print(f"=== bulkfill 공동 학습 (datasets={len(eds)}, TS={TS:,}) ===")
+        print(f"=== scheduling_rl 공동 학습 (datasets={len(eds)}, TS={TS:,}) ===")
         agent = SchedulingAgent()
         agent.train(eds, verbose=0, env_cls=BulkFillEnv)
-        agent.save(algorithm="bulkfill")
+        agent.save()
         print("완료\n")
     else:
         try:
             from agent.rl_agent import SchedulingAgent
-            agent = SchedulingAgent.load(env_data=eds[0], algorithm="bulkfill")
+            agent = SchedulingAgent.load(env_data=eds[0])
         except Exception as e:
-            print(f"[경고] 저장된 bulkfill 모델 없음 → bulkfill 생략 ({e})")
+            print(f"[경고] 저장된 scheduling_rl 모델 없음 → scheduling_rl 생략 ({e})")
 
     results = []
     schedules = {}  # name -> {algo: {schedule, conversion_plans, sim, eqp_ids}}
@@ -99,9 +99,9 @@ def main():
                "sim": m["sim"], "total": m["total"], "min_conv": m["min_conv"],
                "desc": m["desc"], "tests": m["tests"], "algos": {}}
         sched_row = {}
-        run_algos = list(algos) + ([("bulkfill", "Bulk-Fill")] if agent is not None else [])
+        run_algos = list(algos) + ([("scheduling_rl", "Scheduling RL")] if agent is not None else [])
         for algo, label in run_algos:
-            res = run_inference(ed, algorithm=algo, agent=agent if algo == "bulkfill" else None)
+            res = run_inference(ed, algorithm=algo, agent=agent if algo == "scheduling_rl" else None)
             row["algos"][algo] = kpi(res, m)
             k = row["algos"][algo]
             sched_row[algo] = {
@@ -139,7 +139,7 @@ def main():
             "n_sets": len(rows),
         }
 
-    summary = {a: agg(a) for a in ["earliest_st", "minprogress", "bulkfill"]}
+    summary = {a: agg(a) for a in ["earliest_st", "minprogress", "scheduling_rl"]}
     out = {"datasets": results, "summary": summary}
     out_path = SUITE_ROOT / "bench_suite_results.json"
     with open(out_path, "w", encoding="utf-8") as f:
@@ -147,7 +147,7 @@ def main():
 
     print("=" * 64)
     print(f"{'집계':<14}{'생산률':>10}{'총전환':>8}{'평균가동':>9}{'전담률':>9}{'최적달성':>9}")
-    for a, lbl in [("earliest_st", "Earliest-ST"), ("minprogress", "Min-Progress"), ("bulkfill", "Bulk-Fill")]:
+    for a, lbl in [("earliest_st", "Earliest-ST"), ("minprogress", "Min-Progress"), ("scheduling_rl", "Scheduling RL")]:
         s = summary[a]
         if not s:
             continue

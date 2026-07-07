@@ -186,7 +186,7 @@ def cmd_train(
     nodb: bool = False,
     lot_cd: str = None,
     all_folders: bool = False,
-    algorithm: str = "bulkfill",
+    algorithm: str = "scheduling_rl",
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
 
@@ -269,20 +269,13 @@ def cmd_train(
         print(f"  학습 기간: {len(datasets)}개 (VecEnv)")
     print(f"  Total Timesteps: {CONFIG.rl.total_timesteps:,}")
 
-    from env.scheduling_env import SchedulingEnv
-    env_cls = SchedulingEnv
-    if algorithm == "bulkfill":
-        from env.bulkfill_env import BulkFillEnv
-        env_cls = BulkFillEnv
-        print(f"  알고리즘: bulkfill (BulkFillEnv)")
-    else:
-        print(f"  알고리즘: rl (SchedulingEnv)")
+    from env.bulkfill_env import BulkFillEnv
+    print(f"  알고리즘: scheduling_rl (BulkFillEnv)")
 
-    from agent.rl_agent import _model_name_for_algorithm
     agent = SchedulingAgent()
-    agent.train(env_data, verbose=1, env_cls=env_cls)
-    agent.save(algorithm=algorithm)
-    print(f"  모델 저장: {CONFIG.path.model_dir / _model_name_for_algorithm(algorithm)}.zip")
+    agent.train(env_data, verbose=1, env_cls=BulkFillEnv)
+    agent.save()
+    print(f"  모델 저장: {CONFIG.path.model_dir / CONFIG.rl.model_name}.zip")
 
     report = save_training_convergence_report(CONFIG.path.model_dir, algorithm=algorithm)
     print(f"  수렴 리포트: {report['json_path']}")
@@ -362,7 +355,7 @@ def cmd_inference(
     *,
     nodb: bool = False,
     lot_cd: str = None,
-    algorithm: str = "bulkfill",
+    algorithm: str = "scheduling_rl",
     decision_log: bool = False,
     enable_wip_inflow: bool = False,
     include_history: bool = False,
@@ -662,8 +655,8 @@ def parse_args():
         help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
     )
     train_p.add_argument(
-        "--algorithm", default="bulkfill", choices=["rl", "bulkfill"],
-        help="학습 환경: bulkfill (기본, BulkFillEnv) | rl (SchedulingEnv)",
+        "--algorithm", default="scheduling_rl", choices=["scheduling_rl"],
+        help="학습 환경: scheduling_rl (기본, BulkFillEnv)",
     )
     val_p = sub.add_parser("validate", help="test 데이터 전체 검증")
     val_p.add_argument("--facid", required=True, help="공장 ID")
@@ -688,8 +681,8 @@ def parse_args():
         help="Oracle 조회 생략, dataset 기존 JSON 사용",
     )
     inf_p.add_argument(
-        "--algorithm", default="bulkfill", choices=["rl", "bulkfill"],
-        help="추론 모델: bulkfill (기본) | rl",
+        "--algorithm", default="scheduling_rl", choices=["scheduling_rl"],
+        help="추론 모델: scheduling_rl (기본)",
     )
     inf_p.add_argument(
         "--decision-log", action="store_true",
@@ -879,7 +872,7 @@ def main():
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
                 all_folders=args.all_folders,
-                algorithm=getattr(args, "algorithm", "bulkfill"),
+                algorithm=getattr(args, "algorithm", "scheduling_rl"),
             )
 
         elif args.command == "validate":
@@ -891,7 +884,7 @@ def main():
                 rule_timekey=args.ruletimekey,
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
-                algorithm=getattr(args, "algorithm", "bulkfill"),
+                algorithm=getattr(args, "algorithm", "scheduling_rl"),
                 decision_log=args.decision_log,
                 enable_wip_inflow=args.enable_wip_inflow,
                 include_history=args.include_history,

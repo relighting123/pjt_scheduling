@@ -114,7 +114,7 @@ def _dedicated_bucket(sim, eqp_id: str, ed: dict) -> int:
 
 def _load_agent(ed: dict):
     try:
-        return SchedulingAgent.load(env_data=ed, algorithm="bulkfill")
+        return SchedulingAgent.load(env_data=ed)
     except FileNotFoundError:
         return None
 

@@ -34,7 +34,7 @@ def run_validation(
     fac_id: str,
     agent: Optional[SchedulingAgent] = None,
     *,
-    algorithm: str = "bulkfill",
+    algorithm: str = "scheduling_rl",
     refresh_sql: bool = True,
 ) -> dict:
     """
@@ -51,9 +51,9 @@ def run_validation(
 
     if agent is None:
         agent = SchedulingAgent()
-        if not agent.model_exists(algorithm=algorithm):
+        if not agent.model_exists():
             raise ValueError("학습된 모델이 없습니다. 먼저 train을 실행하세요.")
-        agent = SchedulingAgent.load(algorithm=algorithm)
+        agent = SchedulingAgent.load()
 
     results: List[dict] = []
     errors: List[dict] = []

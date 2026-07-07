@@ -11,7 +11,7 @@ from agent.rl_agent import SchedulingAgent, _mask_fn
 from agent.minprogress_agent import MinProgressAgent
 from agent.earliest_st_agent import EarliestSTAgent
 from agent.registry import validate_algorithm, VALID_ALGORITHMS
-from env.scheduling_env import SchedulingEnv, validate_obs_shape
+from env.scheduling_env import SchedulingEnv
 from data.writer import write_inference_result
 from sb3_contrib.common.wrappers import ActionMasker
 from utils.helpers import minutes_to_str
@@ -35,7 +35,7 @@ def _inference_max_steps(env_data: dict) -> int:
 
 def run_inference(
     env_data: dict,
-    algorithm: str = "bulkfill",
+    algorithm: str = "scheduling_rl",
     agent: Optional[SchedulingAgent] = None,
     model_path: Optional[str] = None,
     deterministic: bool = True,
@@ -51,7 +51,7 @@ def run_inference(
     목적: 선택한 알고리즘으로 Scheduling 추론 실행
     Input:
         env_data      (dict): preprocessor.preprocess() 반환값
-        algorithm     (str):  "rl" | "bulkfill" | "minprogress" | "earliest_st"
+        algorithm     (str):  "scheduling_rl" | "minprogress" | "earliest_st"
         agent         (SchedulingAgent|None): RL용 (None이면 model_path로 로드)
         model_path    (str|None): 모델 파일 경로
         deterministic (bool): RL 예측 시 greedy 여부
@@ -88,9 +88,9 @@ def run_inference(
     if algorithm == "earliest_st":
         run_data["eqp_selection"] = "min_st"
 
-    if algorithm in ("rl", "bulkfill"):
+    if algorithm == "scheduling_rl":
         if agent is None:
-            agent = SchedulingAgent.load(model_path, env_data=env_data, algorithm=algorithm)
+            agent = SchedulingAgent.load(model_path, env_data=env_data)
 
     heuristic_agent = None
     if algorithm == "minprogress":
@@ -101,7 +101,7 @@ def run_inference(
     max_steps = _inference_max_steps(env_data)
 
     # BulkFillEnv는 MultiDiscrete action space — ActionMasker 래퍼 없이 직접 실행
-    if algorithm == "bulkfill":
+    if algorithm == "scheduling_rl":
         return _run_bulkfill_inference(
             run_data, env_data, agent, max_steps, deterministic,
             record_history, record_decision_log, algorithm,
@@ -119,14 +119,6 @@ def run_inference(
     )
     sched_env: SchedulingEnv = env.unwrapped
     obs, _ = env.reset()
-    if algorithm == "rl":
-        from agent.rl_agent import _model_obs_dim
-        validate_obs_shape(
-            obs,
-            expected_dim=_model_obs_dim(agent.model),
-            env_data=env_data,
-            source="추론 시작 (환경 obs vs 모델)",
-        )
     done = False
     steps = 0
     terminated = False
@@ -301,7 +293,7 @@ def save_result(
         "conversion_plans": result.get("conversion_plans", []),
         "stats":            result["stats"],
         "plan":             result["plan"],
-        "algorithm":        result.get("algorithm", "rl"),
+        "algorithm":        result.get("algorithm", "scheduling_rl"),
         "validation":       result.get("validation"),
     }
     with open(full_path, "w", encoding="utf-8") as f:
@@ -330,20 +322,19 @@ def run_inference_compare(
     errors: list[dict] = []
 
     rl_loaded = rl_agent
-    # algorithm별 모델 개별 로드 (rl/bulkfill 파일 분리)
     loaded_agents: dict = {}
     if rl_loaded is not None:
-        loaded_agents["rl"] = rl_loaded
-    for algo in [a for a in algorithms if a in ("rl", "bulkfill")]:
+        loaded_agents["scheduling_rl"] = rl_loaded
+    for algo in [a for a in algorithms if a == "scheduling_rl"]:
         if algo in loaded_agents:
             continue
         try:
-            loaded_agents[algo] = SchedulingAgent.load(model_path, env_data=env_data, algorithm=algo)
+            loaded_agents[algo] = SchedulingAgent.load(model_path, env_data=env_data)
         except (FileNotFoundError, ValueError) as exc:
             errors.append({"algorithm": algo, "message": str(exc)})
 
     for algo in algorithms:
-        if algo in ("rl", "bulkfill") and algo not in loaded_agents:
+        if algo == "scheduling_rl" and algo not in loaded_agents:
             continue
         try:
             validate_algorithm(algo)

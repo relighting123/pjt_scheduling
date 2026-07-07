@@ -150,7 +150,7 @@ def build_rts_output(
     meta = resolve_writer_meta(
         env_data, fac_id=fac_id, rule_timekey=rule_timekey, crt_user_id=crt_user_id,
     )
-    meta["ALGORITHM"] = result.get("algorithm", "rl")
+    meta["ALGORITHM"] = result.get("algorithm", "scheduling_rl")
     base_time: datetime = env_data["sim_base_time"]
     schedule = result.get("schedule", [])
     conversion_plans = result.get("conversion_plans") or []

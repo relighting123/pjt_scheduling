@@ -44,8 +44,8 @@ export default function DashboardPage({ onNavigate }: Props) {
   const testEntries = useMemo((): AlgoCompareEntry[] => {
     if (!testData?.datasets?.length) return [];
     const map: Record<string, InferenceResult> = {};
-    testData.datasets.forEach((d) => d.results.forEach((r) => { map[r.algorithm ?? "rl"] = r; }));
-    const labels: Record<string, string> = { rl: "PPO", minprogress: "MinProgress", earliest_st: "Earliest-ST" };
+    testData.datasets.forEach((d) => d.results.forEach((r) => { map[r.algorithm ?? "scheduling_rl"] = r; }));
+    const labels: Record<string, string> = { scheduling_rl: "Scheduling RL", minprogress: "MinProgress", earliest_st: "Earliest-ST" };
     return Object.entries(map).map(([algo, result]) => ({ algorithm: algo, label: labels[algo] ?? algo, result }));
   }, [testData]);
 

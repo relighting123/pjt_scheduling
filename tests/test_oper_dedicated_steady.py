@@ -16,6 +16,7 @@ from data.dedicated_scenarios import (
     bootstrap_dedicated_suite,
 )
 from data.loader import preprocess, validate_data
+from env.bulkfill_env import BulkFillEnv
 from env.scheduling_env import SchedulingEnv, compute_obs_dim
 from inference.runner import run_inference
 
@@ -132,10 +133,10 @@ def test_oper_dedicated_rl_train_and_infer():
     CONFIG.rl.eval_freq = 10_000
     try:
         agent = SchedulingAgent()
-        agent.train(env_data, verbose=0)
+        agent.train(env_data, verbose=0, env_cls=BulkFillEnv)
         result = run_inference(
             env_data,
-            algorithm="rl",
+            algorithm="scheduling_rl",
             agent=agent,
             record_history=False,
             deterministic=True,

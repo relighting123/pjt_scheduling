@@ -45,7 +45,7 @@ def test_rts_output_restores_schedule_for_gantt():
         },
     ]
     payload = build_rts_output(
-        {"schedule": schedule, "conversion_plans": [], "algorithm": "rl"},
+        {"schedule": schedule, "conversion_plans": [], "algorithm": "scheduling_rl"},
         env_data,
     )
     result = _result_from_rts_output(payload, env_data)

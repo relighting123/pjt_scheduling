@@ -156,7 +156,7 @@ function excelEventLog(events: NonNullable<InferenceResult["event_log"]>, name: 
 export default function InferencePage({ modelExists, config, summary, folderLoading, onInputFolderChange }: Props) {
   const [result, setResult]           = useState<InferenceResult | null>(null);
   const [compareData, setCompareData] = useState<AlgorithmCompareResponse | null>(null);
-  const [algorithm, setAlgorithm]     = useState<AlgorithmId>("bulkfill");
+  const [algorithm, setAlgorithm]     = useState<AlgorithmId>("scheduling_rl");
   const [algorithms, setAlgorithms]   = useState<AlgorithmInfo[]>([]);
   const [compareAlgos, setCompareAlgos] = useState<Set<AlgorithmId>>(new Set());
   const [loading, setLoading]         = useState(false);
@@ -314,7 +314,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const compareEntries = useMemo((): AlgoCompareEntry[] =>
     (compareData?.results ?? []).map(r => ({
-      algorithm: r.algorithm ?? "rl",
+      algorithm: r.algorithm ?? "scheduling_rl",
       label: algoList.find(a => a.id === r.algorithm)?.name ?? (r.algorithm ?? ""),
       result: r,
     })),
@@ -719,7 +719,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               onChange={e => { const f = e.target.files?.[0]; e.target.value=""; if(f) void loadFile(f); }} />
           </div>
           {fileSource && <p className="hint mt-1">파일: <code>{fileSource}</code></p>}
-          {needsModel && !modelExists && <p className="hint mt-1" style={{ color:"var(--warn)" }}>⚠ PPO는 모델이 필요합니다</p>}
+          {needsModel && !modelExists && <p className="hint mt-1" style={{ color:"var(--warn)" }}>⚠ 학습된 모델이 필요합니다</p>}
         </div>
 
         <div className="card">
