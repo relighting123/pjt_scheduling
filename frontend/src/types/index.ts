@@ -246,7 +246,6 @@ export interface DataSummary {
 
 export interface RewardConfig {
   w_same_setup: number;
-  w_same_prod: number;
   w_idle_per_min: number;
   w_plan_hit: number;
   w_pacing: number;

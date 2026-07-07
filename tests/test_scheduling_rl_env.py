@@ -3,7 +3,6 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from data.generator import (
     write_json_bundle,
@@ -227,12 +226,10 @@ def test_bulk_decision_shaping_terms(tmp_path):
          CONFIG.reward.w_redundant_cover) = saved
 
 
-def test_model_breadth_and_dedication(tmp_path):
+def test_model_breadth(tmp_path):
     ed = _build_s1(tmp_path)
     env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     env.reset()
     sim = env.sim
     # 단일 모델 A — 3제품×1공정 가공 가능 → breadth=3
     assert sim.model_breadth("EQP001") == 3
-    # 모든 버킷이 모델 A만 가능 → 전용도 1.0
-    assert sim.bucket_dedication("PPK001", "OPER001") == pytest.approx(1.0)

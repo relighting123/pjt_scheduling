@@ -317,7 +317,6 @@ def _prepare_train_env_data(req: "TrainRequest") -> tuple[list[dict], list[str]]
 
 class RewardParams(BaseModel):
     w_same_setup: float = Field(default=CONFIG.reward.w_same_setup)
-    w_same_prod: float = Field(default=CONFIG.reward.w_same_prod)
     w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
     w_plan_hit: float = Field(default=CONFIG.reward.w_plan_hit)
     w_pacing: float = Field(default=CONFIG.reward.w_pacing)

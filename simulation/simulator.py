@@ -1323,18 +1323,6 @@ class SchedulingSimulator:
             score += 0.5
         return cfg.w_flow_balance * score
 
-    def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
-        """같은 PPK의 재공이 남으면 보너스. PPK 전환 시 전환 카운트만."""
-        cfg = self._reward_cfg
-        if eqp.prev_prod == ppk:
-            if self._ppk_has_feasible_assignment(ppk):
-                return cfg.w_same_prod
-            return 0.0
-        if eqp.prev_prod is not None:
-            eqp.prod_switches += 1
-            self.stats["prod_switches"] += 1
-        return 0.0
-
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
         if not candidates:
             return None
@@ -1410,16 +1398,6 @@ class SchedulingSimulator:
         if n > 0:
             return n
         return len(self._env_data.get("eqp_oper_cap", {}).get(eqp_id, []))
-
-    def bucket_eligible_models(self, ppk: str, oper_id: str) -> int:
-        """이 (PPK,OPER)를 가공 가능한 서로 다른 장비모델 수."""
-        arrange_map = self._env_data.get("abstract_arrange_map", {})
-        models = {m for (p, o, m) in arrange_map if p == ppk and o == oper_id}
-        return max(len(models), 1)
-
-    def bucket_dedication(self, ppk: str, oper_id: str) -> float:
-        """전용도 = 1/가능모델수. 1.0이면 단일 모델 전용, 작을수록 범용."""
-        return 1.0 / self.bucket_eligible_models(ppk, oper_id)
 
     def narrower_idle_specialist_exists(
         self, eqp_id: str, ppk: str, oper_id: str,
