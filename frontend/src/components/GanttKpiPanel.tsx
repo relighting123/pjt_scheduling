@@ -4,7 +4,6 @@ import {
   buildAchievementTableChart,
   buildEqpIdleChart,
   buildEqpUtilChart,
-  buildModelUtilChart,
   buildTatChart,
 } from "../lib/charts";
 import {
@@ -15,7 +14,6 @@ import {
   computeAvgUtil,
   computeEqpScheduleSummary,
   computeEqpUtil,
-  computeModelUtil,
   computeTAT,
   countToolSwitches,
 } from "../lib/metrics";
@@ -26,12 +24,11 @@ interface Props {
   eqpModelMap: Record<string, string>;
 }
 
-type DetailTab = "ach" | "eqp" | "model" | "idle" | "tat" | "sw";
+type DetailTab = "ach" | "eqp" | "idle" | "tat" | "sw";
 
 const DETAIL_TABS: { id: DetailTab; label: string }[] = [
   { id: "ach",   label: "달성률" },
   { id: "eqp",   label: "장비 가동률" },
-  { id: "model", label: "모델 가동률" },
   { id: "idle",  label: "장비 유휴율" },
   { id: "tat",   label: "TAT" },
   { id: "sw",    label: "전환 횟수" },
@@ -45,7 +42,6 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   const makespan = sched.length ? Math.max(...sched.map((r) => r.END_TM)) : 0;
 
   const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? []), [sched, result, eqpModelMap]);
-  const models = useMemo(() => computeModelUtil(utils), [utils]);
   const eqpSummary = useMemo(
     () => computeEqpScheduleSummary(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? []),
     [sched, result, eqpModelMap],
@@ -113,7 +109,6 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
 
           {tab === "ach"   && <div className="chart-wrap"><PlotChart {...buildAchievementTableChart(ach)} /></div>}
           {tab === "eqp"   && <div className="chart-wrap"><PlotChart {...buildEqpUtilChart(utils)} /></div>}
-          {tab === "model" && <div className="chart-wrap"><PlotChart {...buildModelUtilChart(models)} /></div>}
           {tab === "idle"  && <div className="chart-wrap"><PlotChart {...buildEqpIdleChart(eqpSummary)} /></div>}
 
           {tab === "tat" && (

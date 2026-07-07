@@ -12,7 +12,7 @@ import {
   parseSimBaseMs,
 } from "./ganttTime";
 import { computeInferenceKpi } from "./metrics";
-import type { EqpUtil, EqpScheduleSummary, ModelUtil, TatRow, AchievementRow } from "./metrics";
+import type { EqpUtil, EqpScheduleSummary, TatRow, AchievementRow } from "./metrics";
 
 export type GanttBarLabel = "lot" | "car" | "prod";
 
@@ -1978,33 +1978,6 @@ export function buildEqpUtilChart(utils: EqpUtil[]): { data: Data[]; layout: Par
       xaxis: { range: [0, 115], title: { text: "가동률 (%)" } },
       height: Math.max(300, 28 * Math.max(utils.length, 6)),
       margin: { l: 140, r: 60, t: 40, b: 56 },
-      ...SHARED_DARK,
-    },
-  };
-}
-
-export function buildModelUtilChart(utils: ModelUtil[]): { data: Data[]; layout: Partial<Layout> } {
-  const labels = utils.map((u) => u.model);
-  const values = utils.map((u) => u.avgUtilPct);
-  const colors = values.map((v) => (v >= 80 ? "#55A868" : v >= 50 ? "#4C72B0" : "#DD8452"));
-
-  return {
-    data: [{
-      type: "bar",
-      orientation: "h",
-      x: values,
-      y: labels,
-      marker: { color: colors },
-      text: values.map((v) => `${v}%`),
-      textposition: "outside",
-      hovertemplate: "%{y}<br>평균 가동률: %{x}%<extra></extra>",
-      showlegend: false,
-    }],
-    layout: {
-      title: { text: "장비모델별 평균 가동률 (%)", font: { size: 13 } },
-      xaxis: { range: [0, 115], title: { text: "평균 가동률 (%)" } },
-      height: Math.max(260, 40 * Math.max(utils.length, 4)),
-      margin: { l: 120, r: 60, t: 40, b: 56 },
       ...SHARED_DARK,
     },
   };
