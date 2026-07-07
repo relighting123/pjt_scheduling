@@ -8,12 +8,6 @@ export interface EqpUtil {
   utilPct: number;
 }
 
-export interface ModelUtil {
-  model: string;
-  eqpCount: number;
-  avgUtilPct: number;
-}
-
 export interface TatRow {
   prod: string;
   count: number;
@@ -145,19 +139,6 @@ export function computeEqpScheduleSummary(
       prodSwitches,
     };
   }).sort((a, b) => a.eqp_id.localeCompare(b.eqp_id));
-}
-
-export function computeModelUtil(utils: EqpUtil[]): ModelUtil[] {
-  const grouped: Record<string, EqpUtil[]> = {};
-  utils.forEach((u) => {
-    const key = u.model ?? "Unknown";
-    (grouped[key] ??= []).push(u);
-  });
-  return Object.entries(grouped).map(([model, group]) => ({
-    model,
-    eqpCount: group.length,
-    avgUtilPct: Math.round((group.reduce((s, u) => s + u.utilPct, 0) / group.length) * 10) / 10,
-  })).sort((a, b) => b.avgUtilPct - a.avgUtilPct);
 }
 
 export function computeTAT(schedule: ScheduleRecord[]): TatRow[] {
