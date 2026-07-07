@@ -84,7 +84,7 @@ def build_oper_dedicated_steady_eqp_initial_state() -> List[dict]:
     return [
         {
             "eqp_id": eqp_id,
-            "plan_prod_attr_val": PPK,
+            "PLAN_PROD_ATTR_VAL": PPK,
             "oper_id": oper_id,
             "lot_cd": "LC001",
             "temp": "T650",

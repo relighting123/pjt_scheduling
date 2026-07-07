@@ -98,7 +98,7 @@ def _build_rts_conv_rows(
         job_id = f"{eqp_id}_{conv_start_tm}_{i:04d}"
         from_lot = ev.get("from_lot_cd") or ""
         to_lot = ev.get("to_lot_cd") or ""
-        ppk = ev.get("plan_prod_attr_val", "")
+        ppk = ev.get("PLAN_PROD_ATTR_VAL", "")
         oper_id = ev.get("oper_id", "")
         eqp_model = ev.get("eqp_model_cd", "")
         rows.append({

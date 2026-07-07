@@ -93,8 +93,8 @@ export function formatSimEventDetail(ev: SimEvent): string {
   if (ev.oper_id) parts.push(ev.oper_id);
   if (ev.next_oper_id) {
     parts.push(
-      ev.next_PLAN_PROD_ATTR_VAL
-        ? `→ ${ev.next_PLAN_PROD_ATTR_VAL}/${ev.next_oper_id}`
+      ev.next_plan_prod_key
+        ? `→ ${ev.next_plan_prod_key}/${ev.next_oper_id}`
         : `→ ${ev.next_oper_id}`,
     );
   }

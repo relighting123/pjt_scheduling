@@ -27,7 +27,7 @@ RULE_TIMEKEY (DB 메타 SQL 필수, data/sql/rule_timekey_*.sql):
     1. python main.py db-check
     2. python -m data.collector --facid FAC001 --once --preflight
     3. python -m data.collector --facid FAC001 --once --dry-run -v
-    4. python -m data.collector --faci`d FAC001 --once --debug
+    4. python -m data.collector --facid FAC001 --once --debug
 """
 from __future__ import annotations
 

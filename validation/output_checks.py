@@ -50,7 +50,7 @@ def check_eligibility(schedule: List[dict], env_data: dict) -> List[dict]:
             violations.append({
                 "lot_id":        lot_id,
                 "eqp_id":        eqp_id,
-                "plan_prod_attr_val": ppk,
+                "PLAN_PROD_ATTR_VAL": ppk,
                 "oper_id":       oper_id,
                 "reason":        "장비 투입 불가 (discrete/abstract arrange에 해당 조합 없음)",
             })
@@ -133,13 +133,13 @@ def check_completeness(schedule: List[dict], env_data: dict, stats: dict) -> Lis
         lot_id = lot["lot_id"]
         if lot_id in scheduled_lot_ids:
             continue
-        key = f"{lot['plan_prod_attr_val']}|{lot['oper_id']}"
+        key = f"{lot['PLAN_PROD_ATTR_VAL']}|{lot['oper_id']}"
         if remaining_current_wip.get(key, 0) > 0 or remaining_wip.get(key, 0) > 0:
             # 시뮬레이션 종료 시점까지 대기 중인 재공으로 설명됨 (누락 아님)
             continue
         missing.append({
             "lot_id":        lot_id,
-            "plan_prod_attr_val": lot["plan_prod_attr_val"],
+            "PLAN_PROD_ATTR_VAL": lot["PLAN_PROD_ATTR_VAL"],
             "oper_id":       lot["oper_id"],
             "wf_qty":        lot.get("wf_qty"),
             "reason":        "결과 및 잔여 재공 통계 어디에도 없음 (배정 누락 의심)",
