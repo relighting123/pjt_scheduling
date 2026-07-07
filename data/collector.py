@@ -47,7 +47,6 @@ if str(ROOT) not in sys.path:
 
 from config import (
     CONFIG,
-    list_split_folders,
     normalize_rule_timekey,
     resolve_dataset_path,
     resolve_train_folders,
@@ -57,7 +56,7 @@ from config import (
 )
 from data.db_registry import diagnose_db_config, print_db_config_report
 from data.loader.fetch import fetch_from_db, fetch_period_range
-from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
+from data.loader.sql_binds import resolve_lot_cd
 from data.loader.rule_timekey_query import (
     resolve_collect_periods,
     resolve_snapshot_rule_timekey,
