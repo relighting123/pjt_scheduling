@@ -13,7 +13,7 @@ interface Props {
 const EMPTY: TrainStatusResponse["series"] = { timesteps:[], ep_rew_mean:[], eval_timesteps:[], eval_reward:[], policy_loss:[], value_loss:[], explained_variance:[] };
 
 type Budget = "timesteps"|"episodes";
-type Range  = "current"|"period"|"pick";
+type Range  = "current"|"period"|"prevcnt"|"pick";
 type TrainTab = "charts"|"log"|"metrics";
 
 const REWARD_SLIDERS: {
@@ -65,6 +65,7 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
   const [range, setRange]     = useState<Range>("current");
   const [fromDate, setFrom]   = useState("");
   const [toDate, setTo]       = useState("");
+  const [prevcnt, setPrevcnt] = useState(3);
   const [picked, setPicked]   = useState<string[]>([]);
   const [trainTab, setTrainTab] = useState<TrainTab>("charts");
   const logRef = useRef<HTMLDivElement>(null);
@@ -91,6 +92,7 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
       ...(budget === "episodes" ? { n_episodes: nEps } : {}),
     };
     if (range==="period" && fromDate && toDate) return { ...base, from_date:fromDate, to_date:toDate, fac_id:config.fac_id };
+    if (range==="prevcnt") return { ...base, prevcnt, fac_id:config.fac_id };
     if (range==="pick" && picked.length) return { ...base, input_folders:picked };
     return { ...base, input_folder:config.input_folder };
   };
@@ -253,7 +255,7 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
         <div className="card">
           <div className="card-title">데이터 범위</div>
           <div className="budget-pills mb-2" style={{ flexWrap:"wrap" }}>
-            {([["current","현재"],["period","기간"],["pick","직접선택"]] as [Range,string][]).map(([m,l]) => (
+            {([["current","현재"],["period","기간"],["prevcnt","최근 N개"],["pick","직접선택"]] as [Range,string][]).map(([m,l]) => (
               <label key={m} className={`budget-pill${range===m?" active":""}`} style={{ flex:"unset", padding:"0.38rem 0.65rem" }}>
                 <input type="radio" checked={range===m} onChange={() => setRange(m)} disabled={loading} />{l}
               </label>
@@ -263,6 +265,12 @@ export default function TrainPage({ config, summary, modelExists, onTrained, onR
             <div style={{ display:"flex", gap:"0.5rem" }}>
               <div className="train-field" style={{flex:1}}><label className="field-label">시작</label><input type="text" className="input" value={fromDate} onChange={e=>setFrom(e.target.value)} disabled={loading} /></div>
               <div className="train-field" style={{flex:1}}><label className="field-label">종료</label><input type="text" className="input" value={toDate} onChange={e=>setTo(e.target.value)} disabled={loading} /></div>
+            </div>
+          )}
+          {range==="prevcnt" && (
+            <div className="train-field">
+              <label className="field-label">PREVCNT (최근 N개 RULE_TIMEKEY)</label>
+              <input type="number" className="input-number" min={1} value={prevcnt} onChange={e=>setPrevcnt(Number(e.target.value))} disabled={loading} />
             </div>
           )}
           {range==="pick" && (

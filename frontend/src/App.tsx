@@ -117,6 +117,7 @@ export default function App() {
               folderLoading={folderLoading}
               loadError={loadError}
               onInputFolderChange={handleInputFolderChange}
+              onRefresh={refreshData}
             />
           )}
         </div>

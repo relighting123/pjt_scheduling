@@ -2,15 +2,19 @@
 main.py - 운영 CLI
 
 사용 예:
-    python main.py train --facid FAC001 --prevdays 3
+    python main.py train --facid FAC001 --prevcnt 3
     python main.py train --facid FAC001 --ruletimekey 20260621170000
-    python main.py train --facid FAC001 --prevdays 3 --nodb
+    python main.py train --facid FAC001 --prevcnt 3 --nodb
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
-    python main.py validate --facid FAC001
+    python main.py test --facid FAC001
+    python main.py test --facid FAC001 --prevcnt 3 --lotcd LC001
+    python main.py test --facid FAC001 --from 20260621170000 --to 20260623170000
     python main.py infer --facid FAC001
     python main.py infer --facid FAC001 --ruletimekey 20260621170000
+    python main.py infer --facid FAC001 --from 20260621170000 --to 20260623170000
+    python main.py infer --facid FAC001 --prevcnt 3
     python main.py infer --facid FAC001 --nodb --decision-log
-    python main.py collect --facid FAC001 --prevdays 1 --once
+    python main.py collect --facid FAC001 --prevcnt 1 --once
     python main.py collect --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v --debug
     python main.py db-check
@@ -46,6 +50,7 @@ from config import (
 )
 from data.collector import (
     add_debug_arguments,
+    ensure_test_folders,
     ensure_train_folders,
     run_collector_cli,
 )
@@ -178,7 +183,7 @@ def _load_many(folders: List[str]) -> List[dict]:
 
 def cmd_train(
     fac_id: str,
-    prevdays: int = None,
+    prevcnt: int = None,
     from_key: str = None,
     to_key: str = None,
     rule_timekey: str = None,
@@ -206,13 +211,13 @@ def cmd_train(
             range_source = "cli"
         elif nodb:
             start_key, end_key = resolve_train_period_range(
-                prevdays=prevdays, from_key=from_key, to_key=to_key,
+                prevcnt=prevcnt, from_key=from_key, to_key=to_key,
             )
             range_source = "local"
         else:
             periods, range_source = resolve_collect_periods(
                 fac_id,
-                prevdays=prevdays or 1,
+                prevcnt=prevcnt or 1,
                 from_key=from_key,
                 to_key=to_key,
                 require_db=True,
@@ -229,7 +234,7 @@ def cmd_train(
 
         train_folders = ensure_train_folders(
             fac_id,
-            prevdays=prevdays,
+            prevcnt=prevcnt,
             from_key=from_key,
             to_key=to_key,
             period=rule_timekey,
@@ -289,17 +294,44 @@ def cmd_train(
     run_validation(fac_id, agent=agent, refresh_sql=not nodb)
 
 
-def cmd_validate(fac_id: str, *, nodb: bool = False):
+def cmd_test(
+    fac_id: str,
+    prevcnt: int = None,
+    from_key: str = None,
+    to_key: str = None,
+    *,
+    nodb: bool = False,
+    lot_cd: str = None,
+):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     print("=" * 60)
-    print(f"[validate] FAC={fac_id} (test 전체)")
+
+    folders = None
+    if prevcnt is not None or (from_key and to_key) or lot_cd:
+        folders = ensure_test_folders(
+            fac_id,
+            prevcnt=prevcnt,
+            from_key=from_key,
+            to_key=to_key,
+            lot_cd=lot_cd,
+            nodb=nodb,
+        )
+        print(f"[test] FAC={fac_id}  test 폴더 {len(folders)}개")
+        for f in folders:
+            print(f"  · {f}")
+        if not folders:
+            print("[오류] 조건에 맞는 test 폴더가 없습니다.")
+            sys.exit(1)
+    else:
+        print(f"[test] FAC={fac_id} (test 전체)")
+
     if nodb:
-        print("[validate] --nodb: 기존 JSON 사용 (Oracle 조회 생략)")
-    payload = run_validation(fac_id, refresh_sql=not nodb)
+        print("[test] --nodb: 기존 JSON 사용 (Oracle 조회 생략)")
+    payload = run_validation(fac_id, folders=folders, lot_cd=lot_cd, refresh_sql=not nodb)
     if payload["errors"]:
-        print(f"\n[validate] {len(payload['errors'])}개 폴더 오류")
+        print(f"\n[test] {len(payload['errors'])}개 폴더 오류")
         sys.exit(1)
-    print(f"\n[validate] 완료 ({len(payload['results'])}개 test)")
+    print(f"\n[test] 완료 ({len(payload['results'])}개 test)")
 
 
 def cmd_db_load(
@@ -353,6 +385,9 @@ def cmd_db_load(
 def cmd_inference(
     fac_id: str,
     rule_timekey: str = None,
+    from_key: str = None,
+    to_key: str = None,
+    prevcnt: int = None,
     *,
     nodb: bool = False,
     lot_cd: str = None,
@@ -369,7 +404,10 @@ def cmd_inference(
     strict_validate: bool = False,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
-    rtk = resolve_infer_rule_timekey(fac_id, rule_timekey)
+    rtk = resolve_infer_rule_timekey(
+        fac_id, rule_timekey,
+        from_key=from_key, to_key=to_key, prevcnt=prevcnt, nodb=nodb,
+    )
 
     print("=" * 60)
     print(f"[inference] FAC={fac_id}  RULE_TIMEKEY={rtk}")
@@ -583,7 +621,7 @@ def cmd_collect(
     fac_id: str,
     split: str = "train",
     interval: int = 0,
-    prevdays: int = 1,
+    prevcnt: int = 1,
     from_key: str = None,
     to_key: str = None,
     once: bool = False,
@@ -599,7 +637,7 @@ def cmd_collect(
         facid=fac_id,
         split=split,
         interval=interval,
-        prevdays=prevdays,
+        prevcnt=prevcnt,
         from_key=from_key,
         to_key=to_key,
         once=once,
@@ -627,7 +665,7 @@ def parse_args():
     train_p = sub.add_parser("train", help="dataset train JSON 로드 → 학습 → validation")
     train_p.add_argument("--facid", required=True, help="공장 ID")
     train_p.add_argument(
-        "--prevdays", type=int, default=None,
+        "--prevcnt", type=int, default=None,
         help="현재 기준 최근 N일 train 데이터",
     )
     train_p.add_argument(
@@ -640,7 +678,7 @@ def parse_args():
     )
     train_p.add_argument(
         "--ruletimekey", default=None,
-        help="단일 RULE_TIMEKEY 학습 (미지정 시 --prevdays 또는 --from/--to 필요)",
+        help="단일 RULE_TIMEKEY 학습 (미지정 시 --prevcnt 또는 --from/--to 필요)",
     )
     train_p.add_argument(
         "--nodb", action="store_true",
@@ -648,16 +686,33 @@ def parse_args():
     )
     train_p.add_argument(
         "--all", dest="all_folders", action="store_true",
-        help="train 폴더 전체 학습 (--prevdays/--from/--to/--ruletimekey 불필요)",
+        help="train 폴더 전체 학습 (--prevcnt/--from/--to/--ruletimekey 불필요)",
     )
     train_p.add_argument(
         "--lotcd",
         default=None,
         help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
     )
-    val_p = sub.add_parser("validate", help="test 데이터 전체 검증")
-    val_p.add_argument("--facid", required=True, help="공장 ID")
-    val_p.add_argument(
+    test_p = sub.add_parser("test", help="test 데이터 검증")
+    test_p.add_argument("--facid", required=True, help="공장 ID")
+    test_p.add_argument(
+        "--prevcnt", type=int, default=None,
+        help="현재 기준 최근 N일 test 데이터",
+    )
+    test_p.add_argument(
+        "--from", dest="from_key", metavar="RULE_TIMEKEY", default=None,
+        help="검증 시작 RULE_TIMEKEY",
+    )
+    test_p.add_argument(
+        "--to", dest="to_key", metavar="RULE_TIMEKEY", default=None,
+        help="검증 종료 RULE_TIMEKEY",
+    )
+    test_p.add_argument(
+        "--lotcd",
+        default=None,
+        help="자동 수집 시 SQL :LOT_CD 바인드 (discrete_arrange 제외)",
+    )
+    test_p.add_argument(
         "--nodb", action="store_true",
         help="Oracle 조회 생략, dataset 기존 JSON 사용",
     )
@@ -667,6 +722,18 @@ def parse_args():
     inf_p.add_argument(
         "--ruletimekey", default=None,
         help="추론 RULE_TIMEKEY (미지정 시 최신)",
+    )
+    inf_p.add_argument(
+        "--from", dest="from_key", metavar="RULE_TIMEKEY", default=None,
+        help="구간 시작 RULE_TIMEKEY (BETWEEN 조회 후 최신값 사용, --ruletimekey와 함께 쓸 수 없음)",
+    )
+    inf_p.add_argument(
+        "--to", dest="to_key", metavar="RULE_TIMEKEY", default=None,
+        help="구간 종료 RULE_TIMEKEY (BETWEEN 조회 후 최신값 사용, --ruletimekey와 함께 쓸 수 없음)",
+    )
+    inf_p.add_argument(
+        "--prevcnt", type=int, default=None,
+        help="최신 기준 최근 N개 RULE_TIMEKEY 조회 후 최신값 사용 (--ruletimekey와 함께 쓸 수 없음)",
     )
     inf_p.add_argument(
         "--lotcd",
@@ -792,7 +859,7 @@ def parse_args():
         "--interval", type=int, default=0,
         help="수집 주기(초). 0 또는 --once 이면 1회",
     )
-    collect_p.add_argument("--prevdays", type=int, default=1)
+    collect_p.add_argument("--prevcnt", type=int, default=1)
     collect_p.add_argument("--from", dest="from_key", metavar="RULE_TIMEKEY")
     collect_p.add_argument("--to", dest="to_key", metavar="RULE_TIMEKEY")
     collect_p.add_argument("--once", action="store_true")
@@ -842,23 +909,23 @@ def main():
         if args.command == "train":
             if not args.all_folders:
                 if args.ruletimekey and (
-                    args.prevdays is not None or args.from_key or args.to_key
+                    args.prevcnt is not None or args.from_key or args.to_key
                 ):
-                    print("[오류] --ruletimekey 는 --prevdays, --from/--to 와 함께 쓸 수 없습니다.")
+                    print("[오류] --ruletimekey 는 --prevcnt, --from/--to 와 함께 쓸 수 없습니다.")
                     sys.exit(1)
                 if (
                     args.ruletimekey is None
-                    and args.prevdays is None
+                    and args.prevcnt is None
                     and not (args.from_key and args.to_key)
                 ):
-                    print("[오류] --ruletimekey, --prevdays, --from/--to, --all 중 하나가 필요합니다.")
+                    print("[오류] --ruletimekey, --prevcnt, --from/--to, --all 중 하나가 필요합니다.")
                     sys.exit(1)
-                if args.prevdays is not None and (args.from_key or args.to_key):
-                    print("[오류] --prevdays 와 --from/--to 는 함께 쓸 수 없습니다.")
+                if args.prevcnt is not None and (args.from_key or args.to_key):
+                    print("[오류] --prevcnt 와 --from/--to 는 함께 쓸 수 없습니다.")
                     sys.exit(1)
             cmd_train(
                 fac_id=args.facid,
-                prevdays=args.prevdays,
+                prevcnt=args.prevcnt,
                 from_key=args.from_key,
                 to_key=args.to_key,
                 rule_timekey=args.ruletimekey,
@@ -867,13 +934,31 @@ def main():
                 all_folders=args.all_folders,
             )
 
-        elif args.command == "validate":
-            cmd_validate(fac_id=args.facid, nodb=args.nodb)
+        elif args.command == "test":
+            cmd_test(
+                fac_id=args.facid,
+                prevcnt=args.prevcnt,
+                from_key=args.from_key,
+                to_key=args.to_key,
+                nodb=args.nodb,
+                lot_cd=args.lotcd,
+            )
 
         elif args.command == "infer":
+            if args.ruletimekey and (
+                args.prevcnt is not None or args.from_key or args.to_key
+            ):
+                print("[오류] --ruletimekey 는 --prevcnt, --from/--to 와 함께 쓸 수 없습니다.")
+                sys.exit(1)
+            if args.prevcnt is not None and (args.from_key or args.to_key):
+                print("[오류] --prevcnt 와 --from/--to 는 함께 쓸 수 없습니다.")
+                sys.exit(1)
             cmd_inference(
                 fac_id=args.facid,
                 rule_timekey=args.ruletimekey,
+                from_key=args.from_key,
+                to_key=args.to_key,
+                prevcnt=args.prevcnt,
                 nodb=args.nodb,
                 lot_cd=args.lotcd,
                 decision_log=args.decision_log,
@@ -907,7 +992,7 @@ def main():
                 fac_id=args.facid,
                 split=args.split,
                 interval=args.interval,
-                prevdays=args.prevdays,
+                prevcnt=args.prevcnt,
                 from_key=args.from_key,
                 to_key=args.to_key,
                 once=args.once,

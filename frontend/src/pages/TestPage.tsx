@@ -44,11 +44,17 @@ export default function TestPage({ config, modelExists }: Props) {
   const [ganttEnd, setGanttEnd]     = useState(1440);
 
   const [facIdOverride, setFacIdOverride] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate]     = useState("");
+  const [prevcntStr, setPrevcntStr] = useState("");
 
   const algoList  = algorithms;
   const available = useMemo(() => algoList.filter(a => !a.requires_model || modelExists), [algoList, modelExists]);
   const algoLabels = useMemo(() => { const m: Record<string,string>={}; algoList.forEach(a=>m[a.id]=a.name); return m; }, [algoList]);
   const facId = facIdOverride.trim() || config?.fac_id || "FAC001";
+  const prevcnt = prevcntStr.trim() ? Number(prevcntStr) : undefined;
+  const hasRange = Boolean(fromDate.trim() && toDate.trim());
+  const hasPrevcnt = prevcnt != null && !Number.isNaN(prevcnt);
 
   const displayAlgos = useMemo((): AlgorithmId[] => {
     if (benchmark?.algorithms?.length) return benchmark.algorithms;
@@ -63,14 +69,19 @@ export default function TestPage({ config, modelExists }: Props) {
   useEffect(() => {
     setSaved(true);
     const fac = facIdOverride.trim() || config?.fac_id;
+    const filter = hasRange
+      ? { from_date: fromDate.trim(), to_date: toDate.trim() }
+      : hasPrevcnt
+      ? { prevcnt }
+      : undefined;
     Promise.all([
       api.getSavedTestBenchmark(fac).catch(() => null),
-      api.getTestDatasets(fac).catch(() => null),
+      api.getTestDatasets(fac, filter).catch(() => null),
     ]).then(([saved, folders]) => {
       if (saved) setBenchmark(saved);
       if (folders?.datasets) setTestFolders(folders.datasets);
     }).finally(() => setSaved(false));
-  }, [config?.fac_id, facIdOverride]);
+  }, [config?.fac_id, facIdOverride, hasRange, fromDate, toDate, hasPrevcnt, prevcnt]);
 
   const chartRows = useMemo(() => benchmark?.datasets?.length ? benchmarkRowsFromResponse(benchmark.datasets, algoLabels) : [], [benchmark, algoLabels]);
 
@@ -138,6 +149,7 @@ export default function TestPage({ config, modelExists }: Props) {
       <aside className="ctrl-panel">
         <div className="card">
           <div className="card-title">설정</div>
+          <p className="hint mb-2">CLI <code>test</code> 와 동일한 옵션입니다.</p>
           <label className="field-label" htmlFor="test-fac-id">FAC_ID</label>
           <input
             id="test-fac-id"
@@ -148,6 +160,41 @@ export default function TestPage({ config, modelExists }: Props) {
             onChange={e => setFacIdOverride(e.target.value)}
             disabled={loading}
           />
+
+          <label className="field-label mt-2" htmlFor="test-from">기간 (RULE_TIMEKEY)</label>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <input
+              id="test-from"
+              className="input"
+              type="text"
+              placeholder="시작"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              disabled={loading || hasPrevcnt}
+            />
+            <input
+              id="test-to"
+              className="input"
+              type="text"
+              placeholder="종료"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              disabled={loading || hasPrevcnt}
+            />
+          </div>
+
+          <label className="field-label mt-2" htmlFor="test-prevcnt">PREVCNT (최근 N개)</label>
+          <input
+            id="test-prevcnt"
+            className="input-number"
+            type="number"
+            min={1}
+            placeholder="미지정 시 test 전체"
+            value={prevcntStr}
+            onChange={e => setPrevcntStr(e.target.value)}
+            disabled={loading || hasRange}
+          />
+          <p className="hint mt-1">{testFolders.length}개 test 폴더 선택됨</p>
         </div>
 
         <div className="card">

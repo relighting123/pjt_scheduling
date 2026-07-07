@@ -23,11 +23,11 @@ def _load_env_data(folder: str) -> dict:
     return preprocess(raw)
 
 
-def _refresh_test_sql(fac_id: str, folder: str) -> None:
+def _refresh_test_sql(fac_id: str, folder: str, lot_cd: Optional[str] = None) -> None:
     _, _, period = parse_input_folder(folder)
     if not period:
         raise ValueError(f"test 폴더에 RULE_TIMEKEY가 없습니다: {folder}")
-    fetch_from_db(fac_id=fac_id, split="test", period=period)
+    fetch_from_db(fac_id=fac_id, split="test", period=period, lot_cd=lot_cd)
 
 
 def run_validation(
@@ -36,16 +36,19 @@ def run_validation(
     *,
     algorithm: str = "scheduling_rl",
     refresh_sql: bool = True,
+    folders: Optional[List[str]] = None,
+    lot_cd: Optional[str] = None,
 ) -> dict:
     """
-    FAC의 test 데이터 폴더 전체에 대해 RL 추론 검증.
+    FAC의 test 데이터 폴더(folders 미지정 시 전체)에 대해 RL 추론 검증.
 
     Returns:
         results: [{folder, stats, schedule_count}, ...]
         errors:  [{folder, message}, ...]
     """
     fac_id = validate_path_segment(fac_id, "FAC_ID")
-    folders = list_split_folders(fac_id, "test")
+    if folders is None:
+        folders = list_split_folders(fac_id, "test")
     if not folders:
         raise ValueError(f"test 데이터셋이 없습니다 (FAC_ID={fac_id}).")
 
@@ -61,7 +64,7 @@ def run_validation(
     for folder in folders:
         try:
             if refresh_sql:
-                _refresh_test_sql(fac_id, folder)
+                _refresh_test_sql(fac_id, folder, lot_cd=lot_cd)
             env_data = _load_env_data(folder)
             result = run_inference(
                 env_data, algorithm=algorithm, agent=agent, record_history=False,

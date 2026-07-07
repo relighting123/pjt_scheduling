@@ -21,6 +21,7 @@ export type TrainRequestBody = {
   input_folders?: string[];
   from_date?: string;
   to_date?: string;
+  prevcnt?: number;
   fac_id?: string;
 } & RewardConfig;
 
@@ -94,6 +95,8 @@ export const api = {
     snapshot?: string;
     from_date?: string;
     to_date?: string;
+    prevcnt?: number;
+    lot_cd?: string;
   }) =>
     request<{ message: string; input_folder: string; input_dir: string }>("/api/fetch", {
       method: "POST",
@@ -104,6 +107,8 @@ export const api = {
         ...(opts?.snapshot ? { snapshot: opts.snapshot } : {}),
         ...(opts?.from_date ? { from_date: opts.from_date } : {}),
         ...(opts?.to_date ? { to_date: opts.to_date } : {}),
+        ...(opts?.prevcnt != null ? { prevcnt: opts.prevcnt } : {}),
+        ...(opts?.lot_cd ? { lot_cd: opts.lot_cd } : {}),
       }),
     }),
   getDataSummary: () => request<DataSummary>("/api/data/summary"),
@@ -136,6 +141,9 @@ export const api = {
     save_output?: boolean;
     fac_id?: string;
     rule_timekey?: string;
+    from_date?: string;
+    to_date?: string;
+    prevcnt?: number;
     nodb?: boolean;
     lot_cd?: string;
     db_load?: boolean;
@@ -160,6 +168,9 @@ export const api = {
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
         ...(opts.fac_id ? { fac_id: opts.fac_id } : {}),
         ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),
+        ...(opts.from_date ? { from_date: opts.from_date } : {}),
+        ...(opts.to_date ? { to_date: opts.to_date } : {}),
+        ...(opts.prevcnt != null ? { prevcnt: opts.prevcnt } : {}),
         ...(opts.lot_cd ? { lot_cd: opts.lot_cd } : {}),
         ...(opts.db_alias ? { db_alias: opts.db_alias } : {}),
         ...(opts.max_conversions != null ? { max_conversions: opts.max_conversions } : {}),
@@ -178,6 +189,9 @@ export const api = {
       enable_wip_inflow?: boolean;
       fac_id?: string;
       rule_timekey?: string;
+      from_date?: string;
+      to_date?: string;
+      prevcnt?: number;
       nodb?: boolean;
       lot_cd?: string;
       max_conversions?: number;
@@ -197,6 +211,9 @@ export const api = {
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
         ...(opts.fac_id ? { fac_id: opts.fac_id } : {}),
         ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),
+        ...(opts.from_date ? { from_date: opts.from_date } : {}),
+        ...(opts.to_date ? { to_date: opts.to_date } : {}),
+        ...(opts.prevcnt != null ? { prevcnt: opts.prevcnt } : {}),
         ...(opts.lot_cd ? { lot_cd: opts.lot_cd } : {}),
         ...(opts.max_conversions != null ? { max_conversions: opts.max_conversions } : {}),
         ...(opts.max_conversions_per_eqp != null
@@ -209,10 +226,18 @@ export const api = {
     request<InferenceResult>(
       `/api/inference/result${input_folder ? `?input_folder=${encodeURIComponent(input_folder)}` : ""}`,
     ),
-  getTestDatasets: (fac_id?: string) =>
-    request<TestDatasetsResponse>(
-      `/api/test/datasets${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
-    ),
+  getTestDatasets: (
+    fac_id?: string,
+    filter?: { from_date?: string; to_date?: string; prevcnt?: number },
+  ) => {
+    const params = new URLSearchParams();
+    if (fac_id) params.set("fac_id", fac_id);
+    if (filter?.from_date) params.set("from_date", filter.from_date);
+    if (filter?.to_date) params.set("to_date", filter.to_date);
+    if (filter?.prevcnt != null) params.set("prevcnt", String(filter.prevcnt));
+    const qs = params.toString();
+    return request<TestDatasetsResponse>(`/api/test/datasets${qs ? `?${qs}` : ""}`);
+  },
   getSavedTestBenchmark: (fac_id?: string) =>
     request<TestBenchmarkResponse>(
       `/api/test/benchmark/saved${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,

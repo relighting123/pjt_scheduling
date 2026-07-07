@@ -194,7 +194,7 @@ def test_ensure_train_folders_uses_db_period_keys(tmp_path, monkeypatch):
         lambda *args, **kwargs: (["20260621170000"], "db"),
     )
 
-    folders = ensure_train_folders("FAC001", prevdays=3)
+    folders = ensure_train_folders("FAC001", prevcnt=3)
     assert folders == ["FAC001/train/20260621170000"]
 
 
@@ -244,7 +244,7 @@ def test_ensure_train_folders_nodb_returns_empty(tmp_path, monkeypatch):
         "data.collector.resolve_collect_periods",
         lambda *args, **kwargs: (["20260621170000"], "db"),
     )
-    assert ensure_train_folders("FAC001", prevdays=1, nodb=True) == []
+    assert ensure_train_folders("FAC001", prevcnt=1, nodb=True) == []
 
 
 def test_collector_preflight_runs_without_db(tmp_path, monkeypatch, capsys):
@@ -272,7 +272,7 @@ def test_collector_preflight_runs_without_db(tmp_path, monkeypatch, capsys):
         lambda *args, **kwargs: (["20260621170000"], "db"),
     )
 
-    collector = TrainingDataCollector(fac_id="FAC001", prevdays=1)
+    collector = TrainingDataCollector(fac_id="FAC001", prevcnt=1)
     collector.collect_once(
         options=CollectorOptions(preflight=True, verbose=True),
     )
