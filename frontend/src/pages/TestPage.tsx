@@ -15,6 +15,8 @@ import {
   buildTestMetricChart,
   TEST_METRICS,
   type AlgoCompareEntry,
+  type TestChartType,
+  type TestMetricKey,
 } from "../lib/charts";
 import { computeInferenceKpi } from "../lib/metrics";
 import type {
@@ -38,6 +40,9 @@ export default function TestPage({ config, modelExists }: Props) {
   const [progress, setProgress] = useState<{ current: number; total: number; label: string } | null>(null);
   const [tab, setTab]           = useState<TestTab>("summary");
   const [compareView, setCompareView] = useState<"summary" | "period">("summary");
+  const [visibleMetrics, setVisibleMetrics] = useState<Set<TestMetricKey>>(() => new Set(TEST_METRICS.map(m => m.key)));
+  const [periodChartType, setPeriodChartType] = useState<TestChartType>("line");
+  const [rangeN, setRangeN] = useState("");
 
   const [ganttFixed, setGanttFixed] = useState(false);
   const [ganttStart, setGanttStart] = useState(0);
@@ -85,7 +90,23 @@ export default function TestPage({ config, modelExists }: Props) {
 
   const chartRows = useMemo(() => benchmark?.datasets?.length ? benchmarkRowsFromResponse(benchmark.datasets, algoLabels) : [], [benchmark, algoLabels]);
 
-  const summaryRows = useMemo(() => buildMetricSummaryRows(chartRows, displayAlgos), [chartRows, displayAlgos]);
+  const rangedRows = useMemo(() => {
+    const n = parseInt(rangeN, 10);
+    if (!rangeN.trim() || Number.isNaN(n) || n <= 0) return chartRows;
+    return chartRows.slice(-n);
+  }, [chartRows, rangeN]);
+
+  const summaryRows = useMemo(() => buildMetricSummaryRows(rangedRows, displayAlgos), [rangedRows, displayAlgos]);
+
+  const visibleTestMetrics = useMemo(() => TEST_METRICS.filter(m => visibleMetrics.has(m.key)), [visibleMetrics]);
+
+  const toggleMetric = useCallback((key: TestMetricKey) => {
+    setVisibleMetrics(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
 
   const selectedDataset = useMemo(() => selected ? benchmark?.datasets?.find(d => d.input_folder === selected) ?? null : null, [selected, benchmark]);
 
@@ -294,23 +315,67 @@ export default function TestPage({ config, modelExists }: Props) {
                   <button type="button" className={`tab-btn${compareView === "period" ? " active" : ""}`} onClick={() => setCompareView("period")}>기간별</button>
                 </div>
 
+                <div className="card chart-controls mb-2">
+                  <div className="chart-controls-row">
+                    <span className="field-label">볼 지표</span>
+                    <div className="chart-controls-metrics">
+                      {TEST_METRICS.map(m => (
+                        <label key={m.key} className="check-label chart-controls-metric">
+                          <input type="checkbox" checked={visibleMetrics.has(m.key)} onChange={() => toggleMetric(m.key)} />
+                          {m.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="chart-controls-row">
+                    {compareView === "period" && (
+                      <div className="chart-controls-group">
+                        <span className="field-label">차트 유형</span>
+                        <div className="label-mode-group">
+                          <label className={`label-pill${periodChartType === "line" ? " active" : ""}`}>
+                            <input type="radio" name="period-chart-type" checked={periodChartType === "line"} onChange={() => setPeriodChartType("line")} />
+                            선
+                          </label>
+                          <label className={`label-pill${periodChartType === "bar" ? " active" : ""}`}>
+                            <input type="radio" name="period-chart-type" checked={periodChartType === "bar"} onChange={() => setPeriodChartType("bar")} />
+                            막대
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                    <label className="field-label chart-controls-range">
+                      범위 (최근 N개 기간, 비우면 전체)
+                      <input
+                        type="number" min={1} className="input-number" placeholder="전체"
+                        value={rangeN} onChange={e => setRangeN(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 {compareView === "summary" && (
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
-                    {summaryRows.map(r => (
-                      <FullscreenPanel key={r.key} title={r.label} className="card chart-wrap">
-                        <PlotChart {...buildMetricSummaryChart(r, displayAlgos, algoLabels)} />
-                      </FullscreenPanel>
-                    ))}
+                    {summaryRows.filter(r => visibleMetrics.has(r.key)).map(r => {
+                      const chart = buildMetricSummaryChart(r, displayAlgos, algoLabels);
+                      return (
+                        <FullscreenPanel key={r.key} title={r.label} className="card chart-wrap">
+                          {chart ? <PlotChart {...chart} /> : <p className="hint chart-empty-hint">표시할 데이터가 없습니다.</p>}
+                        </FullscreenPanel>
+                      );
+                    })}
                   </div>
                 )}
 
                 {compareView === "period" && (
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" }}>
-                    {TEST_METRICS.map(m => (
-                      <FullscreenPanel key={m.key} title={m.label} className="card chart-wrap">
-                        <PlotChart {...buildTestMetricChart(m, chartRows, displayAlgos, algoLabels, selected ?? undefined)} />
-                      </FullscreenPanel>
-                    ))}
+                    {visibleTestMetrics.map(m => {
+                      const chart = buildTestMetricChart(m, rangedRows, displayAlgos, algoLabels, selected ?? undefined, periodChartType);
+                      return (
+                        <FullscreenPanel key={m.key} title={m.label} className="card chart-wrap">
+                          {chart ? <PlotChart {...chart} /> : <p className="hint chart-empty-hint">표시할 데이터가 없습니다.</p>}
+                        </FullscreenPanel>
+                      );
+                    })}
                   </div>
                 )}
               </div>
