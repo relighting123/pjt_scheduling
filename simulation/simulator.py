@@ -1890,6 +1890,7 @@ class SchedulingSimulator:
         self._last_decision_assignment = {
             "eqp_id":        eqp_id,
             "lot_id":        lot_id,
+            "plan_prod_attr_val": ppk,
             "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id":       oper_id,
             "eqp_model":     row["eqp_model"],
