@@ -227,14 +227,6 @@ def _load_env_data_for_folder(folder: str) -> dict:
         set_input_folder(original)
 
 
-def _train_folders_for_fac(fac_id: str) -> list[str]:
-    prefix = f"{fac_id}/train/"
-    return sorted(
-        f for f in list_input_folders()
-        if f.startswith(prefix)
-    )
-
-
 def _normalize_input_folder_key(folder: str) -> str:
     """dataset 경로 키 검증 (FAC001/train/YYYYMMDDHHmmss 형식)."""
     try:
@@ -325,7 +317,6 @@ def _prepare_train_env_data(req: "TrainRequest") -> tuple[list[dict], list[str]]
 
 class RewardParams(BaseModel):
     w_same_setup: float = Field(default=CONFIG.reward.w_same_setup)
-    w_same_oper: float = Field(default=CONFIG.reward.w_same_oper)
     w_same_prod: float = Field(default=CONFIG.reward.w_same_prod)
     w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
     w_plan_hit: float = Field(default=CONFIG.reward.w_plan_hit)
@@ -342,7 +333,6 @@ class RewardParams(BaseModel):
     flow_balance_starving_cover_min: float = Field(default=CONFIG.reward.flow_balance_starving_cover_min)
     reward_clip: float = Field(default=CONFIG.reward.reward_clip, ge=0.1)
     use_achievable_target: bool = Field(default=CONFIG.reward.use_achievable_target)
-    same_oper_conditional: bool = Field(default=CONFIG.reward.same_oper_conditional)
 
 
 class TrainRequest(RewardParams):

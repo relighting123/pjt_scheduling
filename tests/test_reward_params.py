@@ -6,13 +6,13 @@ def test_reward_params_dict_has_all_keys():
     params = reward_params_dict()
     assert set(params) == {
         "w_same_setup",
-        "w_same_oper", "w_same_prod", "w_idle_per_min",
+        "w_same_prod", "w_idle_per_min",
         "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
         "w_flow_balance", "reward_clip",
         "flow_balance_starving_cover_min",
-        "use_achievable_target", "same_oper_conditional",
+        "use_achievable_target",
     }
 
 
@@ -24,12 +24,10 @@ def test_apply_reward_params_updates_config():
             "w_pacing": 2.5,
             "w_conversion": -8.0,
             "use_achievable_target": False,
-            "same_oper_conditional": False,
         })
         assert CONFIG.reward.w_plan_hit == 4.5
         assert CONFIG.reward.w_pacing == 2.5
         assert CONFIG.reward.w_conversion == -8.0
         assert CONFIG.reward.use_achievable_target is False
-        assert CONFIG.reward.same_oper_conditional is False
     finally:
         apply_reward_params(original)

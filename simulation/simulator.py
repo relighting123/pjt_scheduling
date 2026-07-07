@@ -523,13 +523,6 @@ class SchedulingSimulator:
             or self._conversion_limit_blocks(eqp_id, lot_cd, temp)
         )
 
-    def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
-        """EQP에서 투입 가능한 LOT 중 최소 소요시간(장수×ST)."""
-        lots = self.available_lots(eqp_id)
-        if not lots:
-            return None
-        return min(int(lot.get("processing_time", 10**9)) for lot in lots)
-
     def estimate_lot_end_time(self, eqp_id: str, lot: dict) -> int:
         """예상 종료 시각 = 현재 시각 + conversion(필요 시) + 장수×ST."""
         t = self.current_time
@@ -829,15 +822,6 @@ class SchedulingSimulator:
 
     def _has_discrete_combo(self, eqp_id: str, lot_id: str, oper_id: str) -> bool:
         return (lot_id, eqp_id, oper_id) in self._env_data.get("proc_time_matrix", {})
-
-    def _get_available_lots(self, eqp_id: str) -> List[str]:
-        """
-        목적: EQP에 배정 가능하면 투입 기한 내 LOT 목록 반환
-        """
-        return [
-            lid for lid in self.eqp_queues.get(eqp_id, [])
-            if self._lot_injectable(lid)
-        ]
 
     def get_remaining_arrange_actual(self) -> List[dict]:
         """
@@ -1281,32 +1265,6 @@ class SchedulingSimulator:
             if candidate_ppk == ppk:
                 return True
         return False
-
-    def _is_ahead_of_pace(self, ppk: str, oper_id: str, wf_qty: int) -> bool:
-        """이 (PPK,OPER)가 선형 takt ideal을 이미 초과 생산 중인지 (편중 악화 방지용)."""
-        if not self._has_plan(ppk, oper_id):
-            return False
-        target = max(self._achievable_qty(ppk, oper_id), 1)
-        horizon = max(self.soft_cutoff, 1)
-        ideal = target * min(max(self.current_time, 0), horizon) / horizon
-        done_after = self.stats["completed_qty"].get((ppk, oper_id), 0) + wf_qty
-        return done_after > ideal
-
-    def _same_oper_reward(self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int) -> float:
-        """
-        Step D: 같은 공정 연속 보너스를 '조건부'로.
-        이미 takt를 앞선(과생산) 공정을 계속 도는 것은 후속 공정 starving·편중을
-        악화시키므로 보너스를 죽인다. switch 통계는 그대로 집계.
-        """
-        cfg = self._reward_cfg
-        if eqp.prev_oper == oper_id:
-            if cfg.same_oper_conditional and self._is_ahead_of_pace(ppk, oper_id, wf_qty):
-                return 0.0
-            return cfg.w_same_oper
-        if eqp.prev_oper is not None:
-            eqp.oper_switches += 1
-            self.stats["oper_switches"] += 1
-        return 0.0
 
     def _same_setup_reward(self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int) -> float:
         """제품·공정이 '모두' 직전과 동일할 때만 연속 보너스.

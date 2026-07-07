@@ -253,12 +253,6 @@ def _format_fetch_error(
     )
 
 
-def _oracle_connect():
-    """하위 호환 – default alias 단일 연결."""
-    from data.db_registry import DbRegistry
-    return DbRegistry().connect()
-
-
 def fetch_from_db(
     fac_id: str,
     output_dir: Optional[Path] = None,

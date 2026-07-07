@@ -39,7 +39,6 @@ const REWARD_SLIDERS: {
 
 const REWARD_TOGGLES: { key: keyof RewardConfig; label: string }[] = [
   { key: "use_achievable_target", label: "Achievable target" },
-  { key: "same_oper_conditional", label: "same_oper 조건부" },
 ];
 
 function fmtTime(iso: string) {

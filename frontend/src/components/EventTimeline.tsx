@@ -71,16 +71,3 @@ export function EventTimeline({
     </section>
   );
 }
-
-/** step 재생: 해당 step까지 누적 이벤트 + 현재 step 이벤트 강조 */
-export function eventsUpToStep(
-  eventLog: SimEvent[] | undefined,
-  history: { step: number; time: number; events?: SimEvent[] }[],
-  step: number,
-): { cumulative: SimEvent[]; current: SimEvent[] } {
-  const snap = history[Math.min(step, history.length - 1)];
-  const current = snap?.events ?? [];
-  const cutoff = snap?.time ?? 0;
-  const cumulative = (eventLog ?? []).filter((e) => e.time <= cutoff);
-  return { cumulative, current };
-}
