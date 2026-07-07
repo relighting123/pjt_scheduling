@@ -27,8 +27,8 @@ GRAY = "#5C6670"
 
 ALGO_LABEL = {"earliest_st": "Earliest-ST (단순 규칙)",
               "minprogress": "Min-Progress (휴리스틱)",
-              "bulkfill": "Bulk-Fill PPO (학습 모델)"}
-ALGO_ORDER = ["earliest_st", "minprogress", "bulkfill"]
+              "scheduling_rl": "Scheduling RL PPO (학습 모델)"}
+ALGO_ORDER = ["earliest_st", "minprogress", "scheduling_rl"]
 
 
 def kpi_line(rows, sim, conv_plans):

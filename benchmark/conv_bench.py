@@ -16,7 +16,7 @@ CONV_BENCH 데이터셋(data/dataset/CONV_BENCH/)을 기반으로
 
 실행 방법
   python benchmark/conv_bench.py           # RL 추론 없이 룰 기반만 비교
-  TS=200000 python benchmark/conv_bench.py  # bulkfill 학습 후 비교
+  TS=200000 python benchmark/conv_bench.py  # scheduling_rl 학습 후 비교
 """
 import os
 import sys
@@ -107,7 +107,7 @@ def main() -> None:
     TS = int(os.environ.get("TS", "0"))
     if TS > 0:
         from agent.rl_agent import SchedulingAgent
-        from env.bulkfill_env import BulkFillEnv
+        from env.scheduling_rl_env import SchedulingRLEnv
         cfg = CONFIG.reward
         cfg.w_bulk_block_bonus  =  3.0
         cfg.w_dedication_misuse = -4.0
@@ -117,10 +117,10 @@ def main() -> None:
         CONFIG.rl.n_steps = 2048
         CONFIG.rl.device  = "cpu"
         CONFIG.rl.n_envs  = 1
-        print(f"=== bulkfill 학습 (TS={TS:,}) ===")
+        print(f"=== scheduling_rl 학습 (TS={TS:,}) ===")
         agent = SchedulingAgent()
-        agent.train([ed], verbose=0, env_cls=BulkFillEnv)
-        agent.save(algorithm="bulkfill")
+        agent.train([ed], verbose=0, env_cls=SchedulingRLEnv)
+        agent.save()
         print("완료\n")
 
     print("=== 알고리즘 비교 ===\n")
@@ -128,9 +128,9 @@ def main() -> None:
     results["earliest_st"] = summarize(run_inference(ed, algorithm="earliest_st"), "earliest_st")
 
     if TS > 0:
-        results[f"bulkfill({TS//1000}k)"] = summarize(
-            run_inference(ed, algorithm="bulkfill", agent=agent),
-            f"bulkfill({TS//1000}k)",
+        results[f"scheduling_rl({TS//1000}k)"] = summarize(
+            run_inference(ed, algorithm="scheduling_rl", agent=agent),
+            f"scheduling_rl({TS//1000}k)",
         )
 
     verdict(results)

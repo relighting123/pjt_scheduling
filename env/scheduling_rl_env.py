@@ -1,5 +1,5 @@
 """
-env/bulkfill_env.py – 벌크 점유(Bulk-Fill) MDP 환경 (Phase 1 스캐폴딩)
+env/scheduling_rl_env.py – 벌크 점유(Bulk-Fill) MDP 환경 (Phase 1 스캐폴딩)
 
 기존 SchedulingEnv가 idle EQP마다 1 carrier를 배정하는 것과 달리,
 정책이 (PPK/OPER 버킷, 블록 크기 레벨)을 함께 선택하면 해당 장비가
@@ -32,7 +32,7 @@ from env.scheduling_env import compute_obs_dim
 BULK_SIZE_LEVELS = 4
 
 
-class BulkFillEnv(gym.Env):
+class SchedulingRLEnv(gym.Env):
     """벌크 점유 강화학습 환경 — action=MultiDiscrete([O*P, L])."""
 
     metadata = {"render_modes": []}

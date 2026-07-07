@@ -120,7 +120,7 @@ def test_oper_dedicated_heuristic_dedication_and_pacing():
         assert ratios.get(op, 0) >= 0.9, f"{op} 계획 달성률 낮음: {ratios}"
 
 
-def test_oper_dedicated_rl_train_and_infer():
+def test_oper_dedicated_scheduling_rl_train_and_infer():
     """RL 학습 후 전담·pacing 유지 확인."""
     raw = _raw_from_builder()
     env_data = preprocess(raw)
@@ -135,7 +135,7 @@ def test_oper_dedicated_rl_train_and_infer():
         agent.train(env_data, verbose=0)
         result = run_inference(
             env_data,
-            algorithm="rl",
+            algorithm="scheduling_rl",
             agent=agent,
             record_history=False,
             deterministic=True,

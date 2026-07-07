@@ -12,7 +12,7 @@ from config import CONFIG
 from data.loader.fetch import load_data
 from data.loader.preprocess import preprocess
 from agent.rl_agent import SchedulingAgent
-from env.bulkfill_env import BulkFillEnv
+from env.scheduling_rl_env import SchedulingRLEnv
 from benchmark.reward_formula_trace import REWARD_LABELS, build_reward_formula_details
 
 DS = ROOT / "data/dataset/SYM_3x3/train/20260629000000/input"
@@ -114,7 +114,7 @@ def _dedicated_bucket(sim, eqp_id: str, ed: dict) -> int:
 
 def _load_agent(ed: dict):
     try:
-        return SchedulingAgent.load(env_data=ed, algorithm="bulkfill")
+        return SchedulingAgent.load(env_data=ed)
     except FileNotFoundError:
         return None
 
@@ -126,7 +126,7 @@ def main() -> None:
     ed["conversion_minutes"] = 60
     agent = _load_agent(ed)
 
-    env = BulkFillEnv(
+    env = SchedulingRLEnv(
         ed,
         record_history=True,
         record_event_log=False,

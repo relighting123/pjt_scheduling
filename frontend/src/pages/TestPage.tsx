@@ -80,8 +80,8 @@ export default function TestPage({ config, modelExists }: Props) {
 
   const detailEntries = useMemo((): AlgoCompareEntry[] =>
     (selectedDataset?.results ?? []).map(r => ({
-      algorithm: r.algorithm ?? "rl",
-      label: algoLabels[r.algorithm ?? "rl"] ?? (r.algorithm ?? ""),
+      algorithm: r.algorithm ?? "scheduling_rl",
+      label: algoLabels[r.algorithm ?? "scheduling_rl"] ?? (r.algorithm ?? ""),
       result: r,
     })),
   [selectedDataset, algoLabels]);
