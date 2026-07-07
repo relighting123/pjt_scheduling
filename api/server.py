@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_period_range, resolve_train_folders, normalize_rule_timekey
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from data.loader.sql_binds import resolve_lot_cd
@@ -150,7 +150,6 @@ def _prepare_infer_input(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     prevcnt: Optional[int] = None,
-    nodb: bool = False,
     lot_cd: Optional[str] = None,
 ) -> dict:
     """CLI cmd_inference 와 동일한 input 준비 (Oracle fetch → infer 폴더 설정)."""
@@ -163,15 +162,12 @@ def _prepare_infer_input(
         raise ValueError("prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
     rtk = resolve_infer_rule_timekey(
         resolved_fac, rule_timekey,
-        from_key=from_date, to_key=to_date, prevcnt=prevcnt, nodb=nodb,
+        from_key=from_date, to_key=to_date, prevcnt=prevcnt,
     )
     lcd = resolve_lot_cd(lot_cd)
-    fetched = False
 
-    if not nodb:
-        fetch_from_db(fac_id=resolved_fac, split="infer", period=rtk, lot_cd=lcd)
-        _env_data_cache = None
-        fetched = True
+    fetch_from_db(fac_id=resolved_fac, split="infer", period=rtk, lot_cd=lcd)
+    _env_data_cache = None
 
     infer_folder = f"{resolved_fac}/infer"
     set_input_folder(infer_folder)
@@ -182,8 +178,7 @@ def _prepare_infer_input(
         "rule_timekey": rtk,
         "lot_cd": lcd,
         "input_folder": infer_folder,
-        "fetched_from_db": fetched,
-        "nodb": nodb,
+        "fetched_from_db": True,
     }
 
 
@@ -268,34 +263,29 @@ def _resolve_train_folders(req: "TrainRequest") -> list[str]:
                 status_code=400,
                 detail="prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.",
             )
-        periods, _ = resolve_collect_periods(
-            fac_id,
-            from_key=req.from_date,
-            to_key=req.to_date,
-            require_db=True,
-        )
-        folders = train_folders_for_periods(fac_id, periods)
+        start_key = normalize_rule_timekey(req.from_date)
+        end_key = normalize_rule_timekey(req.to_date)
+        folders = resolve_train_folders(fac_id, start_key, end_key)
         if not folders:
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"기간 {req.from_date}~{req.to_date} (DB RULE_TIMEKEY)에 해당하는 "
-                    f"train 데이터가 없습니다."
+                    f"기간 {req.from_date}~{req.to_date}에 해당하는 "
+                    f"train JSON 데이터가 없습니다."
                 ),
             )
         return folders
 
     if req.prevcnt is not None:
-        periods, _ = resolve_collect_periods(
-            fac_id,
-            prevcnt=req.prevcnt,
-            require_db=True,
-        )
-        folders = train_folders_for_periods(fac_id, periods)
+        start_key, end_key = resolve_train_period_range(prevcnt=req.prevcnt)
+        folders = resolve_train_folders(fac_id, start_key, end_key)
         if not folders:
             raise HTTPException(
                 status_code=404,
-                detail=f"최근 {req.prevcnt}개 RULE_TIMEKEY에 해당하는 train 데이터가 없습니다.",
+                detail=(
+                    f"최근 {req.prevcnt}일({start_key}~{end_key})에 해당하는 "
+                    f"train JSON 데이터가 없습니다."
+                ),
             )
         return folders
 
@@ -399,10 +389,6 @@ class InferFetchOptions(BaseModel):
         default=None,
         ge=1,
         description="최신 기준 최근 N개 RULE_TIMEKEY 조회 후 최신값 사용 (rule_timekey와 함께 쓸 수 없음)",
-    )
-    nodb: bool = Field(
-        default=False,
-        description="Oracle input 조회 생략, dataset 기존 JSON 사용",
     )
     lot_cd: Optional[str] = Field(
         default=None,
@@ -838,7 +824,6 @@ def inference(req: InferenceRequest):
             from_date=req.from_date,
             to_date=req.to_date,
             prevcnt=req.prevcnt,
-            nodb=req.nodb,
             lot_cd=req.lot_cd,
         )
     except (ValueError, FileNotFoundError, ImportError) as e:
@@ -915,7 +900,6 @@ def inference_compare(req: CompareRequest):
             from_date=req.from_date,
             to_date=req.to_date,
             prevcnt=req.prevcnt,
-            nodb=req.nodb,
             lot_cd=req.lot_cd,
         )
     except (ValueError, FileNotFoundError, ImportError) as e:

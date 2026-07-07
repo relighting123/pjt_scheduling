@@ -144,7 +144,6 @@ export const api = {
     from_date?: string;
     to_date?: string;
     prevcnt?: number;
-    nodb?: boolean;
     lot_cd?: string;
     db_load?: boolean;
     db_alias?: string;
@@ -162,7 +161,6 @@ export const api = {
         include_history: opts.include_history ?? false,
         enable_wip_inflow: opts.enable_wip_inflow ?? false,
         save_output: opts.save_output ?? false,
-        nodb: opts.nodb ?? false,
         db_load: opts.db_load ?? false,
         no_history: opts.no_history ?? false,
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
@@ -192,7 +190,6 @@ export const api = {
       from_date?: string;
       to_date?: string;
       prevcnt?: number;
-      nodb?: boolean;
       lot_cd?: string;
       max_conversions?: number;
       max_conversions_per_eqp?: number;
@@ -207,7 +204,6 @@ export const api = {
         decision_log: opts.decision_log ?? false,
         include_history: opts.include_history ?? false,
         enable_wip_inflow: opts.enable_wip_inflow ?? false,
-        nodb: opts.nodb ?? false,
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
         ...(opts.fac_id ? { fac_id: opts.fac_id } : {}),
         ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),

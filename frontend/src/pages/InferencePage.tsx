@@ -54,7 +54,6 @@ function buildInferOptions(
     toDate: string;
     prevcnt: string;
     lotCd: string;
-    nodb: boolean;
     decisionLog: boolean;
     wipInflow: boolean;
     includeHistory: boolean;
@@ -81,7 +80,6 @@ function buildInferOptions(
       : {}),
     ...(!opts.ruleTimekey.trim() && !hasRange && prevcnt != null ? { prevcnt } : {}),
     ...(opts.lotCd.trim() ? { lot_cd: opts.lotCd.trim() } : {}),
-    nodb: opts.nodb,
     decision_log: opts.decisionLog,
     enable_wip_inflow: opts.wipInflow,
     include_history: opts.includeHistory,
@@ -175,7 +173,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [toDate, setToDate]                 = useState("");
   const [prevcnt, setPrevcnt]               = useState("");
   const [lotCd, setLotCd]                   = useState("");
-  const [nodb, setNodb]                     = useState(false);
   const [includeHistory, setIncludeHistory] = useState(false);
   const [dbLoad, setDbLoad]                 = useState(false);
   const [dbAlias, setDbAlias]               = useState("");
@@ -307,7 +304,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           toDate,
           prevcnt,
           lotCd,
-          nodb,
           decisionLog,
           wipInflow,
           includeHistory,
@@ -326,7 +322,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           `FAC=${meta.fac_id}`,
           `RULE_TIMEKEY=${meta.rule_timekey}`,
           meta.lot_cd ? `LOT_CD=${meta.lot_cd}` : null,
-          meta.fetched_from_db ? "DB 조회" : "기존 JSON",
+          meta.fetched_from_db ? "DB 조회" : null,
           meta.db_loaded ? "DB 적재 완료" : null,
           `전환 ${res.stats.conversions ?? 0}회`,
         ].filter(Boolean).join(" · ");
@@ -337,7 +333,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     finally { setLoading(false); }
   }, [
     algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey, fromDate, toDate,
-    prevcnt, lotCd, nodb, includeHistory, dbLoad, dbAlias, noHistory, maxConversions,
+    prevcnt, lotCd, includeHistory, dbLoad, dbAlias, noHistory, maxConversions,
     maxConversionsPerEqp, conversionMinutes, syncInferFolder,
   ]);
 
@@ -513,16 +509,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           />
 
           <label className="check-label mt-2">
-            <input
-              type="checkbox"
-              checked={nodb}
-              onChange={e => setNodb(e.target.checked)}
-              disabled={loading}
-            />
-            기존 JSON 사용 (--nodb, DB 조회 생략)
-          </label>
-
-          <label className="check-label">
             <input
               type="checkbox"
               checked={includeHistory}
