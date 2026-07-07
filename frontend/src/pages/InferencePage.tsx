@@ -159,7 +159,7 @@ function excelSchedule(sched: InferenceResult["schedule"], name: string) {
 
 function excelEventLog(events: NonNullable<InferenceResult["event_log"]>, name: string) {
   const H = ["시각(분)", "이벤트", "장비", "LOT", "제품", "공정"];
-  const rows = events.map(ev => [ev.time, ev.kind, ev.eqp_id, ev.lot_id ?? "", ev.plan_prod_key ?? "", ev.oper_id ?? ""]);
+  const rows = events.map(ev => [ev.time, ev.kind, ev.eqp_id, ev.lot_id ?? "", ev.PLAN_PROD_ATTR_VAL ?? "", ev.oper_id ?? ""]);
   downloadExcel(name, H, rows);
 }
 
@@ -1048,7 +1048,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                         const s = e.result.schedule;
                         const ms = s.length ? Math.max(...s.map(r => r.END_TM)) : 0;
                         const achV = e.result.plan.map(p => {
-                          const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.plan_prod_key && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
+                          const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.PLAN_PROD_ATTR_VAL && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
                           return Math.min((done/Math.max(p.d0_plan_qty,1))*100,100);
                         });
                         const avg = achV.length ? Math.round(achV.reduce((a,b)=>a+b,0)/achV.length*10)/10 : 0;
@@ -1068,7 +1068,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                           const s = e.result.schedule;
                           const ms = s.length ? Math.max(...s.map(r => r.END_TM)) : 0;
                           const achV = e.result.plan.map(p => {
-                            const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.plan_prod_key && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
+                            const done = s.filter(r => r.PLAN_PROD_ATTR_VAL === p.PLAN_PROD_ATTR_VAL && r.OPER_ID === p.oper_id).reduce((a,r) => a+(r.WF_QTY??25),0);
                             return Math.min((done/Math.max(p.d0_plan_qty,1))*100,100);
                           });
                           const avg = achV.length ? Math.round(achV.reduce((a,b)=>a+b,0)/achV.length*10)/10 : 0;

@@ -37,7 +37,7 @@ export interface ScheduleRecord {
 }
 
 export interface PlanRecord {
-  plan_prod_key: string;
+  PLAN_PROD_ATTR_VAL: string;
   oper_id: string;
   d0_plan_qty: number;
   d1_plan_qty?: number;
@@ -81,7 +81,7 @@ export interface SimEvent {
   lot_id?: string;
   lot_cd?: string;
   eqp_model?: string;
-  plan_prod_key?: string;
+  PLAN_PROD_ATTR_VAL?: string;
   oper_id?: string;
   next_oper_id?: string;
   next_plan_prod_key?: string;
@@ -223,7 +223,7 @@ export interface InferenceResult {
 }
 
 export interface BatchInfoRecord {
-  plan_prod_key: string;
+  PLAN_PROD_ATTR_VAL: string;
   oper_id: string;
   lot_cd: string;
   temp: string;

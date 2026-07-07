@@ -60,7 +60,7 @@ def _schedule_row(env, lot_id, eqp_id, *, wf_qty=None, proc_time=None):
     return {
         "EQP_ID": eqp_id,
         "LOT_ID": lot_id,
-        "PLAN_PROD_ATTR_VAL": lot["plan_prod_key"],
+        "PLAN_PROD_ATTR_VAL": lot["PLAN_PROD_ATTR_VAL"],
         "OPER_ID": lot["oper_id"],
         "WF_QTY": wf_qty,
         "ST": env["proc_time_matrix"].get((lot_id, eqp_id, lot["oper_id"]), lot["processing_time"]),

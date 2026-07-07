@@ -495,7 +495,7 @@ function opersForProduct(
   operOrder: string[],
 ): string[] {
   const fromPlan = [...new Set(
-    plan.filter((p) => p.plan_prod_key === prod).map((p) => p.oper_id),
+    plan.filter((p) => p.PLAN_PROD_ATTR_VAL === prod).map((p) => p.oper_id),
   )];
   const fromSched = [...new Set(
     schedule
@@ -512,7 +512,7 @@ function opersForProduct(
 }
 
 function operPlanQty(plan: PlanRecord[], prod: string, operId: string): number {
-  const row = plan.find((p) => p.plan_prod_key === prod && p.oper_id === operId);
+  const row = plan.find((p) => p.PLAN_PROD_ATTR_VAL === prod && p.oper_id === operId);
   return row?.d0_plan_qty ?? 0;
 }
 
@@ -738,8 +738,8 @@ function computeStats(schedule: ScheduleRecord[], plan: PlanRecord[]): ScheduleS
 
   const achievement: Record<string, number> = {};
   plan.forEach((p) => {
-    const key = `${p.plan_prod_key}|${p.oper_id}`;
-    const label = `${p.plan_prod_key}/${p.oper_id}`;
+    const key = `${p.PLAN_PROD_ATTR_VAL}|${p.oper_id}`;
+    const label = `${p.PLAN_PROD_ATTR_VAL}/${p.oper_id}`;
     const done = completed[key] ?? 0;
     achievement[label] = Math.round((done / Math.max(p.d0_plan_qty, 1)) * 1000) / 10;
   });
@@ -2092,11 +2092,11 @@ export function buildInferenceWipChart(
   const planQtys: number[] = [];
 
   plan.forEach((p) => {
-    const key = `${p.plan_prod_key}|${p.oper_id}`;
+    const key = `${p.PLAN_PROD_ATTR_VAL}|${p.oper_id}`;
     const fin = completed[key] ?? 0;
     const rem = (remaining as Record<string, number>)[key] ?? 0;
     const planQty = p.d0_plan_qty;
-    labels.push(`${p.plan_prod_key}/${p.oper_id}`);
+    labels.push(`${p.PLAN_PROD_ATTR_VAL}/${p.oper_id}`);
     done.push(fin);
     wipLeft.push(rem);
     planQtys.push(planQty);
