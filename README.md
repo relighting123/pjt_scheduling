@@ -264,7 +264,7 @@ cd frontend && npm run build
 
 ## 의존성
 
-Python: gymnasium, stable-baselines3, sb3-contrib, torch, fastapi, oracledb, numpy, pandas
+Python: gymnasium, stable-baselines3, sb3-contrib, torch, fastapi, oracledb, numpy
 
 Frontend: React, TypeScript, Vite, Plotly
 
