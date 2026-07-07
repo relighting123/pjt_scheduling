@@ -1,5 +1,5 @@
 import type { Data, Layout } from "plotly.js";
-import type { ConversionPlan, HistorySnap, InferenceResult, InferenceStats, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
+import type { ConversionPlan, InferenceResult, InferenceStats, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
 import { buildColorMap } from "./colors";
 import { buildShortCodeMap } from "./ganttLabels";
 import {
@@ -451,80 +451,6 @@ const GANTT_LEGEND: Partial<Layout>["legend"] = {
   font: { size: 11, color: "#5c5c58", family: CHART_FONT },
 };
 
-function buildGanttLayout(
-  title: string,
-  axis: GanttAxisOptions,
-): Partial<Layout> {
-  const eqps = sortedEqpIds(axis.eqpIds);
-  const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
-  const baseMs = resolveGanttBaseMs(axis);
-
-  return {
-    ...GANTT_PAN_LAYOUT,
-    title: {
-      text: title,
-      font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily },
-      pad: { t: 4 },
-    },
-    xaxis: {
-      title: ganttXAxisTitle(baseMs),
-      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
-    },
-    yaxis: ganttYAxisLayout(eqps, { text: "설비(EQP)", font: { size: 12, color: GANTT_THEME.axisColor } }, {
-      tickfont: { size: 11, color: GANTT_THEME.axisColor },
-    }),
-    shapes: ganttTableGridShapes(eqps.length),
-    barmode: "overlay",
-    bargap: 0.20,
-    legend: {
-      title: { text: "제품×공정", font: { size: 11 } },
-      ...GANTT_LEGEND,
-    },
-    height: Math.max(350, 72 * Math.max(eqps.length, 1)),
-    plot_bgcolor: GANTT_THEME.plotBg,
-    paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 88, r: 20, t: 88, b: 72 },
-    font: GANTT_LAYOUT_FONT,
-    hovermode: "closest",
-    hoverdistance: 30,
-    hoverlabel: GANTT_HOVERLABEL,
-  };
-}
-
-export function buildStepGantt(
-  history: HistorySnap[],
-  step: number,
-  prodKeys: string[],
-  operIds: string[],
-  axis: GanttAxisOptions,
-  conversionPlans: ConversionPlan[] = [],
-): PlotChartSpec {
-  const baseMs = resolveGanttBaseMs(axis);
-  if (!history.length) {
-    return {
-      data: legendTraces(prodKeys, operIds, []),
-      layout: buildGanttLayout("스케줄 간트 차트", axis),
-      clampXMin: ganttXMinClamp(baseMs),
-    };
-  }
-  const snap = history[Math.min(step, history.length - 1)];
-  const schedule = snap.schedule;
-  const convBars = conversionTraces(conversionPlans, snap.time + 1, baseMs);
-  const hasConv = convBars.length > 0;
-  return {
-    data: [
-      ...ganttTraces(schedule, prodKeys, operIds, schedule.length - 1, baseMs),
-      ...convBars,
-      conversionLegendTrace(hasConv),
-    ],
-    layout: buildGanttLayout(
-      `Scheduling 간트 (스텝 ${snap.step} / 시각 ${snap.time}분)`,
-      axis,
-    ),
-    clampXMin: ganttXMinClamp(baseMs),
-  };
-}
-
 const SHARED_DARK: Partial<Layout> = {
   plot_bgcolor: "#f8fafc",
   paper_bgcolor: "#ffffff",
@@ -539,85 +465,6 @@ function mergeSharedLayout(extra: Partial<Layout>): Partial<Layout> {
   const xaxis = { ...SHARED_DARK.xaxis, ...extra.xaxis } as Partial<Layout>["xaxis"];
   const yaxis = { ...SHARED_DARK.yaxis, ...extra.yaxis } as Partial<Layout>["yaxis"];
   return { ...SHARED_DARK, ...extra, xaxis, yaxis };
-}
-
-export function buildWipChart(snap: HistorySnap, plan: PlanRecord[]): { data: Data[]; layout: Partial<Layout> } {
-  const completed = snap.completed;
-  const waiting = snap.wip_waiting ?? {};
-  const labels: string[] = [];
-  const done: number[] = [];
-  const wipWait: number[] = [];
-  const remaining: number[] = [];
-
-  plan.forEach((p) => {
-    const key = `${p.plan_prod_key}|${p.oper_id}`;
-    const finished = completed[key] ?? 0;
-    const waitQty = waiting[key] ?? 0;
-    const total = p.d0_plan_qty;
-    labels.push(`${p.plan_prod_key}\n${p.oper_id}`);
-    done.push(finished);
-    wipWait.push(waitQty);
-    remaining.push(Math.max(total - finished - waitQty, 0));
-  });
-
-  return {
-    data: [
-      { type: "bar", name: "완료", x: labels, y: done, marker: { color: "#55A868" } },
-      { type: "bar", name: "대기 WIP", x: labels, y: wipWait, marker: { color: "#DD8452" } },
-      { type: "bar", name: "잔여 계획", x: labels, y: remaining, marker: { color: "#C44E52" } },
-    ],
-    layout: {
-      title: { text: `WIP 수량 현황 (스텝 ${snap.step})` },
-      xaxis: { title: { text: "제품 / 공정" } },
-      yaxis: { title: { text: "웨이퍼 수량 (매)" } },
-      barmode: "stack",
-      ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.3 },
-      height: 320,
-      margin: { t: 50, b: 100 },
-    },
-  };
-}
-
-export function buildAchievementChart(snap: HistorySnap, plan: PlanRecord[]): { data: Data[]; layout: Partial<Layout> } {
-  const completed = snap.completed;
-  const labels: string[] = [];
-  const rates: number[] = [];
-  const texts: string[] = [];
-
-  plan.forEach((p) => {
-    const key = `${p.plan_prod_key}|${p.oper_id}`;
-    const finished = completed[key] ?? 0;
-    const target = p.d0_plan_qty;
-    const rate = Math.min((finished / Math.max(target, 1)) * 100, 100);
-    labels.push(`${p.plan_prod_key} / ${p.oper_id}`);
-    rates.push(Math.round(rate * 10) / 10);
-    texts.push(`${finished}/${target}매  (${Math.round(rate * 10) / 10}%)`);
-  });
-
-  const colors = rates.map((r) =>
-    r >= 100 ? "#55A868" : r >= 60 ? "#DD8452" : "#C44E52",
-  );
-
-  return {
-    data: [{
-      type: "bar",
-      orientation: "h",
-      x: rates,
-      y: labels,
-      marker: { color: colors },
-      text: texts,
-      textposition: "outside",
-    }],
-    layout: {
-      title: { text: `계획 달성률 (스텝 ${snap.step})` },
-      xaxis: { title: { text: "달성률 (%)" }, range: [0, 115] },
-      shapes: [{ type: "line", x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper", line: { dash: "dash", color: "#4C72B0", width: 1.5 } }],
-      ...SHARED_DARK,
-      height: 320,
-      margin: { l: 150, r: 120, t: 50, b: 56 },
-    },
-  };
 }
 
 function opersForProduct(
@@ -830,34 +677,6 @@ export function buildProductProductionCharts(
   return { data, layout, clampXMin: ganttXMinClamp(baseMs) };
 }
 
-export function buildSwitchMetrics(snap: HistorySnap): { data: Data[]; layout: Partial<Layout> } {
-  return {
-    data: [
-      {
-        type: "indicator",
-        mode: "number",
-        value: snap.oper_sw,
-        title: { text: "공정 전환 횟수" },
-        number: { font: { color: "#C44E52", size: 40 } },
-        domain: { x: [0, 0.45], y: [0, 1] },
-      },
-      {
-        type: "indicator",
-        mode: "number",
-        value: snap.prod_sw,
-        title: { text: "제품 전환 횟수" },
-        number: { font: { color: "#DD8452", size: 40 } },
-        domain: { x: [0.55, 1], y: [0, 1] },
-      },
-    ],
-    layout: {
-      height: 180,
-      margin: { t: 40, b: 10 },
-      paper_bgcolor: "white",
-    },
-  };
-}
-
 interface ScheduleStats {
   makespan: number;
   idle_total: number;
@@ -928,77 +747,6 @@ function abbreviateProdOperLabels(labels: string[]): string[] {
     const o = operMap[oper] ?? oper;
     return `${p}/${o}`;
   });
-}
-
-export function buildComparisonKpi(
-  initial: ScheduleRecord[],
-  post: ScheduleRecord[],
-  plan: PlanRecord[],
-): { data: Data[]; layout: Partial<Layout> } {
-  const initS = computeStats(initial, plan);
-  const postS = computeStats(post, plan);
-  const metrics = ["Makespan(분)", "Idle 합계(분)", "공정 전환", "제품 전환"];
-
-  return {
-    data: [
-      { type: "bar", name: "초기 스케줄", x: metrics, y: [initS.makespan, initS.idle_total, initS.oper_switches, initS.prod_switches], marker: { color: "#4C72B0" } },
-      { type: "bar", name: "Scheduling", x: metrics, y: [postS.makespan, postS.idle_total, postS.oper_switches, postS.prod_switches], marker: { color: "#55A868" } },
-    ],
-    layout: {
-      title: { text: "초기 스케줄 vs Scheduling KPI 비교" },
-      barmode: "group",
-      yaxis: { title: { text: "값" } },
-      ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.25 },
-      height: 360,
-      margin: { t: 60, b: 96 },
-    },
-  };
-}
-
-export function buildAchievementComparison(
-  initial: ScheduleRecord[],
-  post: ScheduleRecord[],
-  plan: PlanRecord[],
-): { data: Data[]; layout: Partial<Layout> } {
-  const initS = computeStats(initial, plan);
-  const postS = computeStats(post, plan);
-  const labels = [...new Set([...Object.keys(initS.achievement), ...Object.keys(postS.achievement)])].sort();
-  const shortLabels = abbreviateProdOperLabels(labels);
-
-  return {
-    data: [
-      {
-        type: "bar",
-        name: "초기 스케줄",
-        x: shortLabels,
-        y: labels.map((l) => initS.achievement[l] ?? 0),
-        customdata: labels,
-        hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
-        marker: { color: "#4C72B0" },
-      },
-      {
-        type: "bar",
-        name: "Scheduling",
-        x: shortLabels,
-        y: labels.map((l) => postS.achievement[l] ?? 0),
-        customdata: labels,
-        hovertemplate: "%{customdata}<br>달성률: %{y}%<extra></extra>",
-        marker: { color: "#55A868" },
-      },
-    ],
-    layout: {
-      title: { text: "제품/공정별 계획 달성률 비교 (%)" },
-      barmode: "group",
-      yaxis: { title: { text: "달성률 (%)" }, range: [0, 120] },
-      xaxis: { title: { text: "P / O" } },
-      shapes: [{ type: "line", x0: 0, x1: 1, y0: 100, y1: 100, xref: "paper", line: { dash: "dash", color: "red", width: 1 } }],
-      ...SHARED_DARK,
-      legend: { orientation: "h", y: -0.3 },
-      height: 360,
-      margin: { t: 60, b: 100 },
-    },
-  };
 }
 
 export const ALGO_CHART_COLORS: Record<string, string> = {

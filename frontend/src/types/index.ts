@@ -246,11 +246,7 @@ export interface DataSummary {
 
 export interface RewardConfig {
   w_same_setup: number;
-  w_same_oper: number;
-  w_same_prod: number;
-  w_prod_switch: number;
   w_idle_per_min: number;
-  w_completion: number;
   w_plan_hit: number;
   w_pacing: number;
   pacing_coverage_scale: number;
@@ -264,7 +260,6 @@ export interface RewardConfig {
   flow_balance_starving_cover_min: number;
   reward_clip: number;
   use_achievable_target: boolean;
-  same_oper_conditional: boolean;
 }
 
 export interface EnvDefaults {

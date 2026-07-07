@@ -584,10 +584,6 @@ class DbRegistry:
             self._connections[key] = self.get_credentials(key).connect()
         return self._connections[key]
 
-    def resolve_sql_connection(self, sql_text: str):
-        alias = parse_sql_db_alias(sql_text, self._default_alias)
-        return self.connect(alias), alias
-
     def close_all(self) -> None:
         for conn in self._connections.values():
             try:
@@ -601,14 +597,6 @@ class DbRegistry:
 
     def __exit__(self, *args):
         self.close_all()
-
-
-def read_sql_with_alias(sql_path: Path) -> Tuple[str, str]:
-    text = sql_path.read_text(encoding="utf-8").strip()
-    if not text:
-        raise ValueError(f"SQL 파일이 비어 있습니다: {sql_path}")
-    alias = parse_sql_db_alias(text)
-    return text, alias
 
 
 def main(argv: Optional[List[str]] = None) -> int:

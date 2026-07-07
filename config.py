@@ -112,11 +112,6 @@ def rule_timekey_today(hour: int = 7, minute: int = 0, second: int = 0) -> str:
     ).strftime(RULE_TIMEKEY_FMT)
 
 
-def train_snapshot_now() -> str:
-    """단일 스냅샷 폴더명 (= rule_timekey_now)"""
-    return rule_timekey_now()
-
-
 def period_today() -> str:
     """일별 기간 폴더명 (= 오늘 07:00:00 RULE_TIMEKEY)"""
     return rule_timekey_today()
@@ -522,13 +517,8 @@ class RLConfig:
 class RewardConfig:
     # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
     # 제품·공정이 '모두' 직전과 동일할 때만 주는 연속 보너스 (전환 회피와 정렬).
-    # >0 이면 아래 분리형(same_oper/same_prod/prod_switch)을 대체해 적용.
     w_same_setup:      float = 1.0
-    w_same_oper:       float = 0.4       # (legacy) 같은 공정 연속 — w_same_setup>0이면 미사용
-    w_same_prod:       float = 0.5       # (legacy) 같은 PPK 연속 — w_same_setup>0이면 미사용
-    w_prod_switch:     float = 0.5       # (legacy) 이전 PPK 재공 고갈 시 전환 보너스 — 미사용
     w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
-    w_completion:      float = 0.0       # 미사용
     w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
@@ -559,8 +549,6 @@ class RewardConfig:
     reward_clip:       float = 10.0
     # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
     use_achievable_target: bool = True
-    # --- Step D: same_oper 보너스를 조건부(과생산 시 억제)로 적용 ---
-    same_oper_conditional: bool = True
 
 
 def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
@@ -568,11 +556,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
     r = reward or CONFIG.reward
     return {
         "w_same_setup": r.w_same_setup,
-        "w_same_oper": r.w_same_oper,
-        "w_same_prod": r.w_same_prod,
-        "w_prod_switch": r.w_prod_switch,
         "w_idle_per_min": r.w_idle_per_min,
-        "w_completion": r.w_completion,
         "w_plan_hit": r.w_plan_hit,
         "w_pacing": r.w_pacing,
         "pacing_coverage_scale": r.pacing_coverage_scale,
@@ -586,7 +570,6 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
         "reward_clip": r.reward_clip,
         "use_achievable_target": r.use_achievable_target,
-        "same_oper_conditional": r.same_oper_conditional,
     }
 
 
@@ -594,8 +577,8 @@ def apply_reward_params(params: dict) -> None:
     """학습 요청 파라미터 → CONFIG.reward 반영."""
     r = CONFIG.reward
     float_keys = (
-        "w_same_setup", "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
-        "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
+        "w_same_setup", "w_idle_per_min",
+        "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
         "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
@@ -605,8 +588,6 @@ def apply_reward_params(params: dict) -> None:
             setattr(r, key, float(params[key]))
     if "use_achievable_target" in params and params["use_achievable_target"] is not None:
         r.use_achievable_target = bool(params["use_achievable_target"])
-    if "same_oper_conditional" in params and params["same_oper_conditional"] is not None:
-        r.same_oper_conditional = bool(params["same_oper_conditional"])
 
 
 @dataclass

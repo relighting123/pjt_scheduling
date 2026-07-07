@@ -8,8 +8,6 @@ export const SIM_EVENT = {
   CONV_ASSIGNED: "CONV_ASSIGNED",
 } as const satisfies Record<string, SimEventKind>;
 
-export const SIM_EVENT_KINDS = Object.values(SIM_EVENT);
-
 export const SIM_EVENT_LABEL: Record<SimEventKind, string> = {
   MOVE_OUT: "MOVE_OUT",
   IDLE: "IDLE",

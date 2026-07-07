@@ -85,18 +85,6 @@ def test_pacing_shaping_skipped_without_plan():
     assert sim._pacing_shaping_reward("PPK_NO_PLAN", "OPER001", wf_qty=25) == 0.0
 
 
-def test_same_prod_skipped_when_ppk_not_feasible():
-    """이전 PPK에 feasible 조합이 없으면 same_prod 보너스 없음."""
-    raw = load_data()
-    env_data = preprocess(raw)
-    sim = SchedulingSimulator(env_data, record_history=False)
-    eqp_id = env_data["eqp_ids"][0]
-    eqp = sim.eqps[eqp_id]
-    eqp.prev_prod = "PPK_NO_FEASIBLE"
-    r = sim._same_prod_reward(eqp, "PPK_NO_FEASIBLE")
-    assert r == 0.0
-
-
 def test_pacing_steady_scenario_preprocess_and_episode():
     """pacing_steady 샘플: 전처리·에피소드 완료·OPER002 abstract 유입 확인."""
     from data.generator import (

@@ -523,13 +523,6 @@ class SchedulingSimulator:
             or self._conversion_limit_blocks(eqp_id, lot_cd, temp)
         )
 
-    def _eqp_min_proc_time(self, eqp_id: str) -> Optional[int]:
-        """EQP에서 투입 가능한 LOT 중 최소 소요시간(장수×ST)."""
-        lots = self.available_lots(eqp_id)
-        if not lots:
-            return None
-        return min(int(lot.get("processing_time", 10**9)) for lot in lots)
-
     def estimate_lot_end_time(self, eqp_id: str, lot: dict) -> int:
         """예상 종료 시각 = 현재 시각 + conversion(필요 시) + 장수×ST."""
         t = self.current_time
@@ -829,15 +822,6 @@ class SchedulingSimulator:
 
     def _has_discrete_combo(self, eqp_id: str, lot_id: str, oper_id: str) -> bool:
         return (lot_id, eqp_id, oper_id) in self._env_data.get("proc_time_matrix", {})
-
-    def _get_available_lots(self, eqp_id: str) -> List[str]:
-        """
-        목적: EQP에 배정 가능하면 투입 기한 내 LOT 목록 반환
-        """
-        return [
-            lid for lid in self.eqp_queues.get(eqp_id, [])
-            if self._lot_injectable(lid)
-        ]
 
     def get_remaining_arrange_actual(self) -> List[dict]:
         """
@@ -1282,32 +1266,6 @@ class SchedulingSimulator:
                 return True
         return False
 
-    def _is_ahead_of_pace(self, ppk: str, oper_id: str, wf_qty: int) -> bool:
-        """이 (PPK,OPER)가 선형 takt ideal을 이미 초과 생산 중인지 (편중 악화 방지용)."""
-        if not self._has_plan(ppk, oper_id):
-            return False
-        target = max(self._achievable_qty(ppk, oper_id), 1)
-        horizon = max(self.soft_cutoff, 1)
-        ideal = target * min(max(self.current_time, 0), horizon) / horizon
-        done_after = self.stats["completed_qty"].get((ppk, oper_id), 0) + wf_qty
-        return done_after > ideal
-
-    def _same_oper_reward(self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int) -> float:
-        """
-        Step D: 같은 공정 연속 보너스를 '조건부'로.
-        이미 takt를 앞선(과생산) 공정을 계속 도는 것은 후속 공정 starving·편중을
-        악화시키므로 보너스를 죽인다. switch 통계는 그대로 집계.
-        """
-        cfg = self._reward_cfg
-        if eqp.prev_oper == oper_id:
-            if cfg.same_oper_conditional and self._is_ahead_of_pace(ppk, oper_id, wf_qty):
-                return 0.0
-            return cfg.w_same_oper
-        if eqp.prev_oper is not None:
-            eqp.oper_switches += 1
-            self.stats["oper_switches"] += 1
-        return 0.0
-
     def _same_setup_reward(self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int) -> float:
         """제품·공정이 '모두' 직전과 동일할 때만 연속 보너스.
 
@@ -1364,18 +1322,6 @@ class SchedulingSimulator:
         if self._downstream_is_starving(ppk, oper_id):
             score += 0.5
         return cfg.w_flow_balance * score
-
-    def _same_prod_reward(self, eqp: Equipment, ppk: str) -> float:
-        """같은 PPK의 재공이 남으면 보너스. PPK 전환 시 전환 카운트만."""
-        cfg = self._reward_cfg
-        if eqp.prev_prod == ppk:
-            if self._ppk_has_feasible_assignment(ppk):
-                return cfg.w_same_prod
-            return 0.0
-        if eqp.prev_prod is not None:
-            eqp.prod_switches += 1
-            self.stats["prod_switches"] += 1
-        return 0.0
 
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
         if not candidates:
@@ -1452,16 +1398,6 @@ class SchedulingSimulator:
         if n > 0:
             return n
         return len(self._env_data.get("eqp_oper_cap", {}).get(eqp_id, []))
-
-    def bucket_eligible_models(self, ppk: str, oper_id: str) -> int:
-        """이 (PPK,OPER)를 가공 가능한 서로 다른 장비모델 수."""
-        arrange_map = self._env_data.get("abstract_arrange_map", {})
-        models = {m for (p, o, m) in arrange_map if p == ppk and o == oper_id}
-        return max(len(models), 1)
-
-    def bucket_dedication(self, ppk: str, oper_id: str) -> float:
-        """전용도 = 1/가능모델수. 1.0이면 단일 모델 전용, 작을수록 범용."""
-        return 1.0 / self.bucket_eligible_models(ppk, oper_id)
 
     def narrower_idle_specialist_exists(
         self, eqp_id: str, ppk: str, oper_id: str,
