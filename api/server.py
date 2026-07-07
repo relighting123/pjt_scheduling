@@ -1041,7 +1041,12 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
 def get_inference_result(input_folder: Optional[str] = None):
     global _last_inference
     if input_folder is None and _last_inference is not None:
-        return serialize_inference_result(_last_inference, include_history=False)
+        return serialize_inference_result(
+            _last_inference,
+            include_history=False,
+            include_event_log=True,
+            include_decision_log=True,
+        )
 
     _apply_input_folder(input_folder)
 
@@ -1073,14 +1078,24 @@ def get_inference_result(input_folder: Optional[str] = None):
             "algorithm": saved.get("algorithm", "scheduling_rl"),
             "validation": saved.get("validation"),
         }
-        return serialize_inference_result(result, include_history=False)
+        return serialize_inference_result(
+            result,
+            include_history=False,
+            include_event_log=True,
+            include_decision_log=True,
+        )
 
     output_path = output_dir / CONFIG.path.output_file
     if not output_path.exists():
         raise HTTPException(status_code=404, detail=f"저장된 추론 결과가 없습니다: {output_dir}")
     with open(output_path, encoding="utf-8") as f:
         result = _result_from_rts_output(json.load(f), env_data)
-    return serialize_inference_result(result, include_history=False)
+    return serialize_inference_result(
+        result,
+        include_history=False,
+        include_event_log=True,
+        include_decision_log=True,
+    )
 
 
 def _test_folders_for_fac(
