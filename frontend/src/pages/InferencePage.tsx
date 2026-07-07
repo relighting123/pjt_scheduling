@@ -56,6 +56,9 @@ function buildInferOptions(
   opts: {
     facIdOverride: string;
     ruleTimekey: string;
+    fromDate: string;
+    toDate: string;
+    prevcnt: string;
     lotCd: string;
     nodb: boolean;
     decisionLog: boolean;
@@ -73,10 +76,16 @@ function buildInferOptions(
   const maxConv = parseOptionalInt(opts.maxConversions);
   const maxConvEqp = parseOptionalInt(opts.maxConversionsPerEqp);
   const convMin = parseOptionalInt(opts.conversionMinutes);
+  const prevcnt = parseOptionalInt(opts.prevcnt);
+  const hasRange = opts.fromDate.trim() && opts.toDate.trim();
   return {
     input_folder: selectedFolder,
     ...(facId ? { fac_id: facId } : {}),
     ...(opts.ruleTimekey.trim() ? { rule_timekey: opts.ruleTimekey.trim() } : {}),
+    ...(!opts.ruleTimekey.trim() && hasRange
+      ? { from_date: opts.fromDate.trim(), to_date: opts.toDate.trim() }
+      : {}),
+    ...(!opts.ruleTimekey.trim() && !hasRange && prevcnt != null ? { prevcnt } : {}),
     ...(opts.lotCd.trim() ? { lot_cd: opts.lotCd.trim() } : {}),
     nodb: opts.nodb,
     decision_log: opts.decisionLog,
@@ -171,6 +180,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [decisionLog, setDecisionLog]       = useState(false);
   const [wipInflow, setWipInflow]           = useState(false);
   const [ruleTimekey, setRuleTimekey]       = useState("");
+  const [fromDate, setFromDate]             = useState("");
+  const [toDate, setToDate]                 = useState("");
+  const [prevcnt, setPrevcnt]               = useState("");
   const [lotCd, setLotCd]                   = useState("");
   const [nodb, setNodb]                     = useState(false);
   const [includeHistory, setIncludeHistory] = useState(false);
@@ -340,6 +352,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         ...buildInferOptions(selectedFolder, {
           facIdOverride,
           ruleTimekey,
+          fromDate,
+          toDate,
+          prevcnt,
           lotCd,
           nodb,
           decisionLog,
@@ -370,9 +385,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     } catch(e) { setError(e instanceof Error ? e.message : "추론 실패"); }
     finally { setLoading(false); }
   }, [
-    algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey, lotCd, nodb,
-    includeHistory, dbLoad, dbAlias, noHistory, maxConversions, maxConversionsPerEqp,
-    conversionMinutes, syncInferFolder,
+    algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey, fromDate, toDate,
+    prevcnt, lotCd, nodb, includeHistory, dbLoad, dbAlias, noHistory, maxConversions,
+    maxConversionsPerEqp, conversionMinutes, syncInferFolder,
   ]);
 
   const loadSaved = useCallback(async () => {
@@ -401,6 +416,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       const res = await api.runCompare(ids, buildInferOptions(selectedFolder, {
         facIdOverride,
         ruleTimekey,
+        fromDate,
+        toDate,
+        prevcnt,
         lotCd,
         nodb,
         decisionLog: false,
@@ -434,7 +452,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       setTab("compare");
     } catch(e) { setError(e instanceof Error ? e.message : "비교 실패"); }
     finally { setCmpLoad(false); }
-  }, [compareAlgos, selectedFolder, facIdOverride, wipInflow, ruleTimekey, lotCd, nodb, maxConversions, maxConversionsPerEqp, conversionMinutes, syncInferFolder]);
+  }, [compareAlgos, selectedFolder, facIdOverride, wipInflow, ruleTimekey, fromDate, toDate, prevcnt, lotCd, nodb, maxConversions, maxConversionsPerEqp, conversionMinutes, syncInferFolder]);
+
+  const hasRuleTimekey = ruleTimekey.trim().length > 0;
+  const hasDateRange = fromDate.trim().length > 0 || toDate.trim().length > 0;
+  const hasPrevcntVal = prevcnt.trim().length > 0;
 
   const needsModel = algoList.find(a => a.id === algorithm)?.requires_model ?? false;
   const canRun = !needsModel || modelExists;
@@ -562,8 +584,43 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             placeholder="미지정 시 최신"
             value={ruleTimekey}
             onChange={e => setRuleTimekey(e.target.value)}
-            disabled={loading || compareLoading}
+            disabled={loading || compareLoading || hasDateRange || hasPrevcntVal}
           />
+
+          <label className="field-label mt-2">구간 (RULE_TIMEKEY, BETWEEN)</label>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <input
+              id="infer-from"
+              className="input"
+              type="text"
+              placeholder="시작"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              disabled={loading || compareLoading || hasRuleTimekey || hasPrevcntVal}
+            />
+            <input
+              id="infer-to"
+              className="input"
+              type="text"
+              placeholder="종료"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              disabled={loading || compareLoading || hasRuleTimekey || hasPrevcntVal}
+            />
+          </div>
+
+          <label className="field-label mt-2" htmlFor="infer-prevcnt">PREVCNT (최근 N개)</label>
+          <input
+            id="infer-prevcnt"
+            className="input-number"
+            type="number"
+            min={1}
+            placeholder="미지정 시 최신 1건"
+            value={prevcnt}
+            onChange={e => setPrevcnt(e.target.value)}
+            disabled={loading || compareLoading || hasRuleTimekey || hasDateRange}
+          />
+          <p className="hint mt-1">RULE_TIMEKEY / 구간 / PREVCNT 중 하나만 사용됩니다 (미지정 시 최신).</p>
 
           <label className="field-label mt-2" htmlFor="infer-lot-cd">LOT_CD</label>
           <input

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from data.loader.sql_binds import resolve_lot_cd
@@ -147,6 +147,9 @@ def _prepare_infer_input(
     fac_id: Optional[str] = None,
     input_folder: Optional[str] = None,
     rule_timekey: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    prevcnt: Optional[int] = None,
     nodb: bool = False,
     lot_cd: Optional[str] = None,
 ) -> dict:
@@ -154,7 +157,14 @@ def _prepare_infer_input(
     global _env_data_cache
 
     resolved_fac = _resolve_infer_fac_id(fac_id, input_folder)
-    rtk = resolve_infer_rule_timekey(resolved_fac, rule_timekey)
+    if rule_timekey and (prevcnt is not None or from_date or to_date):
+        raise ValueError("rule_timekey는 prevcnt, from_date/to_date와 함께 쓸 수 없습니다.")
+    if prevcnt is not None and (from_date or to_date):
+        raise ValueError("prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
+    rtk = resolve_infer_rule_timekey(
+        resolved_fac, rule_timekey,
+        from_key=from_date, to_key=to_date, prevcnt=prevcnt, nodb=nodb,
+    )
     lcd = resolve_lot_cd(lot_cd)
     fetched = False
 
@@ -261,6 +271,11 @@ def _resolve_train_folders(req: "TrainRequest") -> list[str]:
         return folders
 
     if req.from_date and req.to_date:
+        if req.prevcnt is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.",
+            )
         periods, _ = resolve_collect_periods(
             fac_id,
             from_key=req.from_date,
@@ -275,6 +290,20 @@ def _resolve_train_folders(req: "TrainRequest") -> list[str]:
                     f"기간 {req.from_date}~{req.to_date} (DB RULE_TIMEKEY)에 해당하는 "
                     f"train 데이터가 없습니다."
                 ),
+            )
+        return folders
+
+    if req.prevcnt is not None:
+        periods, _ = resolve_collect_periods(
+            fac_id,
+            prevcnt=req.prevcnt,
+            require_db=True,
+        )
+        folders = train_folders_for_periods(fac_id, periods)
+        if not folders:
+            raise HTTPException(
+                status_code=404,
+                detail=f"최근 {req.prevcnt}개 RULE_TIMEKEY에 해당하는 train 데이터가 없습니다.",
             )
         return folders
 
@@ -351,9 +380,14 @@ class TrainRequest(RewardParams):
         default=None,
         description="train 기간 종료 RULE_TIMEKEY (YYYYMMDDHHmmss)",
     )
+    prevcnt: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="현재 기준 최근 N개 RULE_TIMEKEY의 train 폴더 사용 (from_date/to_date 와 함께 쓸 수 없음)",
+    )
     fac_id: Optional[str] = Field(
         default=None,
-        description="from/to 기간 검색용 FAC_ID (기본: 현재 설정)",
+        description="from/to·prevcnt 기간 검색용 FAC_ID (기본: 현재 설정)",
     )
 
 
@@ -365,6 +399,19 @@ class InferFetchOptions(BaseModel):
     rule_timekey: Optional[str] = Field(
         default=None,
         description="추론 RULE_TIMEKEY (미지정 시 최신)",
+    )
+    from_date: Optional[str] = Field(
+        default=None,
+        description="구간 시작 RULE_TIMEKEY (BETWEEN 조회 후 최신값 사용, rule_timekey와 함께 쓸 수 없음)",
+    )
+    to_date: Optional[str] = Field(
+        default=None,
+        description="구간 종료 RULE_TIMEKEY (BETWEEN 조회 후 최신값 사용, rule_timekey와 함께 쓸 수 없음)",
+    )
+    prevcnt: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="최신 기준 최근 N개 RULE_TIMEKEY 조회 후 최신값 사용 (rule_timekey와 함께 쓸 수 없음)",
     )
     nodb: bool = Field(
         default=False,
@@ -473,6 +520,11 @@ class FetchRequest(BaseModel):
     snapshot: Optional[str] = Field(default=None, description="단일 RULE_TIMEKEY (YYYYMMDDHHmmss)")
     from_date: Optional[str] = Field(default=None, description="시작 RULE_TIMEKEY (YYYYMMDDHHmmss)")
     to_date: Optional[str] = Field(default=None, description="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)")
+    prevcnt: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="최근 N개 RULE_TIMEKEY 구간 수집 (from_date/to_date 와 함께 쓸 수 없음)",
+    )
     lot_cd: Optional[str] = Field(
         default=None,
         description="SQL :LOT_CD 바인드 (discrete_arrange 제외, 미지정 시 전체)",
@@ -506,7 +558,16 @@ class CompareRequest(InferFetchOptions):
     )
 
 
-class TestBenchmarkRequest(BaseModel):
+class TestPeriodFilter(BaseModel):
+    from_date: Optional[str] = Field(default=None, description="검증 시작 RULE_TIMEKEY")
+    to_date: Optional[str] = Field(default=None, description="검증 종료 RULE_TIMEKEY")
+    prevcnt: Optional[int] = Field(
+        default=None, ge=1,
+        description="최신 기준 최근 N개 test 폴더만 사용 (from_date/to_date 와 함께 쓸 수 없음)",
+    )
+
+
+class TestBenchmarkRequest(TestPeriodFilter):
     algorithms: list[str] = Field(min_length=1, description="비교할 알고리즘 ID 목록")
     fac_id: Optional[str] = Field(default=None, description="FAC_ID (기본: 현재 설정)")
     input_folders: Optional[list[str]] = Field(
@@ -515,7 +576,7 @@ class TestBenchmarkRequest(BaseModel):
     )
 
 
-class TestBenchmarkInitRequest(BaseModel):
+class TestBenchmarkInitRequest(TestPeriodFilter):
     algorithms: list[str] = Field(min_length=1)
     fac_id: Optional[str] = None
 
@@ -631,6 +692,8 @@ def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
 def fetch_dataset(req: FetchRequest):
     try:
         if req.from_date and req.to_date:
+            if req.prevcnt is not None:
+                raise ValueError("prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
             periods, _ = resolve_collect_periods(
                 req.fac_id,
                 from_key=req.from_date,
@@ -646,6 +709,19 @@ def fetch_dataset(req: FetchRequest):
             path = paths[-1]
         elif req.from_date or req.to_date:
             raise ValueError("from_date와 to_date를 함께 지정하세요.")
+        elif req.prevcnt is not None:
+            periods, _ = resolve_collect_periods(
+                req.fac_id,
+                prevcnt=req.prevcnt,
+                require_db=(req.split == "train"),
+            )
+            paths = fetch_period_range(
+                fac_id=req.fac_id,
+                periods=periods,
+                split=req.split,
+                lot_cd=req.lot_cd,
+            )
+            path = paths[-1]
         else:
             require_db = req.split == "train" and not req.snapshot
             snap, _ = resolve_snapshot_rule_timekey(
@@ -772,6 +848,9 @@ def inference(req: InferenceRequest):
             fac_id=req.fac_id,
             input_folder=req.input_folder,
             rule_timekey=req.rule_timekey,
+            from_date=req.from_date,
+            to_date=req.to_date,
+            prevcnt=req.prevcnt,
             nodb=req.nodb,
             lot_cd=req.lot_cd,
         )
@@ -846,6 +925,9 @@ def inference_compare(req: CompareRequest):
             fac_id=req.fac_id,
             input_folder=req.input_folder,
             rule_timekey=req.rule_timekey,
+            from_date=req.from_date,
+            to_date=req.to_date,
+            prevcnt=req.prevcnt,
             nodb=req.nodb,
             lot_cd=req.lot_cd,
         )
@@ -1014,12 +1096,20 @@ def get_inference_result(input_folder: Optional[str] = None):
     return serialize_inference_result(result, include_history=False)
 
 
-def _test_folders_for_fac(fac_id: str) -> list[str]:
+def _test_folders_for_fac(
+    fac_id: str,
+    *,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    prevcnt: Optional[int] = None,
+) -> list[str]:
+    if from_date and to_date:
+        return folders_in_period_range(fac_id, "test", from_date, to_date)
     prefix = f"{fac_id}/test/"
-    return sorted(
-        f for f in list_input_folders()
-        if f.startswith(prefix)
-    )
+    folders = sorted(f for f in list_input_folders() if f.startswith(prefix))
+    if prevcnt is not None:
+        folders = folders[-prevcnt:]
+    return folders
 
 
 def _validate_algorithms(algorithms: list[str]) -> None:
@@ -1113,9 +1203,16 @@ def _benchmark_response(state: dict) -> dict:
 
 
 @app.get("/api/test/datasets")
-def list_test_datasets(fac_id: Optional[str] = None):
+def list_test_datasets(
+    fac_id: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    prevcnt: Optional[int] = None,
+):
     fac = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
-    folders = _test_folders_for_fac(fac)
+    if from_date and to_date and prevcnt is not None:
+        raise HTTPException(status_code=400, detail="prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
+    folders = _test_folders_for_fac(fac, from_date=from_date, to_date=to_date, prevcnt=prevcnt)
     return {
         "fac_id": fac,
         "datasets": [
@@ -1144,7 +1241,11 @@ def init_test_benchmark(req: TestBenchmarkInitRequest):
     _validate_algorithms(req.algorithms)
     global _benchmark_rl_agent
     _benchmark_rl_agent = None
-    folders = _test_folders_for_fac(fac_id)
+    if req.from_date and req.to_date and req.prevcnt is not None:
+        raise HTTPException(status_code=400, detail="prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
+    folders = _test_folders_for_fac(
+        fac_id, from_date=req.from_date, to_date=req.to_date, prevcnt=req.prevcnt,
+    )
     if not folders:
         raise HTTPException(
             status_code=404,
@@ -1180,7 +1281,11 @@ def test_benchmark(req: TestBenchmarkRequest):
     if req.input_folders:
         folders = req.input_folders
     else:
-        folders = _test_folders_for_fac(fac_id)
+        if req.from_date and req.to_date and req.prevcnt is not None:
+            raise HTTPException(status_code=400, detail="prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
+        folders = _test_folders_for_fac(
+            fac_id, from_date=req.from_date, to_date=req.to_date, prevcnt=req.prevcnt,
+        )
 
     if not folders:
         raise HTTPException(

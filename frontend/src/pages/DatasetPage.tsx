@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import BatchInfoTable from "../components/BatchInfoTable";
+import { api } from "../lib/api";
 import type { AppConfig, DataSummary } from "../types";
 
 interface DatasetPageProps {
@@ -8,7 +9,10 @@ interface DatasetPageProps {
   folderLoading: boolean;
   loadError: string | null;
   onInputFolderChange: (folder: string) => void | Promise<void>;
+  onRefresh: () => void | Promise<void>;
 }
+
+type CollectSplit = "train" | "test" | "infer";
 
 function folderPeriodLabel(folder: string): string {
   const parts = folder.split("/");
@@ -21,6 +25,7 @@ export default function DatasetPage({
   folderLoading,
   loadError,
   onInputFolderChange,
+  onRefresh,
 }: DatasetPageProps) {
   const datasetFolders = useMemo(
     () => (config?.input_folders?.length ? config.input_folders : []),
@@ -28,6 +33,41 @@ export default function DatasetPage({
   );
 
   const [selectedFolder, setSelectedFolder] = useState("");
+
+  const [collectFacId, setCollectFacId] = useState("");
+  const [collectSplit, setCollectSplit] = useState<CollectSplit>("train");
+  const [collectLotCd, setCollectLotCd] = useState("");
+  const [collectFrom, setCollectFrom]   = useState("");
+  const [collectTo, setCollectTo]       = useState("");
+  const [collectPrevcnt, setCollectPrevcnt] = useState("");
+  const [collecting, setCollecting]     = useState(false);
+  const [collectMsg, setCollectMsg]     = useState<string | null>(null);
+  const [collectErr, setCollectErr]     = useState<string | null>(null);
+
+  const collectHasRange = collectFrom.trim().length > 0 || collectTo.trim().length > 0;
+  const collectHasPrevcnt = collectPrevcnt.trim().length > 0;
+
+  const runCollect = useCallback(async () => {
+    setCollecting(true); setCollectMsg(null); setCollectErr(null);
+    try {
+      const res = await api.fetchDataset({
+        fac_id: collectFacId.trim() || config?.fac_id || "FAC001",
+        split: collectSplit,
+        ...(collectLotCd.trim() ? { lot_cd: collectLotCd.trim() } : {}),
+        ...(collectHasRange
+          ? { from_date: collectFrom.trim(), to_date: collectTo.trim() }
+          : collectHasPrevcnt
+          ? { prevcnt: Number(collectPrevcnt) }
+          : {}),
+      });
+      setCollectMsg(res.message);
+      await onRefresh();
+    } catch (e) {
+      setCollectErr(e instanceof Error ? e.message : "수집 실패");
+    } finally {
+      setCollecting(false);
+    }
+  }, [collectFacId, collectSplit, collectLotCd, collectFrom, collectTo, collectPrevcnt, collectHasRange, collectHasPrevcnt, config?.fac_id, onRefresh]);
 
   useEffect(() => {
     if (!config || datasetFolders.length === 0) return;
@@ -56,6 +96,94 @@ export default function DatasetPage({
       {loadError && <div className="banner banner-warn">{loadError}</div>}
 
       <div className="card-stagger">
+        <section className="card">
+          <h3>데이터 수집</h3>
+          <p className="hint">CLI <code>collect</code> 와 동일한 옵션입니다. Oracle에서 JSON을 조회해 저장합니다.</p>
+
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <div className="train-field" style={{ flex: 1 }}>
+              <label className="field-label" htmlFor="collect-fac-id">FAC_ID</label>
+              <input
+                id="collect-fac-id"
+                className="input"
+                type="text"
+                placeholder={config?.fac_id ?? "FAC001"}
+                value={collectFacId}
+                onChange={e => setCollectFacId(e.target.value)}
+                disabled={collecting}
+              />
+            </div>
+            <div className="train-field" style={{ flex: 1 }}>
+              <label className="field-label" htmlFor="collect-split">TARGET (split)</label>
+              <select
+                id="collect-split"
+                className="select"
+                value={collectSplit}
+                onChange={e => setCollectSplit(e.target.value as CollectSplit)}
+                disabled={collecting}
+              >
+                <option value="train">train</option>
+                <option value="test">test</option>
+                <option value="infer">infer</option>
+              </select>
+            </div>
+          </div>
+
+          <label className="field-label mt-2" htmlFor="collect-lot-cd">LOT_CD</label>
+          <input
+            id="collect-lot-cd"
+            className="input"
+            type="text"
+            placeholder="미지정 시 전체 (discrete_arrange 제외)"
+            value={collectLotCd}
+            onChange={e => setCollectLotCd(e.target.value)}
+            disabled={collecting}
+          />
+
+          <label className="field-label mt-2">구간 (RULE_TIMEKEY)</label>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <input
+              id="collect-from"
+              className="input"
+              type="text"
+              placeholder="시작"
+              value={collectFrom}
+              onChange={e => setCollectFrom(e.target.value)}
+              disabled={collecting || collectHasPrevcnt}
+            />
+            <input
+              id="collect-to"
+              className="input"
+              type="text"
+              placeholder="종료"
+              value={collectTo}
+              onChange={e => setCollectTo(e.target.value)}
+              disabled={collecting || collectHasPrevcnt}
+            />
+          </div>
+
+          <label className="field-label mt-2" htmlFor="collect-prevcnt">PREVCNT (최근 N개)</label>
+          <input
+            id="collect-prevcnt"
+            className="input-number"
+            type="number"
+            min={1}
+            placeholder="미지정 시 최신 1건"
+            value={collectPrevcnt}
+            onChange={e => setCollectPrevcnt(e.target.value)}
+            disabled={collecting || collectHasRange}
+          />
+          <p className="hint mt-1">구간 / PREVCNT 미지정 시 최신 1건만 수집합니다.</p>
+
+          <div className="gap-row mt-2">
+            <button type="button" className={`btn btn-primary${collecting ? " loading" : ""}`} onClick={runCollect} disabled={collecting}>
+              {collecting ? "" : "수집"}
+            </button>
+          </div>
+          {collectMsg && <p className="hint mt-1">{collectMsg}</p>}
+          {collectErr && <div className="banner banner-warn mt-1">{collectErr}</div>}
+        </section>
+
         {config && (
           <section className="card inference-dataset-card">
             <h3>데이터셋 경로</h3>
