@@ -3,10 +3,10 @@ import type { SimEvent, SimEventKind } from "../types";
 import {
   formatSimEventExtra,
   normalizeSimEventKind,
-  simEventIcon,
   simEventLabel,
   SIM_EVENT_CLASS,
 } from "../lib/simEvents";
+import { SimEventIcon } from "./SimEventIcon";
 
 interface EventTimelineProps {
   events: SimEvent[];
@@ -76,7 +76,6 @@ export function EventTimeline({
             {visible.map((ev, i) => {
               const kind = normalizeSimEventKind(ev.kind) as SimEventKind;
               const label = simEventLabel(kind, true);
-              const icon = simEventIcon(kind);
               const rowClass = [
                 SIM_EVENT_CLASS[kind] ?? "",
                 highlightKinds?.has(kind) ? "evt-highlight" : "",
@@ -88,7 +87,7 @@ export function EventTimeline({
                   <td className="num">{ev.time}</td>
                   <td>
                     <span className={`evt-cell ${SIM_EVENT_CLASS[kind] ?? ""}`}>
-                      <span className="evt-icon" aria-hidden="true">{icon}</span>
+                      <SimEventIcon kind={kind} />
                       <span className="evt-label">{label}</span>
                     </span>
                   </td>

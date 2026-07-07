@@ -36,20 +36,6 @@ export const SIM_EVENT_LABEL_KO: Record<SimEventKind, string> = {
   CONV_END: "변환 완료",
 };
 
-export const SIM_EVENT_ICON: Record<SimEventKind, string> = {
-  MOVE_OUT: "↗",
-  IDLE: "○",
-  JOB_ASSIGNED: "▶",
-  CONV_ASSIGNED: "⇄",
-  TOOL_RELEASE: "↩",
-  WIP_INJECT: "＋",
-  TOOL_OCCUPY: "⊕",
-  PROCESS_END: "✓",
-  IDLE_DECISION: "◈",
-  CONV_START: "⇄",
-  CONV_END: "✓",
-};
-
 export const SIM_EVENT_CLASS: Record<SimEventKind, string> = {
   MOVE_OUT: "evt-move",
   IDLE: "evt-decision",
@@ -95,11 +81,6 @@ export function simEventLabel(kind: string, ko = false): string {
   const normalized = normalizeSimEventKind(kind);
   const map = ko ? SIM_EVENT_LABEL_KO : SIM_EVENT_LABEL;
   return map[normalized as SimEventKind] ?? String(normalized);
-}
-
-export function simEventIcon(kind: string): string {
-  const normalized = normalizeSimEventKind(kind);
-  return SIM_EVENT_ICON[normalized as SimEventKind] ?? "•";
 }
 
 export function formatSimEventDetail(ev: SimEvent): string {
