@@ -118,16 +118,16 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
                   <>
                     <div className="chart-wrap mb-2"><PlotChart {...buildTatChart(tat)} /></div>
                     <div className="table-wrap">
-                      <table>
-                        <thead><tr><th>제품</th><th>LOT 수</th><th>평균 TAT</th><th>최소</th><th>최대</th></tr></thead>
+                      <table className="data-table">
+                        <thead><tr><th>제품</th><th className="num">LOT 수</th><th className="num">평균 TAT</th><th className="num">최소</th><th className="num">최대</th></tr></thead>
                         <tbody>
                           {tat.map((r) => (
                             <tr key={r.prod}>
                               <td>{r.prod}</td>
-                              <td>{r.count}</td>
-                              <td>{r.avgMin}분</td>
-                              <td>{r.minMin}분</td>
-                              <td>{r.maxMin}분</td>
+                              <td className="num">{r.count}</td>
+                              <td className="num">{r.avgMin}분</td>
+                              <td className="num">{r.minMin}분</td>
+                              <td className="num">{r.maxMin}분</td>
                             </tr>
                           ))}
                         </tbody>
@@ -142,12 +142,12 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
 
           {tab === "sw" && (
             <div className="table-wrap">
-              <table>
-                <thead><tr><th>전환 종류</th><th>횟수</th></tr></thead>
+              <table className="data-table">
+                <thead><tr><th>전환 종류</th><th className="num">횟수</th></tr></thead>
                 <tbody>
-                  <tr><td>공정(OPER) 전환</td><td className="mono">{result.stats.oper_switches}회</td></tr>
-                  <tr><td>제품(PROD) 전환</td><td className="mono">{result.stats.prod_switches}회</td></tr>
-                  <tr><td>Tool 전환 (Conversion)</td><td className="mono">{toolSw}회</td></tr>
+                  <tr><td>공정(OPER) 전환</td><td className="num">{result.stats.oper_switches}회</td></tr>
+                  <tr><td>제품(PROD) 전환</td><td className="num">{result.stats.prod_switches}회</td></tr>
+                  <tr><td>Tool 전환 (Conversion)</td><td className="num">{toolSw}회</td></tr>
                 </tbody>
               </table>
             </div>

@@ -43,7 +43,8 @@ export default function ArrangeTable({
       {sorted.length === 0 ? (
         <p className="hint">투입 가능한 arrange 조합이 없습니다.</p>
       ) : (
-        <table className="arrange-table" key={step}>
+        <div className="table-wrap">
+        <table className="arrange-table data-table" key={step}>
           <thead>
             <tr>
               {["EQP_ID", "LOT_ID", "OPER", "LOT_STAT_CD", "LOT_CD", "TEMP", "PLAN_PROD_ATTR_VAL", "EQP MODEL", "ST(분)", "START_TM(분)", "WF_QTY"].map((h) => (
@@ -87,6 +88,7 @@ export default function ArrangeTable({
             })}
           </tbody>
         </table>
+        </div>
       )}
       <p className="arrange-hint">
         초기 재공의 구체적 EQP×LOT 조합입니다. ST는 해당 장비 투입 시 소요시간(분),
