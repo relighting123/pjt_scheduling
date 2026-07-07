@@ -224,7 +224,8 @@ DB 연결: `config/databases.yaml` + `python main.py db-check`
 python main.py collect --facid FAC001 --split train --prevcnt 3 --once
 
 # 학습
-python main.py train --facid FAC001 --prevcnt 3 --nodb
+python main.py train --facid FAC001 --prevcnt 3
+python main.py train --facid FAC001 --prevcnt 3 --db   # Oracle 조회·자동 수집
 
 # 검증 / 추론
 python main.py test --facid FAC001 --nodb

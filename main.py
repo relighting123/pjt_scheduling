@@ -3,8 +3,7 @@ main.py - 운영 CLI
 
 사용 예:
     python main.py train --facid FAC001 --prevcnt 3
-    python main.py train --facid FAC001 --ruletimekey 20260621170000
-    python main.py train --facid FAC001 --prevcnt 3 --nodb
+    python main.py train --facid FAC001 --prevcnt 3 --db
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
     python main.py test --facid FAC001
     python main.py test --facid FAC001 --prevcnt 3 --lotcd LC001
@@ -211,7 +210,7 @@ def cmd_train(
     to_key: str = None,
     rule_timekey: str = None,
     *,
-    nodb: bool = False,
+    nodb: bool = True,
     lot_cd: str = None,
     all_folders: bool = False,
     algorithm: str = "scheduling_rl",
@@ -223,7 +222,7 @@ def cmd_train(
         print("=" * 60)
         print(f"[train] FAC={fac_id}  --all: train 폴더 전체 {len(train_folders)}개")
         if nodb:
-            print("[train] --nodb: 기존 JSON만 사용 (자동 수집 없음)")
+            print("[train] dataset JSON 사용 (Oracle 조회·자동 수집 없음)")
         if not train_folders:
             print("[오류] train 폴더가 없습니다. collect 로 데이터를 먼저 수집하세요.")
             sys.exit(1)
@@ -253,7 +252,9 @@ def cmd_train(
             f" ({range_source})",
         )
         if nodb:
-            print("[train] --nodb: 기존 JSON만 사용 (자동 수집 없음)")
+            print("[train] dataset JSON 사용 (Oracle 조회·자동 수집 없음)")
+        else:
+            print("[train] Oracle RULE_TIMEKEY 조회·자동 수집 사용 (--db)")
 
         train_folders = ensure_train_folders(
             fac_id,
@@ -272,7 +273,7 @@ def cmd_train(
         if available:
             print(f"  사용 가능한 train 폴더: {', '.join(available)}")
         else:
-            print("  collect 로 train 데이터를 수집하거나 --nodb 없이 train 을 실행하세요.")
+            print("  collect 로 train 데이터를 수집하거나 --db 로 Oracle 조회·수집을 사용하세요.")
         sys.exit(1)
 
     print(f"[train] train 폴더 {len(train_folders)}개 사용")
@@ -704,8 +705,12 @@ def parse_args():
         help="단일 RULE_TIMEKEY 학습 (미지정 시 --prevcnt 또는 --from/--to 필요)",
     )
     train_p.add_argument(
+        "--db", action="store_true",
+        help="Oracle RULE_TIMEKEY 조회·자동 수집·무효 폴더 재수집·validation SQL 갱신 (기본: dataset JSON만)",
+    )
+    train_p.add_argument(
         "--nodb", action="store_true",
-        help="자동 수집·validation DB 조회 생략, dataset 기존 JSON만 사용",
+        help="dataset 기존 JSON만 사용 (기본값, 명시용)",
     )
     train_p.add_argument(
         "--all", dest="all_folders", action="store_true",
@@ -935,13 +940,16 @@ def main():
                     args, has_ruletimekey=True, require_one=True,
                     one_of_label="--ruletimekey, --prevcnt, --from/--to, --all",
                 )
+            if args.nodb and args.db:
+                print("[오류] --db 와 --nodb 는 함께 쓸 수 없습니다.")
+                sys.exit(1)
             cmd_train(
                 fac_id=args.facid,
                 prevcnt=args.prevcnt,
                 from_key=args.from_key,
                 to_key=args.to_key,
                 rule_timekey=args.ruletimekey,
-                nodb=args.nodb,
+                nodb=not args.db,
                 lot_cd=args.lotcd,
                 all_folders=args.all_folders,
             )

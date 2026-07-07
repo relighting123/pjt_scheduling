@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_period_range, resolve_train_folders, normalize_rule_timekey
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from data.loader.sql_binds import resolve_lot_cd
@@ -268,34 +268,29 @@ def _resolve_train_folders(req: "TrainRequest") -> list[str]:
                 status_code=400,
                 detail="prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.",
             )
-        periods, _ = resolve_collect_periods(
-            fac_id,
-            from_key=req.from_date,
-            to_key=req.to_date,
-            require_db=True,
-        )
-        folders = train_folders_for_periods(fac_id, periods)
+        start_key = normalize_rule_timekey(req.from_date)
+        end_key = normalize_rule_timekey(req.to_date)
+        folders = resolve_train_folders(fac_id, start_key, end_key)
         if not folders:
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"기간 {req.from_date}~{req.to_date} (DB RULE_TIMEKEY)에 해당하는 "
-                    f"train 데이터가 없습니다."
+                    f"기간 {req.from_date}~{req.to_date}에 해당하는 "
+                    f"train JSON 데이터가 없습니다."
                 ),
             )
         return folders
 
     if req.prevcnt is not None:
-        periods, _ = resolve_collect_periods(
-            fac_id,
-            prevcnt=req.prevcnt,
-            require_db=True,
-        )
-        folders = train_folders_for_periods(fac_id, periods)
+        start_key, end_key = resolve_train_period_range(prevcnt=req.prevcnt)
+        folders = resolve_train_folders(fac_id, start_key, end_key)
         if not folders:
             raise HTTPException(
                 status_code=404,
-                detail=f"최근 {req.prevcnt}개 RULE_TIMEKEY에 해당하는 train 데이터가 없습니다.",
+                detail=(
+                    f"최근 {req.prevcnt}일({start_key}~{end_key})에 해당하는 "
+                    f"train JSON 데이터가 없습니다."
+                ),
             )
         return folders
 
