@@ -857,7 +857,16 @@ export function buildAlgorithmKpiComparison(
     const vals = rawByAlgo.map((r) => r[metric.key as RawKey] as number);
     const maxVal = Math.max(...vals, 1);
     extraAxes[axisRefs[mi].xKey] = { ...sharedAxisStyle, domain: domainX[mi], anchor: axisRefs[mi].y, automargin: true };
-    extraAxes[axisRefs[mi].yKey] = { ...sharedAxisStyle, domain: domainY[mi], anchor: axisRefs[mi].x, automargin: true, rangemode: "tozero" as const, range: [0, maxVal * 1.35], title: { text: metric.unit } };
+    // 단위는 상단 주석에만 표기 — y축 제목과 눈금 겹침 방지
+    extraAxes[axisRefs[mi].yKey] = {
+      ...sharedAxisStyle,
+      domain: domainY[mi],
+      anchor: axisRefs[mi].x,
+      automargin: true,
+      rangemode: "tozero" as const,
+      range: [0, maxVal * 1.35],
+      ticklabelposition: "outside" as const,
+    };
   });
 
   return {
@@ -866,7 +875,7 @@ export function buildAlgorithmKpiComparison(
       ...mergeSharedLayout({
         title: { text: "알고리즘별 KPI 비교" },
         height: 520,
-        margin: { t: 64, b: 56, l: 56, r: 16 },
+        margin: { t: 64, b: 56, l: 72, r: 16 },
         annotations,
       }),
       ...extraAxes,
@@ -987,10 +996,16 @@ export function buildAlgorithmGanttComparison(
   const baseMs = resolveGanttBaseMs(axis);
   const n = entries.length;
   const data: Data[] = [];
+  const xLayout = {
+    title: ganttXAxisTitle(baseMs),
+    ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
+  };
   const layout: Partial<Layout> = {
     ...GANTT_PAN_LAYOUT,
-    grid: { rows: n, columns: 1, pattern: "independent", roworder: "top to bottom" },
-    height: Math.max(280 * n + 40, 420),
+    ...(n > 1
+      ? { grid: { rows: n, columns: 1, pattern: "coupled", roworder: "top to bottom" } }
+      : {}),
+    height: Math.max(220 * n + 72, 400),
     barmode: "overlay",
     bargap: 0.20,
     showlegend: n === 1,
@@ -1002,16 +1017,20 @@ export function buildAlgorithmGanttComparison(
     legend: n === 1 ? { title: { text: "제품×공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
-    margin: { l: 92, r: 20, t: 56, b: n === 1 ? 72 : 48 },
+    margin: { l: 92, r: 20, t: 64, b: n === 1 ? 72 : 36 },
+    xaxis: { anchor: "y", ...xLayout },
+    shapes: n === 1 ? [ganttEqpBarDividerShape()] : [],
   };
 
   entries.forEach((entry, i) => {
-    const { xName, yName, xKey, yKey, domain, titleY } = subplotAxisPair(i, n);
+    const yName = i === 0 ? "y" : `y${i + 1}`;
+    const yKey = i === 0 ? "yaxis" : `yaxis${i + 1}`;
+    const { titleY } = subplotAxisPair(i, n);
     const prodKeys = entry.result.prod_keys;
     const operIds = entry.result.oper_ids;
     const traces = ganttTraces(entry.result.schedule, prodKeys, operIds, undefined, baseMs).map((t) => ({
       ...t,
-      xaxis: xName,
+      xaxis: "x",
       yaxis: yName,
       showlegend: i === 0 && (t as { showlegend?: boolean }).showlegend !== false,
     }));
@@ -1025,7 +1044,7 @@ export function buildAlgorithmGanttComparison(
     );
     const convTraces = conversionTraces(convPlans, maxEnd + 1, baseMs).map((t) => ({
       ...t,
-      xaxis: xName,
+      xaxis: "x",
       yaxis: yName,
       showlegend: false,
     }));
@@ -1033,26 +1052,17 @@ export function buildAlgorithmGanttComparison(
     if (i === 0 && convTraces.length > 0) {
       data.push({
         ...conversionLegendTrace(true),
-        xaxis: xName,
+        xaxis: "x",
         yaxis: yName,
       });
     }
 
-    (layout as Record<string, unknown>)[xKey] = {
-      domain: [0, 1],
-      anchor: yName,
-      title: i === 0 ? ganttXAxisTitle(baseMs) : undefined,
-      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
-    };
-    // y축 제목은 생략(알고리즘 라벨 주석과 좌상단에서 겹침 방지). 눈금(EQP id)만 표시.
-    (layout as Record<string, unknown>)[yKey] = ganttYAxisLayout(eqps,
-      undefined,
-      { domain, anchor: xName },
-    );
+    (layout as Record<string, unknown>)[yKey] = ganttYAxisLayout(eqps, undefined, {
+      anchor: "x",
+    });
 
     layout.shapes = [
       ...(layout.shapes ?? []),
-      ...(i === 0 ? [ganttEqpBarDividerShape()] : []),
       ...ganttRowDividerShapes(eqps.length, yName),
     ];
 
@@ -1062,8 +1072,8 @@ export function buildAlgorithmGanttComparison(
         text: `<b>${entry.label}</b>`,
         xref: "paper",
         yref: "paper",
-        x: 0.01,
-        y: titleY,
+        x: 0.005,
+        y: n > 1 ? titleY : 1.01,
         xanchor: "left",
         yanchor: "bottom",
         showarrow: false,
@@ -1095,6 +1105,35 @@ const PERCENT_METRIC_KEYS = new Set<TestMetricKey>([
   "avg_achievement",
   "avg_target_achievement",
 ]);
+
+function metricYRange(key: TestMetricKey, maxVal: number): [number, number] {
+  if (PERCENT_METRIC_KEYS.has(key)) {
+    const ceiling = Math.min(110, Math.max(maxVal * 1.25, maxVal + 8, 20));
+    return [0, ceiling];
+  }
+  return [0, Math.max(maxVal, 1) * 1.25];
+}
+
+function algoCategoryXAxis(categories: string[]) {
+  const needsAngle = categories.some((n) => n.length > 14);
+  return {
+    type: "category" as const,
+    title: { text: "알고리즘", standoff: 10 },
+    categoryorder: "array" as const,
+    categoryarray: categories,
+    tickangle: needsAngle ? -28 : 0,
+    automargin: true,
+  };
+}
+
+function metricYAxisLayout(yTitle: string, yRange: [number, number]) {
+  return {
+    title: { text: yTitle, standoff: 14 },
+    range: yRange,
+    rangemode: "tozero" as const,
+    automargin: true,
+  };
+}
 
 export const TEST_METRICS: TestMetricDef[] = [
   { key: "makespan", label: "Makespan", yTitle: "분" },
@@ -1188,7 +1227,7 @@ export function buildMetricSummaryChart(
 
   const isPercent = PERCENT_METRIC_KEYS.has(row.key);
   const maxVal = Math.max(...avgs, isPercent ? 100 : 1);
-  const yRange: [number, number] = isPercent ? [0, 110] : [0, Math.max(maxVal, 1) * 1.25];
+  const yRange = metricYRange(row.key, maxVal);
 
   return {
     data: [{
@@ -1205,10 +1244,10 @@ export function buildMetricSummaryChart(
     }],
     layout: mergeSharedLayout({
       title: { text: `${row.label} — 평균`, font: { size: 14 } },
-      xaxis: { type: "category" as const, title: { text: "알고리즘" } },
-      yaxis: { title: { text: row.yTitle }, range: yRange },
+      xaxis: algoCategoryXAxis(algoNames),
+      yaxis: metricYAxisLayout(row.yTitle, yRange),
       height: 300,
-      margin: { t: 50, b: 60, l: 55, r: 20 },
+      margin: { t: 50, b: 72, l: 68, r: 20 },
     }),
   };
 }
@@ -1260,8 +1299,7 @@ function buildTestMetricBarChart(
   );
   const allVals = yValues.flat();
   const maxVal = allVals.length ? Math.max(...allVals) : 1;
-  const yRange: [number, number] =
-    PERCENT_METRIC_KEYS.has(metric.key) ? [0, 110] : [0, Math.max(maxVal, 1) * 1.25];
+  const yRange = metricYRange(metric.key, maxVal);
 
   const selectedIdx = selectedLabel
     ? rows.findIndex((r) => r.label === selectedLabel || r.input_folder.endsWith(selectedLabel))
@@ -1288,11 +1326,12 @@ function buildTestMetricBarChart(
         categoryarray: categories,
         tickvals: categories,
         ticktext: tickText,
+        automargin: true,
       },
-      yaxis: { title: { text: metric.yTitle }, range: yRange, rangemode: "tozero" as const },
+      yaxis: metricYAxisLayout(metric.yTitle, yRange),
       legend: { orientation: "h", y: -0.44 },
       height: 340,
-      margin: { t: 50, b: 120, l: 55, r: 20 },
+      margin: { t: 50, b: 120, l: 68, r: 20 },
       ...(selectedCategory
         ? {
             shapes: [{
@@ -1330,7 +1369,7 @@ function buildTestMetricSingleDatasetChart(
   });
 
   const maxVal = Math.max(...values, PERCENT_METRIC_KEYS.has(metric.key) ? 100 : 1);
-  const yMax = PERCENT_METRIC_KEYS.has(metric.key) ? 110 : maxVal * 1.3;
+  const yRange = metricYRange(metric.key, maxVal);
 
   return {
     data: [{
@@ -1345,14 +1384,14 @@ function buildTestMetricSingleDatasetChart(
       hovertemplate: `<b>%{x}</b><br>${metric.label}: %{y}<extra></extra>`,
       showlegend: false,
     }],
-    layout: {
+    layout: mergeSharedLayout({
       title: { text: row?.label ? `${metric.label} · ${row.label}` : metric.label, font: { size: 14 } },
-      ...SHARED_DARK,
-      xaxis: { ...SHARED_DARK.xaxis, type: "category" as const, title: { text: "알고리즘" } },
-      yaxis: { ...SHARED_DARK.yaxis, title: { text: metric.yTitle }, range: [0, yMax] },
+      xaxis: algoCategoryXAxis(algoNames),
+      yaxis: metricYAxisLayout(metric.yTitle, yRange),
+      bargap: 0.35,
       height: 340,
-      margin: { t: 50, b: 72, l: 55, r: 20 },
-    },
+      margin: { t: 50, b: 80, l: 68, r: 20 },
+    }),
   };
 }
 
@@ -1383,8 +1422,7 @@ function buildTestMetricLineChart(
   );
   const allVals = yValues.flat().filter((v): v is number => v != null);
   const maxVal = allVals.length ? Math.max(...allVals) : 1;
-  const yRange: [number, number] =
-    PERCENT_METRIC_KEYS.has(metric.key) ? [0, 110] : [0, Math.max(maxVal, 1) * 1.25];
+  const yRange = metricYRange(metric.key, maxVal);
 
   const showText = rows.length <= 8;
   const data: Data[] = activeAlgos.map((algo, ai) => ({
@@ -1424,11 +1462,12 @@ function buildTestMetricLineChart(
         categoryarray: categories,
         tickvals: categories,
         ticktext: tickText,
+        automargin: true,
       },
-      yaxis: { title: { text: metric.yTitle }, range: yRange, rangemode: "tozero" as const },
+      yaxis: metricYAxisLayout(metric.yTitle, yRange),
       legend: { orientation: "h", y: -0.44 },
       height: 340,
-      margin: { t: 50, b: 120, l: 55, r: 20 },
+      margin: { t: 50, b: 120, l: 68, r: 20 },
       ...(selectedCategory
         ? {
             shapes: [{

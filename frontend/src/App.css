@@ -617,12 +617,13 @@
 }
 
 .compare-chart-panel {
-  min-height: 380px;
+  min-height: 340px;
 }
 
 .compare-chart-panel .plot-chart,
 .compare-chart-panel .js-plotly-plot {
-  min-height: 380px;
+  height: 340px;
+  min-height: 340px;
 }
 
 @keyframes tabFade {

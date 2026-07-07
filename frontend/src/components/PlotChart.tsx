@@ -34,8 +34,6 @@ const plotConfig: Partial<Config> = {
 };
 
 const STICKY_X_BG_CLASS = "sticky-xaxis-bg";
-// 눈금 레이어만 sticky 고정(축 제목은 제거됨 → 제목-눈금 겹침 없음)
-const STICKY_X_SELECTORS = [".xaxislayer-above"];
 
 type AxisRange = { prefix: string; start: number; end: number };
 
@@ -86,7 +84,10 @@ function relayoutClampXMin(
 }
 
 function stickyXElements(graphEl: HTMLElement): Element[] {
-  return STICKY_X_SELECTORS.flatMap((sel) => [...graphEl.querySelectorAll(sel)]);
+  const layers = [...graphEl.querySelectorAll(".xaxislayer-above")];
+  // 다중 서브플롯 간트: coupled x축 1개만 sticky (겹침·정렬 오류 방지)
+  if (layers.length > 1) return [layers[0]];
+  return layers;
 }
 
 function measureStickyBases(scrollEl: HTMLElement, graphEl: HTMLElement): Map<Element, number> {
@@ -235,7 +236,7 @@ export default function PlotChart({
     ? ({ onRelayouting: clampPanX } as Record<string, unknown>)
     : {};
 
-  const plotStyle: CSSProperties = scrollable && plotPixelHeight
+  const plotStyle: CSSProperties = plotPixelHeight
     ? { width: "100%", height: plotPixelHeight }
     : { width: "100%", height: "100%" };
 
