@@ -112,7 +112,7 @@ def env_data_summary(env_data: dict) -> dict:
     batch_info_map = env_data.get("batch_info_map", {})
     batch_info = [
         {
-            "plan_prod_key": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id": oper_id,
             "lot_cd": info["lot_cd"],
             "temp": info["temp"],

@@ -89,7 +89,7 @@ export function formatSimEventDetail(ev: SimEvent): string {
   if (ev.eqp_status) parts.push(ev.eqp_status);
   if (ev.lot_id) parts.push(ev.lot_id);
   if (ev.lot_cd) parts.push(`LOT_CD=${ev.lot_cd}`);
-  if (ev.plan_prod_key) parts.push(ev.plan_prod_key);
+  if (ev.PLAN_PROD_ATTR_VAL) parts.push(ev.PLAN_PROD_ATTR_VAL);
   if (ev.oper_id) parts.push(ev.oper_id);
   if (ev.next_oper_id) {
     parts.push(

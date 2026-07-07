@@ -49,7 +49,7 @@ def _sample_result():
                 "eqp_id": "EQP001",
                 "eqp_model_cd": "A",
                 "oper_id": "OP001",
-                "plan_prod_key": "PPK002",
+                "PLAN_PROD_ATTR_VAL": "PPK002",
                 "from_lot_cd": "LC001",
                 "from_temp": "T650",
                 "to_lot_cd": "LC002",

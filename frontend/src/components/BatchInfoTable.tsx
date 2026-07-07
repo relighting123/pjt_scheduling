@@ -8,7 +8,7 @@ interface BatchInfoTableProps {
 export default function BatchInfoTable({ rows, compact = false }: BatchInfoTableProps) {
   const sorted = [...rows].sort(
     (a, b) =>
-      a.plan_prod_key.localeCompare(b.plan_prod_key) || a.oper_id.localeCompare(b.oper_id),
+      a.PLAN_PROD_ATTR_VAL.localeCompare(b.PLAN_PROD_ATTR_VAL) || a.oper_id.localeCompare(b.oper_id),
   );
 
   if (!sorted.length) {
@@ -33,8 +33,8 @@ export default function BatchInfoTable({ rows, compact = false }: BatchInfoTable
         </thead>
         <tbody>
           {sorted.map((row) => (
-            <tr key={`${row.plan_prod_key}|${row.oper_id}`}>
-              <td>{row.plan_prod_key}</td>
+            <tr key={`${row.PLAN_PROD_ATTR_VAL}|${row.oper_id}`}>
+              <td>{row.PLAN_PROD_ATTR_VAL}</td>
               <td>{row.oper_id}</td>
               <td><code>{row.lot_cd}</code></td>
               <td><code>{row.temp}</code></td>

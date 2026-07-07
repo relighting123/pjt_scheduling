@@ -999,7 +999,7 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
             "eqp_id":         row.get("EQP_ID", ""),
             "eqp_model_cd":   row.get("EQP_MODEL_CD", ""),
             "oper_id":        row.get("OPER_ID", ""),
-            "plan_prod_key":  row.get("PLAN_PROD_ATTR_VAL", ""),
+            "PLAN_PROD_ATTR_VAL":  row.get("PLAN_PROD_ATTR_VAL", ""),
             "from_lot_cd":    row.get("LOT_CD", ""),
             "from_temp":      row.get("TEMPER_VAL", ""),
             "to_lot_cd":      row.get("TO_LOT_CD", ""),

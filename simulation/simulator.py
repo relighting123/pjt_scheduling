@@ -91,7 +91,7 @@ class ToolTracker:
 class Lot:
     lot_id:          str
     carrier_id:      str
-    plan_prod_key:   str
+    PLAN_PROD_ATTR_VAL:   str
     oper_id:         str
     seq:             int
     wf_qty:          int
@@ -185,7 +185,7 @@ class SchedulingSimulator:
             self.lot_pool[ld["lot_id"]] = Lot(
                 lot_id=ld["lot_id"],
                 carrier_id=ld["carrier_id"],
-                plan_prod_key=ld["plan_prod_key"],
+                PLAN_PROD_ATTR_VAL=ld["PLAN_PROD_ATTR_VAL"],
                 oper_id=ld["oper_id"],
                 seq=ld["seq"],
                 wf_qty=ld["wf_qty"],
@@ -228,7 +228,7 @@ class SchedulingSimulator:
         self._termination_mode: str = data.get("termination_mode", "all_wip")
         self._enable_wip_inflow: bool = bool(data.get("enable_wip_inflow", True))
         self._initial_wip_lot_keys: set = {
-            (lid, meta.get("plan_prod_key"), meta.get("oper_id"))
+            (lid, meta.get("PLAN_PROD_ATTR_VAL"), meta.get("oper_id"))
             for lid, meta in data.get("abstract_lot_meta", {}).items()
         }
 
@@ -343,12 +343,12 @@ class SchedulingSimulator:
             move_payload: Dict[str, Any] = {
                 "lot_id": lot_id,
                 "lot_cd": lot_cd,
-                "plan_prod_key": meta.get("plan_prod_key", ""),
+                "PLAN_PROD_ATTR_VAL": meta.get("PLAN_PROD_ATTR_VAL", ""),
                 "oper_id": meta.get("oper_id", ""),
             }
             if next_wip:
                 move_payload["next_oper_id"] = next_wip["oper_id"]
-                move_payload["next_plan_prod_key"] = next_wip["plan_prod_key"]
+                move_payload["next_plan_prod_key"] = next_wip["PLAN_PROD_ATTR_VAL"]
                 move_payload["next_oper_in_time"] = next_wip.get("oper_in_time")
             self._emit_event(EVENT_MOVE_OUT, eqp_id, **move_payload)
         eqp.status = "idle"
@@ -440,8 +440,8 @@ class SchedulingSimulator:
                 eqp.prev_lot_cd = lot_cd
             if temp:
                 eqp.prev_temp = temp
-            if row.get("plan_prod_key"):
-                eqp.prev_prod = row["plan_prod_key"]
+            if row.get("PLAN_PROD_ATTR_VAL"):
+                eqp.prev_prod = row["PLAN_PROD_ATTR_VAL"]
             if row.get("oper_id"):
                 eqp.prev_oper = row["oper_id"]
 
@@ -455,7 +455,7 @@ class SchedulingSimulator:
             for lid in wip.get("lot_ids", []):
                 return self._lot_cd_temp(lid, ppk=ppk, oper_id=oper_id)
         for ld in self._env_data.get("lots", []):
-            if ld.get("plan_prod_key") == ppk and ld.get("oper_id") == oper_id:
+            if ld.get("PLAN_PROD_ATTR_VAL") == ppk and ld.get("oper_id") == oper_id:
                 return self._lot_cd_temp(
                     ld["lot_id"], ppk=ppk, oper_id=oper_id,
                 )
@@ -608,7 +608,7 @@ class SchedulingSimulator:
                 meta = self._wip_lot_meta.get(lid, {})
                 if not self._is_current_wip_lot(
                     lid,
-                    meta.get("plan_prod_key", ""),
+                    meta.get("PLAN_PROD_ATTR_VAL", ""),
                     meta.get("oper_id", ""),
                 ):
                     continue
@@ -647,7 +647,7 @@ class SchedulingSimulator:
         model = self._eqp_model_map[eqp_id]
         for row in self._abstract_template:
             if (
-                row["plan_prod_key"] == ppk
+                row["PLAN_PROD_ATTR_VAL"] == ppk
                 and row["oper_id"] == oper_id
                 and row["eqp_model"] == model
             ):
@@ -658,7 +658,7 @@ class SchedulingSimulator:
         """템플릿 + WIP 풀 → UI/히스토리용 abstract arrange."""
         rows = []
         for tmpl in self._abstract_template:
-            wip = self._wip_for(tmpl["plan_prod_key"], tmpl["oper_id"])
+            wip = self._wip_for(tmpl["PLAN_PROD_ATTR_VAL"], tmpl["oper_id"])
             item = dict(tmpl)
             if wip:
                 item["wip_qty"] = wip["wip_qty"]
@@ -694,7 +694,7 @@ class SchedulingSimulator:
             wip.get("min_inject_time", oper_in_time), oper_in_time,
         )
         self._wip_lot_meta[lot_id] = {
-            "plan_prod_key": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id":       oper_id,
             "seq":           meta.get("seq", 1),
             "wf_qty":        meta.get("wf_qty", 25),
@@ -721,7 +721,7 @@ class SchedulingSimulator:
         if not self._enable_wip_inflow:
             return None
 
-        ppk = meta["plan_prod_key"]
+        ppk = meta["PLAN_PROD_ATTR_VAL"]
         seq = meta["seq"]
         next_info = self._env_data.get("flow_next", {}).get(ppk, {}).get(seq)
         if not next_info:
@@ -738,7 +738,7 @@ class SchedulingSimulator:
         )
         return {
             "lot_id": lot_id,
-            "plan_prod_key": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id": next_oper,
             "oper_in_time": complete_time,
         }
@@ -779,7 +779,7 @@ class SchedulingSimulator:
         return sum(
             1
             for meta in self._in_flight.values()
-            if meta.get("plan_prod_key") == ppk and meta.get("oper_id") == oper_id
+            if meta.get("PLAN_PROD_ATTR_VAL") == ppk and meta.get("oper_id") == oper_id
         )
 
     def _abstract_assignable_on_eqp(self, eqp_id: str) -> List[dict]:
@@ -790,7 +790,7 @@ class SchedulingSimulator:
         for tmpl in self._abstract_template:
             if tmpl["eqp_model"] != model:
                 continue
-            ppk, oper_id = tmpl["plan_prod_key"], tmpl["oper_id"]
+            ppk, oper_id = tmpl["PLAN_PROD_ATTR_VAL"], tmpl["oper_id"]
             wip = self._wip_for(ppk, oper_id)
             if not wip or wip["wip_qty"] <= 0:
                 continue
@@ -860,7 +860,7 @@ class SchedulingSimulator:
         wip: Dict[str, int] = {}
         wf_defaults: Dict[str, int] = {}
         for tmpl in self._abstract_template:
-            wf_defaults[tmpl["plan_prod_key"]] = tmpl.get("wf_qty", 25)
+            wf_defaults[tmpl["PLAN_PROD_ATTR_VAL"]] = tmpl.get("wf_qty", 25)
         for (ppk, oper_id), pool in self._wip_pool.items():
             if pool["wip_qty"] <= 0:
                 continue
@@ -947,7 +947,7 @@ class SchedulingSimulator:
                 to_lot_cd=lot_cd,
                 to_temp=temp,
                 oper_id=oper_id,
-                plan_prod_key=ppk,
+                PLAN_PROD_ATTR_VAL=ppk,
                 eqp_model=eqp_model,
                 conv_duration_min=self._conversion_minutes,
                 conv_end_tm=conv_end,
@@ -958,7 +958,7 @@ class SchedulingSimulator:
                 "eqp_id":        eqp.eqp_id,
                 "eqp_model_cd":  eqp_model,
                 "oper_id":       oper_id,
-                "plan_prod_key": ppk,
+                "PLAN_PROD_ATTR_VAL": ppk,
                 "from_lot_cd":   eqp.prev_lot_cd,
                 "from_temp":     eqp.prev_temp,
                 "to_lot_cd":     lot_cd,
@@ -1344,7 +1344,7 @@ class SchedulingSimulator:
         """(PPK, OPER) 선택 후 LOT 자동 배정."""
         lots = [
             l for l in self.available_lots(eqp_id)
-            if l["plan_prod_key"] == ppk and l["oper_id"] == oper_id
+            if l["PLAN_PROD_ATTR_VAL"] == ppk and l["oper_id"] == oper_id
         ]
         lot_id = self._auto_select_lot(eqp_id, lots)
         if lot_id is None:
@@ -1434,7 +1434,7 @@ class SchedulingSimulator:
         """
         lots = [
             l for l in self.available_lots(eqp_id)
-            if l["plan_prod_key"] == ppk and l["oper_id"] == oper_id
+            if l["PLAN_PROD_ATTR_VAL"] == ppk and l["oper_id"] == oper_id
         ]
         wip_carriers = len(lots)
         if wip_carriers == 0:
@@ -1550,10 +1550,10 @@ class SchedulingSimulator:
         if not lots:
             return []
         feasible: List[int] = []
-        buckets = {(l["plan_prod_key"], l["oper_id"]) for l in lots}
+        buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
         for ppk, oper_id in buckets:
             lot_id = self._auto_select_lot(eqp_id, [
-                l for l in lots if l["plan_prod_key"] == ppk and l["oper_id"] == oper_id
+                l for l in lots if l["PLAN_PROD_ATTR_VAL"] == ppk and l["oper_id"] == oper_id
             ])
             if lot_id is None:
                 continue
@@ -1602,7 +1602,7 @@ class SchedulingSimulator:
         }
         lots: List[dict] = []
         for row in self._abstract_assignable_on_eqp(eqp_id):
-            ppk, oper_id = row["plan_prod_key"], row["oper_id"]
+            ppk, oper_id = row["PLAN_PROD_ATTR_VAL"], row["oper_id"]
             wip = self._wip_for(ppk, oper_id)
             if not wip:
                 continue
@@ -1631,7 +1631,7 @@ class SchedulingSimulator:
                 lots.append({
                     "lot_id":          lid,
                     "carrier_id":      carrier,
-                    "plan_prod_key":   meta.get("plan_prod_key", lot.plan_prod_key if lot else ppk),
+                    "PLAN_PROD_ATTR_VAL": meta.get("PLAN_PROD_ATTR_VAL", lot.PLAN_PROD_ATTR_VAL if lot else ppk),
                     "oper_id":         meta.get("oper_id", lot.oper_id if lot else oper_id),
                     "wf_qty":          wf_qty,
                     "priority":        (
@@ -1678,7 +1678,7 @@ class SchedulingSimulator:
             if not item.get("lot_cd"):
                 lot_cd, temp = self._lot_cd_temp(
                     item["lot_id"],
-                    ppk=item.get("plan_prod_key"),
+                    ppk=item.get("PLAN_PROD_ATTR_VAL"),
                     oper_id=item.get("oper_id"),
                 )
                 item["lot_cd"] = lot_cd
@@ -1750,7 +1750,7 @@ class SchedulingSimulator:
         self._push_event(end_time, EVENT_PROCESS_END, eqp_id)
 
         self._in_flight[lot_id] = {
-            "plan_prod_key": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id":       oper_id,
             "seq":           seq,
             "wf_qty":        wf_qty,
@@ -1790,7 +1790,7 @@ class SchedulingSimulator:
             "eqp_id":        eqp_id,
             "lot_id":        lot_id,
             "oper_id":       oper_id,
-            "plan_prod_key": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "eqp_model":     row["eqp_model"],
             "st":            st_per_wafer,
             "wf_qty":        wf_qty,
@@ -1850,7 +1850,7 @@ class SchedulingSimulator:
             EVENT_JOB_ASSIGNED, eqp_id,
             lot_id=lot_id,
             lot_cd=lot_cd,
-            plan_prod_key=ppk,
+            PLAN_PROD_ATTR_VAL=ppk,
             oper_id=oper_id,
         )
 
@@ -1890,7 +1890,7 @@ class SchedulingSimulator:
         self._last_decision_assignment = {
             "eqp_id":        eqp_id,
             "lot_id":        lot_id,
-            "plan_prod_key": ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id":       oper_id,
             "eqp_model":     row["eqp_model"],
             "st":            st_per_wafer,
@@ -1924,14 +1924,14 @@ class SchedulingSimulator:
             return -1.0
 
         if meta:
-            ppk = meta["plan_prod_key"]
+            ppk = meta["PLAN_PROD_ATTR_VAL"]
             oper_id = meta["oper_id"]
             seq = meta.get("seq", 1)
             wf_qty = meta.get("wf_qty", 25)
             carrier_id = meta.get("carrier_id", "")
             lot_stat_cd = lot.lot_stat_cd if lot else meta.get("lot_stat_cd", "WAIT")
         else:
-            ppk, oper_id = lot.plan_prod_key, lot.oper_id
+            ppk, oper_id = lot.PLAN_PROD_ATTR_VAL, lot.oper_id
             seq, wf_qty, carrier_id = lot.seq, lot.wf_qty, lot.carrier_id
             lot_stat_cd = lot.lot_stat_cd
 

@@ -101,13 +101,13 @@ def _resolve_lot_oper_seq(
     )
 
 
-def _default_lot_cd(lot_id: str, plan_prod_key: str) -> str:
-    suffix = plan_prod_key.replace("PPK", "") if "PPK" in plan_prod_key else lot_id[-3:]
+def _default_lot_cd(lot_id: str, PLAN_PROD_ATTR_VAL: str) -> str:
+    suffix = PLAN_PROD_ATTR_VAL.replace("PPK", "") if "PPK" in PLAN_PROD_ATTR_VAL else lot_id[-3:]
     return f"LC{suffix.zfill(2)[-2:]}"
 
 
-def _default_temp(plan_prod_key: str) -> str:
-    n = sum(ord(c) for c in plan_prod_key)
+def _default_temp(PLAN_PROD_ATTR_VAL: str) -> str:
+    n = sum(ord(c) for c in PLAN_PROD_ATTR_VAL)
     return "T650" if n % 2 == 0 else "T700"
 
 
@@ -161,7 +161,7 @@ def _build_lot_attributes(
             lot_cd = str(master[lid]["LOT_CD"])
             temp = str(master[lid]["TEMP"])
         elif lid in lot_info:
-            ppk = lot_info[lid]["plan_prod_key"]
+            ppk = lot_info[lid]["PLAN_PROD_ATTR_VAL"]
             oper_id = lot_info[lid]["oper_id"]
             route = batch_info_map.get((ppk, oper_id))
             if route:
@@ -196,7 +196,7 @@ def _normalize_eqp_initial_state(rows: List[dict]) -> List[dict]:
             "eqp_id":        eid,
             "lot_cd":        str(r.get("LOT_CD", "")).strip(),
             "temp":          str(r.get("TEMP", "")).strip(),
-            "plan_prod_key": str(r.get("PLAN_PROD_ATTR_VAL", "")).strip() or None,
+            "PLAN_PROD_ATTR_VAL": str(r.get("PLAN_PROD_ATTR_VAL", "")).strip() or None,
             "oper_id":       str(r.get("OPER_ID", "")).strip() or None,
         })
     return out
@@ -240,7 +240,7 @@ def _apply_wafer_lot_split(
         wf = coerce_int(info["wf_qty"], field="wf_qty")
         model = eqp_model_map[info["original_eqp"]]
         split_qty = _resolve_split_qty(
-            info["plan_prod_key"], info["oper_id"], model, split_lookup,
+            info["PLAN_PROD_ATTR_VAL"], info["oper_id"], model, split_lookup,
         )
         if split_qty is None or split_qty <= 0 or wf <= split_qty:
             continue
@@ -337,7 +337,7 @@ def _build_abstract_inventory(
 
     ppk_wf: Dict[str, int] = {}
     for ld in lot_info.values():
-        ppk_wf[ld["plan_prod_key"]] = ld["wf_qty"]
+        ppk_wf[ld["PLAN_PROD_ATTR_VAL"]] = ld["wf_qty"]
 
     inventory: List[dict] = []
     seen: set = set()
@@ -352,7 +352,7 @@ def _build_abstract_inventory(
         pm = plan_meta.get((ppk, oper_id), {})
         inventory.append({
             "abs_key":         abs_key,
-            "plan_prod_key":   ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id":         oper_id,
             "eqp_model":       model,
             "seq":             seq_map.get((ppk, oper_id), 1),
@@ -365,7 +365,7 @@ def _build_abstract_inventory(
     wip_init: Dict[Tuple[str, str], dict] = {}
     lot_meta: Dict[str, dict] = {}
     for lid, ld in lot_info.items():
-        key = (ld["plan_prod_key"], ld["oper_id"])
+        key = (ld["PLAN_PROD_ATTR_VAL"], ld["oper_id"])
         st_tm = lot_initial_start.get(lid, 0)
         if key not in wip_init:
             wip_init[key] = {
@@ -382,7 +382,7 @@ def _build_abstract_inventory(
         wip["oper_in_time"] = max(wip["oper_in_time"], st_tm)
         wip["min_inject_time"] = min(wip["min_inject_time"], st_tm)
         lot_meta[lid] = {
-            "plan_prod_key": ld["plan_prod_key"],
+            "PLAN_PROD_ATTR_VAL": ld["PLAN_PROD_ATTR_VAL"],
             "oper_id":       ld["oper_id"],
             "seq":           ld["seq"],
             "wf_qty":        ld["wf_qty"],
@@ -504,7 +504,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         lot_info[lot_id] = {
             "lot_id":          lot_id,
             "carrier_id":      r.get("CARRIER_ID", f"CAR{lot_id[-3:]}"),
-            "plan_prod_key":   ppk,
+            "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id":         oper_id,
             "seq":             seq,
             "wf_qty":          wf_qty,
@@ -520,7 +520,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     plan_list = []
     for p in plan_raw:
         plan_list.append({
-            "plan_prod_key": p["PLAN_PROD_ATTR_VAL"],
+            "PLAN_PROD_ATTR_VAL": p["PLAN_PROD_ATTR_VAL"],
             "oper_id":       p["OPER_ID"],
             "d0_plan_qty":   coerce_int(p["D0_PLAN_QTY"], field="D0_PLAN_QTY"),
             "d1_plan_qty":   coerce_int(p["D1_PLAN_QTY"], field="D1_PLAN_QTY"),
@@ -619,7 +619,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
 
     plan_meta: Dict[Tuple[str, str], dict] = {}
     for p in plan_list:
-        plan_meta[(p["plan_prod_key"], p["oper_id"])] = {
+        plan_meta[(p["PLAN_PROD_ATTR_VAL"], p["oper_id"])] = {
             "priority":    p["priority"],
             "d0_plan_qty": p["d0_plan_qty"],
         }
@@ -678,7 +678,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "eqp_id":           eid,
             "lot_id":           lot_id,
             "oper_id":          oper_id,
-            "plan_prod_key":    r["PLAN_PROD_ATTR_VAL"],
+            "PLAN_PROD_ATTR_VAL": r["PLAN_PROD_ATTR_VAL"],
             "st":               st_per_wafer,
             "proc_time":        effective_proc_time(st_per_wafer, wf_qty_row),
             "eqp_model":        row_model,
