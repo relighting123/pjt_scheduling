@@ -119,14 +119,14 @@ function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
         )}
       </div>
       <div className="table-wrap">
-        <table>
-          <thead><tr>{cols.map(c => <th key={c}>{c}</th>)}</tr></thead>
+        <table className="data-table">
+          <thead><tr>{cols.map(c => <th key={c} className={["START_TM","END_TM","PROC_TIME","WF_QTY"].includes(c) ? "num" : undefined}>{c}</th>)}</tr></thead>
           <tbody>
             {visible.map((r, i) => (
               <tr key={`${r.EQP_ID}-${r.LOT_ID}-${r.START_TM}-${i}`}>
                 <td>{r.EQP_ID}</td><td>{r.LOT_ID}</td><td>{r.CARRIER_ID ?? ""}</td>
                 <td>{r.PLAN_PROD_ATTR_VAL}</td><td>{r.OPER_ID ?? ""}</td><td>{r.ST ?? ""}</td>
-                <td>{r.START_TM}</td><td>{r.END_TM}</td><td>{r.PROC_TIME ?? ""}</td><td>{r.WF_QTY ?? ""}</td>
+                <td className="num">{r.START_TM}</td><td className="num">{r.END_TM}</td><td className="num">{r.PROC_TIME ?? ""}</td><td className="num">{r.WF_QTY ?? ""}</td>
               </tr>
             ))}
           </tbody>

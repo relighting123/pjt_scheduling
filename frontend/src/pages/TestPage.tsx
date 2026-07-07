@@ -423,18 +423,18 @@ export default function TestPage({ config, modelExists }: Props) {
                   }
                 >
                   <div className="table-wrap">
-                    <table>
-                      <thead><tr><th>알고리즘</th><th>Makespan</th><th>가동률</th><th>유휴율</th><th>공정전환</th><th>제품전환</th><th>Tool전환</th><th>계획달성률</th><th>타겟달성률</th></tr></thead>
+                    <table className="data-table">
+                      <thead><tr><th>알고리즘</th><th className="num">Makespan</th><th className="num">가동률</th><th className="num">유휴율</th><th className="num">공정전환</th><th className="num">제품전환</th><th className="num">Tool전환</th><th className="num">계획달성률</th><th className="num">타겟달성률</th></tr></thead>
                       <tbody>
                         {detailEntries.map(e => {
                           const k = computeInferenceKpi(e.result);
                           return (
                             <tr key={e.algorithm}>
-                              <td style={{ fontFamily:"var(--font)", fontWeight:700, color: ALGO_CHART_COLORS[e.algorithm] }}>{e.label}</td>
-                              <td>{k.makespan}분</td><td>{k.avgUtilPct}%</td><td>{k.avgIdlePct}%</td>
-                              <td>{k.operSwitches}회</td><td>{k.prodSwitches}회</td><td>{k.toolSwitches}회</td>
-                              <td style={{ color: k.avgAchPct>=90?"var(--ok)":k.avgAchPct>=70?"var(--warn)":"var(--err)" }}>{k.avgAchPct}%</td>
-                              <td style={{ color: k.avgTargetAchPct>=90?"var(--ok)":k.avgTargetAchPct>=70?"var(--warn)":"var(--err)" }}>{k.avgTargetAchPct}%</td>
+                              <td style={{ fontWeight:700, color: ALGO_CHART_COLORS[e.algorithm] }}>{e.label}</td>
+                              <td className="num">{k.makespan}분</td><td className="num">{k.avgUtilPct}%</td><td className="num">{k.avgIdlePct}%</td>
+                              <td className="num">{k.operSwitches}회</td><td className="num">{k.prodSwitches}회</td><td className="num">{k.toolSwitches}회</td>
+                              <td className="num" style={{ color: k.avgAchPct>=90?"var(--ok)":k.avgAchPct>=70?"var(--warn)":"var(--err)" }}>{k.avgAchPct}%</td>
+                              <td className="num" style={{ color: k.avgTargetAchPct>=90?"var(--ok)":k.avgTargetAchPct>=70?"var(--warn)":"var(--err)" }}>{k.avgTargetAchPct}%</td>
                             </tr>
                           );
                         })}

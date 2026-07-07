@@ -23,7 +23,8 @@ export default function BatchInfoTable({ rows, compact = false }: BatchInfoTable
           <span className="arrange-hint-inline"> · conversion / tool cap lookup</span>
         </p>
       )}
-      <table className="arrange-table batch-info-table">
+      <div className="table-wrap">
+      <table className="arrange-table batch-info-table data-table">
         <thead>
           <tr>
             {["PPK", "OPER", "LOT_CD", "TEMP"].map((h) => (
@@ -42,6 +43,7 @@ export default function BatchInfoTable({ rows, compact = false }: BatchInfoTable
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
