@@ -11,6 +11,16 @@ const STATUS_LABELS: Record<string, string> = {
   sim_done: "시뮬 종료",
 };
 
+const BLOCK_REASON_LABELS: Record<string, string> = {
+  no_wip: "재공(WIP) 없음",
+  wip_not_ready: "oper_in_time 미도래",
+  no_arrange: "EQP arrange/가공 불가",
+  tool_cap_blocked: "tool cap 차단",
+  lot_select_failed: "LOT 자동 선택 실패",
+  assign_failed: "배정 실행 실패",
+  unknown: "기타",
+};
+
 /** 리워드 항목 한글 라벨 + 부호 의미 */
 const TERM_LABELS: Record<string, string> = {
   same_setup: "동일 셋업 연속",
@@ -29,6 +39,23 @@ interface Props {
   entries: DecisionLogEntry[];
   /** 현재 스텝 변경 시 부모에 통지 (간트 동기화용) */
   onStepChange?: (entry: DecisionLogEntry | null) => void;
+}
+
+function stepDetailLines(entry: DecisionLogEntry): string[] {
+  const lines: string[] = [];
+  const main = entry.selection_reason ?? entry.reason;
+  if (main) lines.push(main);
+
+  if (entry.failure_code) {
+    const label = BLOCK_REASON_LABELS[entry.failure_code] ?? entry.failure_code;
+    lines.push(entry.failure_detail ? `${label}: ${entry.failure_detail}` : label);
+  }
+
+  if (entry.time_advanced && entry.sim_time_after !== entry.sim_time) {
+    lines.push(`결정 시각이 없어 시뮬레이션 시간을 ${entry.sim_time}분 → ${entry.sim_time_after}분으로 전진했습니다.`);
+  }
+
+  return lines;
 }
 
 export default function StepDebugger({ entries, onStepChange }: Props) {
@@ -59,7 +86,10 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
     return (
       <div className="card">
         <div className="card-title">스텝 디버거</div>
-        <p className="hint">결정 로그가 없습니다. 좌측에서 「결정 로그 포함」을 켜고 추론을 실행하세요.</p>
+        <p className="hint">
+          결정 로그가 없습니다. 좌측 <b>알고리즘</b> 패널에서 <b>「결정 로그 포함」</b>을 켠 뒤 추론을 다시 실행하세요.
+          저장된 결과를 불러온 경우, 당시 결정 로그가 기록되지 않았을 수 있습니다.
+        </p>
       </div>
     );
   }
@@ -68,12 +98,12 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
   const terms = Object.entries(bd);
   const bdSum = terms.reduce((a, [, v]) => a + v, 0);
   const maxAbs = Math.max(0.01, ...terms.map(([, v]) => Math.abs(v)));
+  const detailLines = cur ? stepDetailLines(cur) : [];
 
   const go = (n: number) => { setPlaying(false); setIdx(Math.max(0, Math.min(n, view.length - 1))); };
 
   return (
     <div className="step-debugger">
-      {/* 네비게이션 */}
       <div className="card stepdbg-nav">
         <div className="stepdbg-nav-row">
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => go(0)} disabled={clampedIdx === 0}>⏮</button>
@@ -97,9 +127,28 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
 
       {cur && (
         <div className="grid-2 stepdbg-body">
-          {/* 결정 상세 */}
           <div className="card">
             <div className="card-title">결정 상세 · step {cur.step}</div>
+
+            <div className="stepdbg-reason-box">
+              <div className="stepdbg-reason-head">
+                <span className={`decision-status decision-status-${cur.status}`}>
+                  {STATUS_LABELS[cur.status] ?? cur.status}
+                </span>
+                {cur.time_advanced && cur.sim_time_after !== cur.sim_time ? (
+                  <span className="stepdbg-tag stepdbg-tag-accent">시간 전진</span>
+                ) : null}
+                {cur.action_corrected ? (
+                  <span className="stepdbg-tag stepdbg-tag-warn">action 보정</span>
+                ) : null}
+              </div>
+              <div className="stepdbg-reason-body">
+                {detailLines.length
+                  ? detailLines.map((line, i) => <p key={i}>{line}</p>)
+                  : <p className="hint">이 스텝에 대한 상세 사유가 기록되지 않았습니다.</p>}
+              </div>
+            </div>
+
             <table className="kv-table">
               <tbody>
                 <tr><th>시각(분)</th><td>{cur.sim_time}{cur.time_advanced ? ` → ${cur.sim_time_after}` : ""}</td></tr>
@@ -110,7 +159,6 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                     {cur.action_requested_ppk ? `${cur.action_requested_ppk}/${cur.action_requested_oper}` : "—"}
                     {"  →  "}
                     <b>{(cur.selected_ppk ?? cur.resolved_ppk) ? `${cur.selected_ppk ?? cur.resolved_ppk}/${cur.selected_oper_id ?? cur.resolved_oper}` : "—"}</b>
-                    {cur.action_corrected ? <span className="stepdbg-tag stepdbg-tag-warn">보정</span> : null}
                   </td>
                 </tr>
                 <tr><th>선택 LOT</th><td><b>{cur.selected_lot_id ?? cur.assigned_lot_id ?? "—"}</b></td></tr>
@@ -122,11 +170,12 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                       : cur.status === "assigned" ? <span className="stepdbg-tag">블록 연속</span> : "—"}
                   </td>
                 </tr>
-                <tr>
-                  <th>상태</th>
-                  <td><span className={`decision-status decision-status-${cur.status}`}>{STATUS_LABELS[cur.status] ?? cur.status}</span></td>
-                </tr>
-                <tr><th>사유</th><td>{cur.selection_reason ?? cur.reason}</td></tr>
+                {cur.failure_code ? (
+                  <tr>
+                    <th>실패 코드</th>
+                    <td>{BLOCK_REASON_LABELS[cur.failure_code] ?? cur.failure_code}</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
 
@@ -146,16 +195,22 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
             {cur.blocked_buckets?.length ? (
               <div className="stepdbg-list">
                 <div className="stepdbg-list-title">차단된 bucket ({cur.blocked_buckets.length})</div>
-                <div className="stepdbg-blocked">
-                  {cur.blocked_buckets.slice(0, 6).map((b, i) => (
-                    <div key={i}><b>{b.ppk}/{b.oper_id}</b> — {b.detail}</div>
+                <div className="stepdbg-blocked stepdbg-blocked-scroll">
+                  {cur.blocked_buckets.map((b, i) => (
+                    <div key={i} className="stepdbg-blocked-row">
+                      <b>{b.ppk}/{b.oper_id}</b>
+                      <span className="stepdbg-blocked-reason">
+                        {BLOCK_REASON_LABELS[b.reason] ?? b.reason}
+                      </span>
+                      <span>{b.detail}</span>
+                      {b.wip_qty != null ? <span className="stepdbg-blocked-meta">WIP {b.wip_qty}</span> : null}
+                    </div>
                   ))}
                 </div>
               </div>
             ) : null}
           </div>
 
-          {/* 리워드 분해 */}
           <div className="card">
             <div className="card-title">리워드 항목별 분해</div>
             {terms.length ? (
@@ -191,7 +246,12 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                 </p>
               </>
             ) : (
-              <p className="hint">이 스텝은 배정이 없어 리워드 분해가 없습니다 (상태: {STATUS_LABELS[cur.status] ?? cur.status}).</p>
+              <p className="hint">
+                이 스텝은 배정이 없어 리워드 분해가 없습니다.
+                {cur.status === "no_feasible" || cur.status === "no_idle_eqp"
+                  ? " 좌측 상단의 스텝 사유와 차단 bucket을 확인하세요."
+                  : ` (상태: ${STATUS_LABELS[cur.status] ?? cur.status})`}
+              </p>
             )}
           </div>
         </div>

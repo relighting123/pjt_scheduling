@@ -633,6 +633,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             <input type="checkbox" checked={decisionLog} onChange={e => setDecisionLog(e.target.checked)} disabled={loading} />
             결정 로그 포함
           </label>
+          <p className="hint" style={{ marginTop: "-0.25rem", marginBottom: "0.5rem" }}>
+            스텝 디버거에서 스텝별 배정·차단 사유를 보려면 켜고 추론을 실행하세요.
+          </p>
           <label className="check-label">
             <input type="checkbox" checked={wipInflow} onChange={e => setWipInflow(e.target.checked)} disabled={loading} />
             유입 재공 이벤트
@@ -688,8 +691,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 type="button"
                 className={`tab-btn${tab === "debug" ? " active" : ""}`}
                 onClick={() => setTab("debug")}
-                disabled={!result?.decision_log?.length}
-                title={result?.decision_log?.length ? undefined : "「결정 로그 포함」을 켜고 추론을 다시 실행하면 스텝 디버거를 볼 수 있습니다."}
+                disabled={!result}
               >
                 스텝 디버거
               </button>
@@ -860,13 +862,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     <StepDebugger entries={result.decision_log} onStepChange={setDebugStep} />
                   </div>
                 ) : (
-                  <div className="card">
-                    <div className="card-title">스텝 디버거</div>
-                    <p className="hint">
-                      이 결과에는 결정 로그가 없습니다. 좌측에서 <b>「결정 로그 포함」</b>을 켜고 추론을 다시 실행하세요.
-                      (성능상 추론에서만 기록됩니다)
-                    </p>
-                  </div>
+                  <StepDebugger entries={[]} />
                 )}
               </div>
             )}

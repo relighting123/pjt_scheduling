@@ -134,3 +134,24 @@ def test_scheduling_env_decision_log_statuses():
     assert log
     statuses = {row["status"] for row in log}
     assert "assigned" in statuses or "action_corrected" in statuses
+
+
+def test_serialize_inference_result_keeps_decision_log_without_history():
+    from api.serializers import serialize_inference_result
+
+    payload = serialize_inference_result(
+        {
+            "schedule": [],
+            "history": [{"step": 1}],
+            "event_log": [{"time": 0, "kind": "IDLE"}],
+            "decision_log": [{"step": 1, "status": "assigned", "reason": "ok"}],
+            "stats": {"completed_qty": {}},
+            "plan": [],
+        },
+        include_history=False,
+        include_event_log=True,
+        include_decision_log=True,
+    )
+    assert payload["history"] == []
+    assert len(payload["event_log"]) == 1
+    assert len(payload["decision_log"]) == 1
