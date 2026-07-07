@@ -151,7 +151,7 @@ def fetch_rule_timekey_list(
 
 def fetch_recent_rule_timekeys(
     fac_id: str,
-    prevdays: int,
+    prevcnt: int,
     *,
     db_registry: Optional[DbRegistry] = None,
 ) -> Optional[List[str]]:
@@ -161,12 +161,12 @@ def fetch_recent_rule_timekeys(
     path = _meta_sql_path(RULE_TIMEKEY_RECENT_SQL)
     if not path.exists():
         return None
-    if prevdays < 1:
-        raise ValueError("--prevdays 는 1 이상이어야 합니다.")
+    if prevcnt < 1:
+        raise ValueError("--prevcnt 는 1 이상이어야 합니다.")
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rows = execute_meta_sql(
         RULE_TIMEKEY_RECENT_SQL,
-        {"FAC_ID": fac_id, "PREV_DAYS": prevdays},
+        {"FAC_ID": fac_id, "PREV_CNT": prevcnt},
         db_registry=db_registry,
     )
     keys = sorted(_rows_to_keys(rows))
@@ -185,7 +185,7 @@ def _db_rule_timekey_error(fac_id: str, detail: str) -> ValueError:
 def resolve_collect_periods(
     fac_id: str,
     *,
-    prevdays: int = 1,
+    prevcnt: int = 1,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
     db_registry: Optional[DbRegistry] = None,
@@ -222,14 +222,14 @@ def resolve_collect_periods(
         raise ValueError("--from 와 --to 를 함께 지정하세요.")
 
     db_keys = fetch_recent_rule_timekeys(
-        fac_id, prevdays, db_registry=db_registry,
+        fac_id, prevcnt, db_registry=db_registry,
     )
     if db_keys is not None:
         if not db_keys:
             if require_db:
                 raise _db_rule_timekey_error(
                     fac_id,
-                    f"최근 {prevdays}개 RULE_TIMEKEY 없음",
+                    f"최근 {prevcnt}개 RULE_TIMEKEY 없음",
                 )
             return [], "db"
         return db_keys, "db"
@@ -237,7 +237,7 @@ def resolve_collect_periods(
     if require_db:
         raise _db_rule_timekey_error(fac_id, "rule_timekey_recent.sql 미설정 또는 비활성")
 
-    start, end = resolve_train_period_range(prevdays=prevdays)
+    start, end = resolve_train_period_range(prevcnt=prevcnt)
     return list(iter_rule_timekeys(start, end)), "local"
 
 

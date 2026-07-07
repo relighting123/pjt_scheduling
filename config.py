@@ -156,36 +156,69 @@ def iter_rule_timekeys(from_key: str, to_key: str):
 
 def resolve_train_period_range(
     *,
-    prevdays: Optional[int] = None,
+    prevcnt: Optional[int] = None,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     학습용 RULE_TIMEKEY 구간 해석.
-    --prevdays N: 현재 시각 기준 최근 N일(포함)
+    --prevcnt N: 현재 시각 기준 최근 N일(포함)
     --from / --to: 명시 구간
     """
-    if prevdays is not None:
+    if prevcnt is not None:
         if from_key or to_key:
-            raise ValueError("--prevdays 와 --from/--to 는 함께 쓸 수 없습니다.")
-        if prevdays < 1:
-            raise ValueError("--prevdays 는 1 이상이어야 합니다.")
+            raise ValueError("--prevcnt 와 --from/--to 는 함께 쓸 수 없습니다.")
+        if prevcnt < 1:
+            raise ValueError("--prevcnt 는 1 이상이어야 합니다.")
         end = rule_timekey_today()
         end_dt = datetime.strptime(end, RULE_TIMEKEY_FMT)
-        start_dt = end_dt - timedelta(days=prevdays - 1)
+        start_dt = end_dt - timedelta(days=prevcnt - 1)
         return start_dt.strftime(RULE_TIMEKEY_FMT), end
 
     if from_key and to_key:
         return normalize_rule_timekey(from_key), normalize_rule_timekey(to_key)
     if from_key or to_key:
         raise ValueError("--from 와 --to 를 함께 지정하세요.")
-    raise ValueError("--prevdays 또는 --from/--to 가 필요합니다.")
+    raise ValueError("--prevcnt 또는 --from/--to 가 필요합니다.")
 
 
-def resolve_infer_rule_timekey(fac_id: str, rule_timekey: Optional[str] = None) -> str:
-    """추론 SQL 조회용 RULE_TIMEKEY (미지정 시 DB 최신 → 로컬 폴더 → 현재 시각)."""
+def resolve_infer_rule_timekey(
+    fac_id: str,
+    rule_timekey: Optional[str] = None,
+    *,
+    from_key: Optional[str] = None,
+    to_key: Optional[str] = None,
+    prevcnt: Optional[int] = None,
+    nodb: bool = False,
+) -> str:
+    """
+    추론 SQL 조회용 RULE_TIMEKEY (단일값).
+
+    --ruletimekey: 명시 지정
+    --from / --to: 구간 내 RULE_TIMEKEY 를 DB BETWEEN 으로 조회 후 최신값 사용
+    --prevcnt: 최신 기준 최근 N개 RULE_TIMEKEY 조회 후 최신값 사용
+    미지정 시: DB 최신 → 로컬 폴더 최신 → 현재 시각
+    """
     if rule_timekey:
         return normalize_rule_timekey(rule_timekey)
+
+    if from_key or to_key or prevcnt is not None:
+        if bool(from_key) != bool(to_key):
+            raise ValueError("--from 와 --to 를 함께 지정하세요.")
+        if (from_key and to_key) and prevcnt is not None:
+            raise ValueError("--prevcnt 와 --from/--to 는 함께 쓸 수 없습니다.")
+        from data.loader.rule_timekey_query import resolve_collect_periods
+        periods, _ = resolve_collect_periods(
+            fac_id,
+            prevcnt=prevcnt or 1,
+            from_key=from_key,
+            to_key=to_key,
+            require_db=not nodb,
+        )
+        if not periods:
+            raise ValueError(f"해당 구간에 RULE_TIMEKEY 가 없습니다 (FAC_ID={fac_id}).")
+        return periods[-1]
+
     try:
         from data.loader.rule_timekey_query import fetch_latest_rule_timekey
         db_key = fetch_latest_rule_timekey(fac_id)
@@ -240,24 +273,27 @@ def resolve_train_folders(
     from_key: str,
     to_key: str,
     *,
-    prevdays: Optional[int] = None,
+    prevcnt: Optional[int] = None,
+    split: str = "train",
 ) -> List[str]:
     """
-    학습용 train 폴더 목록 (이미 수집된 dataset 기준).
+    학습/검증용 period 폴더 목록 (이미 수집된 dataset 기준).
     RULE_TIMEKEY 구간과 일치하는 폴더만 반환합니다.
     """
-    del prevdays
-    return folders_in_period_range(fac_id, "train", from_key, to_key)
+    del prevcnt
+    return folders_in_period_range(fac_id, split, from_key, to_key)
 
 
-def train_folders_for_periods(fac_id: str, periods: List[str]) -> List[str]:
-    """DB 등에서 확정된 RULE_TIMEKEY 목록에 해당하는 train 폴더 키."""
+def train_folders_for_periods(
+    fac_id: str, periods: List[str], split: str = "train",
+) -> List[str]:
+    """DB 등에서 확정된 RULE_TIMEKEY 목록에 해당하는 period 폴더 키."""
     fac_id = validate_path_segment(fac_id, "FAC_ID")
-    available = set(list_split_folders(fac_id, "train"))
+    available = set(list_split_folders(fac_id, split))
     folders: List[str] = []
     for period in periods:
         key = normalize_rule_timekey(period)
-        folder = f"{fac_id}/train/{key}"
+        folder = f"{fac_id}/{split}/{key}"
         if folder in available:
             folders.append(folder)
     return folders

@@ -5,7 +5,7 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     COLLECTOR_FAC_ID=FAC001
     COLLECTOR_SPLIT=train
     COLLECTOR_INTERVAL_SEC=3600
-    COLLECTOR_PREVDAYS=1
+    COLLECTOR_PREVCNT=1
     COLLECTOR_LOT_CD=LC001   # 선택: SQL :LOT_CD 바인드 (discrete_arrange 제외)
 
 사용 예:
@@ -14,12 +14,12 @@ data/collector.py – 주기적 학습 데이터 수집 (Oracle SQL → dataset 
     python -m data.collector --facid FAC001 --once --preflight
     python -m data.collector --facid FAC001 --once --dry-run -v
     python -m data.collector --facid FAC001 --once --debug
-    python main.py collect --facid FAC001 --prevdays 3 --once
+    python main.py collect --facid FAC001 --prevcnt 3 --once
 
 RULE_TIMEKEY (DB 메타 SQL 필수, data/sql/rule_timekey_*.sql):
     수집 폴더명 = DB 에서 조회한 실제 RULE_TIMEKEY (로컬 시각 생성 없음)
     rule_timekey_latest.sql  – 최신 1건 (--snapshot 기본값)
-    rule_timekey_recent.sql  – 최근 N개 (--prevdays)
+    rule_timekey_recent.sql  – 최근 N개 (--prevcnt)
     rule_timekey_list.sql    – FROM~TO 구간 (--from/--to)
     cp data/sql.example/rule_timekey_*.sql data/sql/
 
@@ -128,7 +128,7 @@ def collect_dataset(
     fac_id: str,
     *,
     split: str = "train",
-    prevdays: int = 1,
+    prevcnt: int = 1,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
     period: Optional[str] = None,
@@ -139,7 +139,7 @@ def collect_dataset(
     collector = TrainingDataCollector(
         fac_id=fac_id,
         split=split,
-        prevdays=prevdays,
+        prevcnt=prevcnt,
         from_key=from_key,
         to_key=to_key,
         lot_cd=lot_cd,
@@ -156,10 +156,11 @@ def collect_dataset(
     return collector.collect_period_range(options=options)
 
 
-def ensure_train_folders(
+def _ensure_period_folders(
     fac_id: str,
+    split: str,
     *,
-    prevdays: Optional[int] = None,
+    prevcnt: Optional[int] = None,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
     period: Optional[str] = None,
@@ -167,56 +168,56 @@ def ensure_train_folders(
     nodb: bool = False,
 ) -> List[str]:
     """
-    train 학습용 폴더 목록 확보.
+    train/test 등 기간 폴더 목록 확보.
     RULE_TIMEKEY 는 DB 메타 SQL 기준 (로컬 시각 생성 없음, --nodb 시 기존 폴더만).
     period 지정 시 해당 RULE_TIMEKEY 1건만 사용.
     """
     if period:
         periods = [normalize_rule_timekey(period)]
-        folders = train_folders_for_periods(fac_id, periods)
+        folders = train_folders_for_periods(fac_id, periods, split=split)
         if folders or nodb:
             return folders
-        print("[train] train 데이터 없음 → collector 수집")
+        print(f"[{split}] {split} 데이터 없음 → collector 수집")
         paths = collect_dataset(
             fac_id,
-            split="train",
+            split=split,
             period=period,
             lot_cd=lot_cd,
         )
         if not paths:
             return []
-        folders_after = train_folders_for_periods(fac_id, periods)
+        folders_after = train_folders_for_periods(fac_id, periods, split=split)
         if folders_after:
             return folders_after
-        return paths_to_folder_keys(fac_id, "train", paths)
+        return paths_to_folder_keys(fac_id, split, paths)
 
     if nodb:
         # DB 연결 없이 로컬 폴더만 탐색 (rule_timekey_*.sql 이 있어도 쿼리하지 않음)
         start_key, end_key = resolve_train_period_range(
-            prevdays=prevdays or 1,
+            prevcnt=None if (from_key and to_key) else (prevcnt or 1),
             from_key=from_key,
             to_key=to_key,
         )
-        return resolve_train_folders(fac_id, start_key, end_key)
+        return resolve_train_folders(fac_id, start_key, end_key, split=split)
 
     periods, _ = resolve_collect_periods(
         fac_id,
-        prevdays=prevdays or 1,
+        prevcnt=prevcnt or 1,
         from_key=from_key,
         to_key=to_key,
         require_db=True,
     )
-    folders = train_folders_for_periods(fac_id, periods)
+    folders = train_folders_for_periods(fac_id, periods, split=split)
     if folders and len(folders) == len(periods):
         return folders
     if folders:
         return folders
 
-    print("[train] train 데이터 없음 → collector 수집")
+    print(f"[{split}] {split} 데이터 없음 → collector 수집")
     paths = collect_dataset(
         fac_id,
-        split="train",
-        prevdays=prevdays or 1,
+        split=split,
+        prevcnt=prevcnt or 1,
         from_key=from_key,
         to_key=to_key,
         lot_cd=lot_cd,
@@ -224,10 +225,46 @@ def ensure_train_folders(
     if not paths:
         return []
 
-    folders_after = train_folders_for_periods(fac_id, periods)
+    folders_after = train_folders_for_periods(fac_id, periods, split=split)
     if folders_after:
         return folders_after
-    return paths_to_folder_keys(fac_id, "train", paths)
+    return paths_to_folder_keys(fac_id, split, paths)
+
+
+def ensure_train_folders(
+    fac_id: str,
+    *,
+    prevcnt: Optional[int] = None,
+    from_key: Optional[str] = None,
+    to_key: Optional[str] = None,
+    period: Optional[str] = None,
+    lot_cd: Optional[str] = None,
+    nodb: bool = False,
+) -> List[str]:
+    """train 학습용 폴더 목록 확보 (`_ensure_period_folders` 참고)."""
+    return _ensure_period_folders(
+        fac_id, "train",
+        prevcnt=prevcnt, from_key=from_key, to_key=to_key,
+        period=period, lot_cd=lot_cd, nodb=nodb,
+    )
+
+
+def ensure_test_folders(
+    fac_id: str,
+    *,
+    prevcnt: Optional[int] = None,
+    from_key: Optional[str] = None,
+    to_key: Optional[str] = None,
+    period: Optional[str] = None,
+    lot_cd: Optional[str] = None,
+    nodb: bool = False,
+) -> List[str]:
+    """test 검증용 폴더 목록 확보 (`_ensure_period_folders` 참고)."""
+    return _ensure_period_folders(
+        fac_id, "test",
+        prevcnt=prevcnt, from_key=from_key, to_key=to_key,
+        period=period, lot_cd=lot_cd, nodb=nodb,
+    )
 
 
 class TrainingDataCollector:
@@ -237,14 +274,14 @@ class TrainingDataCollector:
         self,
         fac_id: str,
         split: str = "train",
-        prevdays: int = 1,
+        prevcnt: int = 1,
         from_key: Optional[str] = None,
         to_key: Optional[str] = None,
         lot_cd: Optional[str] = None,
     ):
         self.fac_id = validate_path_segment(fac_id, "FAC_ID")
         self.split = validate_path_segment(split, "split")
-        self.prevdays = prevdays
+        self.prevcnt = prevcnt
         self.from_key = from_key
         self.to_key = to_key
         self.lot_cd = resolve_lot_cd(lot_cd)
@@ -252,7 +289,7 @@ class TrainingDataCollector:
     def _resolve_periods(self) -> tuple[List[str], str]:
         periods, source = resolve_collect_periods(
             self.fac_id,
-            prevdays=self.prevdays,
+            prevcnt=self.prevcnt,
             from_key=self.from_key,
             to_key=self.to_key,
             require_db=True,
@@ -446,9 +483,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="수집 주기(초). --once 와 함께 쓰면 1회만 실행",
     )
     parser.add_argument(
-        "--prevdays",
+        "--prevcnt",
         type=int,
-        default=_env_int("COLLECTOR_PREVDAYS", 1),
+        default=_env_int("COLLECTOR_PREVCNT", 1),
         help="최근 N일 RULE_TIMEKEY 구간 수집",
     )
     parser.add_argument("--from", dest="from_key", help="시작 RULE_TIMEKEY")
@@ -466,7 +503,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--snapshot",
         action="store_true",
-        help="현재 시각 단일 스냅샷만 수집 (--prevdays 무시)",
+        help="현재 시각 단일 스냅샷만 수집 (--prevcnt 무시)",
     )
     parser.add_argument(
         "--period",
@@ -481,7 +518,7 @@ def run_collector_cli(args: argparse.Namespace) -> int:
     collector = TrainingDataCollector(
         fac_id=args.facid,
         split=args.split,
-        prevdays=args.prevdays,
+        prevcnt=args.prevcnt,
         from_key=args.from_key,
         to_key=args.to_key,
         lot_cd=args.lotcd,
