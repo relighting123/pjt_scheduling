@@ -20,6 +20,7 @@ import {
   buildAlgorithmGanttComparison,
   buildCompareGanttAxis,
   resolveCompareTimeEndMinutes,
+  ganttStepMarkerShape,
   type GanttBarLabel,
   type AlgoCompareEntry,
   type TestBenchmarkChartRow,
@@ -29,7 +30,7 @@ import { buildEqpModelMap } from "../lib/metrics";
 import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey, parseSimBaseMs } from "../lib/ganttTime";
 import type {
   AlgorithmCompareResponse, AlgorithmId, AlgorithmInfo,
-  AppConfig, DataSummary, InferenceResult,
+  AppConfig, DataSummary, InferenceResult, DecisionLogEntry,
 } from "../types";
 
 interface Props {
@@ -206,6 +207,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [compareShowGantt, setCompareShowGantt] = useState(true);
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<Set<string>>(new Set());
   const [showConversionBars, setShowConversionBars] = useState(true);
+  const [debugStep, setDebugStep] = useState<DecisionLogEntry | null>(null);
 
   const folders = useMemo(() =>
     config?.input_folders?.length ? config.input_folders : [],
@@ -472,6 +474,16 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       showConversion: showConversionBars,
     });
   }, [result, axis, labelMode, eqpModelMap, hiddenLegendKeys, showConversionBars]);
+
+  const debugGanttChart = useMemo(() => {
+    if (!ganttChart) return null;
+    const marker = ganttStepMarkerShape(debugStep?.sim_time, axis);
+    if (!marker) return ganttChart;
+    return {
+      ...ganttChart,
+      layout: { ...ganttChart.layout, shapes: [...(ganttChart.layout.shapes ?? []), marker] },
+    };
+  }, [ganttChart, debugStep, axis]);
 
   const productionChart = useMemo(() => {
     if (!result?.schedule.length) return null;
@@ -823,9 +835,25 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           <>
             <div className="tabs">
               <button type="button" className={`tab-btn${tab === "gantt" ? " active" : ""}`} onClick={() => setTab("gantt")} disabled={!result}>간트 차트</button>
-              <button type="button" className={`tab-btn${tab === "events" ? " active" : ""}`} onClick={() => setTab("events")} disabled={!result?.event_log?.length}>이벤트 이력</button>
+              <button
+                type="button"
+                className={`tab-btn${tab === "events" ? " active" : ""}`}
+                onClick={() => setTab("events")}
+                disabled={!result?.event_log?.length}
+                title={result?.event_log?.length ? undefined : "「history/event 포함」을 켜고 추론을 다시 실행하면 이벤트 이력을 볼 수 있습니다."}
+              >
+                이벤트 이력
+              </button>
               <button type="button" className={`tab-btn${tab === "table" ? " active" : ""}`} onClick={() => setTab("table")} disabled={!result}>간트 테이블</button>
-              <button type="button" className={`tab-btn${tab === "debug" ? " active" : ""}`} onClick={() => setTab("debug")} disabled={!result?.decision_log?.length}>스텝 디버거</button>
+              <button
+                type="button"
+                className={`tab-btn${tab === "debug" ? " active" : ""}`}
+                onClick={() => setTab("debug")}
+                disabled={!result?.decision_log?.length}
+                title={result?.decision_log?.length ? undefined : "「결정 로그 포함」을 켜고 추론을 다시 실행하면 스텝 디버거를 볼 수 있습니다."}
+              >
+                스텝 디버거
+              </button>
               {canShowCompare && (
                 <button type="button" className={`tab-btn${tab === "compare" ? " active" : ""}`} onClick={() => setTab("compare")}>알고리즘 비교</button>
               )}
@@ -987,7 +1015,14 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             {tab === "debug" && result && (
               <div className="tab-panel">
                 {result.decision_log?.length ? (
-                  <StepDebugger entries={result.decision_log} />
+                  <div className="stepdbg-page">
+                    {debugGanttChart && (
+                      <FullscreenPanel title="간트 차트 (스텝 동기화)" className="stepdbg-gantt-wrap chart-wrap gantt-chart-panel">
+                        <PlotChart {...debugGanttChart} scrollable />
+                      </FullscreenPanel>
+                    )}
+                    <StepDebugger entries={result.decision_log} onStepChange={setDebugStep} />
+                  </div>
                 ) : (
                   <div className="card">
                     <div className="card-title">스텝 디버거</div>
@@ -1052,13 +1087,16 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 </FullscreenPanel>
                 {compareChartRows.length > 0 && (
                   <div className="grid-2 mb-2">
-                    {TEST_METRICS.map(m => (
-                      <FullscreenPanel key={m.key} title={m.label} className="card compare-chart-panel">
-                        <div className="chart-wrap">
-                          <PlotChart {...buildTestMetricChart(m, compareChartRows, compareChartAlgos, algoLabels)} />
-                        </div>
-                      </FullscreenPanel>
-                    ))}
+                    {TEST_METRICS.map(m => {
+                      const chart = buildTestMetricChart(m, compareChartRows, compareChartAlgos, algoLabels);
+                      return (
+                        <FullscreenPanel key={m.key} title={m.label} className="card compare-chart-panel">
+                          <div className="chart-wrap">
+                            {chart ? <PlotChart {...chart} /> : <p className="hint chart-empty-hint">표시할 데이터가 없습니다.</p>}
+                          </div>
+                        </FullscreenPanel>
+                      );
+                    })}
                   </div>
                 )}
                 {compareShowGantt && compareGanttChart && (

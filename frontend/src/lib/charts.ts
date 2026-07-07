@@ -289,6 +289,27 @@ function ganttTableGridShapes(rowCount: number, yAxis = "y"): NonNullable<Layout
   return [ganttEqpBarDividerShape(), ...ganttRowDividerShapes(rowCount, yAxis)];
 }
 
+/** 스텝 디버거의 현재 스텝 시각을 간트 X축에 표시하는 세로 마커 (동기화용). */
+export function ganttStepMarkerShape(
+  simTime: number | undefined | null,
+  axis: Pick<GanttAxisOptions, "simBaseTime">,
+): NonNullable<Layout["shapes"]>[number] | null {
+  if (simTime == null) return null;
+  const baseMs = resolveGanttBaseMs(axis as GanttAxisOptions);
+  const x = ganttAxisValue(simTime, baseMs);
+  return {
+    type: "line",
+    xref: "x",
+    yref: "paper",
+    x0: x,
+    x1: x,
+    y0: 0,
+    y1: 1,
+    line: { color: "#dc2626", width: 2, dash: "dot" },
+    layer: "above",
+  };
+}
+
 function sortedEqpIds(eqpIds: string[]): string[] {
   return [...eqpIds].sort();
 }
@@ -1154,13 +1175,14 @@ export function buildMetricSummaryRows(
   });
 }
 
-/** 요약 행(전체 기간 평균)을 알고리즘별 막대로 시각화. */
+/** 요약 행(전체 기간 평균)을 알고리즘별 막대로 시각화. activeAlgos가 없으면 null (표시할 데이터 없음). */
 export function buildMetricSummaryChart(
   row: MetricSummaryRow,
   algorithms: string[],
   algoLabels: Record<string, string>,
-): { data: Data[]; layout: Partial<Layout> } {
+): { data: Data[]; layout: Partial<Layout> } | null {
   const activeAlgos = algorithms.filter((a) => row.perAlgo[a]);
+  if (!activeAlgos.length) return null;
   const algoNames = activeAlgos.map((a) => algoLabels[a] ?? a);
   const avgs = activeAlgos.map((a) => row.perAlgo[a].avg);
 
@@ -1183,7 +1205,7 @@ export function buildMetricSummaryChart(
     }],
     layout: mergeSharedLayout({
       title: { text: `${row.label} — 평균`, font: { size: 14 } },
-      xaxis: { title: { text: "알고리즘" } },
+      xaxis: { type: "category" as const, title: { text: "알고리즘" } },
       yaxis: { title: { text: row.yTitle }, range: yRange },
       height: 300,
       margin: { t: 50, b: 60, l: 55, r: 20 },
@@ -1191,17 +1213,102 @@ export function buildMetricSummaryChart(
   };
 }
 
+export type TestChartType = "bar" | "line";
+
+/** 표시할 데이터가 없으면 null (호출부에서 빈 상태 UI 처리). */
 export function buildTestMetricChart(
   metric: TestMetricDef,
   rows: TestBenchmarkChartRow[],
   algorithms: string[],
   algoLabels: Record<string, string>,
   selectedLabel?: string,
-): { data: Data[]; layout: Partial<Layout> } {
-  if (rows.length < 2) {
-    return buildTestMetricSingleDatasetChart(metric, rows[0], algorithms, algoLabels);
+  chartType: TestChartType = "line",
+): { data: Data[]; layout: Partial<Layout> } | null {
+  if (rows.length < 2 || chartType === "bar") {
+    return buildTestMetricBarChart(metric, rows, algorithms, algoLabels, selectedLabel);
   }
   return buildTestMetricLineChart(metric, rows, algorithms, algoLabels, selectedLabel);
+}
+
+/** 여러 기간의 값을 알고리즘별 그룹 막대로 시각화 (단일 기간이면 알고리즘별 막대 1건). */
+function buildTestMetricBarChart(
+  metric: TestMetricDef,
+  rows: TestBenchmarkChartRow[],
+  algorithms: string[],
+  algoLabels: Record<string, string>,
+  selectedLabel?: string,
+): { data: Data[]; layout: Partial<Layout> } | null {
+  if (rows.length <= 1) {
+    return buildTestMetricSingleDatasetChart(metric, rows[0], algorithms, algoLabels);
+  }
+
+  const categories = rows.map((r) => r.input_folder);
+  const tickText = rows.map((r) => r.label);
+  const activeAlgos = algorithms.filter((algo) =>
+    rows.some((row) => {
+      const entry = row.entries.find((e) => e.algorithm === algo);
+      return entry && metricValue(entry.result, metric.key) != null;
+    }),
+  );
+  if (!activeAlgos.length) return null;
+
+  const yValues = activeAlgos.map((algo) =>
+    rows.map((row) => {
+      const entry = row.entries.find((e) => e.algorithm === algo);
+      return entry ? (metricValue(entry.result, metric.key) ?? 0) : 0;
+    }),
+  );
+  const allVals = yValues.flat();
+  const maxVal = allVals.length ? Math.max(...allVals) : 1;
+  const yRange: [number, number] =
+    PERCENT_METRIC_KEYS.has(metric.key) ? [0, 110] : [0, Math.max(maxVal, 1) * 1.25];
+
+  const selectedIdx = selectedLabel
+    ? rows.findIndex((r) => r.label === selectedLabel || r.input_folder.endsWith(selectedLabel))
+    : -1;
+  const selectedCategory = selectedIdx >= 0 ? categories[selectedIdx] : undefined;
+
+  return {
+    data: activeAlgos.map((algo, ai) => ({
+      type: "bar" as const,
+      name: algoLabels[algo] ?? algo,
+      x: categories,
+      y: yValues[ai],
+      marker: { color: ALGO_CHART_COLORS[algo] ?? "#888" },
+      customdata: tickText,
+      hovertemplate: `<b>%{customdata}</b><br>${algoLabels[algo] ?? algo}: %{y:,}<extra></extra>`,
+    })),
+    layout: mergeSharedLayout({
+      title: { text: metric.label, font: { size: 14 } },
+      barmode: "group",
+      xaxis: {
+        type: "category" as const,
+        tickangle: -35,
+        categoryorder: "array",
+        categoryarray: categories,
+        tickvals: categories,
+        ticktext: tickText,
+      },
+      yaxis: { title: { text: metric.yTitle }, range: yRange, rangemode: "tozero" as const },
+      legend: { orientation: "h", y: -0.44 },
+      height: 340,
+      margin: { t: 50, b: 120, l: 55, r: 20 },
+      ...(selectedCategory
+        ? {
+            shapes: [{
+              type: "line",
+              xref: "x",
+              yref: "paper",
+              x0: selectedCategory,
+              x1: selectedCategory,
+              y0: 0,
+              y1: 1,
+              line: { color: "rgba(79, 110, 247, 0.45)", width: 2, dash: "dot" },
+            }],
+          }
+        : {}),
+    }),
+  };
 }
 
 function buildTestMetricSingleDatasetChart(
@@ -1209,9 +1316,15 @@ function buildTestMetricSingleDatasetChart(
   row: TestBenchmarkChartRow | undefined,
   algorithms: string[],
   algoLabels: Record<string, string>,
-): { data: Data[]; layout: Partial<Layout> } {
-  const algoNames = algorithms.map((a) => algoLabels[a] ?? a);
-  const values = algorithms.map((algo) => {
+): { data: Data[]; layout: Partial<Layout> } | null {
+  const activeAlgos = algorithms.filter((algo) => {
+    const entry = row?.entries.find((e) => e.algorithm === algo);
+    return entry && metricValue(entry.result, metric.key) != null;
+  });
+  if (!activeAlgos.length) return null;
+
+  const algoNames = activeAlgos.map((a) => algoLabels[a] ?? a);
+  const values = activeAlgos.map((algo) => {
     const entry = row?.entries.find((e) => e.algorithm === algo);
     return entry ? (metricValue(entry.result, metric.key) ?? 0) : 0;
   });
@@ -1224,7 +1337,7 @@ function buildTestMetricSingleDatasetChart(
       type: "bar" as const,
       x: algoNames,
       y: values,
-      marker: { color: algorithms.map((a) => ALGO_CHART_COLORS[a] ?? "#888") },
+      marker: { color: activeAlgos.map((a) => ALGO_CHART_COLORS[a] ?? "#888") },
       text: values.map((v) => (v != null ? v.toLocaleString() : "")),
       textposition: "outside" as const,
       textfont: { size: 12 },
@@ -1235,7 +1348,7 @@ function buildTestMetricSingleDatasetChart(
     layout: {
       title: { text: row?.label ? `${metric.label} · ${row.label}` : metric.label, font: { size: 14 } },
       ...SHARED_DARK,
-      xaxis: { ...SHARED_DARK.xaxis, title: { text: "알고리즘" } },
+      xaxis: { ...SHARED_DARK.xaxis, type: "category" as const, title: { text: "알고리즘" } },
       yaxis: { ...SHARED_DARK.yaxis, title: { text: metric.yTitle }, range: [0, yMax] },
       height: 340,
       margin: { t: 50, b: 72, l: 55, r: 20 },
@@ -1249,7 +1362,10 @@ function buildTestMetricLineChart(
   algorithms: string[],
   algoLabels: Record<string, string>,
   selectedLabel?: string,
-): { data: Data[]; layout: Partial<Layout> } {
+): { data: Data[]; layout: Partial<Layout> } | null {
+  if (rows.length <= 1) {
+    return buildTestMetricSingleDatasetChart(metric, rows[0], algorithms, algoLabels);
+  }
   const categories = rows.map((r) => r.input_folder);
   const tickText = rows.map((r) => r.label);
   const activeAlgos = algorithms.filter((algo) =>
@@ -1258,6 +1374,7 @@ function buildTestMetricLineChart(
       return entry && metricValue(entry.result, metric.key) != null;
     }),
   );
+  if (!activeAlgos.length) return null;
   const yValues = activeAlgos.map((algo) =>
     rows.map((row) => {
       const entry = row.entries.find((e) => e.algorithm === algo);

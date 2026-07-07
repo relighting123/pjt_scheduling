@@ -437,13 +437,6 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "flow": {prod: [{seq, oper}]},   # 제품별 FLOW 순서
         }
     """
-    # ── PLAN_PROD_KEY -> PLAN_PROD_ATTR_VAL 정규화 ──
-    for key in ["discrete_arrange", "abstract_arrange", "plan", "flow", "split", "lot_master", "batch_info"]:
-        if key in raw:
-            for r in raw[key]:
-                if isinstance(r, dict) and "PLAN_PROD_ATTR_VAL" not in r and "PLAN_PROD_KEY" in r:
-                    r["PLAN_PROD_ATTR_VAL"] = r["PLAN_PROD_KEY"]
-
     discrete_raw = list(raw["discrete_arrange"])
     plan_raw  = raw["plan"]
     flow_raw  = raw["flow"]
