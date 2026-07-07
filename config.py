@@ -522,13 +522,11 @@ class RLConfig:
 class RewardConfig:
     # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
     # 제품·공정이 '모두' 직전과 동일할 때만 주는 연속 보너스 (전환 회피와 정렬).
-    # >0 이면 아래 분리형(same_oper/same_prod/prod_switch)을 대체해 적용.
+    # >0 이면 아래 분리형(same_oper/same_prod)을 대체해 적용.
     w_same_setup:      float = 1.0
     w_same_oper:       float = 0.4       # (legacy) 같은 공정 연속 — w_same_setup>0이면 미사용
     w_same_prod:       float = 0.5       # (legacy) 같은 PPK 연속 — w_same_setup>0이면 미사용
-    w_prod_switch:     float = 0.5       # (legacy) 이전 PPK 재공 고갈 시 전환 보너스 — 미사용
     w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
-    w_completion:      float = 0.0       # 미사용
     w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
     w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
     # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
@@ -570,9 +568,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_same_setup": r.w_same_setup,
         "w_same_oper": r.w_same_oper,
         "w_same_prod": r.w_same_prod,
-        "w_prod_switch": r.w_prod_switch,
         "w_idle_per_min": r.w_idle_per_min,
-        "w_completion": r.w_completion,
         "w_plan_hit": r.w_plan_hit,
         "w_pacing": r.w_pacing,
         "pacing_coverage_scale": r.pacing_coverage_scale,
@@ -594,8 +590,8 @@ def apply_reward_params(params: dict) -> None:
     """학습 요청 파라미터 → CONFIG.reward 반영."""
     r = CONFIG.reward
     float_keys = (
-        "w_same_setup", "w_same_oper", "w_same_prod", "w_prod_switch", "w_idle_per_min",
-        "w_completion", "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
+        "w_same_setup", "w_same_oper", "w_same_prod", "w_idle_per_min",
+        "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
         "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
