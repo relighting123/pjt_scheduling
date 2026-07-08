@@ -205,6 +205,8 @@ class SchedulingSimulator:
             eid: list(lot_ids)
             for eid, lot_ids in data.get("eqp_forced_queue", {}).items()
         }
+        # LOAD/RESV/SELE 등 가공 슬롯 대기 — reset 시 장비에 선부착, idle 시 자동 투입
+        self._eqp_staged_forced: Dict[str, List[str]] = {}
 
         self.eqp_queues: Dict[str, List[str]] = {
             eid: list(lots)
@@ -360,6 +362,8 @@ class SchedulingSimulator:
         eqp.current_prod = None
         eqp.free_at = self.current_time
         self._invalidate_caches()
+        if self._try_assign_staged_forced(eqp_id):
+            return
 
     def _on_idle_decision(self, eqp_id: str) -> None:
         """idle EQP → 에이전트 배정 결정 시점 (event_log: IDLE)."""
@@ -448,32 +452,74 @@ class SchedulingSimulator:
             if row.get("oper_id"):
                 eqp.prev_oper = row["oper_id"]
 
-    def _prebind_forced_carriers(self) -> None:
-        """LOT_STAT_CD!=WAIT carrier를 t=0에 장비에 선반영.
+    def _forced_lot_stat_cd(self, lot_id: str) -> str:
+        lot = self.lot_pool.get(lot_id)
+        meta = self._wip_lot_meta.get(lot_id, {})
+        if lot is not None:
+            return lot.lot_stat_cd
+        return meta.get("lot_stat_cd", "WAIT")
 
-        장비당 큐 맨 앞 1건만 즉시 배정(이미 가공/로드된 현장 상태). 나머지는
-        기존처럼 idle 시 순서대로 배정. RL/휴리스틱 step을 소모하지 않는다.
+    def _try_assign_staged_forced(self, eqp_id: str) -> bool:
+        """선부착(staged) 강제 carrier를 가공 슬롯이 비면 즉시 배정."""
+        staged = self._eqp_staged_forced.get(eqp_id)
+        if not staged:
+            return False
+        eqp = self.eqps.get(eqp_id)
+        if eqp is None or eqp.status != "idle":
+            return False
+        lot_id = staged[0]
+        saved_eqp = self._current_eqp
+        self._current_eqp = None
+        ok = self.assign_lot(eqp_id, lot_id) != -1.0
+        self._current_eqp = saved_eqp
+        return ok
+
+    def _consume_forced_placement(self, eqp_id: str, lot_id: str) -> None:
+        """강제 carrier 배정 완료 시 queue/staged에서 제거."""
+        staged = self._eqp_staged_forced.get(eqp_id)
+        if staged and staged[0] == lot_id:
+            staged.pop(0)
+            if not staged:
+                self._eqp_staged_forced.pop(eqp_id, None)
+            return
+        forced_queue = self._eqp_forced_queue.get(eqp_id)
+        if forced_queue and forced_queue[0] == lot_id:
+            forced_queue.pop(0)
+
+    def _prebind_forced_carriers(self) -> None:
+        """LOT_STAT_CD!=WAIT carrier 전건을 t=0에 장비에 선반영.
+
+        - PROC: 가공 슬롯이 비어 있으면 즉시 가공 시작
+        - LOAD/RESV/SELE(및 대기 중인 PROC): 장비에 선부착(staged) — 슬롯이 비면
+          자동 배정(_try_assign_staged_forced), RL step 불필요
         """
         from utils.helpers import FORCED_LOT_STAT_CDS
 
+        self._eqp_staged_forced = {}
         self._current_eqp = None
         for eqp_id in self._env_data.get("eqp_ids", []):
-            queue = self._eqp_forced_queue.get(eqp_id)
+            queue = list(self._eqp_forced_queue.get(eqp_id, []))
             if not queue:
                 continue
-            eqp = self.eqps.get(eqp_id)
-            if eqp is None or eqp.status != "idle":
-                continue
-            lot_id = queue[0]
-            lot = self.lot_pool.get(lot_id)
-            meta = self._wip_lot_meta.get(lot_id, {})
-            lot_stat_cd = (
-                lot.lot_stat_cd if lot
-                else meta.get("lot_stat_cd", "WAIT")
-            )
-            if lot_stat_cd not in FORCED_LOT_STAT_CDS:
-                continue
-            self.assign_lot(eqp_id, lot_id)
+            self._eqp_forced_queue[eqp_id] = []
+            staged: List[str] = []
+            for lot_id in queue:
+                lot_stat_cd = self._forced_lot_stat_cd(lot_id)
+                if lot_stat_cd not in FORCED_LOT_STAT_CDS:
+                    continue
+                eqp = self.eqps.get(eqp_id)
+                if (
+                    lot_stat_cd == "PROC"
+                    and eqp is not None
+                    and eqp.status == "idle"
+                ):
+                    if self.assign_lot(eqp_id, lot_id) != -1.0:
+                        continue
+                staged.append(lot_id)
+            if staged:
+                self._eqp_staged_forced[eqp_id] = staged
+            while self._try_assign_staged_forced(eqp_id):
+                pass
         self._current_eqp = None
 
     def _bucket_lot_cd_temp(self, ppk: str, oper_id: str) -> Tuple[str, str]:
@@ -1454,6 +1500,14 @@ class SchedulingSimulator:
                 m_oper = meta.get("oper_id") or (lot.oper_id if lot else "")
                 if m_ppk == ppk and m_oper == oper_id:
                     active.add(self._logical_lot_id(lot_id=lid, meta=meta))
+        for staged in self._eqp_staged_forced.values():
+            for lid in staged:
+                meta = self._wip_lot_meta.get(lid, {})
+                lot = self.lot_pool.get(lid)
+                m_ppk = meta.get("PLAN_PROD_ATTR_VAL") or (lot.PLAN_PROD_ATTR_VAL if lot else "")
+                m_oper = meta.get("oper_id") or (lot.oper_id if lot else "")
+                if m_ppk == ppk and m_oper == oper_id:
+                    active.add(self._logical_lot_id(lot_id=lid, meta=meta))
         for pending in self._eqp_pending_assign.values():
             if pending.get("ppk") == ppk and pending.get("oper_id") == oper_id:
                 active.add(self._logical_lot_id(lot_id=pending["lot_id"], meta=pending))
@@ -1799,7 +1853,12 @@ class SchedulingSimulator:
         return lots
 
     def _forced_lot_pending(self, eqp_id: str) -> Optional[str]:
-        """LOT_STAT_CD!=WAIT LOT 중 이 EQP에서 다음에(입력 순서대로) 강제 배정할 LOT."""
+        """LOT_STAT_CD!=WAIT carrier 중 이 EQP에서 다음에 강제 배정할 carrier."""
+        eqp = self.eqps.get(eqp_id)
+        if eqp is not None and eqp.status == "idle":
+            staged = self._eqp_staged_forced.get(eqp_id)
+            if staged:
+                return staged[0]
         queue = self._eqp_forced_queue.get(eqp_id)
         return queue[0] if queue else None
 
@@ -2008,11 +2067,8 @@ class SchedulingSimulator:
         self._last_reward_breakdown = terms
         self._consume_wip(ppk, oper_id, lot_id)
 
-        # LOT_STAT_CD 강제 큐 소진 (shaped reward가 음수여도 배정 자체는 확정된 상태이므로
-        # assign_lot()의 reward<0 얼리 리턴과 무관하게 여기서 즉시 처리해야 다음 순번이 풀린다)
-        forced_queue = self._eqp_forced_queue.get(eqp_id)
-        if forced_queue and forced_queue[0] == lot_id:
-            forced_queue.pop(0)
+        # LOT_STAT_CD 강제 큐/선부착 소진
+        self._consume_forced_placement(eqp_id, lot_id)
 
         pending = {
             "lot_id": lot_id,
