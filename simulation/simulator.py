@@ -1383,6 +1383,17 @@ class SchedulingSimulator:
         return cfg.w_flow_balance * score
 
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
+        """버킷 내 carrier 자동 선택.
+
+        (PPK, OPER) 버킷은 이미 정해진 상태에서 아래 순서로 1건 선택한다.
+        priority/seq는 버킷 단위 속성이라 여기서는 사용하지 않는다.
+
+        1. 초기 재공 (is_initial_wip)
+        2. discrete carrier (is_abstract=False)
+        3. 기할당 (LOT_STAT_CD != WAIT) — 보통 available_lots()에서 단독 노출됨
+        4. earliest ST (예상 종료 시각 → 동률이면 전환 불필요)
+        5. oper_in_time
+        """
         if not candidates:
             return None
 
