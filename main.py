@@ -427,10 +427,12 @@ def cmd_ui():
     print("  Frontend: http://localhost:5173")
     print("  종료: Ctrl+C")
 
+    use_shell = os.name == "nt"
+
     frontend_dir = ROOT / "frontend"
     if not (frontend_dir / "node_modules").exists():
         print("\n  [ui] frontend 의존성 설치 중 (npm install)...")
-        subprocess.run(["npm", "install"], cwd=str(frontend_dir), check=True, shell=True)
+        subprocess.run(["npm", "install"], cwd=str(frontend_dir), check=True, shell=use_shell)
 
     api_proc = subprocess.Popen(
         [
@@ -458,7 +460,7 @@ def cmd_ui():
     fe_proc = subprocess.Popen(
         ["npm", "run", "dev"],
         cwd=str(frontend_dir),
-        shell=True,
+        shell=use_shell,
         env={**os.environ, "BROWSER": "none"},
     )
 
