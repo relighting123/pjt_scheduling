@@ -2405,10 +2405,33 @@
 .gantt-base-rtk b { color: var(--accent); font-variant-numeric: tabular-nums; }
 .gantt-base-time b { color: var(--text); font-variant-numeric: tabular-nums; }
 
-.gantt-forced-legend { gap: 1rem; }
+.gantt-forced-legend { gap: 0.65rem 1rem; }
+.gantt-forced-legend-title {
+  font-weight: 600; color: var(--text); margin-right: 0.15rem;
+}
 .gantt-forced-swatch {
-  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  display: inline-block; width: 12px; height: 12px; border-radius: 2px;
   margin-right: 0.35rem; vertical-align: middle;
+  border: 2px solid transparent; box-sizing: border-box;
+}
+.gantt-forced-swatch--proc { /* solid fill — border from inline style */ }
+.gantt-forced-swatch--load {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.42) 0 1.5px,
+    transparent 1.5px 5px
+  );
+}
+.gantt-forced-swatch--resv {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.55) 1px, transparent 1px);
+  background-size: 4px 4px;
+}
+.gantt-forced-swatch--sele {
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.4) 0 1.5px,
+    transparent 1.5px 4px
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════════

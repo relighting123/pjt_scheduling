@@ -16,6 +16,8 @@ import {
   buildProductProductionCharts,
   buildInferenceWipChart,
   ganttStepMarkerShape,
+  FORCED_LOT_STAT_LEGEND,
+  FORCED_LOT_STAT_LEGEND_ORDER,
   type GanttBarLabel,
   ALGO_CHART_COLORS,
 } from "../lib/charts";
@@ -275,6 +277,19 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     () => (result?.schedule ?? []).some((r) => r.LOT_STAT_CD && r.LOT_STAT_CD !== "WAIT"),
     [result],
   );
+
+  const forcedLotStatLegend = useMemo(() => {
+    if (!result) return [];
+    const present = new Set(
+      result.schedule
+        .map((r) => r.LOT_STAT_CD)
+        .filter((cd): cd is string => !!cd && cd !== "WAIT"),
+    );
+    return FORCED_LOT_STAT_LEGEND_ORDER
+      .filter((code) => present.has(code))
+      .map((code) => FORCED_LOT_STAT_LEGEND.find((item) => item.code === code)!)
+      .filter(Boolean);
+  }, [result]);
 
   const toggleLegendKey = useCallback((pairKey: string) => {
     setHiddenLegendKeys((prev) => {
@@ -751,10 +766,21 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   </FullscreenPanel>
                 )}
 
-                {hasForcedLotStat && (
+                {hasForcedLotStat && forcedLotStatLegend.length > 0 && (
                   <div className="gantt-base-info gantt-forced-legend">
-                    <span><span className="gantt-forced-swatch" style={{ background: "#16a34a" }} /> PROC(강제 배정)</span>
-                    <span><span className="gantt-forced-swatch" style={{ background: "#ca8a04" }} /> LOAD/SELE/RESV(강제 배정)</span>
+                    <span className="gantt-forced-legend-title">강제 배정</span>
+                    {forcedLotStatLegend.map((item) => (
+                      <span key={item.code}>
+                        <span
+                          className={`gantt-forced-swatch gantt-forced-swatch--${item.code.toLowerCase()}`}
+                          style={{
+                            backgroundColor: item.fill,
+                            borderColor: item.border,
+                          }}
+                        />
+                        {item.label}
+                      </span>
+                    ))}
                   </div>
                 )}
 

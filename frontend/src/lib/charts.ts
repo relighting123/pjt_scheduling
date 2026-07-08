@@ -145,28 +145,69 @@ function ganttProdOperColorMap(pairKeys: string[]): Record<string, string> {
   return buildColorMap(pairKeys, GANTT_PROD_OPER_PALETTE);
 }
 
-// LOT_STAT_CD 강제 배정(PROC/LOAD/SELE/RESV) 색상. WAIT은 기존 제품×공정 색상 유지.
-const FORCED_LOT_STAT_FILL: Record<string, string> = {
-  PROC: "#16a34a",
-  LOAD: "#ca8a04",
-  SELE: "#ca8a04",
-  RESV: "#ca8a04",
-};
+// LOT_STAT_CD 강제 배정(PROC/LOAD/SELE/RESV) 시각 스타일. WAIT은 기존 제품×공정 색상 유지.
+type ForcedLotStatPattern = "/" | "\\" | "x" | "-" | "|" | "+" | ".";
 
-function forcedLotStatFillColor(lotStatCd?: string): string | undefined {
-  return lotStatCd ? FORCED_LOT_STAT_FILL[lotStatCd] : undefined;
+interface ForcedLotStatVisual {
+  fill: string;
+  border: string;
+  pattern?: ForcedLotStatPattern;
+  patternFg?: string;
 }
 
-function ganttBarMarker(fillColor: string, visible: boolean) {
-  return {
-    color: fillColor,
+const FORCED_LOT_STAT_STYLE: Record<string, ForcedLotStatVisual> = {
+  PROC: { fill: "#16a34a", border: "#14532d" },
+  LOAD: { fill: "#ca8a04", border: "#92400e", pattern: "/", patternFg: "rgba(255,255,255,0.42)" },
+  RESV: { fill: "#6366f1", border: "#4338ca", pattern: ".", patternFg: "rgba(255,255,255,0.48)" },
+  SELE: { fill: "#0ea5e9", border: "#0369a1", pattern: "-", patternFg: "rgba(255,255,255,0.38)" },
+};
+
+export const FORCED_LOT_STAT_LEGEND_ORDER = ["PROC", "LOAD", "RESV", "SELE"] as const;
+
+export interface ForcedLotStatLegendItem {
+  code: string;
+  label: string;
+  fill: string;
+  border: string;
+  pattern?: ForcedLotStatPattern;
+}
+
+export const FORCED_LOT_STAT_LEGEND: ForcedLotStatLegendItem[] = [
+  { code: "PROC", label: "PROC (가공 중)", fill: "#16a34a", border: "#14532d" },
+  { code: "LOAD", label: "LOAD (적재)", fill: "#ca8a04", border: "#92400e", pattern: "/" },
+  { code: "RESV", label: "RESV (예약)", fill: "#6366f1", border: "#4338ca", pattern: "." },
+  { code: "SELE", label: "SELE (선택)", fill: "#0ea5e9", border: "#0369a1", pattern: "-" },
+];
+
+function forcedLotStatStyle(lotStatCd?: string): ForcedLotStatVisual | undefined {
+  if (!lotStatCd || lotStatCd === "WAIT") return undefined;
+  return FORCED_LOT_STAT_STYLE[lotStatCd];
+}
+
+function ganttBarMarker(fillColor: string, visible: boolean, lotStatCd?: string) {
+  const forced = forcedLotStatStyle(lotStatCd);
+  const color = forced?.fill ?? fillColor;
+  const marker: Record<string, unknown> = {
+    color,
     opacity: visible ? GANTT_THEME.barOpacity : 0.14,
     line: {
-      color: visible ? "rgba(0, 0, 0, 0.50)" : "rgba(148, 163, 184, 0.2)",
-      width: visible ? 1.5 : 0,
+      color: visible
+        ? (forced?.border ?? "rgba(0, 0, 0, 0.50)")
+        : "rgba(148, 163, 184, 0.2)",
+      width: visible ? (forced ? 2 : 1.5) : 0,
     },
     cornerradius: GANTT_THEME.barRadius,
   };
+  if (forced?.pattern && visible) {
+    marker.pattern = {
+      shape: forced.pattern,
+      bgcolor: color,
+      fgcolor: forced.patternFg ?? "rgba(255,255,255,0.35)",
+      size: 6,
+      solidity: 0.35,
+    };
+  }
+  return marker;
 }
 
 function conversionBarMarker() {
@@ -368,14 +409,16 @@ function ganttTraces(
     const width = rec.END_TM - rec.START_TM;
     const { base, x } = ganttBarAxisCoords(rec.START_TM, width, baseMs);
     const pairKey = ganttProdOperKey(rec.PLAN_PROD_ATTR_VAL, rec.OPER_ID ?? "");
-    const forcedColor = forcedLotStatFillColor(rec.LOT_STAT_CD);
+    const fillColor = forcedLotStatStyle(rec.LOT_STAT_CD)?.fill
+      ?? prodOperColorMap[pairKey]
+      ?? "#94a3b8";
     traces.push({
       type: "bar",
       orientation: "h",
       x: [x],
       y: [rec.EQP_ID],
       base: [base],
-      marker: ganttBarMarker(forcedColor ?? prodOperColorMap[pairKey] ?? "#94a3b8", visible),
+      marker: ganttBarMarker(fillColor, visible, rec.LOT_STAT_CD),
       text: visible && width >= 20 ? rec.LOT_ID : "",
       textposition: "inside",
       insidetextanchor: "middle",
@@ -1869,9 +1912,10 @@ export function buildEnhancedGantt(
     const { base, x } = ganttBarAxisCoords(start, width, baseMs);
     // 유입 재공 = 시뮬 중 투입(OPER_IN_TIME>0)만. ABSTRACT(초기 재공 출처)는 유입이 아님.
     const isInflowSeg = segment.records.some((r) => (r.OPER_IN_TIME ?? 0) > 0);
-    const forcedColor = forcedLotStatFillColor(rec.LOT_STAT_CD);
-    const baseMarker = ganttBarMarker(forcedColor ?? prodOperColorMap[pairKey] ?? "#94a3b8", true);
-    const marker = isInflowSeg
+    const forced = forcedLotStatStyle(rec.LOT_STAT_CD);
+    const fillColor = forced?.fill ?? prodOperColorMap[pairKey] ?? "#94a3b8";
+    const baseMarker = ganttBarMarker(fillColor, true, rec.LOT_STAT_CD);
+    const marker = isInflowSeg && !forced
       ? { ...baseMarker, opacity: 0.82, line: { ...(baseMarker.line as object), width: 0 } }
       : baseMarker;
     data.push({
