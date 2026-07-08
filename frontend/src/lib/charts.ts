@@ -980,7 +980,9 @@ function subplotAxisPair(index: number, total: number): {
   xKey: string;
   yKey: string;
   domain: [number, number];
-  titleY: number;
+  plotTop: number;
+  plotBottom: number;
+  rowCenterY: number;
 } {
   const titleBand = total > 1 ? 0.034 : 0;
   const rowGap = total > 1 ? 0.04 : 0;
@@ -996,7 +998,9 @@ function subplotAxisPair(index: number, total: number): {
     xKey: index === 0 ? "xaxis" : `xaxis${n}`,
     yKey: index === 0 ? "yaxis" : `yaxis${n}`,
     domain: [plotBottom, plotTop],
-    titleY: plotTop + 0.008,
+    plotTop,
+    plotBottom,
+    rowCenterY: (plotTop + plotBottom) / 2,
   };
 }
 
@@ -1040,7 +1044,8 @@ export function buildAlgorithmGanttComparison(
   const n = entries.length;
   const data: Data[] = [];
   const xLayout = {
-    title: ganttXAxisTitle(baseMs),
+    // 다중 알고리즘 비교: 상단 시간 눈금과 겹치지 않도록 축 제목 생략 (눈금 HH:mm 유지)
+    title: n > 1 ? undefined : ganttXAxisTitle(baseMs),
     ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
   };
   const layout: Partial<Layout> = {
@@ -1048,7 +1053,7 @@ export function buildAlgorithmGanttComparison(
     ...(n > 1
       ? { grid: { rows: n, columns: 1, pattern: "coupled", roworder: "top to bottom" } }
       : {}),
-    height: Math.max(220 * n + 72, 400),
+    height: Math.max(220 * n + (n > 1 ? 96 : 72), 400),
     barmode: "overlay",
     bargap: 0.20,
     showlegend: n === 1,
@@ -1060,7 +1065,7 @@ export function buildAlgorithmGanttComparison(
     legend: n === 1 ? { title: { text: "제품×공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
     hoverlabel: GANTT_HOVERLABEL,
     annotations: [],
-    margin: { l: 92, r: 20, t: 64, b: n === 1 ? 72 : 36 },
+    margin: { l: 92, r: 20, t: n > 1 ? 88 : 64, b: n === 1 ? 72 : 36 },
     xaxis: { anchor: "y", ...xLayout },
     shapes: n === 1 ? [ganttEqpBarDividerShape()] : [],
   };
@@ -1068,7 +1073,7 @@ export function buildAlgorithmGanttComparison(
   entries.forEach((entry, i) => {
     const yName = i === 0 ? "y" : `y${i + 1}`;
     const yKey = i === 0 ? "yaxis" : `yaxis${i + 1}`;
-    const { titleY } = subplotAxisPair(i, n);
+    const { plotTop } = subplotAxisPair(i, n);
     const prodKeys = entry.result.prod_keys;
     const operIds = entry.result.oper_ids;
     const traces = ganttTraces(entry.result.schedule, prodKeys, operIds, undefined, baseMs).map((t) => ({
@@ -1115,11 +1120,16 @@ export function buildAlgorithmGanttComparison(
         text: `<b>${entry.label}</b>`,
         xref: "paper",
         yref: "paper",
-        x: 0.005,
-        y: n > 1 ? titleY : 1.01,
+        // 왼쪽 시간 눈금(09:00 등)과 겹치지 않도록 Y축 라벨 오른쪽에 배치
+        x: n > 1 ? 0.13 : 0.005,
+        y: n > 1 ? plotTop - 0.014 : 1.02,
         xanchor: "left",
-        yanchor: "bottom",
+        yanchor: n > 1 ? "top" : "bottom",
         showarrow: false,
+        bgcolor: n > 1 ? "rgba(255,255,255,0.88)" : undefined,
+        bordercolor: n > 1 ? "rgba(15,23,42,0.08)" : undefined,
+        borderwidth: n > 1 ? 1 : 0,
+        borderpad: n > 1 ? 4 : 0,
         font: { size: 13, color: ALGO_CHART_COLORS[entry.algorithm] ?? "#333" },
       },
     ];
