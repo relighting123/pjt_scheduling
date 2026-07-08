@@ -1012,11 +1012,19 @@ class SchedulingSimulator:
             return sum(s for _, s in lst) / len(lst)
         return None
 
-    def _oper_capacity_per_min(self, ppk: str, oper_id: str) -> float:
-        """(PPK, OPER)을 처리 가능한 장비 합산 분당 처리량(매/분)."""
+    def _oper_capacity_per_min(
+        self, ppk: str, oper_id: str, *, only_available: bool = False,
+    ) -> float:
+        """(PPK, OPER)을 처리 가능한 장비 합산 분당 처리량(매/분).
+
+        only_available=True면 capability만으로 세지 않고 현재 idle한 장비만
+        합산한다(다른 작업에 묶인 장비는 지금 이 오퍼레이션에 못 쓰므로 제외).
+        """
         total = 0.0
         for eqp_id in self._env_data.get("eqp_ids", []):
             if not self._eqp_can_process(eqp_id, ppk, oper_id):
+                continue
+            if only_available and self.eqps[eqp_id].status != "idle":
                 continue
             st = self._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
             if st is not None and st > 0:
@@ -1103,7 +1111,9 @@ class SchedulingSimulator:
         )
         return max(coverage_frac, short_run_frac)
 
-    def _oper_supply_rate(self, ppk: str, oper_id: str) -> float:
+    def _oper_supply_rate(
+        self, ppk: str, oper_id: str, *, only_available: bool = False,
+    ) -> float:
         """(PPK, OPER)에 재공을 공급하는 선행 공정의 유효 처리율(매/분).
 
         선행 공정이 흘려보내는 율 ≈ 선행 capa, 단 선행에 ready 재공이 있을 때만.
@@ -1113,7 +1123,7 @@ class SchedulingSimulator:
             return 0.0
         if self._ready_wip_qty(ppk, prev) <= 0:
             return 0.0
-        return self._oper_capacity_per_min(ppk, prev)
+        return self._oper_capacity_per_min(ppk, prev, only_available=only_available)
 
     def _downstream_wip_cover_minutes(self, ppk: str, oper_id: str) -> Optional[float]:
         """
@@ -2073,6 +2083,7 @@ class SchedulingSimulator:
     PPK_OPER_FEATURES = 6
     PPK_OPER_MODEL_FEATURES = 5
     BUCKET_FEATURES = PPK_OPER_FEATURES + PPK_OPER_MODEL_FEATURES
+    STARVE_TIME_CAP_MINUTES = 240
 
     def get_bucket_features(self) -> np.ndarray:
         """
@@ -2209,21 +2220,16 @@ class SchedulingSimulator:
                 cov11 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
                 po_feats[oi, pi, 4] = min(cov11 / need11, 2.0) / 2.0
 
-                consume_rate = self._oper_capacity_per_min(ppk, op)
-                supply_rate = self._oper_supply_rate(ppk, op)
+                consume_rate = self._oper_capacity_per_min(ppk, op, only_available=True)
+                supply_rate = self._oper_supply_rate(ppk, op, only_available=True)
                 if consume_rate > supply_rate:
                     net_rate = consume_rate - supply_rate
                     starve_time = wip_q / net_rate
-                    # 계층값: 소진까지 남은 시간을 1시간/2시간/4시간 구간으로 나눠
-                    # 0 / 0.25 / 0.5 / 0.75 중 하나로 이산화 (급할수록 값이 작음)
-                    if starve_time <= 60:
-                        starve_time_norm = 0.0
-                    elif starve_time <= 120:
-                        starve_time_norm = 0.25
-                    elif starve_time <= 240:
-                        starve_time_norm = 0.5
-                    else:
-                        starve_time_norm = 0.75
+                    # 순수 재공/net_rate 소진 시간(분)을 고정 캡으로 0~1 연속 정규화
+                    # (급할수록 0에 가까움). 남은 에피소드 시간(T_avail)으로 나누지
+                    # 않는다 — 나누면 같은 물리적 소진 시간이 에피소드 진행 시점에
+                    # 따라 다른 값으로 보여 신호가 흔들린다.
+                    starve_time_norm = min(starve_time / self.STARVE_TIME_CAP_MINUTES, 1.0)
                 else:
                     starve_time_norm = 1.0
                 po_feats[oi, pi, 5] = starve_time_norm
