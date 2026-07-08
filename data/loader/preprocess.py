@@ -202,6 +202,13 @@ def _normalize_eqp_initial_state(rows: List[dict]) -> List[dict]:
     return out
 
 
+def _carrier_instance_id(row: dict) -> str:
+    """discrete_arrange 1행 → 런타임 carrier 단위 키. LOT_ID:CARRIER_ID = 1:N."""
+    carrier_id = str(row.get("CARRIER_ID") or "").strip()
+    lot_id = row["LOT_ID"]
+    return carrier_id if carrier_id else lot_id
+
+
 def _build_tool_capacity_map(
     tool_raw: List[dict],
     lot_cds: List[str],
@@ -254,13 +261,15 @@ def _apply_wafer_lot_split(
         del lot_info[parent_id]
 
         parent_carrier = info.get("carrier_id", "")
+        parent_logical = info.get("logical_lot_id", parent_id)
         for i, (cid, qty) in enumerate(zip(child_ids, sizes), start=1):
             lot_info[cid] = {
                 **info,
-                "lot_id":        cid,
-                "wf_qty":        qty,
-                "carrier_id":    f"{parent_carrier}__S{i:02d}" if parent_carrier else cid,
-                "parent_lot_id": parent_id,
+                "lot_id":          cid,
+                "wf_qty":          qty,
+                "carrier_id":      f"{parent_carrier}__S{i:02d}" if parent_carrier else cid,
+                "parent_lot_id":   parent_id,
+                "logical_lot_id":  parent_logical,
             }
 
         for eid, lots in eqp_lot_map.items():
@@ -383,12 +392,13 @@ def _build_abstract_inventory(
         wip["min_inject_time"] = min(wip["min_inject_time"], st_tm)
         lot_meta[lid] = {
             "PLAN_PROD_ATTR_VAL": ld["PLAN_PROD_ATTR_VAL"],
-            "oper_id":       ld["oper_id"],
-            "seq":           ld["seq"],
-            "wf_qty":        ld["wf_qty"],
-            "carrier_id":    ld.get("carrier_id", ""),
-            "oper_in_time":  st_tm,
-            "lot_stat_cd":   ld.get("lot_stat_cd", "WAIT"),
+            "oper_id":        ld["oper_id"],
+            "seq":            ld["seq"],
+            "wf_qty":         ld["wf_qty"],
+            "carrier_id":     ld.get("carrier_id", ""),
+            "logical_lot_id": ld.get("logical_lot_id", lid),
+            "oper_in_time":   st_tm,
+            "lot_stat_cd":    ld.get("lot_stat_cd", "WAIT"),
         }
 
     return inventory, wip_init, lot_meta
@@ -472,21 +482,23 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     avail_map: Dict[Tuple[str, str], int] = {}
     eqp_lot_map: Dict[str, List[str]] = {}
     for r in discrete_raw:
-        key = (r["EQP_ID"], r["LOT_ID"])
+        carrier_id = _carrier_instance_id(r)
+        key = (r["EQP_ID"], carrier_id)
         avail_map[key] = coerce_int(r["WF_QTY"], field="WF_QTY")
         eqp_lot_map.setdefault(r["EQP_ID"], [])
-        if r["LOT_ID"] not in eqp_lot_map[r["EQP_ID"]]:
-            eqp_lot_map[r["EQP_ID"]].append(r["LOT_ID"])
+        if carrier_id not in eqp_lot_map[r["EQP_ID"]]:
+            eqp_lot_map[r["EQP_ID"]].append(carrier_id)
 
-    # LOT 정보 빌드 (discrete_arrange LOT당 1행)
+    # LOT 정보 빌드 — carrier 단위 1행 (LOT_ID:CARRIER_ID = 1:N)
     lot_info: Dict[str, dict] = {}
-    seen_lots: set = set()
+    seen_carriers: set = set()
     eqp_forced_queue: Dict[str, List[str]] = {}
     for r in discrete_raw:
-        lot_id = r["LOT_ID"]
-        if lot_id in seen_lots:
+        carrier_id = _carrier_instance_id(r)
+        if carrier_id in seen_carriers:
             continue
-        seen_lots.add(lot_id)
+        seen_carriers.add(carrier_id)
+        logical_lot_id = r["LOT_ID"]
 
         oper_id, seq = _resolve_lot_oper_seq(r, flow_map, oper_seq_map)
         ppk = r["PLAN_PROD_ATTR_VAL"]
@@ -500,10 +512,11 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
 
         st_per_wafer = _coerce_proc_time(r.get("ST")) or 60
         eqp_id = r["EQP_ID"]
-        lot_stat_cd = normalize_lot_stat_cd(r.get("LOT_STAT_CD"), lot_id=lot_id)
-        lot_info[lot_id] = {
-            "lot_id":          lot_id,
-            "carrier_id":      r.get("CARRIER_ID", f"CAR{lot_id[-3:]}"),
+        lot_stat_cd = normalize_lot_stat_cd(r.get("LOT_STAT_CD"), lot_id=carrier_id)
+        lot_info[carrier_id] = {
+            "lot_id":          carrier_id,
+            "logical_lot_id":  logical_lot_id,
+            "carrier_id":      r.get("CARRIER_ID", f"CAR{logical_lot_id[-3:]}"),
             "PLAN_PROD_ATTR_VAL": ppk,
             "oper_id":         oper_id,
             "seq":             seq,
@@ -514,7 +527,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             "lot_stat_cd":     lot_stat_cd,
         }
         if lot_stat_cd != "WAIT":
-            eqp_forced_queue.setdefault(eqp_id, []).append(lot_id)
+            eqp_forced_queue.setdefault(eqp_id, []).append(carrier_id)
 
     # 계획 데이터 정리
     plan_list = []
@@ -539,7 +552,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # ── (LOT, EQP, OPER) 조합별 처리시간 행렬 ───────────────────────────────────
     proc_time_matrix: Dict[Tuple[str, str, str], int] = {}
     for r in discrete_raw:
-        lid = r["LOT_ID"]
+        lid = _carrier_instance_id(r)
         eid = r["EQP_ID"]
         oper_id = r.get("OPER_ID") or lot_info.get(lid, {}).get("oper_id", "")
         pt = _coerce_proc_time(r.get("ST"))
@@ -566,7 +579,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     eqp_oper_cap: Dict[str, List[str]] = {}
     for r in discrete_raw:
         eid = r["EQP_ID"]
-        lid = r["LOT_ID"]
+        lid = _carrier_instance_id(r)
         if lid in lot_info:
             oper_id = lot_info[lid]["oper_id"]
             eqp_oper_cap.setdefault(eid, [])
@@ -668,7 +681,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # ── arrange 테이블 (availability 전체 – 초기 Actual 재공) ────────────────
     arrange_actual_table: List[dict] = []
     for r in discrete_raw:
-        lot_id = r["LOT_ID"]
+        lot_id = _carrier_instance_id(r)
         eid = r["EQP_ID"]
         oper_id = r.get("OPER_ID") or lot_info.get(lot_id, {}).get("oper_id", "")
         st_per_wafer = proc_time_matrix.get((lot_id, eid, oper_id), 60)

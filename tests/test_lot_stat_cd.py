@@ -47,12 +47,13 @@ def _build_scenario():
 
 def test_preprocess_builds_forced_queue_in_input_order():
     env_data = _build_scenario()
-    assert env_data["eqp_forced_queue"] == {"EQP001": ["LOT_P", "LOT_L"]}
+    assert env_data["eqp_forced_queue"] == {"EQP001": ["CLOT_P", "CLOT_L"]}
     lots = {l["lot_id"]: l for l in env_data["lots"]}
-    assert lots["LOT_P"]["lot_stat_cd"] == "PROC"
-    assert lots["LOT_L"]["lot_stat_cd"] == "LOAD"
-    assert lots["LOT_W1"]["lot_stat_cd"] == "WAIT"
-    assert lots["LOT_W2"]["lot_stat_cd"] == "WAIT"
+    assert lots["CLOT_P"]["lot_stat_cd"] == "PROC"
+    assert lots["CLOT_P"]["logical_lot_id"] == "LOT_P"
+    assert lots["CLOT_L"]["lot_stat_cd"] == "LOAD"
+    assert lots["CLOT_W1"]["lot_stat_cd"] == "WAIT"
+    assert lots["CLOT_W2"]["lot_stat_cd"] == "WAIT"
 
 
 def test_missing_lot_stat_cd_defaults_to_wait_no_forced_queue():
@@ -60,8 +61,8 @@ def test_missing_lot_stat_cd_defaults_to_wait_no_forced_queue():
     env_data = preprocess(_raw(discrete))
     assert env_data["eqp_forced_queue"] == {}
     lots = {l["lot_id"]: l for l in env_data["lots"]}
-    assert lots["LOT_A"]["lot_stat_cd"] == "WAIT"
-    assert lots["LOT_B"]["lot_stat_cd"] == "WAIT"
+    assert lots["CLOT_A"]["lot_stat_cd"] == "WAIT"
+    assert lots["CLOT_B"]["lot_stat_cd"] == "WAIT"
 
 
 def test_invalid_lot_stat_cd_raises():
@@ -90,16 +91,16 @@ def test_forced_lots_pin_to_equipment_in_written_order():
     eqp1_rows = sorted(
         (r for r in schedule if r["EQP_ID"] == "EQP001"), key=lambda r: r["START_TM"],
     )
-    eqp1_forced_order = [r["LOT_ID"] for r in eqp1_rows if r["LOT_ID"] in ("LOT_P", "LOT_L")]
-    assert eqp1_forced_order == ["LOT_P", "LOT_L"]
+    eqp1_forced_order = [r["LOT_ID"] for r in eqp1_rows if r["LOT_ID"] in ("CLOT_P", "CLOT_L")]
+    assert eqp1_forced_order == ["CLOT_P", "CLOT_L"]
 
-    # 강제 LOT은 지정된 EQP001 외 어디에도 배정되지 않는다.
+    # 강제 carrier는 지정된 EQP001 외 어디에도 배정되지 않는다.
     other_eqp_lots = {r["LOT_ID"] for r in schedule if r["EQP_ID"] != "EQP001"}
-    assert "LOT_P" not in other_eqp_lots
-    assert "LOT_L" not in other_eqp_lots
+    assert "CLOT_P" not in other_eqp_lots
+    assert "CLOT_L" not in other_eqp_lots
 
     scheduled_lot_ids = {r["LOT_ID"] for r in schedule}
-    assert {"LOT_P", "LOT_L", "LOT_W1", "LOT_W2"} <= scheduled_lot_ids
+    assert {"CLOT_P", "CLOT_L", "CLOT_W1", "CLOT_W2"} <= scheduled_lot_ids
 
     assert check_forced_placement(schedule, env_data) == []
 
@@ -107,8 +108,8 @@ def test_forced_lots_pin_to_equipment_in_written_order():
 def test_check_forced_placement_flags_wrong_equipment_and_order():
     env_data = _build_scenario()
     bad_schedule = [
-        {"EQP_ID": "EQP002", "LOT_ID": "LOT_P", "START_TM": 0, "END_TM": 100},
-        {"EQP_ID": "EQP001", "LOT_ID": "LOT_L", "START_TM": 0, "END_TM": 100},
+        {"EQP_ID": "EQP002", "LOT_ID": "CLOT_P", "START_TM": 0, "END_TM": 100},
+        {"EQP_ID": "EQP001", "LOT_ID": "CLOT_L", "START_TM": 0, "END_TM": 100},
     ]
     violations = check_forced_placement(bad_schedule, env_data)
     assert violations

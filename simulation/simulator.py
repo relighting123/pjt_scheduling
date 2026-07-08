@@ -99,6 +99,7 @@ class Lot:
     priority:        int   = 1
     original_eqp:    str   = ""
     parent_lot_id:   str   = ""
+    logical_lot_id:  str   = ""
     lot_cd:          str   = ""
     temp:            str   = ""
     lot_stat_cd:     str   = "WAIT"
@@ -193,6 +194,7 @@ class SchedulingSimulator:
                 priority=ld.get("priority", 1),
                 original_eqp=ld.get("original_eqp", ""),
                 parent_lot_id=ld.get("parent_lot_id", ""),
+                logical_lot_id=ld.get("logical_lot_id", ld["lot_id"]),
                 lot_cd=ld.get("lot_cd", ""),
                 temp=ld.get("temp", ""),
                 lot_stat_cd=ld.get("lot_stat_cd", "WAIT"),
@@ -699,6 +701,7 @@ class SchedulingSimulator:
             "seq":           meta.get("seq", 1),
             "wf_qty":        meta.get("wf_qty", 25),
             "carrier_id":    meta.get("carrier_id", ""),
+            "logical_lot_id": meta.get("logical_lot_id", lot_id),
             "oper_in_time":  oper_in_time,
         }
         self._invalidate_caches()
@@ -734,6 +737,7 @@ class SchedulingSimulator:
                 "seq":        next_info["next_seq"],
                 "wf_qty":     meta.get("wf_qty", 25),
                 "carrier_id": meta.get("carrier_id", ""),
+                "logical_lot_id": meta.get("logical_lot_id", lot_id),
             },
         )
         return {
@@ -1382,6 +1386,50 @@ class SchedulingSimulator:
             score += 0.5
         return cfg.w_flow_balance * score
 
+    def _logical_lot_id(
+        self,
+        lot: Optional[dict] = None,
+        *,
+        lot_id: str = "",
+        meta: Optional[dict] = None,
+    ) -> str:
+        """carrier 단위 lot_id → 논리 LOT_ID (LOT_ID:CARRIER = 1:N)."""
+        if lot is not None:
+            return (
+                lot.get("logical_lot_id")
+                or lot.get("parent_lot_id")
+                or lot["lot_id"]
+            )
+        if meta is not None:
+            return meta.get("logical_lot_id") or meta.get("parent_lot_id") or lot_id
+        pool_lot = self.lot_pool.get(lot_id)
+        if pool_lot is not None:
+            return pool_lot.logical_lot_id or pool_lot.parent_lot_id or lot_id
+        wip_meta = self._wip_lot_meta.get(lot_id, {})
+        return wip_meta.get("logical_lot_id") or wip_meta.get("parent_lot_id") or lot_id
+
+    def _active_logical_lot_ids(self, ppk: str, oper_id: str) -> set:
+        """동일 (PPK, OPER)에서 이미 장비 큐/가공 중인 carrier가 속한 논리 LOT 집합."""
+        active: set = set()
+        for lid, inflight in self._in_flight.items():
+            if (
+                inflight.get("PLAN_PROD_ATTR_VAL") == ppk
+                and inflight.get("oper_id") == oper_id
+            ):
+                active.add(self._logical_lot_id(lot_id=lid, meta=inflight))
+        for queue in self._eqp_forced_queue.values():
+            for lid in queue:
+                meta = self._wip_lot_meta.get(lid, {})
+                lot = self.lot_pool.get(lid)
+                m_ppk = meta.get("PLAN_PROD_ATTR_VAL") or (lot.PLAN_PROD_ATTR_VAL if lot else "")
+                m_oper = meta.get("oper_id") or (lot.oper_id if lot else "")
+                if m_ppk == ppk and m_oper == oper_id:
+                    active.add(self._logical_lot_id(lot_id=lid, meta=meta))
+        for pending in self._eqp_pending_assign.values():
+            if pending.get("ppk") == ppk and pending.get("oper_id") == oper_id:
+                active.add(self._logical_lot_id(lot_id=pending["lot_id"], meta=pending))
+        return active
+
     def _auto_select_lot(self, eqp_id: str, candidates: List[dict]) -> Optional[str]:
         """버킷 내 carrier 자동 선택.
 
@@ -1390,19 +1438,26 @@ class SchedulingSimulator:
 
         1. 초기 재공 (is_initial_wip)
         2. discrete carrier (is_abstract=False)
-        3. 기할당 (LOT_STAT_CD != WAIT) — 보통 available_lots()에서 단독 노출됨
+        3. 진행 중 논리 LOT 소속 carrier — 같은 LOT의 다른 carrier가
+           장비 큐/가공 중이면 나머지 carrier를 우선 (LOT 완결 지향)
         4. earliest ST (예상 종료 시각 → 동률이면 전환 불필요)
         5. oper_in_time
         """
         if not candidates:
             return None
 
+        ppk = candidates[0].get("PLAN_PROD_ATTR_VAL", "")
+        oper_id = candidates[0].get("oper_id", "")
+        active_logical_lots = self._active_logical_lot_ids(ppk, oper_id)
+
         def sort_key(lot: dict):
             end, needs_conv, carrier, lot_id = self.earliest_st_combo_score(eqp_id, lot)
+            logical_id = self._logical_lot_id(lot)
+            lot_in_progress = logical_id in active_logical_lots
             return (
                 not lot.get("is_initial_wip", False),
                 int(lot.get("is_abstract", True)),
-                lot.get("lot_stat_cd", "WAIT") == "WAIT",
+                not lot_in_progress,
                 end,
                 needs_conv,
                 int(lot.get("oper_in_time", 0)),
@@ -1698,6 +1753,10 @@ class SchedulingSimulator:
                     "processing_time": pt,
                     "st_per_wafer":    st_per_wafer,
                     "parent_lot_id":   lot.parent_lot_id if lot else meta.get("parent_lot_id", ""),
+                    "logical_lot_id": (
+                        lot.logical_lot_id if lot
+                        else meta.get("logical_lot_id", meta.get("parent_lot_id", lid))
+                    ),
                     "lot_cd":          lot_cd,
                     "temp":            temp,
                     "seq":             meta.get("seq", lot.seq if lot else row["seq"]),
@@ -1812,6 +1871,7 @@ class SchedulingSimulator:
             "seq":           seq,
             "wf_qty":        wf_qty,
             "carrier_id":    carrier_id,
+            "logical_lot_id": pending.get("logical_lot_id") or self._logical_lot_id(lot_id=lot_id),
             "end_time":      end_time,
             "lot_cd":        lot_cd,
             "eqp_id":        eqp_id,
@@ -1934,6 +1994,7 @@ class SchedulingSimulator:
             "st_per_wafer": st_per_wafer,
             "proc_time": proc_time,
             "carrier_id": carrier_id,
+            "logical_lot_id": self._logical_lot_id(lot_id=lot_id),
             "row": row,
             "oper_in_time": oper_in_time,
             "is_abstract": is_abstract,
