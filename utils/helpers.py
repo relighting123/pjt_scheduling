@@ -43,8 +43,9 @@ def encode_normalized(value: Optional[str], index_map: Dict[str, int], total: in
 REQUIRED_DISCRETE_ARRANGE_FIELDS = {
     "EQP_ID", "LOT_ID", "PLAN_PROD_ATTR_VAL", "OPER_ID", "ST", "EQP_MODEL_CD", "WF_QTY",
 }
-# LOT_STAT_CD: WAIT만 알고리즘이 자유 배정. 나머지는 지정 EQP_ID에 입력 순서대로 강제 배정.
+# LOT_STAT_CD: WAIT만 알고리즘이 자유 배정. 나머지는 지정 EQP_ID에 상태 우선순위로 강제 배정.
 FORCED_LOT_STAT_CDS = {"PROC", "LOAD", "SELE", "RESV"}
+FORCED_LOT_STAT_ORDER = {"PROC": 0, "LOAD": 1, "RESV": 2, "SELE": 3}
 VALID_LOT_STAT_CDS = FORCED_LOT_STAT_CDS | {"WAIT"}
 REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD", "ST"}
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_ATTR_VAL", "OPER_ID",

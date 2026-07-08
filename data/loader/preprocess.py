@@ -9,8 +9,8 @@ from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
 from utils.helpers import (
-    build_index_map, coerce_int, effective_proc_time, normalize_lot_stat_cd,
-    normalize_tool_capacity_rows, split_wf_qty,
+    build_index_map, coerce_int, effective_proc_time, FORCED_LOT_STAT_ORDER,
+    normalize_lot_stat_cd, normalize_tool_capacity_rows, split_wf_qty,
 )
 
 
@@ -493,6 +493,8 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     lot_info: Dict[str, dict] = {}
     seen_carriers: set = set()
     eqp_forced_queue: Dict[str, List[str]] = {}
+    forced_input_seq: Dict[str, int] = {}
+    forced_seq_counter = 0
     for r in discrete_raw:
         carrier_id = _carrier_instance_id(r)
         if carrier_id in seen_carriers:
@@ -528,6 +530,17 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         }
         if lot_stat_cd != "WAIT":
             eqp_forced_queue.setdefault(eqp_id, []).append(carrier_id)
+            forced_input_seq[carrier_id] = forced_seq_counter
+            forced_seq_counter += 1
+
+    for eqp_id, queue in eqp_forced_queue.items():
+        eqp_forced_queue[eqp_id] = sorted(
+            queue,
+            key=lambda cid: (
+                FORCED_LOT_STAT_ORDER.get(lot_info[cid]["lot_stat_cd"], 99),
+                forced_input_seq.get(cid, 0),
+            ),
+        )
 
     # 계획 데이터 정리
     plan_list = []

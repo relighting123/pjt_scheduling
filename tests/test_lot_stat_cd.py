@@ -45,7 +45,21 @@ def _build_scenario():
     return preprocess(_raw(discrete))
 
 
-def test_preprocess_builds_forced_queue_in_input_order():
+def test_preprocess_builds_forced_queue_in_stat_priority_order():
+    """입력 순서와 무관하게 PROC → LOAD → RESV → SELE 순으로 큐 정렬."""
+    discrete = [
+        _disc("EQP001", "LOT_S", "SELE"),
+        _disc("EQP001", "LOT_R", "RESV"),
+        _disc("EQP001", "LOT_L", "LOAD"),
+        _disc("EQP001", "LOT_P", "PROC"),
+    ]
+    env_data = preprocess(_raw(discrete))
+    assert env_data["eqp_forced_queue"] == {
+        "EQP001": ["CLOT_P", "CLOT_L", "CLOT_R", "CLOT_S"],
+    }
+
+
+def test_preprocess_builds_forced_queue_proc_before_load():
     env_data = _build_scenario()
     assert env_data["eqp_forced_queue"] == {"EQP001": ["CLOT_P", "CLOT_L"]}
     lots = {l["lot_id"]: l for l in env_data["lots"]}
