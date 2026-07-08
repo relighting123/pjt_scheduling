@@ -199,30 +199,71 @@ def test_auto_select_lot_prefers_initial_and_discrete():
     candidates = [
         {
             "lot_id": "INJ001",
-            "priority": 1,
             "oper_in_time": 0,
-            "seq": 10,
+            "processing_time": 10,
             "is_abstract": False,
             "is_initial_wip": False,
         },
         {
             "lot_id": "INIT001",
-            "priority": 1,
             "oper_in_time": 0,
-            "seq": 1,
+            "processing_time": 10,
             "is_abstract": True,
             "is_initial_wip": True,
         },
         {
             "lot_id": "INIT002",
-            "priority": 1,
             "oper_in_time": 0,
-            "seq": 2,
+            "processing_time": 10,
             "is_abstract": False,
             "is_initial_wip": True,
         },
     ]
     assert sim._auto_select_lot("EQP001", candidates) == "INIT002"
+
+
+def test_auto_select_lot_prefers_earliest_st_among_peers():
+    sim = SchedulingSimulator.__new__(SchedulingSimulator)
+
+    candidates = [
+        {
+            "lot_id": "SLOW001",
+            "oper_in_time": 0,
+            "processing_time": 60,
+            "is_abstract": False,
+            "is_initial_wip": True,
+        },
+        {
+            "lot_id": "FAST001",
+            "oper_in_time": 0,
+            "processing_time": 20,
+            "is_abstract": False,
+            "is_initial_wip": True,
+        },
+    ]
+    assert sim._auto_select_lot("EQP001", candidates) == "FAST001"
+
+
+def test_auto_select_lot_prefers_oper_in_time_after_st():
+    sim = SchedulingSimulator.__new__(SchedulingSimulator)
+
+    candidates = [
+        {
+            "lot_id": "LATE001",
+            "oper_in_time": 30,
+            "processing_time": 20,
+            "is_abstract": False,
+            "is_initial_wip": True,
+        },
+        {
+            "lot_id": "EARLY001",
+            "oper_in_time": 0,
+            "processing_time": 20,
+            "is_abstract": False,
+            "is_initial_wip": True,
+        },
+    ]
+    assert sim._auto_select_lot("EQP001", candidates) == "EARLY001"
 
 
 def test_tool_cap_only_on_tool_swap():
@@ -258,6 +299,8 @@ if __name__ == "__main__":
     test_step_resolves_invalid_ppk_on_current_eqp()
     test_move_out_idle_same_time_no_idle_gap()
     test_auto_select_lot_prefers_initial_and_discrete()
+    test_auto_select_lot_prefers_earliest_st_among_peers()
+    test_auto_select_lot_prefers_oper_in_time_after_st()
     test_tool_cap_only_on_tool_swap()
     test_rl_inference_makes_progress()
     print("all tests passed")

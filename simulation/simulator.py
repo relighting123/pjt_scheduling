@@ -1387,13 +1387,16 @@ class SchedulingSimulator:
             return None
 
         def sort_key(lot: dict):
+            end, needs_conv, carrier, lot_id = self.earliest_st_combo_score(eqp_id, lot)
             return (
                 not lot.get("is_initial_wip", False),
                 int(lot.get("is_abstract", True)),
-                lot.get("priority", 99),
+                lot.get("lot_stat_cd", "WAIT") == "WAIT",
+                end,
+                needs_conv,
                 int(lot.get("oper_in_time", 0)),
-                -int(lot.get("seq", 0)),
-                lot["lot_id"],
+                carrier,
+                lot_id,
             )
 
         best = min(candidates, key=sort_key)
