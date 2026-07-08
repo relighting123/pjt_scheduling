@@ -974,34 +974,67 @@ export function buildAlgorithmAchievementComparison(
   };
 }
 
-function subplotAxisPair(index: number, total: number): {
-  xName: string;
-  yName: string;
-  xKey: string;
-  yKey: string;
-  domain: [number, number];
-  plotTop: number;
-  plotBottom: number;
-  rowCenterY: number;
-} {
-  const titleBand = total > 1 ? 0.034 : 0;
-  const rowGap = total > 1 ? 0.04 : 0;
-  const rowH = 1 / total;
-  const rowTop = 1 - index * rowH;
-  const rowBottom = rowTop - rowH;
-  const plotTop = rowTop - titleBand;
-  const plotBottom = rowBottom + (index < total - 1 ? rowGap : 0);
-  const n = index + 1;
-  return {
-    xName: index === 0 ? "x" : `x${n}`,
-    yName: index === 0 ? "y" : `y${n}`,
-    xKey: index === 0 ? "xaxis" : `xaxis${n}`,
-    yKey: index === 0 ? "yaxis" : `yaxis${n}`,
-    domain: [plotBottom, plotTop],
-    plotTop,
-    plotBottom,
-    rowCenterY: (plotTop + plotBottom) / 2,
+export function buildAlgorithmGantt(
+  entry: AlgoCompareEntry,
+  axis: GanttAxisOptions,
+): PlotChartSpec {
+  const eqps = sortedEqpIds(axis.eqpIds);
+  const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
+  const baseMs = resolveGanttBaseMs(axis);
+  const prodKeys = entry.result.prod_keys;
+  const operIds = entry.result.oper_ids;
+  const data: Data[] = [];
+
+  const traces = ganttTraces(entry.result.schedule, prodKeys, operIds, undefined, baseMs);
+  data.push(...traces);
+
+  const convPlans = entry.result.conversion_plans ?? [];
+  const maxEnd = Math.max(
+    ...entry.result.schedule.map((r) => r.END_TM),
+    ...convPlans.map((p) => p.conv_end_min),
+    1,
+  );
+  const convTraces = conversionTraces(convPlans, maxEnd + 1, baseMs);
+  data.push(...convTraces);
+  if (convTraces.length > 0) {
+    data.push(conversionLegendTrace(true));
+  }
+
+  const layout: Partial<Layout> = {
+    ...GANTT_PAN_LAYOUT,
+    height: Math.max(72 * Math.max(eqps.length, 1) + 88, 300),
+    barmode: "overlay",
+    bargap: 0.20,
+    showlegend: true,
+    plot_bgcolor: GANTT_THEME.plotBg,
+    paper_bgcolor: GANTT_THEME.paperBg,
+    font: GANTT_LAYOUT_FONT,
+    hovermode: "closest",
+    hoverdistance: 30,
+    legend: { title: { text: "제품×공정", font: { size: 11 } }, ...GANTT_LEGEND },
+    hoverlabel: GANTT_HOVERLABEL,
+    margin: { l: 92, r: 20, t: 56, b: 72 },
+    xaxis: {
+      title: ganttXAxisTitle(baseMs),
+      anchor: "y",
+      ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
+    },
+    yaxis: ganttYAxisLayout(eqps, undefined, { anchor: "x" }),
+    shapes: [ganttEqpBarDividerShape(), ...ganttRowDividerShapes(eqps.length)],
   };
+
+  return { data, layout, clampXMin: ganttXMinClamp(baseMs) };
+}
+
+/** @deprecated TestPage는 알고리즘별 `buildAlgorithmGantt` + HTML 제목 스택을 사용합니다. */
+export function buildAlgorithmGanttComparison(
+  entries: AlgoCompareEntry[],
+  axis: GanttAxisOptions,
+): PlotChartSpec {
+  if (!entries.length) {
+    return { data: [], layout: { height: 300 } };
+  }
+  return buildAlgorithmGantt(entries[0], axis);
 }
 
 export function buildCompareGanttAxis(
@@ -1028,114 +1061,6 @@ export function buildCompareGanttAxis(
     fixedRange: overrides?.fixedRange ?? false,
     simBaseTime,
   };
-}
-
-export function buildAlgorithmGanttComparison(
-  entries: AlgoCompareEntry[],
-  axis: GanttAxisOptions,
-): PlotChartSpec {
-  if (!entries.length) {
-    return { data: [], layout: { height: 300 } };
-  }
-
-  const eqps = sortedEqpIds(axis.eqpIds);
-  const [timeStart, timeEnd] = resolveGanttTimeRange(axis);
-  const baseMs = resolveGanttBaseMs(axis);
-  const n = entries.length;
-  const data: Data[] = [];
-  const xLayout = {
-    // 다중 알고리즘 비교: 상단 시간 눈금과 겹치지 않도록 축 제목 생략 (눈금 HH:mm 유지)
-    title: n > 1 ? undefined : ganttXAxisTitle(baseMs),
-    ...ganttXAxisLayout(timeStart, timeEnd, {}, axis.fixedRange, baseMs),
-  };
-  const layout: Partial<Layout> = {
-    ...GANTT_PAN_LAYOUT,
-    ...(n > 1
-      ? { grid: { rows: n, columns: 1, pattern: "coupled", roworder: "top to bottom" } }
-      : {}),
-    height: Math.max(220 * n + (n > 1 ? 96 : 72), 400),
-    barmode: "overlay",
-    bargap: 0.20,
-    showlegend: n === 1,
-    plot_bgcolor: GANTT_THEME.plotBg,
-    paper_bgcolor: GANTT_THEME.paperBg,
-    font: GANTT_LAYOUT_FONT,
-    hovermode: "closest",
-    hoverdistance: 30,
-    legend: n === 1 ? { title: { text: "제품×공정", font: { size: 11 } }, ...GANTT_LEGEND } : undefined,
-    hoverlabel: GANTT_HOVERLABEL,
-    annotations: [],
-    margin: { l: 92, r: 20, t: n > 1 ? 88 : 64, b: n === 1 ? 72 : 36 },
-    xaxis: { anchor: "y", ...xLayout },
-    shapes: n === 1 ? [ganttEqpBarDividerShape()] : [],
-  };
-
-  entries.forEach((entry, i) => {
-    const yName = i === 0 ? "y" : `y${i + 1}`;
-    const yKey = i === 0 ? "yaxis" : `yaxis${i + 1}`;
-    const { plotTop } = subplotAxisPair(i, n);
-    const prodKeys = entry.result.prod_keys;
-    const operIds = entry.result.oper_ids;
-    const traces = ganttTraces(entry.result.schedule, prodKeys, operIds, undefined, baseMs).map((t) => ({
-      ...t,
-      xaxis: "x",
-      yaxis: yName,
-      showlegend: i === 0 && (t as { showlegend?: boolean }).showlegend !== false,
-    }));
-    data.push(...traces);
-
-    const convPlans = entry.result.conversion_plans ?? [];
-    const maxEnd = Math.max(
-      ...entry.result.schedule.map((r) => r.END_TM),
-      ...convPlans.map((p) => p.conv_end_min),
-      1,
-    );
-    const convTraces = conversionTraces(convPlans, maxEnd + 1, baseMs).map((t) => ({
-      ...t,
-      xaxis: "x",
-      yaxis: yName,
-      showlegend: false,
-    }));
-    data.push(...convTraces);
-    if (i === 0 && convTraces.length > 0) {
-      data.push({
-        ...conversionLegendTrace(true),
-        xaxis: "x",
-        yaxis: yName,
-      });
-    }
-
-    (layout as Record<string, unknown>)[yKey] = ganttYAxisLayout(eqps, undefined, {
-      anchor: "x",
-    });
-
-    layout.shapes = [
-      ...(layout.shapes ?? []),
-      ...ganttRowDividerShapes(eqps.length, yName),
-    ];
-
-    layout.annotations = [
-      ...(layout.annotations ?? []),
-      {
-        text: `<b>${entry.label}</b>`,
-        xref: "paper",
-        yref: "paper",
-        // 왼쪽 시간 눈금(09:00 등)과 겹치지 않도록 Y축 라벨 오른쪽에 배치
-        x: n > 1 ? 0.13 : 0.005,
-        y: n > 1 ? plotTop - 0.014 : 1.02,
-        xanchor: "left",
-        yanchor: n > 1 ? "top" : "bottom",
-        showarrow: false,
-        bgcolor: n > 1 ? "rgba(255,255,255,0.88)" : undefined,
-        bordercolor: n > 1 ? "rgba(15,23,42,0.08)" : undefined,
-        borderwidth: n > 1 ? 1 : 0,
-        borderpad: n > 1 ? 4 : 0,
-        font: { size: 13, color: ALGO_CHART_COLORS[entry.algorithm] ?? "#333" },
-      },
-    ];
-  });
-
-  return { data, layout, clampXMin: ganttXMinClamp(baseMs) };
 }
 
 export type TestMetricKey =

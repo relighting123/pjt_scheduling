@@ -9,7 +9,7 @@ import {
   ALGO_CHART_COLORS,
   benchmarkRowsFromResponse,
   buildAlgorithmAchievementComparison,
-  buildAlgorithmGanttComparison,
+  buildAlgorithmGantt,
   buildMetricSummaryChart,
   buildMetricSummaryRows,
   buildTestMetricChart,
@@ -399,7 +399,28 @@ export default function TestPage({ config, modelExists }: Props) {
                   </div>
                 </div>
                 <FullscreenPanel title={selectedDataset.label} className="chart-wrap gantt-chart-panel">
-                  <PlotChart {...buildAlgorithmGanttComparison(detailEntries, ganttAxis)} scrollable />
+                  <div className="gantt-compare-stack">
+                    {detailEntries.map((entry) => {
+                      const algoColor = ALGO_CHART_COLORS[entry.algorithm] ?? "var(--accent)";
+                      return (
+                        <section key={entry.algorithm} className="gantt-compare-section">
+                          <div className="gantt-compare-section-head">
+                            <span
+                              className="gantt-algo-badge gantt-algo-badge--compare"
+                              style={{
+                                color: algoColor,
+                                borderColor: `${algoColor}55`,
+                                background: `${algoColor}18`,
+                              }}
+                            >
+                              {entry.label}
+                            </span>
+                          </div>
+                          <PlotChart {...buildAlgorithmGantt(entry, ganttAxis)} scrollable />
+                        </section>
+                      );
+                    })}
+                  </div>
                 </FullscreenPanel>
               </div>
             )}
