@@ -1012,16 +1012,75 @@ class SchedulingSimulator:
             return sum(s for _, s in lst) / len(lst)
         return None
 
-    def _oper_capacity_per_min(self, ppk: str, oper_id: str) -> float:
-        """(PPK, OPER)을 처리 가능한 장비 합산 분당 처리량(매/분)."""
+    def _eqp_feasible_bucket_keys(self, eqp_id: str) -> set:
+        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합."""
+        if self.eqps[eqp_id].status != "idle":
+            return set()
+        lots = self.available_lots(eqp_id)
+        if not lots:
+            return set()
+        feasible: set = set()
+        buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
+        for bucket_ppk, bucket_oper in buckets:
+            lot_id = self._auto_select_lot(eqp_id, [
+                l for l in lots
+                if l["PLAN_PROD_ATTR_VAL"] == bucket_ppk and l["oper_id"] == bucket_oper
+            ])
+            if lot_id is None:
+                continue
+            lot_cd, temp = self._lot_cd_temp(
+                lot_id, self.lot_pool.get(lot_id), ppk=bucket_ppk, oper_id=bucket_oper,
+            )
+            if self._assign_blocked(eqp_id, lot_cd, temp):
+                continue
+            feasible.add((bucket_ppk, bucket_oper))
+        return feasible
+
+    def _oper_committed_capacity_per_min(self, ppk: str, oper_id: str) -> float:
+        """마지막 setup(prev_prod/prev_oper)이 일치하는 장비 합산 분당 처리량(매/분)."""
         total = 0.0
         for eqp_id in self._env_data.get("eqp_ids", []):
             if not self._eqp_can_process(eqp_id, ppk, oper_id):
+                continue
+            eqp = self.eqps.get(eqp_id)
+            if eqp is None or eqp.prev_prod != ppk or eqp.prev_oper != oper_id:
                 continue
             st = self._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
             if st is not None and st > 0:
                 total += 1.0 / st
         return total
+
+    def _oper_idle_split_capacity_per_min(self, ppk: str, oper_id: str) -> float:
+        """커밋 장비가 없을 때 idle+capable 장비의 capa를 feasible 버킷 수(K)로 균등 분배."""
+        bucket = (ppk, oper_id)
+        total = 0.0
+        for eqp_id in self._env_data.get("eqp_ids", []):
+            if not self._eqp_can_process(eqp_id, ppk, oper_id):
+                continue
+            eqp = self.eqps.get(eqp_id)
+            if eqp is None or eqp.status != "idle":
+                continue
+            feasible = self._eqp_feasible_bucket_keys(eqp_id)
+            if bucket not in feasible:
+                continue
+            k = len(feasible)
+            if k <= 0:
+                continue
+            st = self._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
+            if st is not None and st > 0:
+                total += (1.0 / st) / k
+        return total
+
+    def _oper_capacity_per_min(self, ppk: str, oper_id: str) -> float:
+        """(PPK, OPER) 유효 분당 처리량(매/분).
+
+        1) setup 커밋(prev_prod/prev_oper 일치) 장비: 전액 1/ST
+        2) 커밋 0이면 idle+capable 장비를 feasible 버킷 수로 균등 분배(방법 B)
+        """
+        committed = self._oper_committed_capacity_per_min(ppk, oper_id)
+        if committed > 0:
+            return committed
+        return self._oper_idle_split_capacity_per_min(ppk, oper_id)
 
     def _setup_demand_wafers(self, lot_cd: str, temp: str) -> int:
         """이 (LOT_CD, TEMP) 세팅으로 처리해야 할 ready 재공 매수 합.
@@ -1544,26 +1603,10 @@ class SchedulingSimulator:
 
     def _compute_feasible_ppk_oper(self, eqp_id: str) -> List[int]:
         """get_feasible_ppk_oper() 실계산 본체."""
-        if self.eqps[eqp_id].status != "idle":
-            return []
-        lots = self.available_lots(eqp_id)
-        if not lots:
-            return []
-        feasible: List[int] = []
-        buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
-        for ppk, oper_id in buckets:
-            lot_id = self._auto_select_lot(eqp_id, [
-                l for l in lots if l["PLAN_PROD_ATTR_VAL"] == ppk and l["oper_id"] == oper_id
-            ])
-            if lot_id is None:
-                continue
-            lot_cd, temp = self._lot_cd_temp(
-                lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
-            )
-            if self._assign_blocked(eqp_id, lot_cd, temp):
-                continue
-            feasible.append(self.ppk_oper_flat_index(oper_id, ppk))
-        return feasible
+        return [
+            self.ppk_oper_flat_index(oper_id, ppk)
+            for ppk, oper_id in self._eqp_feasible_bucket_keys(eqp_id)
+        ]
 
     def get_feasible_assignments(self) -> List[tuple]:
         """유효 (ppk_oper_flat_idx, eqp_idx) 목록. 하위 호환."""
