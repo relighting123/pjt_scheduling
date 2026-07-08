@@ -51,7 +51,7 @@ def test_oper_supply_rate_gated_by_prev_wip():
         None,
     )
     if oper_with_prev is not None:
-        sim._oper_capacity_per_min = lambda _p, _o: 0.7  # type: ignore[method-assign]
+        sim._oper_capacity_per_min = lambda _p, _o, **_kw: 0.7  # type: ignore[method-assign]
         # 선행 ready 재공 0 → 공급 0
         sim._ready_wip_qty = lambda _p, _o: 0  # type: ignore[method-assign]
         assert sim._oper_supply_rate(ppk, oper_with_prev) == 0.0
