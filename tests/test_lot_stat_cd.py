@@ -62,6 +62,19 @@ def test_preprocess_builds_forced_queue_in_stat_priority_order():
 def test_preprocess_builds_forced_queue_proc_before_load():
     env_data = _build_scenario()
     assert env_data["eqp_forced_queue"] == {"EQP001": ["CLOT_P", "CLOT_L"]}
+
+
+def test_prebind_assigns_head_forced_carrier_at_reset():
+    """강제 큐 맨 앞 carrier는 reset 시 t=0 선반영 — 첫 RL step 없이 busy."""
+    from simulation.simulator import SchedulingSimulator
+
+    env_data = _build_scenario()
+    sim = SchedulingSimulator(env_data, record_history=False, record_event_log=False)
+    assert sim.eqps["EQP001"].status == "busy"
+    assert sim.schedule[0]["LOT_ID"] == "CLOT_P"
+    assert sim.schedule[0]["START_TM"] == 0
+    assert sim._eqp_forced_queue["EQP001"] == ["CLOT_L"]
+    assert sim.eqps["EQP002"].status == "idle"
     lots = {l["lot_id"]: l for l in env_data["lots"]}
     assert lots["CLOT_P"]["lot_stat_cd"] == "PROC"
     assert lots["CLOT_P"]["logical_lot_id"] == "LOT_P"

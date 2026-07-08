@@ -275,8 +275,9 @@ class SchedulingSimulator:
         self._bucket_feats_state: tuple = (-1, None)         # (version, current_eqp)
         self._eqps_by_om: Dict[tuple, List[str]] = self._build_eqps_by_om()
 
-        self._advance_to_next_decision()
         self._apply_eqp_initial_state(data.get("eqp_initial_state", []))
+        self._prebind_forced_carriers()
+        self._advance_to_next_decision()
         if self._record_history:
             self._append_initial_history()
 
@@ -446,6 +447,34 @@ class SchedulingSimulator:
                 eqp.prev_prod = row["PLAN_PROD_ATTR_VAL"]
             if row.get("oper_id"):
                 eqp.prev_oper = row["oper_id"]
+
+    def _prebind_forced_carriers(self) -> None:
+        """LOT_STAT_CD!=WAIT carrier를 t=0에 장비에 선반영.
+
+        장비당 큐 맨 앞 1건만 즉시 배정(이미 가공/로드된 현장 상태). 나머지는
+        기존처럼 idle 시 순서대로 배정. RL/휴리스틱 step을 소모하지 않는다.
+        """
+        from utils.helpers import FORCED_LOT_STAT_CDS
+
+        self._current_eqp = None
+        for eqp_id in self._env_data.get("eqp_ids", []):
+            queue = self._eqp_forced_queue.get(eqp_id)
+            if not queue:
+                continue
+            eqp = self.eqps.get(eqp_id)
+            if eqp is None or eqp.status != "idle":
+                continue
+            lot_id = queue[0]
+            lot = self.lot_pool.get(lot_id)
+            meta = self._wip_lot_meta.get(lot_id, {})
+            lot_stat_cd = (
+                lot.lot_stat_cd if lot
+                else meta.get("lot_stat_cd", "WAIT")
+            )
+            if lot_stat_cd not in FORCED_LOT_STAT_CDS:
+                continue
+            self.assign_lot(eqp_id, lot_id)
+        self._current_eqp = None
 
     def _bucket_lot_cd_temp(self, ppk: str, oper_id: str) -> Tuple[str, str]:
         """(PPK, OPER) WIP 풀의 LOT_CD/TEMP. batch_info 우선."""
