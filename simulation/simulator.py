@@ -21,7 +21,7 @@ from simulation.events import (
     EVENT_PRIORITY,
     EVENT_PROCESS_END,
 )
-from utils.helpers import effective_proc_time, encode_normalized
+from utils.helpers import effective_proc_time
 
 
 @dataclass(order=True)
@@ -2070,16 +2070,24 @@ class SchedulingSimulator:
         self._pending_step_events = []
 
     # --- Bucket(=PPK×MODEL×OPER) feature ---
-    PPK_OPER_FEATURES = 10
+    PPK_OPER_FEATURES = 6
     PPK_OPER_MODEL_FEATURES = 5
     BUCKET_FEATURES = PPK_OPER_FEATURES + PPK_OPER_MODEL_FEATURES
 
     def get_bucket_features(self) -> np.ndarray:
         """
         Bucket = (oper, ppk, model) 단위 feature 텐서.
-        po_feats: shape (O, P, 10) -> (PPK, OPER) 종속 피처 10개
+        po_feats: shape (O, P, 6) -> (PPK, OPER) 종속 피처 6개
         pom_feats: shape (O, P, K, 5) -> (PPK, OPER, MODEL) 종속 피처 5개
         이 둘을 각각 flatten하여 결합한 np.ndarray를 반환합니다.
+
+        prev_takt/post_takt(인접 공정 takt), lot_cd/temp 인코딩 채널은 제거됨:
+        cap_takt 계산이 n_eqp_per_oper(오퍼레이션당 총 capable 설비 수)를 쓰는데
+        이 값이 설비 간 공유(한 설비가 여러 오퍼레이션 capable)를 고려하지 않고
+        정적으로 고정돼 있어 실제 가용 capa와 어긋나는 값을 주입했고, lot_cd/temp는
+        범주형 ID를 순서 있는 스칼라로 인코딩해 노이즈에 가까웠다. LOT_CD/TEMP
+        전환 관련 정보는 pom_feats(needs_conversion/avoidable_frac 등)에 이미
+        더 정확한 형태로 남아있다.
         """
         # 버전 + current_eqp 가 같으면 캐시 반환
         cache_state = (self._state_version, self._current_eqp)
@@ -2095,19 +2103,12 @@ class SchedulingSimulator:
         arrange_map = data.get("abstract_arrange_map", {})
         arranges_by = data.get("abstract_arranges_by_ppk_oper", {})
         plan_meta = data.get("plan_meta", {})
-        n_eqp_per_oper = data.get("n_eqp_per_oper", {})
         flow_prev = data.get("flow_prev", {})
-        flow_post = data.get("flow_post", {})
         max_arrange_st = max(data.get("max_arrange_st", 1), 1)
-        wf_unit = max(data.get("max_wf_qty", 1), 1)
         completed = self.stats["completed_qty"]
-        lot_cd_idx = data.get("lot_cd_idx", {})
-        temp_idx = data.get("temp_idx", {})
-        n_lc = max(len(lot_cd_idx), 1)
-        n_tp = max(len(temp_idx), 1)
         current_eqp = self._current_eqp
 
-        po_feats = np.zeros((O, P, 10), dtype=np.float32)
+        po_feats = np.zeros((O, P, self.PPK_OPER_FEATURES), dtype=np.float32)
         pom_feats = np.zeros((O, P, K, 5), dtype=np.float32)
 
         # (oper, model) → min(free_at) 사전 계산
@@ -2139,7 +2140,6 @@ class SchedulingSimulator:
         total_wip = max(total_wip, 1.0)
 
         T_avail = max(self.soft_cutoff - self.current_time, 1)
-        max_takt = max(T_avail * wf_unit, 1.0)
 
         def st_per_wafer(ppk: str, op: Optional[str], model: str) -> Optional[float]:
             if op is None:
@@ -2151,21 +2151,6 @@ class SchedulingSimulator:
             if lst:
                 return sum(s for _, s in lst) / len(lst)
             return None
-
-        def eff_takt(ppk: str, op: Optional[str]) -> float:
-            """수요 페이싱 계획 있을 때 + capacity. per-lot 간격(분)."""
-            if op is None:
-                return 0.0
-            lst = arranges_by.get((ppk, op))
-            spw = (sum(s for _, s in lst) / len(lst)) if lst else None
-            n = max(n_eqp_per_oper.get(op, 0), 1)
-            cap_takt = (spw / n) if spw is not None else 0.0
-            pm = plan_meta.get((ppk, op))
-            if pm and pm.get("d0_plan_qty", 0) > 0:
-                q_plan = max(pm["d0_plan_qty"] - completed.get((ppk, op), 0), 1)
-                demand_takt = T_avail / q_plan
-                return max(demand_takt, cap_takt) * wf_unit
-            return cap_takt * wf_unit
 
         oper_ids = data["oper_ids"]
         prod_keys = data["prod_keys"]
@@ -2195,9 +2180,6 @@ class SchedulingSimulator:
                     gap = max(plan_qty - completed.get((ppk, op), 0), 0)
                     urgency = min(gap / T_avail / plan_qty, 1.0)
                 ppk_fp = flow_prev.get(ppk, {})
-                ppk_fpo = flow_post.get(ppk, {})
-                prev_takt = eff_takt(ppk, ppk_fp.get(op)) / max_takt
-                post_takt = eff_takt(ppk, ppk_fpo.get(op)) / max_takt
 
                 # Step C: achievable_ratio
                 achievable_ratio = 1.0
@@ -2213,25 +2195,19 @@ class SchedulingSimulator:
                         prev_op = ppk_fp.get(prev_op)
                     achievable_ratio = min(min(plan_qty, done + reachable) / plan_qty, 1.0)
 
-                # LOT_CD / TEMP
+                # LOT_CD / TEMP (pom_feats의 conversion 관련 채널 계산에 필요)
                 lc, tp = self._bucket_lot_cd_temp(ppk, op)
-                lc_enc = encode_normalized(lc or None, lot_cd_idx, n_lc)
-                tp_enc = encode_normalized(tp or None, temp_idx, n_tp)
 
                 # po_feats 할당
                 po_feats[oi, pi, 0] = wip_q / total_wip
                 po_feats[oi, pi, 1] = wip_q / ppk_total
-                po_feats[oi, pi, 2] = min(prev_takt, 1.0)
-                po_feats[oi, pi, 3] = min(post_takt, 1.0)
-                po_feats[oi, pi, 4] = urgency
-                po_feats[oi, pi, 5] = lc_enc
-                po_feats[oi, pi, 6] = tp_enc
-                po_feats[oi, pi, 7] = achievable_ratio
-                
+                po_feats[oi, pi, 2] = urgency
+                po_feats[oi, pi, 3] = achievable_ratio
+
                 done11 = completed.get((ppk, op), 0)
                 need11 = max(self._achievable_qty(ppk, op) - done11, 1.0)
                 cov11 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
-                po_feats[oi, pi, 8] = min(cov11 / need11, 2.0) / 2.0
+                po_feats[oi, pi, 4] = min(cov11 / need11, 2.0) / 2.0
 
                 consume_rate = self._oper_capacity_per_min(ppk, op)
                 supply_rate = self._oper_supply_rate(ppk, op)
@@ -2250,7 +2226,7 @@ class SchedulingSimulator:
                         starve_time_norm = 0.75
                 else:
                     starve_time_norm = 1.0
-                po_feats[oi, pi, 9] = starve_time_norm
+                po_feats[oi, pi, 5] = starve_time_norm
 
                 # 유효 모델 인덱스·값을 수집한 뒤 pom_feats 할당
                 valid_mis: List[int] = []

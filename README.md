@@ -125,9 +125,10 @@ run_inference(env_data, algorithm="earliest_st")
 |------|-----|
 | Action | `Discrete(O×P)` = `(OPER, PPK)` bucket |
 | Mask | 현재 idle EQP feasible bucket |
-| obs_dim | `6 + O×P×K×15 + 6 + 4` = **2266** (O=3, P=10, K=5) |
+| obs_dim | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
 
-**Bucket feature (15ch)**: WIP 비율, min_end, throughput, takt(prev/post), ST, urgency, LOT_CD/TEMP, conversion/tool, achievable_ratio 등
+**Bucket feature (po 6ch + pom 5ch)**: WIP 비율, urgency, achievable_ratio, projected_cover_ratio, starve_time_norm / ST, conversion·tool 가용, avoidable_frac, setup_changed 등.
+prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설비 수(`n_eqp_per_oper`) 기반이라 설비 공유·실시간 배정 상태를 반영 못 했고, LOT_CD/TEMP는 범주형 ID를 순서 있는 스칼라로 인코딩해 신호 품질이 낮았음 (전환 관련 정보는 pom_feats에 이미 더 정확히 포함).
 
 ### Reward (`config.py` 기본값)
 

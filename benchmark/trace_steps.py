@@ -40,7 +40,7 @@ def _schedule_snapshot(schedule: list) -> list:
 
 
 def _bucket_state(sim, ppk: str, oper: str, eqp_id: str) -> dict:
-    """선택된 (ppk, oper, eqp의 model) 버킷 실측치 (po_feats 10 + pom_feats 5, flat 배열 직접 인덱싱)."""
+    """선택된 (ppk, oper, eqp의 model) 버킷 실측치 (po_feats 6 + pom_feats 5, flat 배열 직접 인덱싱)."""
     from config import CONFIG
     from simulation.simulator import SchedulingSimulator
 
@@ -66,16 +66,15 @@ def _bucket_state(sim, ppk: str, oper: str, eqp_id: str) -> dict:
     r = lambda x: round(float(x), 3)
     return {
         "wip_ratio": f"{r(po[0])}/{r(po[1])}",
-        "takt": f"prev={r(po[2])}, post={r(po[3])}",
         "self_st": r(pom[0]),
-        "plan_urgency": r(po[4]),
+        "plan_urgency": r(po[2]),
         "needs_conversion": r(pom[1]),
         "tool_can_assign": r(pom[2]),
         "avoidable_frac": r(pom[3]),
         "setup_changed": r(pom[4]),
-        "achievable_ratio": r(po[7]),
-        "projected_cover_ratio": r(po[8]),
-        "starve_time_norm": r(po[9]),
+        "achievable_ratio": r(po[3]),
+        "projected_cover_ratio": r(po[4]),
+        "starve_time_norm": r(po[5]),
     }
 
 
