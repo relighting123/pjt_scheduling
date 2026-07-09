@@ -249,7 +249,7 @@ python main.py ui
 
 | 구성 | 포트 |
 |------|------|
-| FastAPI | 8000 |
+| FastAPI | 8001 |
 | Vite | 5173 |
 
 Inference 탭: 단일 추론·알고리즘 비교·`output.json` 오프라인 뷰어

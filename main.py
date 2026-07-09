@@ -422,7 +422,7 @@ def cmd_inference(
 def cmd_ui():
     print("=" * 60)
     print("[ui] React UI + API 서버 실행")
-    print("  API:      http://127.0.0.1:8000")
+    print("  API:      http://127.0.0.1:8001")
     print("  Frontend: http://localhost:5173")
     print("  종료: Ctrl+C")
 
@@ -436,14 +436,14 @@ def cmd_ui():
     api_proc = subprocess.Popen(
         [
             sys.executable, "-m", "uvicorn", "api.server:app",
-            "--host", "127.0.0.1", "--port", "8000", "--reload",
+            "--host", "127.0.0.1", "--port", "8001", "--reload",
             "--reload-exclude", "models",
             "--reload-exclude", "data/dataset",
         ],
         cwd=str(ROOT),
     )
 
-    health_url = "http://127.0.0.1:8000/api/health"
+    health_url = "http://127.0.0.1:8001/api/health"
     for _ in range(30):
         try:
             with urllib.request.urlopen(health_url, timeout=1) as res:
