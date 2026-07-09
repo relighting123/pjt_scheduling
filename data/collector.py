@@ -47,6 +47,7 @@ if str(ROOT) not in sys.path:
 
 from config import (
     CONFIG,
+    list_split_folders,
     normalize_rule_timekey,
     resolve_dataset_path,
     resolve_train_folders,
@@ -192,12 +193,15 @@ def _ensure_period_folders(
 
     if nodb:
         # DB 연결 없이 로컬 폴더만 탐색 (rule_timekey_*.sql 이 있어도 쿼리하지 않음)
-        start_key, end_key = resolve_train_period_range(
-            prevcnt=None if (from_key and to_key) else (prevcnt or 1),
-            from_key=from_key,
-            to_key=to_key,
-        )
-        return resolve_train_folders(fac_id, start_key, end_key, split=split)
+        if from_key and to_key:
+            start_key, end_key = resolve_train_period_range(
+                from_key=from_key, to_key=to_key,
+            )
+            return resolve_train_folders(fac_id, start_key, end_key, split=split)
+        # --prevcnt: 오늘 기준 날짜 구간이 아니라, 이미 존재하는 폴더 중 최근 N개
+        folders = list_split_folders(fac_id, split)
+        n = prevcnt or 1
+        return folders[-n:] if folders else []
 
     periods, _ = resolve_collect_periods(
         fac_id,

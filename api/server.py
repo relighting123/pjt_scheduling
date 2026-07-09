@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_period_range, resolve_train_folders, normalize_rule_timekey
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey
 from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
 from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
 from data.loader.sql_binds import resolve_lot_cd
@@ -277,13 +277,15 @@ def _resolve_train_folders(req: "TrainRequest") -> list[str]:
         return folders
 
     if req.prevcnt is not None:
-        start_key, end_key = resolve_train_period_range(prevcnt=req.prevcnt)
-        folders = resolve_train_folders(fac_id, start_key, end_key)
+        # 오늘 기준 날짜 구간이 아니라, 이미 존재하는 train 폴더 중 최근 N개
+        prefix = f"{fac_id}/train/"
+        folders = sorted(f for f in list_input_folders() if f.startswith(prefix))
+        folders = folders[-req.prevcnt:] if req.prevcnt else folders
         if not folders:
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"최근 {req.prevcnt}일({start_key}~{end_key})에 해당하는 "
+                    f"최근 {req.prevcnt}개에 해당하는 "
                     f"train JSON 데이터가 없습니다."
                 ),
             )

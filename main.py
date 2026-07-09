@@ -154,17 +154,16 @@ def cmd_train(
             print("[오류] train 폴더가 없습니다. collect 로 데이터를 먼저 수집하세요.")
             sys.exit(1)
     else:
+        print("=" * 60)
         if rule_timekey:
             start_key = end_key = normalize_rule_timekey(rule_timekey)
+            print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)")
+        elif from_key and to_key:
+            start_key, end_key = resolve_train_period_range(from_key=from_key, to_key=to_key)
+            print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)")
         else:
-            start_key, end_key = resolve_train_period_range(
-                prevcnt=prevcnt, from_key=from_key, to_key=to_key,
-            )
-
-        print("=" * 60)
-        print(
-            f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)",
-        )
+            # --prevcnt: 오늘 기준 날짜 구간이 아니라, 이미 존재하는 train 폴더 중 최근 N개
+            print(f"[train] FAC={fac_id}  최근 train 폴더 {prevcnt}개 사용 (dataset JSON)")
 
         train_folders = ensure_train_folders(
             fac_id,
@@ -584,7 +583,7 @@ def parse_args():
     train_p.add_argument("--facid", required=True, help="공장 ID")
     train_p.add_argument(
         "--prevcnt", type=int, default=None,
-        help="현재 기준 최근 N일 train 데이터",
+        help="이미 수집된 train 폴더 중 최근 N개 사용",
     )
     train_p.add_argument(
         "--from", dest="from_key", metavar="RULE_TIMEKEY", default=None,
@@ -606,7 +605,7 @@ def parse_args():
     test_p.add_argument("--facid", required=True, help="공장 ID")
     test_p.add_argument(
         "--prevcnt", type=int, default=None,
-        help="현재 기준 최근 N일 test 데이터",
+        help="이미 수집된 test 폴더 중 최근 N개 사용",
     )
     test_p.add_argument(
         "--from", dest="from_key", metavar="RULE_TIMEKEY", default=None,
