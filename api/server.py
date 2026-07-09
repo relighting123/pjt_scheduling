@@ -2,7 +2,7 @@
 api/server.py – FastAPI 백엔드
 React UI가 호출하는 REST API를 제공합니다.
 
-실행: uvicorn api.server:app --reload --port 8000
+실행: uvicorn api.server:app --reload --port 8001
 """
 import json
 import sys

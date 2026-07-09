@@ -31,7 +31,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     res = await fetch(url, init);
   } catch {
     throw new Error(
-      "서버에 연결할 수 없습니다. API(8000)가 실행 중인지 확인하고 python main.py ui 를 재시작하세요.",
+      "서버에 연결할 수 없습니다. API(8001)가 실행 중인지 확인하고 python main.py ui 를 재시작하세요.",
     );
   }
     if (!res.ok) {
