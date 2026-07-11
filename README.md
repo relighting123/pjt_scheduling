@@ -188,12 +188,16 @@ python main.py db-load --ddl --facid FAC001 --split infer
 | `RTS_RSLT_HIS` | 스케줄 이력 |
 | `RTS_EQPCONVPLAN_INF` | Conversion 계획 |
 | `RTS_EQPCONVPLAN_HIS` | Conversion 이력 |
+| `RTS_PERFMON_HIS` | KPI 이력 (옵션: `--save-kpi` / `save_kpi=true`) |
 
 ### DB 적재
 
 ```bash
 # 추론 후 output/sql 적재
 python main.py infer --facid FAC001 --db-load
+
+# KPI(RTS_PERFMON_HIS)도 함께 저장/적재
+python main.py infer --facid FAC001 --db-load --save-kpi
 
 # 기존 output 폴더 적재
 python main.py db-load --facid FAC001 --split test --period 20260624070000

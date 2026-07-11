@@ -147,6 +147,7 @@ export const api = {
     db_load?: boolean;
     db_alias?: string;
     no_history?: boolean;
+    save_kpi?: boolean;
     max_conversions?: number;
     max_conversions_per_eqp?: number;
     conversion_minutes?: number;
@@ -161,6 +162,7 @@ export const api = {
         enable_wip_inflow: opts.enable_wip_inflow ?? false,
         db_load: opts.db_load ?? false,
         no_history: opts.no_history ?? false,
+        save_kpi: opts.save_kpi ?? false,
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
         ...(opts.fac_id ? { fac_id: opts.fac_id } : {}),
         ...(opts.rule_timekey ? { rule_timekey: opts.rule_timekey } : {}),

@@ -62,6 +62,7 @@ function buildInferOptions(
     dbLoad: boolean;
     dbAlias: string;
     noHistory: boolean;
+    saveKpi: boolean;
     maxConversions: string;
     maxConversionsPerEqp: string;
     conversionMinutes: string;
@@ -88,6 +89,7 @@ function buildInferOptions(
     db_load: opts.dbLoad,
     ...(opts.dbAlias.trim() ? { db_alias: opts.dbAlias.trim() } : {}),
     no_history: opts.noHistory,
+    save_kpi: opts.saveKpi,
     ...(maxConv != null ? { max_conversions: maxConv } : {}),
     ...(maxConvEqp != null ? { max_conversions_per_eqp: maxConvEqp } : {}),
     ...(convMin != null ? { conversion_minutes: convMin } : {}),
@@ -179,6 +181,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [dbLoad, setDbLoad]                 = useState(false);
   const [dbAlias, setDbAlias]               = useState("");
   const [noHistory, setNoHistory]           = useState(false);
+  const [saveKpi, setSaveKpi]               = useState(false);
   const [maxConversions, setMaxConversions] = useState("");
   const [maxConversionsPerEqp, setMaxConversionsPerEqp] = useState("");
   const [conversionMinutes, setConversionMinutes] = useState("");
@@ -324,6 +327,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           dbLoad,
           dbAlias,
           noHistory,
+          saveKpi,
           maxConversions,
           maxConversionsPerEqp,
           conversionMinutes,
@@ -347,7 +351,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     finally { setLoading(false); }
   }, [
     algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey, fromDate, toDate,
-    prevcnt, lotCd, includeHistory, dbLoad, dbAlias, noHistory, maxConversions,
+    prevcnt, lotCd, includeHistory, dbLoad, dbAlias, noHistory, saveKpi, maxConversions,
     maxConversionsPerEqp, conversionMinutes, syncInferFolder,
   ]);
 
@@ -565,6 +569,16 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               </label>
             </>
           )}
+
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={saveKpi}
+              onChange={e => setSaveKpi(e.target.checked)}
+              disabled={loading}
+            />
+            KPI 저장 (RTS_PERFMON_HIS, --save-kpi)
+          </label>
 
           {lastInferMeta && (
             <p className="hint mt-2">최근 실행: {lastInferMeta}</p>
