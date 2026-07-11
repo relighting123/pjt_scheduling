@@ -311,7 +311,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     try {
       const res = await api.runInference({
         algorithm,
-        save_output: true,
         ...buildInferOptions(selectedFolder, {
           facIdOverride,
           ruleTimekey,

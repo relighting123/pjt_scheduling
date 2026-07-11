@@ -138,7 +138,6 @@ export const api = {
     decision_log?: boolean;
     include_history?: boolean;
     enable_wip_inflow?: boolean;
-    save_output?: boolean;
     fac_id?: string;
     rule_timekey?: string;
     from_date?: string;
@@ -160,7 +159,6 @@ export const api = {
         decision_log: opts.decision_log ?? false,
         include_history: opts.include_history ?? false,
         enable_wip_inflow: opts.enable_wip_inflow ?? false,
-        save_output: opts.save_output ?? false,
         db_load: opts.db_load ?? false,
         no_history: opts.no_history ?? false,
         ...(opts.input_folder ? { input_folder: opts.input_folder } : {}),
