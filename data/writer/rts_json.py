@@ -158,9 +158,6 @@ def _build_rts_perfmon_rows(
         "OPER_SWITCHES":         stats.get("oper_switches", 0),
         "PROD_SWITCHES":         stats.get("prod_switches", 0),
         "CONVERSIONS":           stats.get("conversions", 0),
-        "COMPLETED_QTY":         sum(stats.get("completed_qty", {}).values()),
-        "REMAINING_WIP":         stats.get("remaining_wip", 0),
-        "REMAINING_CURRENT_WIP": stats.get("remaining_current_wip", 0),
         "UTILIZATION_PCT":       utilization,
     }
 
@@ -177,6 +174,34 @@ def _build_rts_perfmon_rows(
     ]
 
 
+def _build_rts_validation_rows(
+    result: dict,
+    meta: Dict[str, str],
+) -> List[dict]:
+    """discrete/abstract arrange 기준 투입 불가 장비 재공 선택 건수 → RTS_VALIDATION 행 (옵션: save_kpi)."""
+    violations = (result.get("validation") or {}).get("eligibility_violations", [])
+    function_nm = result.get("algorithm", "scheduling_rl")
+
+    counts: Dict[tuple, int] = defaultdict(int)
+    for v in violations:
+        key = (v["eqp_id"], v["PLAN_PROD_ATTR_VAL"], v["oper_id"])
+        counts[key] += 1
+
+    return [
+        {
+            "FAC_ID":              meta["FAC_ID"],
+            "RULE_TIMEKEY":        meta["RULE_TIMEKEY"],
+            "FUNCTION_NM":         function_nm,
+            "EQP_ID":              eqp_id,
+            "PLAN_PROD_ATTR_VAL":  ppk,
+            "OPER_ID":             oper_id,
+            "VIOLATION_CNT":       cnt,
+            "CRT_USER_ID":         meta["CRT_USER_ID"],
+        }
+        for (eqp_id, ppk, oper_id), cnt in sorted(counts.items())
+    ]
+
+
 def build_rts_output(
     result: dict,
     env_data: dict,
@@ -189,7 +214,7 @@ def build_rts_output(
     """
     추론 결과 → RTS output.json 본문.
 
-    Keys: meta, RTS_RSLT_INF, RTS_EQPCONVPLAN_INF, (옵션) RTS_PERFMON_HIS
+    Keys: meta, RTS_RSLT_INF, RTS_EQPCONVPLAN_INF, (옵션) RTS_PERFMON_HIS, RTS_VALIDATION
     """
     meta = resolve_writer_meta(
         env_data, fac_id=fac_id, rule_timekey=rule_timekey, crt_user_id=crt_user_id,
@@ -206,4 +231,5 @@ def build_rts_output(
     }
     if include_kpi:
         payload["RTS_PERFMON_HIS"] = _build_rts_perfmon_rows(result, meta)
+        payload["RTS_VALIDATION"] = _build_rts_validation_rows(result, meta)
     return payload

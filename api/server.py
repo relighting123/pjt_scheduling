@@ -425,7 +425,7 @@ class InferFetchOptions(BaseModel):
     )
     save_kpi: bool = Field(
         default=False,
-        description="추론 KPI(RTS_PERFMON_HIS) 를 output/sql 에 포함 (db_load=true 시 함께 적재)",
+        description="추론 KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION) 를 output/sql 에 포함 (db_load=true 시 함께 적재)",
     )
 
 

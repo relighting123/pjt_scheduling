@@ -26,7 +26,8 @@ def write_inference_result(
     """
     추론 결과 → output.json + sql/*.sql (Oracle 적재용).
 
-    write_kpi=True: RTS_PERFMON_HIS KPI 행도 output.json/sql에 포함.
+    write_kpi=True: RTS_PERFMON_HIS(KPI), RTS_VALIDATION(투입 불가 장비 재공 선택 집계)
+        행도 output.json/sql에 포함.
 
     Returns:
         output.json 경로

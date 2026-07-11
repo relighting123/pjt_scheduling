@@ -362,7 +362,7 @@ def cmd_inference(
     if conversion_minutes is not None:
         print(f"[inference] 전환 소요 시간: {conversion_minutes}분")
     if save_kpi:
-        print("[inference] KPI 저장: ON (RTS_PERFMON_HIS)")
+        print("[inference] KPI/검증 집계 저장: ON (RTS_PERFMON_HIS, RTS_VALIDATION)")
     result = run_inference(
         env_data,
         algorithm=algorithm,
@@ -700,7 +700,7 @@ def parse_args():
     inf_p.add_argument(
         "--save-kpi",
         action="store_true",
-        help="KPI(RTS_PERFMON_HIS)를 output/sql에 포함 (--db-load 시 함께 적재)",
+        help="KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION)를 output/sql에 포함 (--db-load 시 함께 적재)",
     )
 
     db_load_p = sub.add_parser(

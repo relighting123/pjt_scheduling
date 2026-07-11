@@ -577,7 +577,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               onChange={e => setSaveKpi(e.target.checked)}
               disabled={loading}
             />
-            KPI 저장 (RTS_PERFMON_HIS, --save-kpi)
+            KPI/검증 집계 저장 (RTS_PERFMON_HIS, RTS_VALIDATION, --save-kpi)
           </label>
 
           {lastInferMeta && (
