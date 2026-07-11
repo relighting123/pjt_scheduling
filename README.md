@@ -279,4 +279,4 @@ Frontend: React, TypeScript, Vite, Plotly
 - obs/action/reward 변경 시 기존 PPO checkpoint와 **호환되지 않을** 수 있습니다.
 - RL은 EQP·LOT을 직접 선택하지 않습니다. Earliest-ST는 EQP×LOT 전역 선택 휴리스틱입니다.
 - 학습(`SchedulingEnv`)은 기본 `enable_wip_inflow=True`, 추론 runner는 `False` — flow 밸런스 평가 시 옵션을 맞추세요.
-- 빠른 UI 추론은 `save_output=false` / history 미생성이 기본입니다. DB 적재·재생이 필요하면 옵션을 켜세요.
+- 추론 결과는 항상 저장됩니다(output/result_full 파일 및 SQL 생성). history는 기본 미생성이며, DB 적재·재생이 필요하면 옵션을 켜세요.

@@ -443,10 +443,6 @@ class InferenceRequest(InferFetchOptions):
         default=False,
         description="시뮬레이션 재생용 history/event payload 포함",
     )
-    save_output: bool = Field(
-        default=True,
-        description="추론 결과 output/result_full 파일 및 SQL 생성",
-    )
 
 
 class GeneratorConfigModel(BaseModel):
@@ -869,8 +865,7 @@ def inference(req: InferenceRequest):
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     result["validation"] = validate_schedule_output(result, env_data)
-    if req.save_output:
-        save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
+    save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
     if req.db_load:
         try:
             _apply_infer_db_load(
