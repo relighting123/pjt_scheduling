@@ -252,11 +252,14 @@ def save_result(
     env_data: Optional[dict] = None,
     *,
     write_sql: bool = True,
+    write_kpi: bool = False,
 ) -> Path:
     """
     추론 결과 저장:
       - output.json  : RTS 적재 JSON (data.writer)
       - result_full.json : UI·디버그용 전체 결과
+
+    write_kpi=True: KPI(RTS_PERFMON_HIS) 도 output.json/sql에 포함 (옵션).
     """
     d = output_dir or CONFIG.path.infer_output_dir
     d.mkdir(parents=True, exist_ok=True)
@@ -264,7 +267,7 @@ def save_result(
     writer_path = None
     if env_data is not None:
         writer_path = write_inference_result(
-            result, env_data, output_dir=d, write_sql_files=write_sql,
+            result, env_data, output_dir=d, write_sql_files=write_sql, write_kpi=write_kpi,
         )
 
     full_path = d / f"{result_name}_full.json"

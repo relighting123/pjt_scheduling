@@ -21,9 +21,12 @@ def write_inference_result(
     output_dir: Optional[Path] = None,
     *,
     write_sql_files: bool = True,
+    write_kpi: bool = False,
 ) -> Path:
     """
     추론 결과 → output.json + sql/*.sql (Oracle 적재용).
+
+    write_kpi=True: RTS_PERFMON_HIS KPI 행도 output.json/sql에 포함.
 
     Returns:
         output.json 경로
@@ -31,7 +34,7 @@ def write_inference_result(
     d = output_dir or CONFIG.path.output_dir
     d.mkdir(parents=True, exist_ok=True)
 
-    payload = build_rts_output(result, env_data)
+    payload = build_rts_output(result, env_data, include_kpi=write_kpi)
     out_path = d / CONFIG.path.output_file
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)

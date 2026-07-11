@@ -423,6 +423,10 @@ class InferFetchOptions(BaseModel):
         ge=0,
         description="LOT_CD/TEMP 전환 1회 소요 시간(분)",
     )
+    save_kpi: bool = Field(
+        default=False,
+        description="추론 KPI(RTS_PERFMON_HIS) 를 output/sql 에 포함 (db_load=true 시 함께 적재)",
+    )
 
 
 class InferenceRequest(InferFetchOptions):
@@ -865,7 +869,7 @@ def inference(req: InferenceRequest):
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     result["validation"] = validate_schedule_output(result, env_data)
-    save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
+    save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data, write_kpi=req.save_kpi)
     if req.db_load:
         try:
             _apply_infer_db_load(

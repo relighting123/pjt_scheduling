@@ -17,6 +17,8 @@ from data.writer.rts_sql import build_writer_sql_scripts, write_sql
 _DDL_FILE = "rts_output_tables.sql"
 _INF_SCRIPTS = ("rts_rslt_inf.sql", "rts_eqpconvplan_inf.sql")
 _HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
+# save_kpi 옵션 켰을 때만 생성되는 스크립트 — 있으면 적재, 없으면 조용히 생략
+_OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql",)
 
 
 def _resolve_ddl_path() -> Path:
@@ -131,6 +133,7 @@ def load_output_sql_files(
         names = list(_INF_SCRIPTS)
         if include_history:
             names.extend(_HIS_SCRIPTS)
+        names.extend(name for name in _OPTIONAL_SCRIPTS if (sql_dir / name).is_file())
 
     registry = DbRegistry()
     creds = registry.get_credentials(db_alias)
@@ -167,6 +170,7 @@ def load_output_json(
     order = list(_INF_SCRIPTS)
     if include_history:
         order.extend(_HIS_SCRIPTS)
+    order.extend(name for name in _OPTIONAL_SCRIPTS if name in scripts)
 
     with creds.connect() as conn:
         for name in order:

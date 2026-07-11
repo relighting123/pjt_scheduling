@@ -320,6 +320,7 @@ def cmd_inference(
     max_conversions_per_eqp: int = None,
     conversion_minutes: int = None,
     strict_validate: bool = False,
+    save_kpi: bool = False,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(
@@ -360,6 +361,8 @@ def cmd_inference(
         print(f"[inference] 전환 상한(EQP별): {max_conversions_per_eqp}")
     if conversion_minutes is not None:
         print(f"[inference] 전환 소요 시간: {conversion_minutes}분")
+    if save_kpi:
+        print("[inference] KPI 저장: ON (RTS_PERFMON_HIS)")
     result = run_inference(
         env_data,
         algorithm=algorithm,
@@ -394,7 +397,7 @@ def cmd_inference(
         for u in validation["unassigned_lots"][:10]:
             print(f"    · [미배정] LOT={u['lot_id']} PPK={u['PLAN_PROD_ATTR_VAL']} OPER={u['oper_id']}")
 
-    path = save_result(result, env_data=env_data)
+    path = save_result(result, env_data=env_data, write_kpi=save_kpi)
     stats = result["stats"]
     print(f"  배정 LOT 수:    {len(result['schedule'])}")
     print(f"  공정 전환 횟수: {stats['oper_switches']}")
@@ -694,6 +697,11 @@ def parse_args():
         action="store_true",
         help="결과 검증(장비 투입 가능성·처리시간·배정 완전성) 실패 시 종료코드 1로 종료",
     )
+    inf_p.add_argument(
+        "--save-kpi",
+        action="store_true",
+        help="KPI(RTS_PERFMON_HIS)를 output/sql에 포함 (--db-load 시 함께 적재)",
+    )
 
     db_load_p = sub.add_parser(
         "db-load",
@@ -844,6 +852,7 @@ def main():
                 max_conversions_per_eqp=args.max_conversions_per_eqp,
                 conversion_minutes=args.conversion_minutes,
                 strict_validate=args.strict_validate,
+                save_kpi=args.save_kpi,
             )
 
         elif args.command == "db-load":

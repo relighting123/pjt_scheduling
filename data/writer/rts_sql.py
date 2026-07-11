@@ -27,6 +27,12 @@ def _sql_num(val: Any) -> str:
     return str(int(val))
 
 
+def _sql_float(val: Any) -> str:
+    if val is None:
+        return "NULL"
+    return str(float(val))
+
+
 def _delete_inf(table: str, rule_timekey: str) -> str:
     return f"DELETE FROM {table} WHERE RULE_TIMEKEY = {_sql_str(rule_timekey)};"
 
@@ -127,12 +133,32 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
     return lines
 
 
+def _insert_rts_perfmon_his(rows: List[dict]) -> List[str]:
+    lines: List[str] = []
+    for r in rows:
+        cols = ["FAC_ID", "RULE_TIMEKEY", "FUNCTION_NM", "KPI_NM", "KPI_VAL", "CRT_USER_ID", "CRT_TM"]
+        vals = [
+            _sql_str(r["FAC_ID"]),
+            _sql_str(r["RULE_TIMEKEY"]),
+            _sql_str(r["FUNCTION_NM"]),
+            _sql_str(r["KPI_NM"]),
+            _sql_float(r["KPI_VAL"]),
+            _sql_str(r.get("CRT_USER_ID", "RTS")),
+            "SYSTIMESTAMP",
+        ]
+        lines.append(
+            f"INSERT INTO RTS_PERFMON_HIS ({', '.join(cols)}) VALUES ({', '.join(vals)});"
+        )
+    return lines
+
+
 def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> Dict[str, str]:
     """output.json 본문 → {파일명: SQL 텍스트}."""
     meta = payload.get("meta", {})
     rule_timekey = meta.get("RULE_TIMEKEY", "")
     rslt_rows = payload.get("RTS_RSLT_INF", [])
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
+    perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
 
     scripts: Dict[str, str] = {}
 
@@ -160,6 +186,11 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
         conv_his_lines = [f"-- RTS_EQPCONVPLAN_HIS RULE_TIMEKEY={rule_timekey}", ""]
         conv_his_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=True))
         scripts["rts_eqpconvplan_his.sql"] = "\n".join(conv_his_lines) + "\n"
+
+    if perfmon_rows:
+        perfmon_lines = [f"-- RTS_PERFMON_HIS RULE_TIMEKEY={rule_timekey}", ""]
+        perfmon_lines.extend(_insert_rts_perfmon_his(perfmon_rows))
+        scripts["rts_perfmon_his.sql"] = "\n".join(perfmon_lines) + "\n"
 
     return scripts
 
