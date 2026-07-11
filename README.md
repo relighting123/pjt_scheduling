@@ -189,6 +189,7 @@ python main.py db-load --ddl --facid FAC001 --split infer
 | `RTS_EQPCONVPLAN_INF` | Conversion 계획 |
 | `RTS_EQPCONVPLAN_HIS` | Conversion 이력 |
 | `RTS_PERFMON_HIS` | KPI 이력 (옵션: `--save-kpi` / `save_kpi=true`) |
+| `RTS_VALIDATION` | 투입 불가 장비 재공 선택 건수 집계, EQP/PPK/OPER 조합별 (옵션: `--save-kpi` / `save_kpi=true`) |
 
 ### DB 적재
 

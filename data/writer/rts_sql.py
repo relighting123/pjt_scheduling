@@ -152,6 +152,30 @@ def _insert_rts_perfmon_his(rows: List[dict]) -> List[str]:
     return lines
 
 
+def _insert_rts_validation(rows: List[dict]) -> List[str]:
+    lines: List[str] = []
+    for r in rows:
+        cols = [
+            "FAC_ID", "RULE_TIMEKEY", "FUNCTION_NM", "EQP_ID",
+            "PLAN_PROD_ATTR_VAL", "OPER_ID", "VIOLATION_CNT", "CRT_USER_ID", "CRT_TM",
+        ]
+        vals = [
+            _sql_str(r["FAC_ID"]),
+            _sql_str(r["RULE_TIMEKEY"]),
+            _sql_str(r["FUNCTION_NM"]),
+            _sql_str(r["EQP_ID"]),
+            _sql_str(r["PLAN_PROD_ATTR_VAL"]),
+            _sql_str(r["OPER_ID"]),
+            _sql_num(r["VIOLATION_CNT"]),
+            _sql_str(r.get("CRT_USER_ID", "RTS")),
+            "SYSTIMESTAMP",
+        ]
+        lines.append(
+            f"INSERT INTO RTS_VALIDATION ({', '.join(cols)}) VALUES ({', '.join(vals)});"
+        )
+    return lines
+
+
 def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> Dict[str, str]:
     """output.json 본문 → {파일명: SQL 텍스트}."""
     meta = payload.get("meta", {})
@@ -159,6 +183,7 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     rslt_rows = payload.get("RTS_RSLT_INF", [])
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
     perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
+    validation_rows = payload.get("RTS_VALIDATION", [])
 
     scripts: Dict[str, str] = {}
 
@@ -191,6 +216,11 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
         perfmon_lines = [f"-- RTS_PERFMON_HIS RULE_TIMEKEY={rule_timekey}", ""]
         perfmon_lines.extend(_insert_rts_perfmon_his(perfmon_rows))
         scripts["rts_perfmon_his.sql"] = "\n".join(perfmon_lines) + "\n"
+
+    if validation_rows:
+        validation_lines = [f"-- RTS_VALIDATION RULE_TIMEKEY={rule_timekey}", ""]
+        validation_lines.extend(_insert_rts_validation(validation_rows))
+        scripts["rts_validation.sql"] = "\n".join(validation_lines) + "\n"
 
     return scripts
 

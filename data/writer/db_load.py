@@ -18,7 +18,7 @@ _DDL_FILE = "rts_output_tables.sql"
 _INF_SCRIPTS = ("rts_rslt_inf.sql", "rts_eqpconvplan_inf.sql")
 _HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
 # save_kpi 옵션 켰을 때만 생성되는 스크립트 — 있으면 적재, 없으면 조용히 생략
-_OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql",)
+_OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql")
 
 
 def _resolve_ddl_path() -> Path:

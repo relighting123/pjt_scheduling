@@ -259,7 +259,7 @@ def save_result(
       - output.json  : RTS 적재 JSON (data.writer)
       - result_full.json : UI·디버그용 전체 결과
 
-    write_kpi=True: KPI(RTS_PERFMON_HIS) 도 output.json/sql에 포함 (옵션).
+    write_kpi=True: KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION) 도 output.json/sql에 포함 (옵션).
     """
     d = output_dir or CONFIG.path.infer_output_dir
     d.mkdir(parents=True, exist_ok=True)
