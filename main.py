@@ -321,7 +321,16 @@ def cmd_inference(
     conversion_minutes: int = None,
     strict_validate: bool = False,
     save_kpi: bool = False,
+    timeout_seconds: float = None,
 ):
+    pipeline_start = time.monotonic()
+
+    def remaining_seconds():
+        """최초 실행(DB 조회)부터 지금까지 경과 시간을 뺀 잔여 제한시간."""
+        if timeout_seconds is None:
+            return None
+        return max(0.0, timeout_seconds - (time.monotonic() - pipeline_start))
+
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(
         fac_id, rule_timekey,
@@ -363,6 +372,8 @@ def cmd_inference(
         print(f"[inference] 전환 소요 시간: {conversion_minutes}분")
     if save_kpi:
         print("[inference] KPI/검증 집계 저장: ON (RTS_PERFMON_HIS, RTS_VALIDATION)")
+    if timeout_seconds is not None:
+        print(f"[inference] 제한 시간: {timeout_seconds}초 (초과 시 조기 종료)")
     result = run_inference(
         env_data,
         algorithm=algorithm,
@@ -373,6 +384,7 @@ def cmd_inference(
         max_conversions=max_conversions,
         max_conversions_per_eqp=max_conversions_per_eqp,
         conversion_minutes=conversion_minutes,
+        timeout_seconds=remaining_seconds(),
     )
     print("=" * 60)
     print("[inference] 결과 검증 (장비 투입 가능성 · 처리시간 · 배정 완전성)")
@@ -413,13 +425,21 @@ def cmd_inference(
         sys.exit(1)
 
     if db_load:
-        print("=" * 60)
-        print("[inference] Oracle output 적재")
-        load_output_sql_files(
-            CONFIG.path.output_dir,
-            db_alias=db_alias,
-            include_history=not no_history,
-        )
+        if timeout_seconds is not None and remaining_seconds() <= 0:
+            print("=" * 60)
+            print("[inference] 제한 시간 초과 — Oracle output 적재 생략")
+        else:
+            print("=" * 60)
+            print("[inference] Oracle output 적재")
+            load_output_sql_files(
+                CONFIG.path.output_dir,
+                db_alias=db_alias,
+                include_history=not no_history,
+            )
+
+    if timeout_seconds is not None:
+        elapsed = time.monotonic() - pipeline_start
+        print(f"[inference] 총 소요 시간: {elapsed:.1f}초 (제한 {timeout_seconds}초)")
 
 
 def cmd_ui():
@@ -702,6 +722,14 @@ def parse_args():
         action="store_true",
         help="KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION)를 output/sql에 포함 (--db-load 시 함께 적재)",
     )
+    inf_p.add_argument(
+        "--timeout",
+        dest="timeout_seconds",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="전체 제한 시간(초): DB 조회 시작부터 DB 적재 완료까지. 초과 시 추론은 조기 종료, --db-load는 생략",
+    )
 
     db_load_p = sub.add_parser(
         "db-load",
@@ -853,6 +881,7 @@ def main():
                 conversion_minutes=args.conversion_minutes,
                 strict_validate=args.strict_validate,
                 save_kpi=args.save_kpi,
+                timeout_seconds=args.timeout_seconds,
             )
 
         elif args.command == "db-load":

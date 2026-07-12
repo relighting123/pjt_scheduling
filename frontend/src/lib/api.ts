@@ -151,6 +151,7 @@ export const api = {
     max_conversions?: number;
     max_conversions_per_eqp?: number;
     conversion_minutes?: number;
+    timeout_seconds?: number;
   } = {}) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
@@ -176,6 +177,7 @@ export const api = {
           ? { max_conversions_per_eqp: opts.max_conversions_per_eqp }
           : {}),
         ...(opts.conversion_minutes != null ? { conversion_minutes: opts.conversion_minutes } : {}),
+        ...(opts.timeout_seconds != null ? { timeout_seconds: opts.timeout_seconds } : {}),
       }),
     }),
   runCompare: (

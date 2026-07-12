@@ -52,9 +52,6 @@ function buildInferOptions(
   opts: {
     facIdOverride: string;
     ruleTimekey: string;
-    fromDate: string;
-    toDate: string;
-    prevcnt: string;
     lotCd: string;
     decisionLog: boolean;
     wipInflow: boolean;
@@ -72,17 +69,11 @@ function buildInferOptions(
   const maxConv = parseOptionalInt(opts.maxConversions);
   const maxConvEqp = parseOptionalInt(opts.maxConversionsPerEqp);
   const convMin = parseOptionalInt(opts.conversionMinutes);
-  const prevcnt = parseOptionalInt(opts.prevcnt);
-  const hasRange = opts.fromDate.trim() && opts.toDate.trim();
   return {
     input_folder: selectedFolder,
-    ...(facId ? { fac_id: facId } : {}),
-    ...(opts.ruleTimekey.trim() ? { rule_timekey: opts.ruleTimekey.trim() } : {}),
-    ...(!opts.ruleTimekey.trim() && hasRange
-      ? { from_date: opts.fromDate.trim(), to_date: opts.toDate.trim() }
-      : {}),
-    ...(!opts.ruleTimekey.trim() && !hasRange && prevcnt != null ? { prevcnt } : {}),
-    ...(opts.lotCd.trim() ? { lot_cd: opts.lotCd.trim() } : {}),
+    fac_id: facId,
+    rule_timekey: opts.ruleTimekey.trim(),
+    lot_cd: opts.lotCd.trim(),
     decision_log: opts.decisionLog,
     enable_wip_inflow: opts.wipInflow,
     include_history: opts.includeHistory,
@@ -173,9 +164,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [decisionLog, setDecisionLog]       = useState(false);
   const [wipInflow, setWipInflow]           = useState(false);
   const [ruleTimekey, setRuleTimekey]       = useState("");
-  const [fromDate, setFromDate]             = useState("");
-  const [toDate, setToDate]                 = useState("");
-  const [prevcnt, setPrevcnt]               = useState("");
   const [lotCd, setLotCd]                   = useState("");
   const [includeHistory, setIncludeHistory] = useState(false);
   const [dbLoad, setDbLoad]                 = useState(false);
@@ -310,6 +298,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, [onInputFolderChange]);
 
   const runInference = useCallback(async () => {
+    if (!(facIdOverride.trim() || facIdFromFolder(selectedFolder))) {
+      setError("FAC_ID는 필수 입력입니다."); return;
+    }
+    if (!ruleTimekey.trim()) { setError("RULE_TIMEKEY는 필수 입력입니다."); return; }
+    if (!lotCd.trim()) { setError("LOT_CD는 필수 입력입니다."); return; }
+
     setLoading(true); setError(null); setLastInferMeta(null);
     try {
       const res = await api.runInference({
@@ -317,9 +311,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         ...buildInferOptions(selectedFolder, {
           facIdOverride,
           ruleTimekey,
-          fromDate,
-          toDate,
-          prevcnt,
           lotCd,
           decisionLog,
           wipInflow,
@@ -350,8 +341,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     } catch(e) { setError(e instanceof Error ? e.message : "추론 실패"); }
     finally { setLoading(false); }
   }, [
-    algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey, fromDate, toDate,
-    prevcnt, lotCd, includeHistory, dbLoad, dbAlias, noHistory, saveKpi, maxConversions,
+    algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey,
+    lotCd, includeHistory, dbLoad, dbAlias, noHistory, saveKpi, maxConversions,
     maxConversionsPerEqp, conversionMinutes, syncInferFolder,
   ]);
 
@@ -372,10 +363,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     } catch(e) { setError(e instanceof Error ? e.message : "파일 오류"); }
     finally { setLoading(false); }
   }, []);
-
-  const hasRuleTimekey = ruleTimekey.trim().length > 0;
-  const hasDateRange = fromDate.trim().length > 0 || toDate.trim().length > 0;
-  const hasPrevcntVal = prevcnt.trim().length > 0;
 
   const needsModel = algoList.find(a => a.id === algorithm)?.requires_model ?? false;
   const canRun = !needsModel || modelExists;
@@ -469,62 +456,28 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             disabled={loading}
           />
 
-          <label className="field-label mt-2" htmlFor="infer-rule-timekey">RULE_TIMEKEY</label>
+          <label className="field-label mt-2" htmlFor="infer-rule-timekey">RULE_TIMEKEY *</label>
           <input
             id="infer-rule-timekey"
             className="input"
             type="text"
-            placeholder="미지정 시 최신"
+            placeholder="필수 입력"
             value={ruleTimekey}
             onChange={e => setRuleTimekey(e.target.value)}
-            disabled={loading || hasDateRange || hasPrevcntVal}
+            disabled={loading}
           />
 
-          <label className="field-label mt-2">구간 (RULE_TIMEKEY, BETWEEN)</label>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              id="infer-from"
-              className="input"
-              type="text"
-              placeholder="시작"
-              value={fromDate}
-              onChange={e => setFromDate(e.target.value)}
-              disabled={loading || hasRuleTimekey || hasPrevcntVal}
-            />
-            <input
-              id="infer-to"
-              className="input"
-              type="text"
-              placeholder="종료"
-              value={toDate}
-              onChange={e => setToDate(e.target.value)}
-              disabled={loading || hasRuleTimekey || hasPrevcntVal}
-            />
-          </div>
-
-          <label className="field-label mt-2" htmlFor="infer-prevcnt">PREVCNT (최근 N개)</label>
-          <input
-            id="infer-prevcnt"
-            className="input-number"
-            type="number"
-            min={1}
-            placeholder="미지정 시 최신 1건"
-            value={prevcnt}
-            onChange={e => setPrevcnt(e.target.value)}
-            disabled={loading || hasRuleTimekey || hasDateRange}
-          />
-          <p className="hint mt-1">RULE_TIMEKEY / 구간 / PREVCNT 중 하나만 사용됩니다 (미지정 시 최신).</p>
-
-          <label className="field-label mt-2" htmlFor="infer-lot-cd">LOT_CD</label>
+          <label className="field-label mt-2" htmlFor="infer-lot-cd">LOT_CD *</label>
           <input
             id="infer-lot-cd"
             className="input"
             type="text"
-            placeholder="미지정 시 전체 (discrete_arrange 제외)"
+            placeholder="필수 입력 (discrete_arrange 제외)"
             value={lotCd}
             onChange={e => setLotCd(e.target.value)}
             disabled={loading}
           />
+          <p className="hint mt-1">FAC_ID / RULE_TIMEKEY / LOT_CD는 필수 입력입니다.</p>
 
           <label className="check-label mt-2">
             <input
