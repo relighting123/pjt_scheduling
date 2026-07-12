@@ -101,6 +101,9 @@ def _build_rts_conv_rows(
         ppk = ev.get("PLAN_PROD_ATTR_VAL", "")
         oper_id = ev.get("oper_id", "")
         eqp_model = ev.get("eqp_model_cd", "")
+        is_scheduled = ev.get("source") == "SCHEDULED"
+        reason_cd = "MANUAL" if is_scheduled else "CONV"
+        reason_ctn = "외부 확정 전환 계획(eqp_conv_plan)" if is_scheduled else "LOT_CD/TEMP conversion"
         rows.append({
             "FAC_ID":                 meta["FAC_ID"],
             "RULE_TIMEKEY":           meta["RULE_TIMEKEY"],
@@ -124,8 +127,8 @@ def _build_rts_conv_rows(
             "TO_PLAN_PROD_ATTR_VAL":  ppk,
             "OPER_ID":                oper_id,
             "TO_OPER_ID":             oper_id,
-            "REASON_CD":              "CONV",
-            "REASON_CTN":             "LOT_CD/TEMP conversion",
+            "REASON_CD":              reason_cd,
+            "REASON_CTN":             reason_ctn,
             "TRANSMIT_YN":            "N",
             "TRANSMIT_TM":            None,
             "CRT_USER_ID":            meta["CRT_USER_ID"],

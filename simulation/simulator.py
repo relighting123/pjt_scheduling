@@ -14,6 +14,9 @@ from config import CONFIG, RewardConfig
 from simulation.events import (
     EVENT_CONV_ASSIGNED,
     EVENT_CONV_END,
+    EVENT_DOWN_END,
+    EVENT_DOWN_START,
+    EVENT_FORCED_CONV_END,
     EVENT_JOB_ASSIGNED,
     EVENT_IDLE,
     EVENT_IDLE_DECISION,
@@ -108,7 +111,7 @@ class Lot:
 @dataclass
 class Equipment:
     eqp_id:       str
-    status:       str            = "idle"   # "idle" | "busy" | "converting"
+    status:       str            = "idle"   # "idle" | "busy" | "converting" | "down"
     current_lot:  Optional[str] = None
     current_oper: Optional[str] = None
     current_prod: Optional[str] = None
@@ -172,6 +175,21 @@ class SchedulingSimulator:
         self._conv_groups_active: bool = bool(self._conv_group_map)
         self._lot_attrs: Dict[str, dict] = dict(data.get("lot_attrs", {}))
         self._initial_start: Dict[str, int] = {}
+
+        # 외부 확정 EQP 전환 계획(진행 중/예정, eqp_conv_plan 입력) — EQP별 start_min 오름차순
+        self._forced_conv_queue: Dict[str, List[dict]] = {}
+        for row in data.get("eqp_conv_plan", []):
+            self._forced_conv_queue.setdefault(row["eqp_id"], []).append(dict(row))
+        for _queue in self._forced_conv_queue.values():
+            _queue.sort(key=lambda r: r["start_min"])
+
+        # EQP PM/개조 등 다운타임 구간(eqp_down 입력) — EQP별 down_start_min 오름차순
+        # down_end_min이 None이면 무제한 다운(해당 EQP는 이후 배정 대상에서 영구 제외)
+        self._down_queue: Dict[str, List[dict]] = {}
+        for row in data.get("eqp_down", []):
+            self._down_queue.setdefault(row["eqp_id"], []).append(dict(row))
+        for _queue in self._down_queue.values():
+            _queue.sort(key=lambda r: r["down_start_min"])
 
         self.eqps: Dict[str, Equipment] = {
             eid: Equipment(eqp_id=eid) for eid in data["eqp_ids"]
@@ -246,6 +264,7 @@ class SchedulingSimulator:
 
         self.schedule:   List[dict] = []
         self.conversion_plans: List[dict] = []
+        self.down_windows: List[dict] = []
         self.stats = {
             "idle_total":    0,
             "oper_switches": 0,
@@ -370,10 +389,124 @@ class SchedulingSimulator:
         eqp = self.eqps.get(eqp_id)
         if not eqp or eqp.status != "idle":
             return
+        if self._apply_due_down(eqp_id):
+            return
+        if self._apply_due_forced_conv(eqp_id):
+            return
         if self.get_feasible_ppk_oper(eqp_id):
             self._emit_event(EVENT_IDLE, eqp_id, eqp_status="idle")
         else:
             self._schedule_wait_event(eqp_id, self.current_time)
+
+    def _apply_due_down(self, eqp_id: str) -> bool:
+        """eqp_down 입력 반영. 시작 시각이 되면 EQP를 down 상태로 전환.
+
+        아직 시작 전이면 정확한 시각에 재확인 이벤트만 예약하고, 그 사이에는
+        정상적으로 idle 배정을 진행한다(진행 중이던 가공은 선점하지 않음).
+        down_end_min이 None이면 무제한 다운으로 이후 배정 대상에서 영구 제외된다.
+
+        가공이 끝날 때까지 적용이 미뤄진 사이 down_end_min이 이미 지나버린
+        경우(비선점이라 전체 구간이 통째로 흘러간 경우)는 과거 시각으로 이벤트를
+        예약하면 시뮬 시계가 역행하므로, 그 구간은 건너뛰고 다음 큐 항목을 본다.
+        """
+        queue = self._down_queue.get(eqp_id)
+        while queue:
+            row = queue[0]
+            if row["down_start_min"] > self.current_time:
+                if not row.get("_wake_scheduled"):
+                    row["_wake_scheduled"] = True
+                    self._push_event(row["down_start_min"], EVENT_IDLE_DECISION, eqp_id)
+                return False
+            queue.pop(0)
+            down_end = row["down_end_min"]
+            if down_end is not None and down_end <= self.current_time:
+                # 비선점 정책으로 적용이 지연되는 사이 구간 전체가 이미 지나갔다 — 스킵.
+                continue
+            eqp = self.eqps[eqp_id]
+            eqp.status = "down"
+            eqp.free_at = self.current_time
+            self.down_windows.append({
+                "eqp_id":        eqp_id,
+                "down_start_min": self.current_time,
+                "down_end_min":  down_end,
+            })
+            self._emit_event(EVENT_DOWN_START, eqp_id, down_end_min=down_end)
+            if down_end is not None:
+                self._push_event(down_end, EVENT_DOWN_END, eqp_id)
+            self._invalidate_caches()
+            return True
+        return False
+
+    def _apply_due_forced_conv(self, eqp_id: str) -> bool:
+        """eqp_conv_plan 입력 반영. 시작 시각이 되면 EQP를 강제 전환 상태로 전환.
+
+        아직 시작 전이면 정확한 시각에 재확인 이벤트만 예약한다(진행 중이던 가공은
+        선점하지 않음). start_min이 이미 지난 경우(현재 시각 이하)는 reset 직후
+        첫 idle 결정 시점에 바로 걸려 즉시 전환이 시작된다.
+        """
+        queue = self._forced_conv_queue.get(eqp_id)
+        if not queue:
+            return False
+        row = queue[0]
+        if row["start_min"] > self.current_time:
+            if not row.get("_wake_scheduled"):
+                row["_wake_scheduled"] = True
+                self._push_event(row["start_min"], EVENT_IDLE_DECISION, eqp_id)
+            return False
+        queue.pop(0)
+        eqp = self.eqps[eqp_id]
+        conv_start = self.current_time
+        conv_end = conv_start + self._conversion_minutes
+        from_lot_cd = row["from_lot_cd"] or eqp.prev_lot_cd or ""
+        from_temp = row["from_temp"] or eqp.prev_temp or ""
+        eqp.status = "converting"
+        eqp.free_at = conv_end
+        eqp.prev_lot_cd = row["to_lot_cd"]
+        eqp.prev_temp = row["to_temp"]
+        eqp.conversion_count += 1
+        self.stats["conversions"] += 1
+        self.conversion_plans.append({
+            "eqp_id":        eqp_id,
+            "eqp_model_cd":  self._eqp_model_map.get(eqp_id, ""),
+            "oper_id":       eqp.prev_oper or "",
+            "PLAN_PROD_ATTR_VAL": eqp.prev_prod or "",
+            "from_lot_cd":   from_lot_cd,
+            "from_temp":     from_temp,
+            "to_lot_cd":     row["to_lot_cd"],
+            "to_temp":       row["to_temp"],
+            "conv_start_min": conv_start,
+            "conv_end_min":  conv_end,
+            "conv_time":     self._conversion_minutes,
+            "source":        "SCHEDULED",
+        })
+        self._emit_event(
+            EVENT_CONV_ASSIGNED, eqp_id,
+            from_lot_cd=from_lot_cd, from_temp=from_temp,
+            to_lot_cd=row["to_lot_cd"], to_temp=row["to_temp"],
+            conv_duration_min=self._conversion_minutes, conv_end_tm=conv_end,
+            source="SCHEDULED",
+        )
+        self._push_event(conv_end, EVENT_FORCED_CONV_END, eqp_id)
+        self._invalidate_caches()
+        return True
+
+    def _on_down_end(self, eqp_id: str) -> None:
+        """다운타임 종료 → idle 복귀."""
+        eqp = self.eqps.get(eqp_id)
+        if not eqp or eqp.status != "down":
+            return
+        eqp.status = "idle"
+        eqp.free_at = self.current_time
+        self._invalidate_caches()
+
+    def _on_forced_conv_end(self, eqp_id: str) -> None:
+        """외부 확정 전환 완료 → idle 복귀(배정할 LOT 없이 셋업만 변경)."""
+        eqp = self.eqps.get(eqp_id)
+        if not eqp or eqp.status != "converting":
+            return
+        eqp.status = "idle"
+        eqp.free_at = self.current_time
+        self._invalidate_caches()
 
     def _on_conv_end(self, eqp_id: str) -> None:
         """Conversion 완료 후 가공 시작 (conv_end 기반)."""
@@ -413,6 +546,12 @@ class SchedulingSimulator:
                     self._on_idle_decision(ev.eqp_id)
                 elif ev.kind == EVENT_CONV_END:
                     self._on_conv_end(ev.eqp_id)
+                elif ev.kind == EVENT_FORCED_CONV_END:
+                    self._on_forced_conv_end(ev.eqp_id)
+                    deferred_idle_decisions.append(ev.eqp_id)
+                elif ev.kind == EVENT_DOWN_END:
+                    self._on_down_end(ev.eqp_id)
+                    deferred_idle_decisions.append(ev.eqp_id)
 
             for eqp_id in deferred_idle_decisions:
                 self._on_idle_decision(eqp_id)

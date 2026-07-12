@@ -1,5 +1,5 @@
 import type { Data, Layout } from "plotly.js";
-import type { ConversionPlan, InferenceResult, InferenceStats, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
+import type { ConversionPlan, DowntimePlan, InferenceResult, InferenceStats, PlanRecord, ScheduleRecord, TestBenchmarkDataset, TrainSeries } from "../types";
 import { buildColorMap } from "./colors";
 import { buildShortCodeMap } from "./ganttLabels";
 import {
@@ -91,6 +91,8 @@ const GANTT_THEME = {
   barOpacity: 1.0,
   convFill: "#fbbf24",
   convBorder: "#b45309",
+  downFill: "#94a3b8",
+  downBorder: "#334155",
   rowBorderColor: "rgba(15, 23, 42, 0.22)",
   rowGridColor: "rgba(15, 23, 42, 0.13)",
 } as const;
@@ -215,6 +217,22 @@ function conversionBarMarker() {
     color: GANTT_THEME.convFill,
     opacity: 0.9,
     line: { color: GANTT_THEME.convBorder, width: 1.25 },
+    cornerradius: GANTT_THEME.barRadius,
+  } as Record<string, unknown>;
+}
+
+function downtimeBarMarker() {
+  return {
+    color: GANTT_THEME.downFill,
+    opacity: 0.9,
+    line: { color: GANTT_THEME.downBorder, width: 1.25 },
+    pattern: {
+      shape: "/",
+      bgcolor: GANTT_THEME.downFill,
+      fgcolor: "rgba(255,255,255,0.45)",
+      size: 6,
+      solidity: 0.35,
+    },
     cornerradius: GANTT_THEME.barRadius,
   } as Record<string, unknown>;
 }
@@ -495,6 +513,62 @@ function conversionTraces(
           `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)}<br>` +
           `종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<br>` +
           `소요: ${p.conv_end_min - p.conv_start_min}분<extra></extra>`,
+        showlegend: false,
+      } as Data;
+    })
+    .filter((t): t is Data => t !== null);
+}
+
+function downtimeLegendTrace(hasDowntime: boolean): Data {
+  return {
+    type: "scatter",
+    mode: "markers",
+    x: [null],
+    y: [null],
+    name: "Downtime",
+    marker: {
+      size: 10,
+      color: GANTT_THEME.downFill,
+      symbol: "square",
+      line: { color: GANTT_THEME.downBorder, width: 1.25 },
+    },
+    showlegend: true,
+    hoverinfo: "skip",
+    visible: hasDowntime ? true : "legendonly",
+  };
+}
+
+/** down_end_min이 없으면(무제한 다운) visibleUntilTime까지 열린 구간으로 표시 */
+function downtimeTraces(
+  plans: DowntimePlan[],
+  visibleUntilTime: number,
+  baseMs: number | null = null,
+): Data[] {
+  return plans
+    .filter((p) => p.down_start_min < visibleUntilTime)
+    .map((p) => {
+      const unbounded = p.down_end_min == null;
+      const end = Math.min(unbounded ? visibleUntilTime : p.down_end_min!, visibleUntilTime);
+      const width = Math.max(end - p.down_start_min, 0);
+      if (width <= 0) return null;
+      const { base, x } = ganttBarAxisCoords(p.down_start_min, width, baseMs);
+      const endLabel = unbounded ? "무제한" : formatGanttMinuteLabel(p.down_end_min!, baseMs);
+      return {
+        type: "bar",
+        orientation: "h",
+        x: [x],
+        y: [p.eqp_id],
+        base: [base],
+        marker: downtimeBarMarker(),
+        text: `DOWN`,
+        textposition: "inside",
+        insidetextanchor: "middle",
+        textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
+        hovertemplate:
+          `<b>Downtime (PM/개조)</b><br>` +
+          `EQP: ${p.eqp_id}<br>` +
+          `시작: ${formatGanttMinuteLabel(p.down_start_min, baseMs)}<br>` +
+          `종료: ${endLabel}<extra></extra>`,
         showlegend: false,
       } as Data;
     })
@@ -989,15 +1063,23 @@ export function buildAlgorithmGantt(
   data.push(...traces);
 
   const convPlans = entry.result.conversion_plans ?? [];
+  const downPlans = entry.result.down_windows ?? [];
   const maxEnd = Math.max(
     ...entry.result.schedule.map((r) => r.END_TM),
     ...convPlans.map((p) => p.conv_end_min),
+    ...downPlans.map((p) => p.down_end_min ?? entry.result.sim_end_minutes ?? 0),
     1,
   );
   const convTraces = conversionTraces(convPlans, maxEnd + 1, baseMs);
   data.push(...convTraces);
   if (convTraces.length > 0) {
     data.push(conversionLegendTrace(true));
+  }
+
+  const downTraces = downtimeTraces(downPlans, maxEnd + 1, baseMs);
+  data.push(...downTraces);
+  if (downTraces.length > 0) {
+    data.push(downtimeLegendTrace(true));
   }
 
   const layout: Partial<Layout> = {
@@ -1811,18 +1893,22 @@ export function buildEnhancedGantt(
     labelMode?: GanttBarLabel;
     eqpModelMap?: Record<string, string>;
     conversionPlans?: ConversionPlan[];
+    downtimePlans?: DowntimePlan[];
     title?: string;
     hiddenProdOperKeys?: ReadonlySet<string>;
     showConversion?: boolean;
+    showDowntime?: boolean;
   } = {},
 ): PlotChartSpec {
   const {
     labelMode = "lot",
     eqpModelMap = {},
     conversionPlans = [],
+    downtimePlans = [],
     title,
     hiddenProdOperKeys,
     showConversion = true,
+    showDowntime = true,
   } = options;
   const prodCodeMap = buildShortCodeMap(prodKeys, "P").codeByKey;
   const operCodeMap = buildShortCodeMap(operIds, "O").codeByKey;
@@ -1889,6 +1975,34 @@ export function buildEnhancedGantt(
         textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
         hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${conversionTransitionText(p)}<br>` +
           `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)} · 종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<extra></extra>`,
+        showlegend: false,
+      } as Data);
+    });
+  }
+
+  // Downtime bars (PM/개조). down_end_min 없으면 무제한 다운 → 화면 끝까지 표시.
+  if (showDowntime) {
+    downtimePlans.forEach((p) => {
+      const unbounded = p.down_end_min == null;
+      const effectiveEnd = unbounded ? timeEnd : p.down_end_min!;
+      const w = Math.max(effectiveEnd - p.down_start_min, 0);
+      if (w <= 0) return;
+      const label = getEqpLabel(p.eqp_id, eqpModelMap);
+      const { base, x } = ganttBarAxisCoords(p.down_start_min, w, baseMs);
+      const endLabel = unbounded ? "무제한" : formatGanttMinuteLabel(p.down_end_min!, baseMs);
+      data.push({
+        type: "bar",
+        orientation: "h",
+        x: [x],
+        y: [label],
+        base: [base],
+        marker: downtimeBarMarker(),
+        text: w >= 20 ? "DOWN" : "",
+        textposition: "inside",
+        insidetextanchor: "middle",
+        textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
+        hovertemplate: `<b>Downtime (PM/개조)</b><br>EQP: ${p.eqp_id}<br>` +
+          `시작: ${formatGanttMinuteLabel(p.down_start_min, baseMs)} · 종료: ${endLabel}<extra></extra>`,
         showlegend: false,
       } as Data);
     });

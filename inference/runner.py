@@ -154,6 +154,7 @@ def run_inference(
         "event_log":        list(sched_env.sim.event_log),
         "decision_log":     sched_env.get_decision_log() if record_decision_log else [],
         "conversion_plans": list(sched_env.sim.conversion_plans),
+        "down_windows":     list(sched_env.sim.down_windows),
         "stats":            {
             "idle_total":    stats["idle_total"],
             "oper_switches": stats["oper_switches"],
@@ -240,6 +241,7 @@ def _run_scheduling_rl_inference(
         "event_log":        list(sched_env.sim.event_log),
         "decision_log":     sched_env.get_decision_log() if record_decision_log else [],
         "conversion_plans": list(sched_env.sim.conversion_plans),
+        "down_windows":     list(sched_env.sim.down_windows),
         "stats": {
             "idle_total":    stats["idle_total"],
             "oper_switches": stats["oper_switches"],
@@ -298,6 +300,7 @@ def save_result(
         "event_log":        result.get("event_log", []),
         "decision_log":     result.get("decision_log", []),
         "conversion_plans": result.get("conversion_plans", []),
+        "down_windows":     result.get("down_windows", []),
         "stats":            result["stats"],
         "plan":             result["plan"],
         "algorithm":        result.get("algorithm", "scheduling_rl"),

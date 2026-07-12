@@ -51,7 +51,30 @@ pjt_scheduling/
 | `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿 |
 | Runtime WIP | `(PPK, OPER)` + LOT list | 현재/유입 재공, `oper_in_time` |
 
-부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`
+부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`,
+`eqp_conv_plan`(외부 확정 EQP 전환 계획), `eqp_down`(EQP 다운타임)
+
+#### 외부 확정 EQP 전환 계획 (`eqp_conv_plan.json`, 선택)
+
+MES 등 외부에서 이미 확정된(현재 진행 중이거나 예정된) EQP 전환을 반영한다. 행: `EQP_ID`,
+`FROM_LOT_CD`, `FROM_TEMP`, `TO_LOT_CD`, `TO_TEMP`, `START_TM`(RULE_TIMEKEY 형식).
+
+- `START_TM`이 RULE_TIMEKEY 이전/동일이면 시뮬 시작과 동시에 즉시 전환이 개시된다.
+- 아직 시작 전이면 해당 EQP는 그때까지 정상적으로 배정을 받다가, 시작 시각에 idle 상태이면
+  전환으로 전이한다(진행 중이던 가공은 선점하지 않음 — 종료 후 다음 idle 시점에 적용).
+- 전환 소요 시간은 `conversion_minutes`(기존 설정)를 그대로 사용한다.
+- Gantt에는 기존 conversion과 동일하게 `CONV` 바로 표시되고(`conversion_plans`에 병합,
+  `source: "SCHEDULED"`로 구분), `RTS_EQPCONVPLAN_INF` 출력에도 함께 반영된다.
+
+#### EQP 다운타임 (`eqp_down.json`, 선택)
+
+PM/개조 등으로 인한 EQP 다운 구간. 행: `EQP_ID`, `DOWN_START_TM`, `DOWN_END_TM`(선택,
+RULE_TIMEKEY 형식).
+
+- `DOWN_START_TM`이 RULE_TIMEKEY 이전/동일이면 시뮬 시작과 동시에 즉시 다운 처리된다.
+- `DOWN_END_TM`이 없으면 무제한 다운으로, 해당 EQP는 이후 배정 대상에서 영구 제외된다.
+- 다운 적용도 진행 중이던 가공을 선점하지 않는다(종료 후 다음 idle 시점에 적용).
+- Gantt에는 `DOWN` 바로 표시된다(`down_windows`, UI 전용 — RTS 출력에는 포함되지 않음).
 
 #### LOT_STAT_CD (`discrete_arrange`, 선택 – 미지정 시 `WAIT`)
 

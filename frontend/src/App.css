@@ -1637,6 +1637,10 @@
   --legend-color: #fbbf24;
 }
 
+.gantt-legend-tag.downtime {
+  --legend-color: #94a3b8;
+}
+
 .gantt-legend-tag-label {
   font-family: var(--font-mono);
   font-size: 0.76rem;

@@ -1,4 +1,9 @@
-import type { ConversionPlan, InferenceResult, PlanRecord, ScheduleRecord, SimEvent } from "../types";
+import type { ConversionPlan, DowntimePlan, InferenceResult, PlanRecord, ScheduleRecord, SimEvent } from "../types";
+
+/** 무제한 다운(down_end_min 없음)의 통계용 종료 시각(분). */
+function downEffectiveEnd(p: DowntimePlan, simEndMin: number): number {
+  return p.down_end_min ?? Math.max(simEndMin, p.down_start_min);
+}
 
 export interface EqpUtil {
   eqp_id: string;
@@ -36,6 +41,7 @@ export interface EqpScheduleSummary {
   jobCount: number;
   busyMin: number;
   convMin: number;
+  downMin: number;
   idleMin: number;
   utilPct: number;
   idlePct: number;
@@ -55,9 +61,10 @@ export function buildEqpModelMap(events: SimEvent[]): Record<string, string> {
 export function computeEqpUtil(
   schedule: ScheduleRecord[],
   eqpIds: string[],
-  _simEndMin: number,
+  simEndMin: number,
   modelMap: Record<string, string> = {},
   conversionPlans: ConversionPlan[] = [],
+  downtimePlans: DowntimePlan[] = [],
 ): EqpUtil[] {
   const byEqp: Record<string, ScheduleRecord[]> = {};
   eqpIds.forEach((id) => { byEqp[id] = []; });
@@ -66,10 +73,15 @@ export function computeEqpUtil(
   return eqpIds.map((id) => {
     const recs = byEqp[id];
     const convs = conversionPlans.filter((p) => p.eqp_id === id);
+    const downs = downtimePlans.filter((p) => p.eqp_id === id);
     const busy = recs.reduce((s, r) => s + (r.END_TM - r.START_TM), 0);
 
     const firstStart = recs.length > 0 ? Math.min(...recs.map((r) => r.START_TM)) : null;
-    const allEnds = [...recs.map((r) => r.END_TM), ...convs.map((p) => p.conv_end_min)];
+    const allEnds = [
+      ...recs.map((r) => r.END_TM),
+      ...convs.map((p) => p.conv_end_min),
+      ...downs.map((p) => downEffectiveEnd(p, simEndMin)),
+    ];
     const lastEnd = allEnds.length > 0 ? Math.max(...allEnds) : null;
     const makespanMin = firstStart !== null && lastEnd !== null ? lastEnd - firstStart : 0;
 
@@ -86,18 +98,21 @@ export function computeEqpUtil(
 export function computeEqpScheduleSummary(
   schedule: ScheduleRecord[],
   eqpIds: string[],
-  _simEndMin: number,
+  simEndMin: number,
   modelMap: Record<string, string> = {},
   conversionPlans: ConversionPlan[] = [],
+  downtimePlans: DowntimePlan[] = [],
 ): EqpScheduleSummary[] {
   return eqpIds.map((eqp_id) => {
     const recs = schedule
       .filter((r) => r.EQP_ID === eqp_id)
       .sort((a, b) => a.START_TM - b.START_TM);
     const convs = conversionPlans.filter((p) => p.eqp_id === eqp_id);
+    const downs = downtimePlans.filter((p) => p.eqp_id === eqp_id);
 
     const busyMin = recs.reduce((s, r) => s + (r.END_TM - r.START_TM), 0);
     const convMin = convs.reduce((s, p) => s + (p.conv_end_min - p.conv_start_min), 0);
+    const downMin = downs.reduce((s, p) => s + (downEffectiveEnd(p, simEndMin) - p.down_start_min), 0);
     const outputQty = recs.reduce((s, r) => s + (r.WF_QTY ?? 25), 0);
 
     let operSwitches = 0;
@@ -108,18 +123,19 @@ export function computeEqpScheduleSummary(
     }
 
     const convEnds = convs.map((p) => p.conv_end_min);
+    const downEnds = downs.map((p) => downEffectiveEnd(p, simEndMin));
     const schedEnds = recs.map((r) => r.END_TM);
-    const lastEnd = schedEnds.length || convEnds.length
-      ? Math.max(0, ...schedEnds, ...convEnds)
+    const lastEnd = schedEnds.length || convEnds.length || downEnds.length
+      ? Math.max(0, ...schedEnds, ...convEnds, ...downEnds)
       : null;
     const firstStart = recs.length ? recs[0].START_TM : null;
 
     const makespanMin = firstStart !== null && lastEnd !== null ? lastEnd - firstStart : 0;
-    // 유휴 = makespan 내에서 가동도 전환도 아닌 구간 (재공 빈 시간)
-    const idleMin = Math.max(0, makespanMin - busyMin - convMin);
-    // 가동률 = busy / makespan (전환·빈 시간은 비가동으로 처리)
+    // 유휴 = makespan 내에서 가동·전환·다운 어디에도 속하지 않는 구간 (재공 빈 시간)
+    const idleMin = Math.max(0, makespanMin - busyMin - convMin - downMin);
+    // 가동률 = busy / makespan (전환·다운·빈 시간은 비가동으로 처리)
     const utilPct = makespanMin > 0 ? Math.round((busyMin / makespanMin) * 1000) / 10 : 0;
-    // 유휴율 = (전환 + 빈 시간) / makespan
+    // 유휴율 = (전환 + 다운 + 빈 시간) / makespan
     const idlePct = makespanMin > 0 ? Math.round(((makespanMin - busyMin) / makespanMin) * 1000) / 10 : 0;
 
     return {
@@ -131,6 +147,7 @@ export function computeEqpScheduleSummary(
       jobCount: recs.length,
       busyMin,
       convMin,
+      downMin,
       idleMin,
       utilPct,
       idlePct,

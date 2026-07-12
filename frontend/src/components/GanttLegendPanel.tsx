@@ -12,6 +12,9 @@ interface Props {
   showConversion?: boolean;
   conversionHidden?: boolean;
   onToggleConversion?: () => void;
+  showDowntime?: boolean;
+  downtimeHidden?: boolean;
+  onToggleDowntime?: () => void;
 }
 
 export default function GanttLegendPanel({
@@ -23,13 +26,17 @@ export default function GanttLegendPanel({
   showConversion = false,
   conversionHidden = false,
   onToggleConversion,
+  showDowntime = false,
+  downtimeHidden = false,
+  onToggleDowntime,
 }: Props) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<LegendSortKey>("label");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const visibleCount = items.filter((item) => !hiddenKeys.has(item.pairKey)).length
-    + (showConversion && !conversionHidden ? 1 : 0);
+    + (showConversion && !conversionHidden ? 1 : 0)
+    + (showDowntime && !downtimeHidden ? 1 : 0);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -57,14 +64,14 @@ export default function GanttLegendPanel({
     return list;
   }, [items, query, sortKey, sortDir]);
 
-  if (!items.length && !showConversion) return null;
+  if (!items.length && !showConversion && !showDowntime) return null;
 
   return (
     <div className="card gantt-legend-panel">
       <div className="gantt-legend-head">
         <div className="gantt-summary-section-title">제품×공정 범례</div>
         <span className="gantt-table-count">
-          {visibleCount}/{items.length + (showConversion ? 1 : 0)} 표시
+          {visibleCount}/{items.length + (showConversion ? 1 : 0) + (showDowntime ? 1 : 0)} 표시
         </span>
       </div>
 
@@ -130,6 +137,18 @@ export default function GanttLegendPanel({
           >
             <span className="gantt-legend-tag-label">CONV</span>
             <span className="gantt-legend-tag-meta">Conversion</span>
+          </button>
+        )}
+        {showDowntime && onToggleDowntime && (
+          <button
+            type="button"
+            role="listitem"
+            className={`gantt-legend-tag downtime${downtimeHidden ? " hidden" : ""}`}
+            onClick={onToggleDowntime}
+            title="Downtime"
+          >
+            <span className="gantt-legend-tag-label">DOWN</span>
+            <span className="gantt-legend-tag-meta">Downtime</span>
           </button>
         )}
       </div>
