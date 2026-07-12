@@ -54,6 +54,9 @@ def test_inference_fetches_db_by_default(client, monkeypatch, tmp_path):
       "/api/inference",
       json={
         "input_folder": "FAC001/infer",
+        "fac_id": "FAC001",
+        "rule_timekey": "20260621170000",
+        "lot_cd": "LOT001",
         "algorithm": "minprogress",
       },
     )
@@ -90,6 +93,9 @@ def test_inference_always_fetches_from_db(client, monkeypatch, tmp_path):
       "/api/inference",
       json={
         "input_folder": "FAC001/infer",
+        "fac_id": "FAC001",
+        "rule_timekey": "20260621170000",
+        "lot_cd": "LOT001",
         "algorithm": "minprogress",
       },
     )
@@ -124,6 +130,9 @@ def test_inference_db_load_after_save(client, monkeypatch, tmp_path):
       "/api/inference",
       json={
         "input_folder": "FAC001/infer",
+        "fac_id": "FAC001",
+        "rule_timekey": "20260621170000",
+        "lot_cd": "LOT001",
         "algorithm": "minprogress",
         "db_load": True,
         "db_alias": "WT_RTS",
@@ -179,6 +188,9 @@ def test_inference_passes_conversion_options_to_runner(client, monkeypatch, tmp_
             "/api/inference",
             json={
                 "input_folder": "FAC001/infer",
+                "fac_id": "FAC001",
+                "rule_timekey": "20260621170000",
+                "lot_cd": "LOT001",
                 "algorithm": "minprogress",
                 "max_conversions": 2,
                 "max_conversions_per_eqp": 1,
@@ -191,3 +203,58 @@ def test_inference_passes_conversion_options_to_runner(client, monkeypatch, tmp_
     assert kwargs["max_conversions"] == 2
     assert kwargs["max_conversions_per_eqp"] == 1
     assert kwargs["conversion_minutes"] == 30
+
+
+@pytest.mark.parametrize("missing_field", ["fac_id", "rule_timekey", "lot_cd"])
+def test_inference_requires_fac_id_rule_timekey_lot_cd(client, missing_field):
+    body = {
+        "input_folder": "FAC001/infer",
+        "fac_id": "FAC001",
+        "rule_timekey": "20260621170000",
+        "lot_cd": "LOT001",
+        "algorithm": "minprogress",
+    }
+    del body[missing_field]
+
+    res = client.post("/api/inference", json=body)
+
+    assert res.status_code == 422
+
+
+def test_inference_passes_timeout_seconds_to_runner(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("config.DATASET_DIR", tmp_path / "dataset")
+    infer_input = tmp_path / "dataset" / "FAC001" / "infer" / "input"
+    infer_input.mkdir(parents=True)
+    (infer_input / "discrete_arrange.json").write_text("[]", encoding="utf-8")
+
+    with patch("api.server.fetch_from_db", return_value=infer_input), patch(
+        "api.server._load_env_data",
+        return_value=_minimal_env_data(),
+    ), patch("api.server.run_inference") as run_mock, patch(
+        "api.server.save_result",
+    ), patch(
+        "api.server.SchedulingAgent.load",
+        return_value=MagicMock(),
+    ):
+        run_mock.return_value = {
+            "schedule": [],
+            "stats": {"idle_total": 0, "oper_switches": 0, "prod_switches": 0, "completed_qty": {}},
+            "plan": [],
+            "history": [],
+            "event_log": [],
+        }
+        res = client.post(
+            "/api/inference",
+            json={
+                "input_folder": "FAC001/infer",
+                "fac_id": "FAC001",
+                "rule_timekey": "20260621170000",
+                "lot_cd": "LOT001",
+                "algorithm": "minprogress",
+                "timeout_seconds": 5,
+            },
+        )
+
+    assert res.status_code == 200
+    _, kwargs = run_mock.call_args
+    assert kwargs["timeout_seconds"] == 5

@@ -431,6 +431,9 @@ class InferFetchOptions(BaseModel):
 
 class InferenceRequest(InferFetchOptions):
     algorithm: str = Field(default="scheduling_rl", description="scheduling_rl | minprogress | earliest_st")
+    fac_id: str = Field(description="공장 ID (필수)")
+    rule_timekey: str = Field(description="추론 RULE_TIMEKEY (필수)")
+    lot_cd: str = Field(description="SQL :LOT_CD 바인드 (필수)")
     input_folder: Optional[str] = Field(
         default=None,
         description="FAC_ID 추론용 (미지정 시 현재 선택). fetch 후에는 {FAC_ID}/infer 로 고정",
@@ -446,6 +449,11 @@ class InferenceRequest(InferFetchOptions):
     include_history: bool = Field(
         default=False,
         description="시뮬레이션 재생용 history/event payload 포함",
+    )
+    timeout_seconds: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="추론 제한 시간(초). 초과 시 그 시점까지의 결과로 조기 종료(truncated)",
     )
 
 
@@ -863,6 +871,7 @@ def inference(req: InferenceRequest):
         max_conversions=req.max_conversions,
         max_conversions_per_eqp=req.max_conversions_per_eqp,
         conversion_minutes=req.conversion_minutes,
+        timeout_seconds=req.timeout_seconds,
     )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]

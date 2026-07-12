@@ -3,6 +3,7 @@ inference/runner.py – 추론 실행 및 결과 저장
 학습된 에이전트 또는 휴리스틱으로 스케줄링을 실행하고 결과를 저장합니다.
 """
 import json
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -45,6 +46,7 @@ def run_inference(
     max_conversions: Optional[int] = None,
     max_conversions_per_eqp: Optional[int] = None,
     conversion_minutes: Optional[int] = None,
+    timeout_seconds: Optional[float] = None,
 ) -> dict:
     """
     목적: 선택한 알고리즘으로 Scheduling 추론 실행
@@ -54,6 +56,7 @@ def run_inference(
         agent         (SchedulingAgent|None): RL용 (None이면 model_path로 로드)
         model_path    (str|None): 모델 파일 경로
         deterministic (bool): RL 예측 시 greedy 여부
+        timeout_seconds (float|None): 초과 시 그 시점까지의 결과로 조기 종료 (truncated=True)
     Output:
         {
           "schedule", "history", "stats", "plan", "algorithm"
@@ -98,12 +101,13 @@ def run_inference(
         heuristic_agent = EarliestSTAgent()
 
     max_steps = _inference_max_steps(env_data)
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
 
     # SchedulingRLEnv는 MultiDiscrete action space — 휴리스틱과 별도 루프에서 직접 실행
     if algorithm == "scheduling_rl":
         return _run_scheduling_rl_inference(
             run_data, env_data, agent, max_steps, deterministic,
-            record_history, record_decision_log, algorithm,
+            record_history, record_decision_log, algorithm, deadline,
         )
 
     env = SchedulingEnv(
@@ -119,6 +123,7 @@ def run_inference(
     steps = 0
     terminated = False
     truncated = False
+    timed_out = False
 
     while not done:
         action = heuristic_agent.predict(sched_env.sim)
@@ -126,6 +131,10 @@ def run_inference(
         done = terminated or truncated
         steps += 1
         if steps >= max_steps:
+            break
+        if deadline is not None and time.monotonic() >= deadline:
+            timed_out = True
+            truncated = True
             break
 
     schedule = sched_env.get_schedule()
@@ -155,6 +164,7 @@ def run_inference(
             "steps":          steps,
             "terminated":     terminated,
             "truncated":      truncated,
+            "timed_out":      timed_out,
             "current_time":   sched_env.sim.current_time,
             "sim_end_minutes": sched_env.sim.sim_end,
             "termination_mode": sched_env.sim._termination_mode,
@@ -175,6 +185,7 @@ def _run_scheduling_rl_inference(
     record_history: bool,
     record_decision_log: bool,
     algorithm: str,
+    deadline: Optional[float] = None,
 ) -> dict:
     """SchedulingRLEnv(MultiDiscrete) 전용 추론 루프."""
     from env.scheduling_rl_env import SchedulingRLEnv
@@ -191,6 +202,7 @@ def _run_scheduling_rl_inference(
     steps = 0
     terminated = False
     truncated = False
+    timed_out = False
 
     while not done:
         mask = env.action_masks()
@@ -204,6 +216,10 @@ def _run_scheduling_rl_inference(
         done = terminated or truncated
         steps += 1
         if steps >= max_steps:
+            break
+        if deadline is not None and time.monotonic() >= deadline:
+            timed_out = True
+            truncated = True
             break
 
     sched_env = env
@@ -234,6 +250,7 @@ def _run_scheduling_rl_inference(
             "steps":          steps,
             "terminated":     terminated,
             "truncated":      truncated,
+            "timed_out":      timed_out,
             "current_time":   sched_env.sim.current_time,
             "sim_end_minutes": sched_env.sim.sim_end,
             "termination_mode": sched_env.sim._termination_mode,
