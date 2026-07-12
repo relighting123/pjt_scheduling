@@ -569,7 +569,196 @@ class TestBenchmarkRunOneRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    """헬스 체크: 시스템 상태 진단"""
+    from datetime import datetime, timezone
+
+    status = {
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "components": {}
+    }
+
+    # 1. API 서버 상태
+    status["components"]["api"] = {"status": "healthy"}
+
+    # 2. 데이터베이스 연결 상태
+    try:
+        from data.db_registry import test_db_connection
+        test_db_connection()
+        status["components"]["database"] = {"status": "healthy"}
+    except Exception as e:
+        status["components"]["database"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+        status["status"] = "degraded"
+
+    # 3. 모델 파일 상태
+    try:
+        agent = SchedulingAgent()
+        model_exists = agent.model_exists()
+        status["components"]["model"] = {
+            "status": "healthy" if model_exists else "not_found",
+            "exists": model_exists
+        }
+    except Exception as e:
+        status["components"]["model"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+    # 4. 입력 데이터 폴더 접근성
+    try:
+        input_dir = CONFIG.path.input_dir
+        if input_dir.exists() and input_dir.is_dir():
+            status["components"]["input_folder"] = {
+                "status": "healthy",
+                "path": str(input_dir)
+            }
+        else:
+            status["components"]["input_folder"] = {
+                "status": "unhealthy",
+                "path": str(input_dir),
+                "error": "폴더를 찾을 수 없거나 접근할 수 없음"
+            }
+            status["status"] = "degraded"
+    except Exception as e:
+        status["components"]["input_folder"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+        status["status"] = "degraded"
+
+    # 5. 출력 폴더 접근성
+    try:
+        output_dir = CONFIG.path.output_dir
+        if output_dir.exists() and output_dir.is_dir():
+            status["components"]["output_folder"] = {
+                "status": "healthy",
+                "path": str(output_dir)
+            }
+        else:
+            status["components"]["output_folder"] = {
+                "status": "unhealthy",
+                "path": str(output_dir),
+                "error": "폴더를 찾을 수 없거나 접근할 수 없음"
+            }
+            status["status"] = "degraded"
+    except Exception as e:
+        status["components"]["output_folder"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+        status["status"] = "degraded"
+
+    # 6. 현재 입력 폴더 상태
+    try:
+        status["components"]["current_input_folder"] = {
+            "status": "healthy",
+            "input_folder": CONFIG.path.input_folder_key,
+            "fac_id": CONFIG.path.fac_id
+        }
+    except Exception as e:
+        status["components"]["current_input_folder"] = {
+            "status": "unknown",
+            "error": str(e)
+        }
+
+    return status
+
+
+@app.get("/api/health/detailed")
+def health_detailed():
+    """상세 헬스 체크: 모든 구성 요소의 상세 정보"""
+    from datetime import datetime, timezone
+    import psutil
+
+    status = {
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "components": {},
+        "system": {}
+    }
+
+    # 1. API 서버
+    status["components"]["api"] = {"status": "healthy"}
+
+    # 2. 데이터베이스
+    try:
+        from data.db_registry import test_db_connection
+        test_db_connection()
+        status["components"]["database"] = {"status": "healthy"}
+    except Exception as e:
+        status["components"]["database"] = {
+            "status": "unhealthy",
+            "error": str(e)[:200]
+        }
+        status["status"] = "degraded"
+
+    # 3. 모델
+    try:
+        agent = SchedulingAgent()
+        model_exists = agent.model_exists()
+        status["components"]["model"] = {
+            "status": "healthy" if model_exists else "not_found",
+            "exists": model_exists,
+            "model_dir": str(CONFIG.path.model_dir)
+        }
+    except Exception as e:
+        status["components"]["model"] = {
+            "status": "unhealthy",
+            "error": str(e)[:200]
+        }
+
+    # 4. 입력/출력 폴더
+    try:
+        input_dir = CONFIG.path.input_dir
+        status["components"]["input_folder"] = {
+            "status": "healthy" if (input_dir.exists() and input_dir.is_dir()) else "unhealthy",
+            "path": str(input_dir),
+            "exists": input_dir.exists()
+        }
+    except Exception as e:
+        status["components"]["input_folder"] = {
+            "status": "unhealthy",
+            "error": str(e)[:200]
+        }
+
+    try:
+        output_dir = CONFIG.path.output_dir
+        status["components"]["output_folder"] = {
+            "status": "healthy" if (output_dir.exists() and output_dir.is_dir()) else "unhealthy",
+            "path": str(output_dir),
+            "exists": output_dir.exists()
+        }
+    except Exception as e:
+        status["components"]["output_folder"] = {
+            "status": "unhealthy",
+            "error": str(e)[:200]
+        }
+
+    # 5. 시스템 정보
+    try:
+        status["system"]["cpu_percent"] = psutil.cpu_percent(interval=0.1)
+        status["system"]["memory_percent"] = psutil.virtual_memory().percent
+        status["system"]["disk_percent"] = psutil.disk_usage("/").percent
+    except Exception:
+        pass
+
+    # 6. 입력 폴더 설정
+    try:
+        status["components"]["current_input_folder"] = {
+            "status": "healthy",
+            "input_folder": CONFIG.path.input_folder_key,
+            "fac_id": CONFIG.path.fac_id
+        }
+    except Exception as e:
+        status["components"]["current_input_folder"] = {
+            "status": "unknown",
+            "error": str(e)[:200]
+        }
+
+    return status
 
 
 @app.get("/api/config")

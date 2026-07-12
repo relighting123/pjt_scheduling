@@ -599,6 +599,18 @@ class DbRegistry:
         self.close_all()
 
 
+def test_db_connection(alias: Optional[str] = None) -> None:
+    """DB 연결 테스트 (헬스 체크용)"""
+    registry = DbRegistry()
+    try:
+        conn = registry.connect(alias)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM DUAL")
+        cursor.close()
+    finally:
+        registry.close_all()
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     import argparse
     import json
