@@ -111,6 +111,13 @@ export interface ConversionPlan {
   conv_time?: number;
 }
 
+export interface DowntimePlan {
+  eqp_id: string;
+  down_start_min: number;
+  /** null/undefined = 종료 시각 미정(무제한 다운) */
+  down_end_min?: number | null;
+}
+
 export interface InferenceStats {
   idle_total: number;
   oper_switches: number;
@@ -208,6 +215,7 @@ export interface InferenceResult {
   event_log?: SimEvent[];
   decision_log?: DecisionLogEntry[];
   conversion_plans?: ConversionPlan[];
+  down_windows?: DowntimePlan[];
   stats: InferenceStats;
   plan: PlanRecord[];
   prod_keys: string[];

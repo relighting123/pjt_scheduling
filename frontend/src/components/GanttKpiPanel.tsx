@@ -41,9 +41,9 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   const sched = result.schedule;
   const makespan = sched.length ? Math.max(...sched.map((r) => r.END_TM)) : 0;
 
-  const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? []), [sched, result, eqpModelMap]);
+  const utils  = useMemo(() => computeEqpUtil(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? [], result.down_windows ?? []), [sched, result, eqpModelMap]);
   const eqpSummary = useMemo(
-    () => computeEqpScheduleSummary(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? []),
+    () => computeEqpScheduleSummary(sched, result.eqp_ids, result.sim_end_minutes, eqpModelMap, result.conversion_plans ?? [], result.down_windows ?? []),
     [sched, result, eqpModelMap],
   );
   const ach    = useMemo(
@@ -55,6 +55,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
   );
   const tat    = useMemo(() => computeTAT(sched), [sched]);
   const toolSw = countToolSwitches(sched, result.conversion_plans ?? []);
+  const totalDownMin = eqpSummary.reduce((s, r) => s + r.downMin, 0);
 
   const avgUtil      = computeAvgUtil(utils);
   const avgIdle      = computeAvgIdle(eqpSummary);
@@ -68,6 +69,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
     { label: "공정 전환",      value: `${result.stats.oper_switches}회`,  cls: "" },
     { label: "제품 전환",      value: `${result.stats.prod_switches}회`,  cls: "" },
     { label: "Tool 전환",      value: `${toolSw}회`,                      cls: "" },
+    { label: "다운타임",       value: `${totalDownMin}분`,                cls: "" },
     { label: "계획 달성률",    value: `${avgAch}%`,                       cls: avgAch >= 90 ? "ok" : avgAch >= 70 ? "warn" : "bad" },
     { label: "타겟 달성률",    value: `${avgTargetAch}%`,                 cls: avgTargetAch >= 90 ? "ok" : avgTargetAch >= 70 ? "warn" : "bad" },
   ];

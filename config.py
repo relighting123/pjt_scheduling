@@ -419,6 +419,8 @@ class PathConfig:
     eqp_initial_state_file: str = "eqp_initial_state.json"
     batch_info_file:   str = "batch_info.json"
     conversion_group_file: str = "conversion_group.json"
+    eqp_conv_plan_file: str = "eqp_conv_plan.json"
+    eqp_down_file:     str = "eqp_down.json"
     output_file:       str = "output.json"
 
     @property
@@ -470,6 +472,8 @@ OPTIONAL_SQL_JSON_MAP = {
     "lot_master":        ("lot_master.sql",        "lot_master.json"),
     "tool_capacity":     ("tool_capacity.sql",     "tool_capacity.json"),
     "eqp_initial_state": ("eqp_initial_state.sql", "eqp_initial_state.json"),
+    "eqp_conv_plan":     ("eqp_conv_plan.sql",     "eqp_conv_plan.json"),
+    "eqp_down":          ("eqp_down.sql",          "eqp_down.json"),
 }
 SQL_JSON_MAP = {**REQUIRED_SQL_JSON_MAP, **OPTIONAL_SQL_JSON_MAP}
 SQL_REQUIRED_KEYS = frozenset(REQUIRED_SQL_JSON_MAP)

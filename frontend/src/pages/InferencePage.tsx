@@ -183,6 +183,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ganttEnd, setGanttEnd]           = useState(1440);
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<Set<string>>(new Set());
   const [showConversionBars, setShowConversionBars] = useState(true);
+  const [showDownBars, setShowDownBars] = useState(true);
   const [debugStep, setDebugStep] = useState<DecisionLogEntry | null>(null);
 
   const folders = useMemo(() =>
@@ -374,10 +375,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       labelMode,
       eqpModelMap,
       conversionPlans: result.conversion_plans ?? [],
+      downtimePlans: result.down_windows ?? [],
       hiddenProdOperKeys: hiddenLegendKeys,
       showConversion: showConversionBars,
+      showDowntime: showDownBars,
     });
-  }, [result, axis, labelMode, eqpModelMap, hiddenLegendKeys, showConversionBars]);
+  }, [result, axis, labelMode, eqpModelMap, hiddenLegendKeys, showConversionBars, showDownBars]);
 
   const debugGanttChart = useMemo(() => {
     if (!ganttChart) return null;
@@ -750,7 +753,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   </div>
                 )}
 
-                {result && (legendItems.length > 0 || (result.conversion_plans?.length ?? 0) > 0) && (
+                {result && (legendItems.length > 0 || (result.conversion_plans?.length ?? 0) > 0 || (result.down_windows?.length ?? 0) > 0) && (
                   <GanttLegendPanel
                     items={legendItems}
                     hiddenKeys={hiddenLegendKeys}
@@ -760,6 +763,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                     showConversion={(result.conversion_plans?.length ?? 0) > 0}
                     conversionHidden={!showConversionBars}
                     onToggleConversion={() => setShowConversionBars((prev) => !prev)}
+                    showDowntime={(result.down_windows?.length ?? 0) > 0}
+                    downtimeHidden={!showDownBars}
+                    onToggleDowntime={() => setShowDownBars((prev) => !prev)}
                   />
                 )}
 

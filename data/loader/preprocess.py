@@ -202,6 +202,72 @@ def _normalize_eqp_initial_state(rows: List[dict]) -> List[dict]:
     return out
 
 
+def _timekey_to_minutes(value, base_time: datetime) -> Optional[int]:
+    """RULE_TIMEKEY류 시각 문자열(8/12/14자리) → sim_base_time 기준 분 오프셋."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        key = normalize_rule_timekey(text)
+    except ValueError:
+        return None
+    dt = datetime.strptime(key, RULE_TIMEKEY_FMT)
+    return int((dt - base_time).total_seconds() // 60)
+
+
+def _normalize_eqp_conv_plan(rows: List[dict], base_time: datetime) -> List[dict]:
+    """외부(MES 등) 확정 EQP 전환 계획(진행 중/예정) → 시뮬 분 단위.
+
+    START_TM이 이미 지났으면(현재 시각=0 이전) 0으로 clamp하여 시뮬 시작과
+    동시에 즉시 전환이 개시되도록 한다.
+    """
+    out: List[dict] = []
+    for r in rows:
+        eid = str(r.get("EQP_ID", "")).strip()
+        if not eid:
+            continue
+        start_min = _timekey_to_minutes(r.get("START_TM"), base_time)
+        if start_min is None:
+            continue
+        out.append({
+            "eqp_id":      eid,
+            "from_lot_cd": str(r.get("FROM_LOT_CD", "")).strip(),
+            "from_temp":   str(r.get("FROM_TEMP", "")).strip(),
+            "to_lot_cd":   str(r.get("TO_LOT_CD", "")).strip(),
+            "to_temp":     str(r.get("TO_TEMP", "")).strip(),
+            "start_min":   max(start_min, 0),
+        })
+    out.sort(key=lambda r: (r["eqp_id"], r["start_min"]))
+    return out
+
+
+def _normalize_eqp_down(rows: List[dict], base_time: datetime) -> List[dict]:
+    """EQP별 PM/개조 등 다운타임 구간 → 시뮬 분 단위.
+
+    DOWN_START_TM이 이미 지났으면 0으로 clamp. DOWN_END_TM이 비어 있으면
+    무제한 다운(None)이며, 이미 종료된(과거) 구간은 제외한다.
+    """
+    out: List[dict] = []
+    for r in rows:
+        eid = str(r.get("EQP_ID", "")).strip()
+        if not eid:
+            continue
+        start_min = _timekey_to_minutes(r.get("DOWN_START_TM"), base_time)
+        if start_min is None:
+            continue
+        end_raw = r.get("DOWN_END_TM")
+        end_min = _timekey_to_minutes(end_raw, base_time) if end_raw else None
+        if end_min is not None and end_min <= 0:
+            continue
+        out.append({
+            "eqp_id":         eid,
+            "down_start_min": max(start_min, 0),
+            "down_end_min":   end_min,
+        })
+    out.sort(key=lambda r: (r["eqp_id"], r["down_start_min"]))
+    return out
+
+
 def _carrier_instance_id(row: dict) -> str:
     """discrete_arrange 1행 → 런타임 carrier 단위 키. LOT_ID:CARRIER_ID = 1:N."""
     carrier_id = str(row.get("CARRIER_ID") or "").strip()
@@ -781,4 +847,6 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         "split_rules":      split_lookup,
         "lot_inject_deadline": {},
         "eqp_initial_state": _normalize_eqp_initial_state(raw.get("eqp_initial_state", [])),
+        "eqp_conv_plan":    _normalize_eqp_conv_plan(raw.get("eqp_conv_plan", []), base_time),
+        "eqp_down":         _normalize_eqp_down(raw.get("eqp_down", []), base_time),
     }

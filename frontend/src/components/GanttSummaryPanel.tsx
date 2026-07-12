@@ -124,6 +124,7 @@ function filterEqpRow(row: EqpScheduleSummary, query: string): boolean {
     row.jobCount,
     row.busyMin,
     row.convMin,
+    row.downMin,
     row.idleMin,
     row.utilPct,
     row.idlePct,
@@ -145,6 +146,7 @@ function sortEqpRow(a: EqpScheduleSummary, b: EqpScheduleSummary, key: string, d
     case "jobCount": return compareNumbers(a.jobCount, b.jobCount, dir);
     case "busyMin": return compareNumbers(a.busyMin, b.busyMin, dir);
     case "convMin": return compareNumbers(a.convMin, b.convMin, dir);
+    case "downMin": return compareNumbers(a.downMin, b.downMin, dir);
     case "idleMin": return compareNumbers(a.idleMin, b.idleMin, dir);
     case "utilPct": return compareNumbers(a.utilPct, b.utilPct, dir);
     case "idlePct": return compareNumbers(a.idlePct, b.idlePct, dir);
@@ -194,6 +196,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
       result.sim_end_minutes,
       eqpModelMap,
       result.conversion_plans ?? [],
+      result.down_windows ?? [],
     ),
     [result, eqpModelMap],
   );
@@ -328,6 +331,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
               <col className="col-num" />
               <col className="col-num" />
               <col className="col-num" />
+              <col className="col-num" />
               <col className="col-num-sm" />
               <col className="col-num-sm" />
               <col className="col-num-sm" />
@@ -344,6 +348,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                 <SortableTh label="작업" sortKey="jobCount" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="가동(분)" sortKey="busyMin" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="Conv(분)" sortKey="convMin" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
+                <SortableTh label="Down(분)" sortKey="downMin" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="유휴(분)" sortKey="idleMin" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="가동률" sortKey="utilPct" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
                 <SortableTh label="유휴율" sortKey="idlePct" currentKey={eqpTable.sort.key} currentDir={eqpTable.sort.dir} onSort={eqpTable.toggleSort} className="num" />
@@ -362,6 +367,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                   <td className="mono num">{row.jobCount}건</td>
                   <td className="mono num">{row.busyMin}</td>
                   <td className="mono num">{row.convMin}</td>
+                  <td className="mono num">{row.downMin}</td>
                   <td className="mono num">{row.idleMin}</td>
                   <td className={`mono num ${utilClass(row.utilPct)}`}>{row.utilPct}%</td>
                   <td className={`mono num ${idleClass(row.idlePct)}`}>{row.idlePct}%</td>

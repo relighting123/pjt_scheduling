@@ -962,6 +962,7 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
         "event_log":        [],
         "decision_log":     [],
         "conversion_plans": conversion_plans,
+        "down_windows":     [],
         "stats": {
             "idle_total": 0,
             "oper_switches": 0,
@@ -1010,6 +1011,7 @@ def get_inference_result(input_folder: Optional[str] = None):
             "event_log": saved.get("event_log", []),
             "decision_log": saved.get("decision_log", []),
             "conversion_plans": saved.get("conversion_plans", []),
+            "down_windows": saved.get("down_windows", []),
             "stats": {**saved.get("stats", {}), "source_file": "result_full.json"},
             "plan": saved.get("plan", env_data["plan"]),
             "prod_keys": env_data["prod_keys"],
