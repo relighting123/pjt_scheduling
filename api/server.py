@@ -6,6 +6,7 @@ React UI가 호출하는 REST API를 제공합니다.
 """
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
@@ -453,7 +454,7 @@ class InferenceRequest(InferFetchOptions):
     timeout_seconds: Optional[float] = Field(
         default=None,
         gt=0,
-        description="추론 제한 시간(초). 초과 시 그 시점까지의 결과로 조기 종료(truncated)",
+        description="전체 제한 시간(초): DB 조회 시작부터 DB 적재 완료까지. 초과 시 추론은 그 시점까지의 결과로 조기 종료(truncated)되고, db_load는 생략됨",
     )
 
 
@@ -826,6 +827,14 @@ def list_algorithms():
 @app.post("/api/inference")
 def inference(req: InferenceRequest):
     global _last_inference
+    pipeline_start = time.monotonic()
+
+    def remaining_seconds() -> Optional[float]:
+        """최초 실행(DB 조회)부터 지금까지 경과 시간을 뺀 잔여 제한시간."""
+        if req.timeout_seconds is None:
+            return None
+        return max(0.0, req.timeout_seconds - (time.monotonic() - pipeline_start))
+
     try:
         infer_meta = _prepare_infer_input(
             fac_id=req.fac_id,
@@ -871,7 +880,7 @@ def inference(req: InferenceRequest):
         max_conversions=req.max_conversions,
         max_conversions_per_eqp=req.max_conversions_per_eqp,
         conversion_minutes=req.conversion_minutes,
-        timeout_seconds=req.timeout_seconds,
+        timeout_seconds=remaining_seconds(),
     )
     result["prod_keys"] = env_data["prod_keys"]
     result["oper_ids"] = env_data["oper_ids"]
@@ -879,16 +888,27 @@ def inference(req: InferenceRequest):
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     result["validation"] = validate_schedule_output(result, env_data)
     save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data, write_kpi=req.save_kpi)
+
     if req.db_load:
-        try:
-            _apply_infer_db_load(
-                db_load=True,
-                db_alias=req.db_alias,
-                no_history=req.no_history,
-            )
-            infer_meta["db_loaded"] = True
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"DB 적재 실패: {e}") from e
+        if req.timeout_seconds is not None and remaining_seconds() <= 0:
+            infer_meta["db_load_skipped_timeout"] = True
+        else:
+            try:
+                _apply_infer_db_load(
+                    db_load=True,
+                    db_alias=req.db_alias,
+                    no_history=req.no_history,
+                )
+                infer_meta["db_loaded"] = True
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"DB 적재 실패: {e}") from e
+
+    if req.timeout_seconds is not None:
+        infer_meta["elapsed_seconds"] = round(time.monotonic() - pipeline_start, 3)
+        infer_meta["timed_out"] = bool(result.get("stats", {}).get("timed_out")) or (
+            remaining_seconds() <= 0
+        )
+
     _last_inference = result
     payload = serialize_inference_result(
         result,
