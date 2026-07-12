@@ -321,6 +321,7 @@ def cmd_inference(
     conversion_minutes: int = None,
     strict_validate: bool = False,
     save_kpi: bool = False,
+    timeout_seconds: float = None,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(
@@ -363,6 +364,8 @@ def cmd_inference(
         print(f"[inference] 전환 소요 시간: {conversion_minutes}분")
     if save_kpi:
         print("[inference] KPI/검증 집계 저장: ON (RTS_PERFMON_HIS, RTS_VALIDATION)")
+    if timeout_seconds is not None:
+        print(f"[inference] 제한 시간: {timeout_seconds}초 (초과 시 조기 종료)")
     result = run_inference(
         env_data,
         algorithm=algorithm,
@@ -373,6 +376,7 @@ def cmd_inference(
         max_conversions=max_conversions,
         max_conversions_per_eqp=max_conversions_per_eqp,
         conversion_minutes=conversion_minutes,
+        timeout_seconds=timeout_seconds,
     )
     print("=" * 60)
     print("[inference] 결과 검증 (장비 투입 가능성 · 처리시간 · 배정 완전성)")
@@ -702,6 +706,14 @@ def parse_args():
         action="store_true",
         help="KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION)를 output/sql에 포함 (--db-load 시 함께 적재)",
     )
+    inf_p.add_argument(
+        "--timeout",
+        dest="timeout_seconds",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="추론 제한 시간(초). 초과 시 그 시점까지의 결과로 조기 종료",
+    )
 
     db_load_p = sub.add_parser(
         "db-load",
@@ -853,6 +865,7 @@ def main():
                 conversion_minutes=args.conversion_minutes,
                 strict_validate=args.strict_validate,
                 save_kpi=args.save_kpi,
+                timeout_seconds=args.timeout_seconds,
             )
 
         elif args.command == "db-load":

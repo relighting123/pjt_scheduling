@@ -240,6 +240,7 @@ python main.py test --facid FAC001
 python main.py infer --facid FAC001
 python main.py infer --facid FAC001 --db-load
 python main.py infer --facid FAC001 --from 20260621170000 --to 20260623170000
+python main.py infer --facid FAC001 --timeout 300   # 5분 초과 시 그 시점까지 결과로 조기 종료
 
 # 샘플 데이터
 python main.py sample --facid FAC001 --bootstrap
@@ -258,6 +259,9 @@ python main.py ui
 | Vite | 5173 |
 
 Inference 탭: 단일 추론·알고리즘 비교·`output.json` 오프라인 뷰어
+
+`POST /api/inference`는 `fac_id`, `rule_timekey`, `lot_cd`가 **필수 값**입니다(외부/자동화 호출 시 항상 명시).
+`timeout_seconds`(초)를 넘기면 초과 시 그 시점까지의 결과로 조기 종료(truncated)됩니다.
 
 ---
 
