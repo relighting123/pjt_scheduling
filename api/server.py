@@ -10,23 +10,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, train_folders_for_periods, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey
-from data.loader import load_data, validate_data, fetch_from_db, fetch_period_range, preprocess
-from data.loader.rule_timekey_query import resolve_collect_periods, resolve_snapshot_rule_timekey
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey
+from data.loader import load_data, validate_data, fetch_from_db, preprocess
 from data.loader.sql_binds import resolve_lot_cd
-from data.writer.db_load import load_output_sql_files
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
 from validation.output_checks import validate_schedule_output
-from api.serializers import env_data_summary, empty_data_summary, serialize_inference_result, serialize_compare_response
+from api.serializers import serialize_inference_result, serialize_compare_response
 from api.test_benchmark_store import (
     load_benchmark,
     save_benchmark,
@@ -180,21 +178,6 @@ def _prepare_infer_input(
         "input_folder": infer_folder,
         "fetched_from_db": True,
     }
-
-
-def _apply_infer_db_load(
-    *,
-    db_load: bool,
-    db_alias: Optional[str] = None,
-    no_history: bool = False,
-) -> None:
-    if not db_load:
-        return
-    load_output_sql_files(
-        CONFIG.path.output_dir,
-        db_alias=db_alias,
-        include_history=not no_history,
-    )
 
 
 def _load_env_data_for_folder(folder: str) -> dict:
@@ -396,18 +379,6 @@ class InferFetchOptions(BaseModel):
         default=None,
         description="SQL :LOT_CD 바인드 (discrete_arrange 제외)",
     )
-    db_load: bool = Field(
-        default=False,
-        description="추론 후 output/sql 을 Oracle RTS 테이블에 적재",
-    )
-    db_alias: Optional[str] = Field(
-        default=None,
-        description="db-load 시 DB alias (미지정 시 databases.yaml default)",
-    )
-    no_history: bool = Field(
-        default=False,
-        description="db-load 시 HIS 테이블 적재 생략",
-    )
     max_conversions: Optional[int] = Field(
         default=None,
         ge=0,
@@ -422,10 +393,6 @@ class InferFetchOptions(BaseModel):
         default=None,
         ge=0,
         description="LOT_CD/TEMP 전환 1회 소요 시간(분)",
-    )
-    save_kpi: bool = Field(
-        default=False,
-        description="추론 KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION) 를 output/sql 에 포함 (db_load=true 시 함께 적재)",
     )
 
 
@@ -446,63 +413,6 @@ class InferenceRequest(InferFetchOptions):
     include_history: bool = Field(
         default=False,
         description="시뮬레이션 재생용 history/event payload 포함",
-    )
-
-
-class GeneratorConfigModel(BaseModel):
-    n_products: int = Field(default=3, ge=1, le=20)
-    n_eqps: int = Field(default=3, ge=1, le=20)
-    n_opers: int = Field(default=2, ge=1, le=10)
-    lots_per_oper: int = Field(default=3, ge=1, le=30)
-    wf_qty: int = Field(default=25, ge=1, le=500)
-    st_min: float = Field(default=3.0, ge=1, description="장당 ST 하한(분/장)")
-    st_max: float = Field(default=8.0, ge=1, description="장당 ST 상한(분/장)")
-    st_std: float = Field(default=20.0, ge=0)
-    eligibility: float = Field(default=0.7, ge=0, le=1)
-    plan_qty_min: int = Field(default=25, ge=0)
-    plan_qty_max: int = Field(default=150, ge=1)
-    plan_priority: int = Field(default=1, ge=1, le=9)
-    train_period_count: int = Field(default=3, ge=1, le=365)
-    test_period_count: int = Field(default=1, ge=1, le=365)
-    split_qty: int = Field(default=3, ge=1, le=100)
-    seed: Optional[int] = Field(default=None)
-
-    @field_validator("seed", mode="before")
-    @classmethod
-    def _coerce_seed(cls, value):
-        if value is None or value == "":
-            return None
-        return value
-
-
-class SampleRequest(BaseModel):
-    fac_id: str = Field(default="FAC001", description="공장 ID")
-    split: str = Field(default="train", description="train | test | infer")
-    scenario: str = Field(default="random", description="default | single_heavy_wip | random")
-    bootstrap: bool = Field(default=False, description="train/test/infer 전체 생성")
-    from_date: Optional[str] = Field(default=None, description="시작 RULE_TIMEKEY (YYYYMMDDHHmmss)")
-    to_date: Optional[str] = Field(default=None, description="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)")
-    generator_config: Optional[GeneratorConfigModel] = Field(default=None)
-    use_period_count: bool = Field(
-        default=False,
-        description="True면 train/test_period_count로 폴더 일괄 생성 (from/to 무시)",
-    )
-
-
-class FetchRequest(BaseModel):
-    fac_id: str = Field(default="FAC001")
-    split: str = Field(default="train")
-    snapshot: Optional[str] = Field(default=None, description="단일 RULE_TIMEKEY (YYYYMMDDHHmmss)")
-    from_date: Optional[str] = Field(default=None, description="시작 RULE_TIMEKEY (YYYYMMDDHHmmss)")
-    to_date: Optional[str] = Field(default=None, description="종료 RULE_TIMEKEY (YYYYMMDDHHmmss)")
-    prevcnt: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description="최근 N개 RULE_TIMEKEY 구간 수집 (from_date/to_date 와 함께 쓸 수 없음)",
-    )
-    lot_cd: Optional[str] = Field(
-        default=None,
-        description="SQL :LOT_CD 바인드 (discrete_arrange 제외, 미지정 시 전체)",
     )
 
 
@@ -806,139 +716,6 @@ def select_input_folder(req: InputFolderRequest):
     }
 
 
-@app.get("/api/sample/scenarios")
-def sample_scenarios():
-    return {"scenarios": list_sample_scenarios()}
-
-
-@app.get("/api/sample/generator-config")
-def get_generator_config_defaults():
-    return {"defaults": generator_config_to_dict(DEFAULT_GENERATOR_CONFIG)}
-
-
-@app.post("/api/sample")
-def create_sample(req: SampleRequest = Body(default_factory=SampleRequest)):
-    try:
-        gen_cfg = generator_config_from_dict(
-            req.generator_config.model_dump() if req.generator_config else None
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    global _env_data_cache
-    _env_data_cache = None
-
-    try:
-        result = generate_sample(
-            scenario=req.scenario,
-            fac_id=req.fac_id,
-            split=req.split,
-            bootstrap=req.bootstrap,
-            from_date=req.from_date,
-            to_date=req.to_date,
-            use_period_count=req.use_period_count,
-            gen_config=gen_cfg,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    path = result["path"]
-    return {
-        "message": f"샘플 데이터가 생성되었습니다. ({path})",
-        "scenario": req.scenario,
-        "input_folder": CONFIG.path.input_folder_key,
-        "input_dir": str(path),
-        "generator_config": result["generator_config"],
-    }
-
-
-@app.post("/api/fetch")
-def fetch_dataset(req: FetchRequest):
-    try:
-        if req.from_date and req.to_date:
-            if req.prevcnt is not None:
-                raise ValueError("prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
-            periods, _ = resolve_collect_periods(
-                req.fac_id,
-                from_key=req.from_date,
-                to_key=req.to_date,
-                require_db=(req.split == "train"),
-            )
-            paths = fetch_period_range(
-                fac_id=req.fac_id,
-                periods=periods,
-                split=req.split,
-                lot_cd=req.lot_cd,
-            )
-            path = paths[-1]
-        elif req.from_date or req.to_date:
-            raise ValueError("from_date와 to_date를 함께 지정하세요.")
-        elif req.prevcnt is not None:
-            periods, _ = resolve_collect_periods(
-                req.fac_id,
-                prevcnt=req.prevcnt,
-                require_db=(req.split == "train"),
-            )
-            paths = fetch_period_range(
-                fac_id=req.fac_id,
-                periods=periods,
-                split=req.split,
-                lot_cd=req.lot_cd,
-            )
-            path = paths[-1]
-        else:
-            require_db = req.split == "train" and not req.snapshot
-            snap, _ = resolve_snapshot_rule_timekey(
-                req.fac_id,
-                req.snapshot,
-                require_db=require_db,
-            )
-            path = fetch_from_db(
-                fac_id=req.fac_id,
-                split=req.split,
-                snapshot=snap,
-                lot_cd=req.lot_cd,
-            )
-    except (ValueError, FileNotFoundError, ImportError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
-
-    if req.split in PERIOD_SPLITS:
-        set_input_folder(f"{req.fac_id}/{req.split}/{path.parent.name}")
-    else:
-        set_input_folder(f"{req.fac_id}/{req.split}")
-
-    global _env_data_cache
-    _env_data_cache = None
-    return {
-        "message": f"DB 데이터가 JSON으로 저장되었습니다. ({path})",
-        "input_folder": CONFIG.path.input_folder_key,
-        "input_dir": str(path),
-    }
-
-
-@app.get("/api/data/summary")
-def data_summary():
-    try:
-        env_data = _load_env_data()
-    except FileNotFoundError:
-        return empty_data_summary()
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "errors": [str(e)],
-                "hint": f"데이터 요약 실패. input 폴더를 확인하세요: {CONFIG.path.input_dir}",
-            },
-        ) from e
-    result = env_data_summary(env_data)
-    result["warnings"] = _data_warnings  # 소프트 경고 포함
-    return result
-
-
 @app.get("/api/model/status")
 def model_status():
     agent = SchedulingAgent()
@@ -1058,17 +835,7 @@ def inference(req: InferenceRequest):
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     result["validation"] = validate_schedule_output(result, env_data)
-    save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data, write_kpi=req.save_kpi)
-    if req.db_load:
-        try:
-            _apply_infer_db_load(
-                db_load=True,
-                db_alias=req.db_alias,
-                no_history=req.no_history,
-            )
-            infer_meta["db_loaded"] = True
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"DB 적재 실패: {e}") from e
+    save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
     _last_inference = result
     payload = serialize_inference_result(
         result,
