@@ -323,6 +323,14 @@ def cmd_inference(
     save_kpi: bool = False,
     timeout_seconds: float = None,
 ):
+    pipeline_start = time.monotonic()
+
+    def remaining_seconds():
+        """최초 실행(DB 조회)부터 지금까지 경과 시간을 뺀 잔여 제한시간."""
+        if timeout_seconds is None:
+            return None
+        return max(0.0, timeout_seconds - (time.monotonic() - pipeline_start))
+
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     rtk = resolve_infer_rule_timekey(
         fac_id, rule_timekey,
@@ -376,7 +384,7 @@ def cmd_inference(
         max_conversions=max_conversions,
         max_conversions_per_eqp=max_conversions_per_eqp,
         conversion_minutes=conversion_minutes,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=remaining_seconds(),
     )
     print("=" * 60)
     print("[inference] 결과 검증 (장비 투입 가능성 · 처리시간 · 배정 완전성)")
@@ -417,13 +425,21 @@ def cmd_inference(
         sys.exit(1)
 
     if db_load:
-        print("=" * 60)
-        print("[inference] Oracle output 적재")
-        load_output_sql_files(
-            CONFIG.path.output_dir,
-            db_alias=db_alias,
-            include_history=not no_history,
-        )
+        if timeout_seconds is not None and remaining_seconds() <= 0:
+            print("=" * 60)
+            print("[inference] 제한 시간 초과 — Oracle output 적재 생략")
+        else:
+            print("=" * 60)
+            print("[inference] Oracle output 적재")
+            load_output_sql_files(
+                CONFIG.path.output_dir,
+                db_alias=db_alias,
+                include_history=not no_history,
+            )
+
+    if timeout_seconds is not None:
+        elapsed = time.monotonic() - pipeline_start
+        print(f"[inference] 총 소요 시간: {elapsed:.1f}초 (제한 {timeout_seconds}초)")
 
 
 def cmd_ui():
@@ -712,7 +728,7 @@ def parse_args():
         type=float,
         default=None,
         metavar="SEC",
-        help="추론 제한 시간(초). 초과 시 그 시점까지의 결과로 조기 종료",
+        help="전체 제한 시간(초): DB 조회 시작부터 DB 적재 완료까지. 초과 시 추론은 조기 종료, --db-load는 생략",
     )
 
     db_load_p = sub.add_parser(

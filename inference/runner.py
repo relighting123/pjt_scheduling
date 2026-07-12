@@ -56,7 +56,9 @@ def run_inference(
         agent         (SchedulingAgent|None): RL용 (None이면 model_path로 로드)
         model_path    (str|None): 모델 파일 경로
         deterministic (bool): RL 예측 시 greedy 여부
-        timeout_seconds (float|None): 초과 시 그 시점까지의 결과로 조기 종료 (truncated=True)
+        timeout_seconds (float|None): 이 호출에 허용된 남은 시간(초). 초과 시 그 시점까지의
+            결과로 조기 종료 (truncated=True). 전체 파이프라인(DB 조회~DB 적재) 기준
+            타임아웃은 호출측(api/server.py, main.py)이 남은 시간을 계산해 전달한다.
     Output:
         {
           "schedule", "history", "stats", "plan", "algorithm"

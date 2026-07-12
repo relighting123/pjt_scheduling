@@ -257,4 +257,55 @@ def test_inference_passes_timeout_seconds_to_runner(client, monkeypatch, tmp_pat
 
     assert res.status_code == 200
     _, kwargs = run_mock.call_args
-    assert kwargs["timeout_seconds"] == 5
+    # timeout_seconds는 파이프라인 시작(DB 조회) 시점부터의 잔여 시간이라 5보다 약간 작을 수 있음
+    assert 0 < kwargs["timeout_seconds"] <= 5
+
+
+def test_inference_skips_db_load_when_pipeline_timeout_exhausted(client, monkeypatch, tmp_path):
+    """timeout_seconds는 최초 실행(DB 조회)부터 db_load까지 전체 파이프라인 기준."""
+    import time as time_module
+
+    monkeypatch.setattr("config.DATASET_DIR", tmp_path / "dataset")
+    infer_input = tmp_path / "dataset" / "FAC001" / "infer" / "input"
+    infer_input.mkdir(parents=True)
+    (infer_input / "discrete_arrange.json").write_text("[]", encoding="utf-8")
+
+    def slow_run_inference(*args, **kwargs):
+        time_module.sleep(0.05)
+        return {
+            "schedule": [],
+            "stats": {"idle_total": 0, "oper_switches": 0, "prod_switches": 0, "completed_qty": {}, "timed_out": False},
+            "plan": [],
+            "history": [],
+            "event_log": [],
+        }
+
+    with patch("api.server.fetch_from_db", return_value=infer_input), patch(
+        "api.server._load_env_data",
+        return_value=_minimal_env_data(),
+    ), patch("api.server.run_inference", side_effect=slow_run_inference), patch(
+        "api.server.save_result",
+    ), patch(
+        "api.server.load_output_sql_files",
+    ) as load_mock, patch(
+        "api.server.SchedulingAgent.load",
+        return_value=MagicMock(),
+    ):
+        res = client.post(
+            "/api/inference",
+            json={
+                "input_folder": "FAC001/infer",
+                "fac_id": "FAC001",
+                "rule_timekey": "20260621170000",
+                "lot_cd": "LOT001",
+                "algorithm": "minprogress",
+                "db_load": True,
+                "timeout_seconds": 0.01,
+            },
+        )
+
+    assert res.status_code == 200
+    load_mock.assert_not_called()
+    body = res.json()
+    assert body["infer_meta"]["db_load_skipped_timeout"] is True
+    assert body["infer_meta"]["timed_out"] is True
