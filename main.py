@@ -16,7 +16,7 @@ main.py - 운영 CLI
     python main.py db-check
     python main.py db-load --ddl-only
     python main.py db-load --facid FAC001 --split infer
-    python main.py infer --facid FAC001 --db-load
+    python main.py infer --facid FAC001
     python main.py sample --facid FAC001 --bootstrap
     python main.py sample --facid FAC001 --split test --period 20260621070000
     python main.py ui
@@ -313,7 +313,6 @@ def cmd_inference(
     decision_log: bool = False,
     enable_wip_inflow: bool = False,
     include_history: bool = False,
-    db_load: bool = False,
     db_alias: str = None,
     no_history: bool = False,
     max_conversions: int = None,
@@ -424,18 +423,17 @@ def cmd_inference(
         print("[오류] --strict-validate: 검증 실패로 종료합니다.")
         sys.exit(1)
 
-    if db_load:
-        if timeout_seconds is not None and remaining_seconds() <= 0:
-            print("=" * 60)
-            print("[inference] 제한 시간 초과 — Oracle output 적재 생략")
-        else:
-            print("=" * 60)
-            print("[inference] Oracle output 적재")
-            load_output_sql_files(
-                CONFIG.path.output_dir,
-                db_alias=db_alias,
-                include_history=not no_history,
-            )
+    if timeout_seconds is not None and remaining_seconds() <= 0:
+        print("=" * 60)
+        print("[inference] 제한 시간 초과 — Oracle output 적재 생략")
+    else:
+        print("=" * 60)
+        print("[inference] Oracle output 적재")
+        load_output_sql_files(
+            CONFIG.path.output_dir,
+            db_alias=db_alias,
+            include_history=not no_history,
+        )
 
     if timeout_seconds is not None:
         elapsed = time.monotonic() - pipeline_start
@@ -677,19 +675,14 @@ def parse_args():
         help="공정 완료 시 다음 공정 flow 재공 유입 이벤트를 켭니다. 기본은 현재 재공만 배정.",
     )
     inf_p.add_argument(
-        "--db-load",
-        action="store_true",
-        help="추론 후 output/sql 을 Oracle RTS 테이블에 적재",
-    )
-    inf_p.add_argument(
         "--db",
         default=None,
-        help="db-load 시 DB alias (미지정 시 databases.yaml default)",
+        help="추론 후 Oracle RTS 테이블 적재 시 사용할 DB alias (미지정 시 databases.yaml default)",
     )
     inf_p.add_argument(
         "--no-history",
         action="store_true",
-        help="db-load 시 HIS 테이블 적재 생략",
+        help="추론 후 DB 적재 시 HIS 테이블 적재 생략",
     )
     inf_p.add_argument(
         "--max-conversions",
@@ -720,7 +713,7 @@ def parse_args():
     inf_p.add_argument(
         "--save-kpi",
         action="store_true",
-        help="KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION)를 output/sql에 포함 (--db-load 시 함께 적재)",
+        help="KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION)를 output/sql에 포함 (DB 적재 시 함께 적재)",
     )
     inf_p.add_argument(
         "--timeout",
@@ -728,7 +721,7 @@ def parse_args():
         type=float,
         default=None,
         metavar="SEC",
-        help="전체 제한 시간(초): DB 조회 시작부터 DB 적재 완료까지. 초과 시 추론은 조기 종료, --db-load는 생략",
+        help="전체 제한 시간(초): DB 조회 시작부터 DB 적재 완료까지. 초과 시 추론은 조기 종료, DB 적재는 생략",
     )
 
     db_load_p = sub.add_parser(
@@ -873,7 +866,6 @@ def main():
                 decision_log=args.decision_log,
                 enable_wip_inflow=args.enable_wip_inflow,
                 include_history=args.include_history,
-                db_load=args.db_load,
                 db_alias=args.db,
                 no_history=args.no_history,
                 max_conversions=args.max_conversions,

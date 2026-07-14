@@ -56,7 +56,6 @@ function buildInferOptions(
     decisionLog: boolean;
     wipInflow: boolean;
     includeHistory: boolean;
-    dbLoad: boolean;
     dbAlias: string;
     noHistory: boolean;
     saveKpi: boolean;
@@ -77,7 +76,6 @@ function buildInferOptions(
     decision_log: opts.decisionLog,
     enable_wip_inflow: opts.wipInflow,
     include_history: opts.includeHistory,
-    db_load: opts.dbLoad,
     ...(opts.dbAlias.trim() ? { db_alias: opts.dbAlias.trim() } : {}),
     no_history: opts.noHistory,
     save_kpi: opts.saveKpi,
@@ -166,7 +164,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [ruleTimekey, setRuleTimekey]       = useState("");
   const [lotCd, setLotCd]                   = useState("");
   const [includeHistory, setIncludeHistory] = useState(false);
-  const [dbLoad, setDbLoad]                 = useState(false);
   const [dbAlias, setDbAlias]               = useState("");
   const [noHistory, setNoHistory]           = useState(false);
   const [saveKpi, setSaveKpi]               = useState(false);
@@ -302,7 +299,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     if (!(facIdOverride.trim() || facIdFromFolder(selectedFolder))) {
       setError("FAC_ID는 필수 입력입니다."); return;
     }
-    if (!ruleTimekey.trim()) { setError("RULE_TIMEKEY는 필수 입력입니다."); return; }
     if (!lotCd.trim()) { setError("LOT_CD는 필수 입력입니다."); return; }
 
     setLoading(true); setError(null); setLastInferMeta(null);
@@ -316,7 +312,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           decisionLog,
           wipInflow,
           includeHistory,
-          dbLoad,
           dbAlias,
           noHistory,
           saveKpi,
@@ -343,7 +338,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     finally { setLoading(false); }
   }, [
     algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey,
-    lotCd, includeHistory, dbLoad, dbAlias, noHistory, saveKpi, maxConversions,
+    lotCd, includeHistory, dbAlias, noHistory, saveKpi, maxConversions,
     maxConversionsPerEqp, conversionMinutes, syncInferFolder,
   ]);
 
@@ -459,12 +454,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             disabled={loading}
           />
 
-          <label className="field-label mt-2" htmlFor="infer-rule-timekey">RULE_TIMEKEY *</label>
+          <label className="field-label mt-2" htmlFor="infer-rule-timekey">RULE_TIMEKEY</label>
           <input
             id="infer-rule-timekey"
             className="input"
             type="text"
-            placeholder="필수 입력"
+            placeholder="미지정 시 FAC_ID 기준 최신값 자동 조회"
             value={ruleTimekey}
             onChange={e => setRuleTimekey(e.target.value)}
             disabled={loading}
@@ -480,7 +475,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             onChange={e => setLotCd(e.target.value)}
             disabled={loading}
           />
-          <p className="hint mt-1">FAC_ID / RULE_TIMEKEY / LOT_CD는 필수 입력입니다.</p>
+          <p className="hint mt-1">
+            FAC_ID / LOT_CD는 필수 입력입니다. RULE_TIMEKEY는 비워두면 FAC_ID 기준 최신값으로 추론합니다.
+          </p>
 
           <label className="check-label mt-2">
             <input
@@ -492,39 +489,26 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             history/event 포함 (--include-history)
           </label>
 
-          <label className="check-label">
+          <p className="hint mt-2">추론 후 결과는 항상 Oracle RTS 테이블에 적재됩니다.</p>
+          <label className="field-label mt-2" htmlFor="infer-db-alias">DB alias</label>
+          <input
+            id="infer-db-alias"
+            className="input"
+            type="text"
+            placeholder="미지정 시 default"
+            value={dbAlias}
+            onChange={e => setDbAlias(e.target.value)}
+            disabled={loading}
+          />
+          <label className="check-label mt-2">
             <input
               type="checkbox"
-              checked={dbLoad}
-              onChange={e => setDbLoad(e.target.checked)}
+              checked={noHistory}
+              onChange={e => setNoHistory(e.target.checked)}
               disabled={loading}
             />
-            추론 후 DB 적재 (--db-load)
+            HIS 테이블 적재 생략 (--no-history)
           </label>
-
-          {dbLoad && (
-            <>
-              <label className="field-label mt-2" htmlFor="infer-db-alias">DB alias</label>
-              <input
-                id="infer-db-alias"
-                className="input"
-                type="text"
-                placeholder="미지정 시 default"
-                value={dbAlias}
-                onChange={e => setDbAlias(e.target.value)}
-                disabled={loading}
-              />
-              <label className="check-label mt-2">
-                <input
-                  type="checkbox"
-                  checked={noHistory}
-                  onChange={e => setNoHistory(e.target.checked)}
-                  disabled={loading}
-                />
-                HIS 테이블 적재 생략 (--no-history)
-              </label>
-            </>
-          )}
 
           <label className="check-label">
             <input

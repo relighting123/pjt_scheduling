@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey
 from data.loader import load_data, validate_data, fetch_from_db, preprocess
 from data.loader.sql_binds import resolve_lot_cd
+from data.writer.db_load import load_output_sql_files
 from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
@@ -379,6 +380,14 @@ class InferFetchOptions(BaseModel):
     lot_cd: Optional[str] = Field(
         default=None,
         description="SQL :LOT_CD 바인드 (discrete_arrange 제외)",
+    )
+    db_alias: Optional[str] = Field(
+        default=None,
+        description="추론 후 Oracle RTS 테이블 적재 시 사용할 DB alias (미지정 시 databases.yaml default)",
+    )
+    no_history: bool = Field(
+        default=False,
+        description="추론 후 DB 적재 시 HIS 테이블 적재 생략",
     )
     max_conversions: Optional[int] = Field(
         default=None,
@@ -837,6 +846,15 @@ def inference(req: InferenceRequest):
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     result["validation"] = validate_schedule_output(result, env_data)
     save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
+    try:
+        load_output_sql_files(
+            CONFIG.path.output_dir,
+            db_alias=req.db_alias,
+            include_history=not req.no_history,
+        )
+        infer_meta["db_loaded"] = True
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB 적재 실패: {e}") from e
     _last_inference = result
     payload = serialize_inference_result(
         result,

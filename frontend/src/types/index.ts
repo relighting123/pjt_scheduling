@@ -198,7 +198,6 @@ export interface InferRunOptions {
   fac_id?: string;
   rule_timekey?: string;
   lot_cd?: string;
-  db_load?: boolean;
   db_alias?: string;
   no_history?: boolean;
   decision_log?: boolean;

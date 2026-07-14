@@ -216,12 +216,16 @@ python main.py db-load --ddl --facid FAC001 --split infer
 
 ### DB 적재
 
+`main.py infer`와 `POST /api/inference`는 추론 후 **항상** output/sql을 Oracle RTS 테이블에 적재합니다
+(별도 옵션 아님). `--db`/`db_alias`로 대상 DB alias를, `--no-history`/`no_history`로 HIS 테이블 적재
+여부를 조정할 수 있습니다.
+
 ```bash
-# 추론 후 output/sql 적재
-python main.py infer --facid FAC001 --db-load
+# 추론 (결과는 자동으로 DB 적재됨)
+python main.py infer --facid FAC001
 
 # KPI(RTS_PERFMON_HIS)도 함께 저장/적재
-python main.py infer --facid FAC001 --db-load --save-kpi
+python main.py infer --facid FAC001 --save-kpi
 
 # 기존 output 폴더 적재
 python main.py db-load --facid FAC001 --split test --period 20260624070000
@@ -259,11 +263,10 @@ python main.py collect --facid FAC001 --split train --prevcnt 3 --once
 python main.py train --facid FAC001 --prevcnt 3
 python main.py test --facid FAC001
 
-# 추론 (Oracle SQL 조회)
+# 추론 (Oracle SQL 조회, 결과는 항상 DB 적재까지 수행)
 python main.py infer --facid FAC001
-python main.py infer --facid FAC001 --db-load
 python main.py infer --facid FAC001 --from 20260621170000 --to 20260623170000
-python main.py infer --facid FAC001 --db-load --timeout 300   # DB 조회~DB 적재 전체 5분 제한
+python main.py infer --facid FAC001 --timeout 300   # DB 조회~DB 적재 전체 5분 제한
 
 # 샘플 데이터
 python main.py sample --facid FAC001 --bootstrap
@@ -283,10 +286,10 @@ python main.py ui
 
 Inference 탭: 단일 추론·알고리즘 비교·`output.json` 오프라인 뷰어
 
-`POST /api/inference`는 `fac_id`, `rule_timekey`, `lot_cd`가 **필수 값**입니다(외부/자동화 호출 시 항상 명시).
-`timeout_seconds`(초)는 **DB 조회 시작부터 DB 적재 완료까지 전체 파이프라인** 기준입니다.
-초과 시 추론은 그 시점까지의 결과로 조기 종료(truncated)되고, `db_load=true`였다면 DB 적재는 생략됩니다
-(`infer_meta.db_load_skipped_timeout`).
+`POST /api/inference`는 `lot_cd`만 필수이며, `fac_id`는 미지정 시 현재 선택된 입력 폴더/서버 설정을,
+`rule_timekey`는 미지정 시 해당 `fac_id`의 최신 값을 자동으로 조회해 추론합니다.
+추론 결과는 항상 Oracle RTS 테이블에 적재되며(`db_alias`/`no_history`로 대상 DB·HIS 테이블 적재 여부만 조정),
+적재 성공 여부는 응답의 `infer_meta.db_loaded`로 확인할 수 있습니다.
 
 ---
 
