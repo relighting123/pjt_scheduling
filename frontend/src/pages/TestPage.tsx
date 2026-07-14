@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import PlotChart from "../components/PlotChart";
 import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import FullscreenPanel from "../components/FullscreenPanel";
+import OptimalBenchPanel from "../components/OptimalBenchPanel";
 import { api } from "../lib/api";
 import { downloadExcel } from "../lib/exportExcel";
 import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey } from "../lib/ganttTime";
@@ -290,6 +291,7 @@ export default function TestPage({ config, modelExists }: Props) {
 
       {/* ── Main content ── */}
       <div className="content-area">
+        <OptimalBenchPanel />
         {error && <ExpandableErrorBanner message={error} />}
         {savedLoading && <div className="hint">저장 결과 불러오는 중...</div>}
 

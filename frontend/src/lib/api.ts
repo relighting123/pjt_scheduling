@@ -5,6 +5,7 @@ import type {
   AppConfig,
   DataSummary,
   InferenceResult,
+  OptimalBenchResponse,
   TestBenchmarkResponse,
   TestDatasetsResponse,
   TrainMetrics,
@@ -274,4 +275,8 @@ export const api = {
         ...(opts?.input_folders ? { input_folders: opts.input_folders } : {}),
       }),
     }),
+  getOptimalBench: (algorithms?: AlgorithmId[]) =>
+    request<OptimalBenchResponse>(
+      `/api/test/optimal-bench${algorithms?.length ? `?algorithms=${encodeURIComponent(algorithms.join(","))}` : ""}`,
+    ),
 };

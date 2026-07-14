@@ -34,6 +34,7 @@ from api.test_benchmark_store import (
     empty_state,
 )
 from api.train_service import train_progress, start_training, stop_training, is_training
+from benchmark.optimal.runner import run_optimal_benchmark
 
 app = FastAPI(title="Scheduling RL API", version="1.0.0")
 
@@ -1216,6 +1217,16 @@ def run_test_benchmark_one(req: TestBenchmarkRunOneRequest):
     state["algorithms"] = req.algorithms
     save_benchmark(state)
     return _benchmark_response(load_benchmark(fac_id))
+
+
+@app.get("/api/test/optimal-bench")
+def get_optimal_bench(algorithms: Optional[str] = None):
+    """증명된 최적해 벤치마크(benchmark/optimal) 실행 — 실제 test 데이터셋과 무관,
+    코드 안에 미리 정의된 소규모 검증 케이스만 사용한다."""
+    algo_list = [a for a in algorithms.split(",") if a] if algorithms else None
+    if algo_list:
+        _validate_algorithms(algo_list)
+    return run_optimal_benchmark(algorithms=algo_list)
 
 
 @app.post("/api/test/benchmark")

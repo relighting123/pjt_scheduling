@@ -380,4 +380,30 @@ export interface TestDatasetsResponse {
   datasets: TestDatasetInfo[];
 }
 
+export interface OptimalBenchTarget {
+  production: number;
+  conversions: number;
+  proof: string;
+}
+
+export interface OptimalBenchMetrics {
+  production: number;
+  conversions: number;
+}
+
+export interface OptimalBenchRun {
+  case: string;
+  algorithm: AlgorithmId;
+  target: OptimalBenchTarget;
+  actual: OptimalBenchMetrics;
+  passed: boolean;
+}
+
+export interface OptimalBenchResponse {
+  cases: string[];
+  algorithms: AlgorithmId[];
+  runs: OptimalBenchRun[];
+  summary: Record<string, { passed: number; total: number }>;
+}
+
 export type AppMode = "dashboard" | "train" | "test" | "inference" | "dataset";
