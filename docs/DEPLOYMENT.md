@@ -24,7 +24,7 @@ pip install pytest pytest-cov black flake8
 ### 1.2 데이터베이스 설정
 
 ```bash
-# 설정 파일 작성
+# 설정 파일 작성 (단일 서버 / 운영·개발 구분 없음)
 cp config/databases.yaml.example config/databases.yaml
 
 # 설정 편집 (DB 접속 정보 입력)
@@ -37,6 +37,27 @@ python main.py db-check
 python main.py db-load --ddl-only
 ```
 
+#### 운영(prd) / 개발(dev) 서버를 분리해 띄우는 경우
+
+같은 코드베이스로 운영 서버와 개발 서버를 각각 다른 DB에 붙여 실행하려면
+`config/databases.prd.yaml` 과 `config/databases.dev.yaml` 을 따로 준비하세요.
+`DB_CONFIG` 를 비워두면 `APP_ENV` 값에 따라 자동으로 선택됩니다
+(`APP_ENV=production` → `databases.prd.yaml`, `APP_ENV=development` → `databases.dev.yaml`).
+`DB_CONFIG` 를 명시하면 항상 그 값이 우선합니다.
+
+```bash
+cp config/databases.prd.yaml.example config/databases.prd.yaml
+cp config/databases.dev.yaml.example config/databases.dev.yaml
+
+# 각 파일에 운영/개발 DB 접속 정보 입력
+# vi config/databases.prd.yaml
+# vi config/databases.dev.yaml
+
+# 연결 테스트 (환경별로 확인)
+APP_ENV=production python main.py db-check
+APP_ENV=development python main.py db-check
+```
+
 ### 1.3 환경 변수 설정
 
 ```bash
@@ -44,7 +65,7 @@ python main.py db-load --ddl-only
 cp .env.example .env
 
 # 필수 환경변수 확인
-# DB_CONFIG=config/databases.yaml
+# DB_CONFIG=config/databases.yaml   (또는 비워두고 APP_ENV 로 자동 선택)
 # COLLECTOR_FAC_ID=FAC001
 ```
 
@@ -116,6 +137,8 @@ python api/start_production.py --host 0.0.0.0 --port 8001 --workers 8
 
 #### Systemd 서비스 등록
 
+운영 서버 하나만 띄우는 경우:
+
 ```bash
 # /etc/systemd/system/scheduling-api.service 작성
 cat > /etc/systemd/system/scheduling-api.service <<EOF
@@ -128,6 +151,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/opt/scheduling
 Environment="PATH=/opt/scheduling/venv/bin"
+Environment="APP_ENV=production"
 ExecStart=/opt/scheduling/venv/bin/python api/start_production.py --host 0.0.0.0 --port 8001 --workers 4
 Restart=always
 RestartSec=10
@@ -142,6 +166,66 @@ sudo systemctl enable scheduling-api
 
 # 상태 확인
 sudo systemctl status scheduling-api
+```
+
+운영(prd)과 개발(dev) 서버를 같은 머신(또는 각자 머신)에 별도 서비스·포트로 나란히 띄우는 경우,
+`APP_ENV` 값만 다른 두 개의 서비스 유닛을 만듭니다
+(`APP_ENV` 는 `config/databases.prd.yaml` / `config/databases.dev.yaml` 중 어떤 파일을 로드할지 결정합니다. 1.2절 참고):
+
+```bash
+# /etc/systemd/system/scheduling-api-prd.service
+cat > /etc/systemd/system/scheduling-api-prd.service <<EOF
+[Unit]
+Description=Scheduling RL API Server (Production)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/scheduling
+Environment="PATH=/opt/scheduling/venv/bin"
+Environment="APP_ENV=production"
+ExecStart=/opt/scheduling/venv/bin/python api/start_production.py --host 0.0.0.0 --port 8001 --workers 4
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# /etc/systemd/system/scheduling-api-dev.service
+cat > /etc/systemd/system/scheduling-api-dev.service <<EOF
+[Unit]
+Description=Scheduling RL API Server (Development)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/scheduling
+Environment="PATH=/opt/scheduling/venv/bin"
+Environment="APP_ENV=development"
+ExecStart=/opt/scheduling/venv/bin/python api/start_production.py --host 0.0.0.0 --port 8011 --workers 1
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now scheduling-api-prd scheduling-api-dev
+sudo systemctl status scheduling-api-prd scheduling-api-dev
+```
+
+직접 실행(systemd 없이)할 때도 동일하게 `APP_ENV` 만 바꿔주면 됩니다:
+
+```bash
+# 운영
+APP_ENV=production python api/start_production.py --host 0.0.0.0 --port 8001 --workers 4
+
+# 개발
+APP_ENV=development python -m uvicorn api.server:app --reload --host 127.0.0.1 --port 8001
 ```
 
 ### 3.3 HTTPS 설정

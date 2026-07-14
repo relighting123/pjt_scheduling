@@ -261,20 +261,24 @@ ls -la data/dataset/FAC001/
 ### 개발 환경
 
 ```bash
-python -m uvicorn api.server:app --reload --host 127.0.0.1 --port 8001
+APP_ENV=development python -m uvicorn api.server:app --reload --host 127.0.0.1 --port 8001
 ```
 
 ### 프로덕션 환경 (단일 워커)
 
 ```bash
-python api/start_production.py --host 0.0.0.0 --port 8001
+APP_ENV=production python api/start_production.py --host 0.0.0.0 --port 8001
 ```
 
 ### 프로덕션 환경 (다중 워커)
 
 ```bash
-python api/start_production.py --host 0.0.0.0 --port 8001 --workers 4
+APP_ENV=production python api/start_production.py --host 0.0.0.0 --port 8001 --workers 4
 ```
+
+`APP_ENV` 는 `config/databases.prd.yaml` / `config/databases.dev.yaml` 중 어느 DB 설정을 로드할지 결정합니다
+(운영/개발 DB 를 분리하지 않는다면 생략해도 되며, 이 경우 기존처럼 `config/databases.yaml` 을 사용합니다).
+자세한 설정은 `docs/DEPLOYMENT.md` 1.2절을 참고하세요.
 
 ### HTTPS 지원
 
