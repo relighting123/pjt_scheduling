@@ -281,6 +281,47 @@ python main.py ui
 
 ---
 
+## 서버 실행
+
+최초 1회:
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+cp config/databases.prd.yaml.example config/databases.prd.yaml   # 운영 DB 정보 입력
+cp config/databases.dev.yaml.example config/databases.dev.yaml   # 개발 DB 정보 입력
+```
+
+`APP_ENV`로 운영/개발 DB 설정을 선택합니다 (`config/databases.prd.yaml` / `databases.dev.yaml`,
+미지정 시 레거시 `config/databases.yaml` 사용 — 자세한 내용은 `docs/DEPLOYMENT.md` 1.2절).
+
+```bash
+# 개발 서버 (자동 리로드)
+APP_ENV=development python -m uvicorn api.server:app --reload --host 127.0.0.1 --port 8001
+
+# 운영 서버 (다중 워커)
+APP_ENV=production python api/start_production.py --host 0.0.0.0 --port 8001 --workers 4
+```
+
+Windows `cmd`에서는 환경변수를 `set`으로 지정합니다 (창을 새로 열면 다시 설정 필요):
+
+```cmd
+set APP_ENV=development
+python -m uvicorn api.server:app --reload --host 127.0.0.1 --port 8001
+```
+
+프론트엔드(선택):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+헬스 체크: `curl http://localhost:8001/api/health` (자세한 배포 절차는 `docs/DEPLOYMENT.md` 참고)
+
+---
+
 ## UI
 
 | 구성 | 포트 |
