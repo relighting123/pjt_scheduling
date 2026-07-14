@@ -1,0 +1,14 @@
+# config/databases.dev.yaml.example → 복사: config/databases.dev.yaml
+# 개발 서버용 DB 설정. APP_ENV=development(또는 dev) 일 때 자동으로 로드됩니다.
+# (DB_CONFIG 를 명시하면 그 값이 항상 우선합니다.)
+#
+# SQL 파일들은 -- @db: Prd 헤더로 이 alias 를 참조하므로,
+# 운영/개발 파일 모두 최상위 alias 이름은 Prd 로 유지하고 접속 정보만 바꿉니다.
+# (여기서 "Prd" 는 alias 이름일 뿐, 실제로는 개발/테스트 DB 를 가리킵니다.)
+
+default: Prd
+
+Prd:
+  user: dev_user
+  password: dev_password
+  dsn: dev-host:1521/ORCL

@@ -29,6 +29,8 @@ logs/
 logging/
 .env
 config/databases.yaml
+config/databases.prd.yaml
+config/databases.dev.yaml
 frontend/node_modules/
 frontend/dist/
 

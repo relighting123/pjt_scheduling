@@ -1,0 +1,18 @@
+# config/databases.prd.yaml.example → 복사: config/databases.prd.yaml
+# 운영 서버용 DB 설정. APP_ENV=production(또는 prod) 일 때 자동으로 로드됩니다.
+# (DB_CONFIG 를 명시하면 그 값이 항상 우선합니다.)
+#
+# SQL 파일들은 -- @db: Prd 헤더로 이 alias 를 참조하므로,
+# 운영/개발 파일 모두 최상위 alias 이름은 Prd 로 유지하고 접속 정보만 바꿉니다.
+
+default: Prd
+
+Prd:
+  user: your_oracle_prd_user
+  password: your_oracle_prd_password
+  dsn: prd-host:1521/ORCL
+  # 하위 DB (선택) – Prd 접속 정보 상속 + 덮어쓰기
+  # Plan:
+  #   dsn: prd-plan-host:1521/ORCL
+
+# User / Pw / Dsn (대소문자 혼용) 도 동일하게 인식합니다.
