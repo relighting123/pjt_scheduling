@@ -12,12 +12,22 @@ from benchmark.optimal.runner import evaluate_case
 # 모델(휴리스틱)이 증명된 최적값에 실제로 도달하는지 회귀 감지.
 # RL(scheduling_rl)은 저장된 체크포인트가 있어야 실행 가능하므로 제외.
 #
-# earliest_st × dedicated_assignment는 현재 알려진 실제 격차다: earliest-ST는
-# "예상 종료 시각이 가장 빠른 조합"만 보고 전환 비용을 고려하지 않으므로
-# 전담 배정을 스스로 찾지 못한다 (증명 가능한 최적 24개 대비 실제 성과 미달).
+# 아래는 현재 알려진 실제 격차다(둘 다 production은 맞히지만 conversions가
+# 증명된 최소값을 넘는다):
+#   - earliest_st × dedicated_assignment: "예상 종료 시각이 가장 빠른 조합"만
+#     보고 전환 비용을 고려하지 않아 전담 배정을 스스로 찾지 못한다
+#     (증명 가능한 최적 24개 대비 실제 성과 미달).
+#   - minprogress/earliest_st × overflow_conversion_three_eqp: PPK별 진행률만
+#     보고 오버플로를 한 제품에 몰아주지 않아, 초기 셋업이 다른 EQP가 두 제품을
+#     번갈아 맡으며 불필요한 추가 전환이 발생한다(직접 시뮬레이터를 조작해
+#     production=20/conversions=1이 동시에 달성 가능함을 확인함 — 진짜 최적값).
 # strict=True: 이 조합이 어느 날 우연히 통과하면 XPASS로 테스트가 실패한다 —
 # 알고리즘이 개선됐다는 신호이니 이 목록에서 지워야 한다.
-_KNOWN_GAPS = {("earliest_st", "dedicated_assignment")}
+_KNOWN_GAPS = {
+    ("earliest_st", "dedicated_assignment"),
+    ("minprogress", "overflow_conversion_three_eqp"),
+    ("earliest_st", "overflow_conversion_three_eqp"),
+}
 
 _PARAMS = [
     pytest.param(

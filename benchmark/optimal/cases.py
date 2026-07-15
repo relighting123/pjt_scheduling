@@ -238,7 +238,123 @@ MIXED_CONVERSION_CASE = OptimalCase(
 )
 
 
+# ── 케이스 3: 전담 2대 + 오버플로 전담 1대 (3EQP·2PPK) ──────────────────────────
+# EQP 3대, PPK 2종(각기 다른 LOT_CD). PPK_A 수요는 EQP 1대 용량을 넘어(overflow)
+# 두 번째 EQP가 필요하고, PPK_B 수요는 EQP 1대 용량과 정확히 일치한다.
+#   - EQP001: 초기 셋업 미지정(무료) → PPK_A 전담, 전환 없이 floor(480/60)=8건.
+#   - EQP002: 초기 셋업 미지정(무료) → PPK_B 전담, 전환 없이 8건.
+#   - EQP003: 초기 셋업이 PPK_A/B 어느 쪽과도 다른 LOT_CD(LC_OTHER)로 채워져
+#     있어, PPK_A의 overflow 4건을 처리하려면 최초 1회 전환이 강제된다.
+# 수요 합계 20건(=12+8)은 EQP001 8(무전환)+EQP002 8(무전환)+EQP003 4(전환 1회)로
+# 정확히 달성된다.
+# 하한 증명: 전환을 0회로 제한하면 EQP003은 (초기 셋업이 둘 중 어느 것과도
+# 다르므로) 전혀 쓸 수 없고, EQP001·EQP002는 각각 한 제품에만 전담되므로
+# 생산 상한이 8+8=16으로 줄어 수요 20건을 채울 수 없다. 즉 EQP003을 조금이라도
+# 쓰려면(또는 EQP001/002 중 하나가 두 제품을 겸하려면) 전환이 최소 1회 필요하며,
+# 이후 어느 경우든 추가 전환 없이 남은 수요를 모두 처리할 수 있으므로 1회가
+# 정확한 최소값이다.
+# → 이 케이스는 케이스2(2EQP·1PPK)의 통찰을 3EQP·2PPK로 확장해, 서로 다른 두
+#   제품이 동시에 걸린 상황에서도 "필요한 최소 전환만" 하는지를 검증한다.
+_OVF_N_EQP = 3
+_OVF_ST = 60
+_OVF_SIM = 480
+_OVF_CAP = _OVF_SIM // _OVF_ST  # 8
+_OVF_OVERFLOW = 4
+_OVF_DEMAND_A = _OVF_CAP + _OVF_OVERFLOW  # 12
+_OVF_DEMAND_B = _OVF_CAP  # 8
+_OVF_LOT_CD_A = "LC_A"
+_OVF_LOT_CD_B = "LC_B"
+_OVF_LOT_CD_OTHER = "LC_OTHER"
+
+
+def _build_overflow_conversion() -> dict:
+    oper = "OPER001"
+    ppk_a, ppk_b = "PPK001", "PPK002"
+    eqp_a, eqp_b, eqp_overflow = "EQP001", "EQP002", "EQP003"
+
+    # 홈 EQP는 적격성에 영향을 주지 않지만(WAIT 상태는 자유 배정), EQP003도
+    # discrete_arrange에 최소 1건 등장해야 eqp_ids에 포함되어 배정 후보가 된다.
+    discrete = [
+        _discrete_row(
+            eqp_a if i < _OVF_CAP else eqp_overflow,
+            f"LOTA{i:03d}", ppk_a, oper, _OVF_ST, 1,
+            carrier_id=f"CARA{i:03d}", seq=i + 1,
+        )
+        for i in range(_OVF_DEMAND_A)
+    ] + [
+        _discrete_row(eqp_b, f"LOTB{i:03d}", ppk_b, oper, _OVF_ST, 1,
+                       carrier_id=f"CARB{i:03d}", seq=i + 1)
+        for i in range(_OVF_DEMAND_B)
+    ]
+    flow = [
+        {"PLAN_PROD_ATTR_VAL": ppk_a, "OPER_SEQ": 1, "OPER_ID": oper},
+        {"PLAN_PROD_ATTR_VAL": ppk_b, "OPER_SEQ": 1, "OPER_ID": oper},
+    ]
+    plan = [
+        {"PLAN_PROD_ATTR_VAL": ppk_a, "OPER_ID": oper,
+         "D0_PLAN_QTY": _OVF_DEMAND_A, "D1_PLAN_QTY": _OVF_DEMAND_A, "PLAN_PRIORITY": 1},
+        {"PLAN_PROD_ATTR_VAL": ppk_b, "OPER_ID": oper,
+         "D0_PLAN_QTY": _OVF_DEMAND_B, "D1_PLAN_QTY": _OVF_DEMAND_B, "PLAN_PRIORITY": 1},
+    ]
+    abstract = [
+        _abstract_row(ppk_a, oper, "A", _OVF_ST),
+        _abstract_row(ppk_b, oper, "A", _OVF_ST),
+    ]
+
+    eqp_initial_state = [{
+        "EQP_ID": eqp_overflow,
+        "LOT_CD": _OVF_LOT_CD_OTHER,
+        "TEMP": "T900",
+        "PLAN_PROD_ATTR_VAL": "PPK000",
+        "OPER_ID": oper,
+    }]
+    raw = _bundle(discrete, plan, flow, abstract, eqp_initial_state=eqp_initial_state)
+    lot_cd_by_ppk = {ppk_a: _OVF_LOT_CD_A, ppk_b: _OVF_LOT_CD_B}
+    ppk_by_lot = {d["LOT_ID"]: d["PLAN_PROD_ATTR_VAL"] for d in discrete}
+    for row in raw["lot_master"]:
+        row["LOT_CD"] = lot_cd_by_ppk[ppk_by_lot[row["LOT_ID"]]]
+        row["TEMP"] = "T600"
+    raw["batch_info"] = [
+        {"PLAN_PROD_ATTR_VAL": ppk_a, "OPER_ID": oper, "LOT_CD": _OVF_LOT_CD_A, "TEMP": "T600"},
+        {"PLAN_PROD_ATTR_VAL": ppk_b, "OPER_ID": oper, "LOT_CD": _OVF_LOT_CD_B, "TEMP": "T600"},
+    ]
+    raw["tool_capacity"] = [
+        {"LOT_CD": lc, "EQP_MODEL_CD": "A", "MAX_TOOL": 99}
+        for lc in (_OVF_LOT_CD_A, _OVF_LOT_CD_B, _OVF_LOT_CD_OTHER)
+    ]
+
+    ed = preprocess(raw)
+    ed["eqp_selection"] = "order"
+    ed["sim_end_minutes"] = _OVF_SIM
+    ed["conversion_minutes"] = _OVF_ST
+    return ed
+
+
+OVERFLOW_CONVERSION_CASE = OptimalCase(
+    id="overflow_conversion_three_eqp",
+    description=(
+        f"EQP {_OVF_N_EQP}대(2대 전담 + 1대 오버플로 전용), PPK 2종, "
+        f"수요 A={_OVF_DEMAND_A}/B={_OVF_DEMAND_B}건, ST=Conv={_OVF_ST}분, sim={_OVF_SIM}분"
+    ),
+    build=_build_overflow_conversion,
+    optimal=OptimalTarget(
+        production=_OVF_DEMAND_A + _OVF_DEMAND_B,
+        conversions=1,
+        proof=(
+            f"EQP001(PPK_A 전담)·EQP002(PPK_B 전담)는 초기 셋업 미지정이라 무전환으로 "
+            f"각 {_OVF_CAP}건. PPK_A의 overflow {_OVF_OVERFLOW}건은 초기 셋업이 다른(={_OVF_LOT_CD_OTHER}) "
+            f"EQP003에서만 처리 가능하며, 그 첫 배정에 전환이 강제된다. "
+            f"전환을 0회로 제한하면 EQP003은 아예 쓸 수 없어 생산 상한이 "
+            f"{_OVF_CAP}+{_OVF_CAP}={_OVF_CAP * 2}건으로 줄어 수요 "
+            f"{_OVF_DEMAND_A + _OVF_DEMAND_B}건을 채울 수 없으므로, 전환 1회는 "
+            "회피 불가능한 하한이며 그 이상은 불필요하다."
+        ),
+    ),
+)
+
+
 CASES: List[OptimalCase] = [
     DEDICATED_ASSIGNMENT_CASE,
     MIXED_CONVERSION_CASE,
+    OVERFLOW_CONVERSION_CASE,
 ]
