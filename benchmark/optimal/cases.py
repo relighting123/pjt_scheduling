@@ -23,7 +23,7 @@ from data.generator import (
 )
 from data.loader.preprocess import preprocess
 
-from benchmark.optimal.proofs import capacity_bound, spt_max_completed
+from benchmark.optimal.proofs import capacity_bound
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,10 @@ def measure(result: dict, sim_end: int) -> CaseMetrics:
     )
 
 
-def _bundle(discrete: list, plan: list, flow: list, abstract_arrange: list) -> dict:
+def _bundle(
+    discrete: list, plan: list, flow: list, abstract_arrange: list,
+    eqp_initial_state: list | None = None,
+) -> dict:
     lot_master = build_lot_master_from_discrete(discrete)
     return {
         "discrete_arrange": discrete,
@@ -67,49 +70,11 @@ def _bundle(discrete: list, plan: list, flow: list, abstract_arrange: list) -> d
         "lot_master": lot_master,
         "batch_info": build_batch_info_from_discrete(discrete),
         "tool_capacity": build_tool_capacity_from_lots(lot_master),
+        "eqp_initial_state": eqp_initial_state or [],
     }
 
 
-# ── 케이스 1: 단일 EQP 용량 상한 ────────────────────────────────────────────
-# EQP 1대, LOT_CD 1종(=전환 불가능), carrier 6개(ST=10분), sim=45분.
-# 상한 = floor(45/10) = 4건, 처리 순서와 무관하게 항상 달성 가능.
-_CAP_ST = 10
-_CAP_SIM = 45
-_CAP_N = 6
-
-
-def _build_capacity_bound() -> dict:
-    ppk, oper, eqp = "PPK001", "OPER001", "EQP001"
-    discrete = [
-        _discrete_row(eqp, f"LOT{i:03d}", ppk, oper, _CAP_ST, 1,
-                       carrier_id=f"CAR{i:03d}", seq=i + 1)
-        for i in range(_CAP_N)
-    ]
-    flow = [{"PLAN_PROD_ATTR_VAL": ppk, "OPER_SEQ": 1, "OPER_ID": oper}]
-    plan = [{"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper,
-             "D0_PLAN_QTY": _CAP_N, "D1_PLAN_QTY": _CAP_N, "PLAN_PRIORITY": 1}]
-    raw = _bundle(discrete, plan, flow, [_abstract_row(ppk, oper, "A", _CAP_ST)])
-    ed = preprocess(raw)
-    ed["eqp_selection"] = "order"
-    ed["sim_end_minutes"] = _CAP_SIM
-    ed["conversion_minutes"] = 30
-    return ed
-
-
-CAPACITY_BOUND_CASE = OptimalCase(
-    id="capacity_bound_single_eqp",
-    description=f"EQP 1대, carrier {_CAP_N}개(ST={_CAP_ST}분), sim={_CAP_SIM}분 — 용량 상한",
-    build=_build_capacity_bound,
-    optimal=OptimalTarget(
-        production=capacity_bound(_CAP_N, _CAP_ST, _CAP_SIM),
-        conversions=0,
-        proof=f"floor({_CAP_SIM}/{_CAP_ST})={_CAP_SIM // _CAP_ST}건이 EQP 1대의 물리적 시간 상한. "
-              "LOT_CD가 단일이므로 전환은 애초에 발생 불가.",
-    ),
-)
-
-
-# ── 케이스 2: 전담 배정 (일반화된 CONV_BENCH) ────────────────────────────────
+# ── 케이스 1: 전담 배정 (일반화된 CONV_BENCH) ────────────────────────────────
 # EQP N대 × PPK N종(각기 다른 LOT_CD), ST=Conv=60분, sim=480분 → EQP당 8건.
 # 상한 = N × floor(480/60)는 케이스1과 같은 논리를 EQP마다 적용한 합이며,
 # PPK-LOT_CD가 1:1이므로 "EQP 1대 = PPK 1종 전담"일 때만 전환 0회로
@@ -182,52 +147,98 @@ DEDICATED_ASSIGNMENT_CASE = OptimalCase(
 )
 
 
-# ── 케이스 3: 처리 순서가 성과를 가르는 단일 EQP (SPT) ───────────────────────
-# EQP 1대, LOT_CD 1종(전환 없음), carrier별 ST가 서로 다르고 내림차순으로
-# 배치되어 있다. 마감 sim 이내 최대 완료 건수는 ST가 작은 순으로 채울 때
-# 최대화된다 (교환 논증, benchmark/optimal/proofs.spt_max_completed 참고).
-# 입력 순서를 그대로 따르는(=ST 큰 것부터 처리) 알고리즘은 손해를 본다.
-_SPT_STS = [45, 35, 25, 15, 5]
-_SPT_SIM = 50
+# ── 케이스 2: 전환이 강제되는 EQP와 무료인 EQP가 섞인 다중 설비 ───────────────
+# EQP 2대(모두 model A, 같은 PPK/OPER 처리 가능), 수요(carrier) 12건이
+# EQP 1대의 용량(8건)을 넘어 반드시 두 대를 함께 써야 한다.
+#   - EQP001: 초기 셋업 미지정 → 첫 배정은 항상 무료(전환 없음). 전환 없이
+#     floor(480/60)=8건 처리 가능.
+#   - EQP002: 초기 셋업이 이 제품과 다른 LOT_CD(LC_OTHER)로 이미 채워져 있어,
+#     이 제품을 처리하려면 최초 1회 전환이 강제된다. 전환 후 남은 시간으로
+#     floor((480-60)/60)=7건 처리 가능.
+# 수요 12건은 EQP001 8건(무전환)+EQP002 4건(전환 1회, 용량 7 이내)으로 정확히
+# 달성 가능하다. EQP001 단독으로는 8<12로 수요를 못 채우므로 EQP002를 반드시
+# 써야 하고, EQP002는 초기 셋업이 다르므로 전환 1회는 회피 불가능한 하한이다
+# (더 줄일 수 없고, 이후 같은 제품만 처리하므로 더 늘어날 이유도 없다).
+# → 전환을 아예 피하려는 알고리즘은 EQP002를 못 써서 생산 손실을 보고,
+#   전환을 아무데서나 남발하는 알고리즘은 conversions>1로 상한을 넘는다.
+_MIX_N_EQP = 2
+_MIX_ST = 60
+_MIX_SIM = 480
+_MIX_DEMAND = 12
+_MIX_TARGET_LOT_CD = "LC_A"
+_MIX_OTHER_LOT_CD = "LC_OTHER"
 
 
-def _build_spt_ordering() -> dict:
-    ppk, oper, eqp = "PPK001", "OPER001", "EQP001"
+def _build_mixed_conversion() -> dict:
+    ppk, oper = "PPK001", "OPER001"
+    eqp_free, eqp_forced = "EQP001", "EQP002"
+
     discrete = [
-        _discrete_row(eqp, f"LOT{i:03d}", ppk, oper, st, 1,
-                       carrier_id=f"CAR{i:03d}", seq=i + 1)
-        for i, st in enumerate(_SPT_STS)
+        _discrete_row(
+            eqp_free if i % 2 == 0 else eqp_forced,  # 홈 배정은 임의(적격성엔 영향 없음)
+            f"LOT{i:03d}", ppk, oper, _MIX_ST, 1,
+            carrier_id=f"CAR{i:03d}", seq=i + 1,
+        )
+        for i in range(_MIX_DEMAND)
     ]
     flow = [{"PLAN_PROD_ATTR_VAL": ppk, "OPER_SEQ": 1, "OPER_ID": oper}]
     plan = [{"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper,
-             "D0_PLAN_QTY": len(_SPT_STS), "D1_PLAN_QTY": len(_SPT_STS), "PLAN_PRIORITY": 1}]
-    abstract = [_abstract_row(ppk, oper, "A", max(_SPT_STS))]
-    raw = _bundle(discrete, plan, flow, abstract)
+             "D0_PLAN_QTY": _MIX_DEMAND, "D1_PLAN_QTY": _MIX_DEMAND, "PLAN_PRIORITY": 1}]
+    abstract = [_abstract_row(ppk, oper, "A", _MIX_ST)]
+
+    eqp_initial_state = [{
+        "EQP_ID": eqp_forced,
+        "LOT_CD": _MIX_OTHER_LOT_CD,
+        "TEMP": "T900",
+        "PLAN_PROD_ATTR_VAL": "PPK000",
+        "OPER_ID": oper,
+    }]
+    raw = _bundle(discrete, plan, flow, abstract, eqp_initial_state=eqp_initial_state)
+    for row in raw["lot_master"]:
+        row["LOT_CD"] = _MIX_TARGET_LOT_CD
+        row["TEMP"] = "T600"
+    raw["batch_info"] = [
+        {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper, "LOT_CD": _MIX_TARGET_LOT_CD, "TEMP": "T600"},
+    ]
+    raw["tool_capacity"] = [
+        {"LOT_CD": _MIX_TARGET_LOT_CD, "EQP_MODEL_CD": "A", "MAX_TOOL": 99},
+        {"LOT_CD": _MIX_OTHER_LOT_CD, "EQP_MODEL_CD": "A", "MAX_TOOL": 99},
+    ]
+
     ed = preprocess(raw)
     ed["eqp_selection"] = "order"
-    ed["sim_end_minutes"] = _SPT_SIM
-    ed["conversion_minutes"] = 30
+    ed["sim_end_minutes"] = _MIX_SIM
+    ed["conversion_minutes"] = _MIX_ST
     return ed
 
 
-SPT_ORDERING_CASE = OptimalCase(
-    id="spt_ordering_single_eqp",
-    description=f"EQP 1대, ST={_SPT_STS}분(내림차순 배치), sim={_SPT_SIM}분 — 처리 순서가 성과를 좌우",
-    build=_build_spt_ordering,
+_MIX_FREE_CAP = capacity_bound(_MIX_DEMAND, _MIX_ST, _MIX_SIM)
+_MIX_FORCED_CAP = capacity_bound(_MIX_DEMAND, _MIX_ST, _MIX_SIM - _MIX_ST)
+
+MIXED_CONVERSION_CASE = OptimalCase(
+    id="mixed_conversion_two_eqp",
+    description=(
+        f"EQP {_MIX_N_EQP}대(1대는 무전환 가능·1대는 전환 강제), PPK 1종, "
+        f"수요 {_MIX_DEMAND}건, ST=Conv={_MIX_ST}분, sim={_MIX_SIM}분"
+    ),
+    build=_build_mixed_conversion,
     optimal=OptimalTarget(
-        production=spt_max_completed(_SPT_STS, _SPT_SIM),
-        conversions=0,
+        production=_MIX_DEMAND,
+        conversions=1,
         proof=(
-            f"ST 오름차순 누적합이 {_SPT_SIM}분을 넘기 직전까지 "
-            f"{spt_max_completed(_SPT_STS, _SPT_SIM)}건 완료 가능 (교환 논증 SPT 최적, "
-            "tests/test_optimal_bench.py에서 전수 탐색으로 교차 검증)."
+            f"EQP001(초기 셋업 미지정)은 전환 없이 floor({_MIX_SIM}/{_MIX_ST})={_MIX_FREE_CAP}건, "
+            f"EQP002(초기 셋업={_MIX_OTHER_LOT_CD})는 전환 1회 후 "
+            f"floor(({_MIX_SIM}-{_MIX_ST})/{_MIX_ST})={_MIX_FORCED_CAP}건 처리 가능. "
+            f"수요 {_MIX_DEMAND}건은 EQP001 {_MIX_FREE_CAP}건(무전환)+EQP002 "
+            f"{_MIX_DEMAND - _MIX_FREE_CAP}건(전환 1회)으로 달성되며, "
+            f"EQP001 단독으로는 {_MIX_FREE_CAP}<{_MIX_DEMAND}이라 EQP002 사용이 강제되고 "
+            "그 초기 셋업이 다르므로 전환 1회는 회피 불가능한 하한이다."
         ),
     ),
 )
 
 
 CASES: List[OptimalCase] = [
-    CAPACITY_BOUND_CASE,
     DEDICATED_ASSIGNMENT_CASE,
-    SPT_ORDERING_CASE,
+    MIXED_CONVERSION_CASE,
 ]
