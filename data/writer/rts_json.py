@@ -88,9 +88,17 @@ def _build_rts_conv_rows(
     meta: Dict[str, str],
     base_time: datetime,
 ) -> List[dict]:
-    """시뮬 conversion 이벤트 → RTS_EQPCONVPLAN_INF 행."""
+    """시뮬 conversion 이벤트 → RTS_EQPCONVPLAN_INF 행.
+
+    RULE_TIMEKEY 기준 CONFIG.env.conv_output_window_minutes(기본 60분) 이내에
+    시작하는 전환만 포함한다 — 그보다 먼 미래의 전환은 재계획 여지가 커
+    추측성이므로 확정 출력(RTS_EQPCONVPLAN_INF/HIS)에 싣지 않는다.
+    """
+    window = CONFIG.env.conv_output_window_minutes
+    in_window = [ev for ev in conversion_plans if int(ev["conv_start_min"]) <= window]
+
     rows: List[dict] = []
-    for i, ev in enumerate(conversion_plans, start=1):
+    for i, ev in enumerate(in_window, start=1):
         conv_start = int(ev["conv_start_min"])
         conv_end = int(ev["conv_end_min"])
         conv_start_tm = minutes_to_conv_tm(conv_start, base_time)

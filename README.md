@@ -209,8 +209,8 @@ python main.py db-load --ddl --facid FAC001 --split infer
 |--------|------|
 | `RTS_RSLT_INF` | 스케줄 결과 (RULE_TIMEKEY 단위 교체) |
 | `RTS_RSLT_HIS` | 스케줄 이력 |
-| `RTS_EQPCONVPLAN_INF` | Conversion 계획 |
-| `RTS_EQPCONVPLAN_HIS` | Conversion 이력 |
+| `RTS_EQPCONVPLAN_INF` | Conversion 계획(RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`, 기본 60분 이내에 시작하는 건만) |
+| `RTS_EQPCONVPLAN_HIS` | Conversion 이력(위와 동일한 window 적용) |
 | `RTS_PERFMON_HIS` | KPI 이력 (옵션: `--save-kpi` / `save_kpi=true`) |
 | `RTS_VALIDATION` | 투입 불가 장비 재공 선택 건수 집계, EQP/PPK/OPER 조합별 (옵션: `--save-kpi` / `save_kpi=true`) |
 
@@ -219,6 +219,10 @@ python main.py db-load --ddl --facid FAC001 --split infer
 `main.py infer`와 `POST /api/inference`는 추론 후 **항상** output/sql을 Oracle RTS 테이블에 적재합니다
 (별도 옵션 아님). `--db`/`db_alias`로 대상 DB alias를, `--no-history`/`no_history`로 HIS 테이블 적재
 여부를 조정할 수 있습니다.
+
+`RTS_EQPCONVPLAN_INF`/`RTS_EQPCONVPLAN_HIS`에는 RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`
+(기본 60분) 이내에 시작하는 전환만 기록됩니다 — 그보다 먼 미래의 전환은 재계획 여지가 커 추측성이므로
+확정 출력에서 제외합니다(간트나 API 응답의 `conversion_plans`에는 영향 없이 항상 전체가 보입니다).
 
 ```bash
 # 추론 (결과는 자동으로 DB 적재됨)
