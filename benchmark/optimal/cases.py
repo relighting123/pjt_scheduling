@@ -439,11 +439,13 @@ TWO_STAGE_DEDICATED_LARGE_CASE = _two_stage_case(
 # 재공 0("재공 없음")에서 출발 — OPER002 재공은 flow_next를 통해 LOT이
 # 실제로 OPER001 처리를 마친 시각에만 생긴다.
 def _build_pipeline_buildup_env() -> dict:
-    """[OPER001→OPER002] EQP 4대(겸용) × LOT 8개, 1PPK, ST=100분.
+    """[OPER001→OPER002] EQP 4대(겸용) × LOT 8개, 1PPK. 후공정(OPER002) ST가
+    전공정(OPER001)보다 짧다(40분 < 100분).
 
-    증명된 최적: 생산 16(=8LOT×2공정), 전환 0, sim=400분(달성 가능한 최소 길이).
+    증명된 최적: 생산 16(=8LOT×2공정), 전환 0, sim=280분(달성 가능한 최소 길이).
     """
-    n_eqp, n_lots, st, model = 4, 8, 100, "A"
+    n_eqp, n_lots, model = 4, 8, "A"
+    st1, st2 = 100, 40  # OPER001(전공정) > OPER002(후공정) — 후공정이 더 짧다
     ppk = "PPK001"
     oper1, oper2 = "OPER001", "OPER002"
     eqps = [f"EQP{i + 1:03d}" for i in range(n_eqp)]
@@ -456,7 +458,7 @@ def _build_pipeline_buildup_env() -> dict:
         # 값을 잘못 지정하면(예: LOT 인덱스) flow_next 조회가 어긋나 OPER001
         # 완료 후 OPER002로 재공이 전입하지 않는다.
         discrete.append(_discrete_row(
-            home_eqp, lot_id, ppk, oper1, st, 1, eqp_model=model,
+            home_eqp, lot_id, ppk, oper1, st1, 1, eqp_model=model,
             carrier_id=f"CAR{i:03d}",
         ))
 
@@ -474,8 +476,8 @@ def _build_pipeline_buildup_env() -> dict:
     # (PPK,OPER,MODEL) 키로만 적격성을 판정하므로, EQP 4대 전부가 OPER001·
     # OPER002 양쪽에 자동으로 배정 후보가 된다(공정별 EQP 분리가 없다는 뜻).
     abstract = [
-        _abstract_row(ppk, oper1, model, st),
-        _abstract_row(ppk, oper2, model, st),
+        _abstract_row(ppk, oper1, model, st1),
+        _abstract_row(ppk, oper2, model, st2),
     ]
     lot_master = build_lot_master_from_discrete(discrete)
     lot_cd = lot_master[0]["LOT_CD"]  # 전 LOT 동일 코드 — 공정 재배치에 전환 불필요
@@ -493,36 +495,40 @@ def _build_pipeline_buildup_env() -> dict:
     }
     ed = preprocess(raw)
     ed["eqp_selection"] = "order"
-    ed["sim_end_minutes"] = (n_lots // n_eqp) * st * 2  # 400 — 상한이자 하한(증명 참고)
-    ed["conversion_minutes"] = st
+    ed["sim_end_minutes"] = (n_lots // n_eqp) * (st1 + st2)  # 280 — 상한이자 하한(증명 참고)
+    ed["conversion_minutes"] = st1
     return ed
 
 
 PIPELINE_BUILDUP_THEN_STEADY_CASE = OptimalCase(
     id="pipeline_wip_buildup_then_steady",
     description=(
-        "1PPK·EQP4대(OPER001·OPER002 겸용, 전환 없는 동일 LOT_CD)·LOT8개, ST=100분. "
-        "OPER001 초기 재공 8LOT(수요 전량, '재고 많음') / OPER002 초기 재공 0. sim=400분."
+        "1PPK·EQP4대(OPER001·OPER002 겸용, 전환 없는 동일 LOT_CD)·LOT8개. "
+        "전공정(OPER001) ST=100분 > 후공정(OPER002) ST=40분(후공정이 더 짧다). "
+        "OPER001 초기 재공 8LOT(수요 전량, '재고 많음') / OPER002 초기 재공 0. sim=280분."
     ),
     build=_build_pipeline_buildup_env,
     enable_wip_inflow=True,
     optimal=OptimalTarget(
         production=16, conversions=0,
         proof=(
-            "총 작업량=OPER001 8LOT×100분+OPER002 8LOT×100분=1600분. EQP 4대×sim 400분"
-            "=1600분이 정확히 이 상한과 같으므로, 16건 전부를 sim=400 내에 마치려면 "
-            "4대 모두 단 1분도 쉬지 않아야 한다. 그런데 OPER002는 OPER001을 마친 LOT만 "
-            "재공으로 잡히므로(재공 0에서 시작) [0,100)분에는 OPER002에 투입할 재공이 "
-            "전혀 없다 — 이 구간에서 4대가 만들 수 있는 최대 성과는 OPER001 4LOT 완료"
-            "(=4대×100분/100분/LOT)뿐이라 그 이상은 물리적으로 불가능하다. 따라서 "
-            "sim<400이면 상한 4×sim<1600이 되어 16건을 채울 수 없으므로 sim=400은 "
-            "달성 가능한 최소 길이이기도 하다. 실제로 [0,100)엔 4대 전부 OPER001(LOT0-3) "
-            "투입 → [100,200)엔 2대 OPER001(LOT4-5)·2대 OPER002(LOT0-1) → [200,300)엔 "
-            "2대 OPER001(LOT6-7)·2대 OPER002(LOT2-3) → [300,400)엔 4대 전부 OPER002"
-            "(LOT4-7, 각각 t=200·300에 재공 전입 완료)로 배치하면 유휴 없이 정확히 "
-            "t=400에 16건이 끝난다. 전 LOT의 LOT_CD가 동일해 공정 재배치에도 전환이 "
-            "불필요하므로 전환 0회가 동시에 달성된다 — '전공정을 먼저 몰아 재공을 쌓고, "
-            "그 재공이 생기는 대로 EQP를 후공정에 순차 재배치'하는 시점 배분이 정답이다."
+            "총 작업량=OPER001 8LOT×100분+OPER002 8LOT×40분=1120분. EQP 4대가 임의의 "
+            "sim분 동안 낼 수 있는 총 처리용량은 4×sim분을 넘을 수 없으므로(자원 총량 "
+            "상한), 16건 전부를 마치려면 4×sim≥1120, 즉 sim≥280이 항상 필요하다 — "
+            "이는 OPER002 초기재공이 0이라는 사실과 무관하게 성립하는 하한이다. "
+            "이 하한은 다음과 같이 유휴 없이 달성 가능하다: [0,200)분엔 4대 전부를 "
+            "OPER001에 배정해 8LOT을 2라운드(대당 2LOT×100분)로 전량 완료한다("
+            "'전공정을 몰아 재공을 쌓는' 구간 — OPER002는 이 구간 내내 재공이 0이라 "
+            "어차피 투입할 대상이 없으므로 4대 전부를 OPER001에 묶어도 손실이 없다). "
+            "t=200에 8LOT 전부가 OPER001을 마치고 그 순간 OPER002 재공으로 일괄 전입 "
+            "→ [200,280)분엔 4대 전부를 OPER002로 재배치해 8LOT을 2라운드(대당 2LOT× "
+            "40분)로 전량 완료한다('재공이 생기는 순간부터 후공정에 꾸준히 배정' 구간). "
+            "두 구간 모두 4대가 단 1분도 쉬지 않으므로(200+80=280=하한과 정확히 일치) "
+            "sim=280에서 유휴 없이 16건이 끝나고, 전 LOT의 LOT_CD가 동일해 공정 재배치 "
+            "에도 전환이 불필요하므로 전환 0회가 동시에 달성된다. 후공정 ST가 전공정보다 "
+            "짧으므로(40<100) 재배치 이후 구간이 상대적으로 짧게 끝나는 것도 이 사실을 "
+            "반영한다 — '전공정을 먼저 몰아 재공을 쌓고, 그 재공이 생기는 대로 EQP를 "
+            "후공정에 재배치'하는 시점 배분이 정답이다."
         ),
     ),
 )
