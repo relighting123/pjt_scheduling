@@ -33,7 +33,10 @@ def _load_rl_agent(env_data: dict):
 def evaluate_case(case: OptimalCase, algorithm: str, agent=None) -> dict:
     """케이스 1건 × 알고리즘 1개를 실행하고 증명된 최적값과 비교해 채점."""
     env_data = case.build()
-    result = run_inference(env_data, algorithm=algorithm, agent=agent, record_history=False)
+    result = run_inference(
+        env_data, algorithm=algorithm, agent=agent, record_history=False,
+        enable_wip_inflow=case.enable_wip_inflow,
+    )
     actual = measure(result, env_data["sim_end_minutes"])
     target = case.optimal
     passed = actual.production == target.production and actual.conversions <= target.conversions

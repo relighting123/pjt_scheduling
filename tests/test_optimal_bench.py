@@ -22,12 +22,20 @@ from benchmark.optimal.runner import evaluate_case
 #     production=20/conversions=1이 동시에 달성 가능함을 확인함 — 진짜 최적값).
 #   - two_stage_* 는 위 두 패턴을 서로 다른 공정(OPER)에 독립 배치해 조합한
 #     것이라 같은 격차가 공정 수만큼 반복/누적된다.
+#   - pipeline_wip_buildup_then_steady의 minprogress: PPK 진행률만 보고
+#     공정 간 배분(전공정을 몰아 끝낸 뒤 후공정으로 넘어가야 함)은 보지
+#     않아, 한 EQP(관측된 실행에서는 EQP003)가 OPER001↔OPER002를 왔다갔다
+#     하다 마지막 OPER001 LOT을 t=[180,280)에야 마친다 — 그 LOT의 OPER002
+#     (ST=40분)는 t=[280,320)이 되어 sim_end(280) 밖으로 밀려나 production
+#     15/16(진짜 최적 16에 1건 미달). earliest_st는 이 케이스에서 정확히
+#     최적(16/0)에 도달해 목록에 없다.
 # strict=True: 이 조합이 어느 날 우연히 통과하면 XPASS로 테스트가 실패한다 —
 # 알고리즘이 개선됐다는 신호이니 이 목록에서 지워야 한다.
 _KNOWN_GAPS_STRICT = {
     ("earliest_st", "dedicated_assignment"),
     ("minprogress", "overflow_conversion_three_eqp"),
     ("earliest_st", "overflow_conversion_three_eqp"),
+    ("minprogress", "pipeline_wip_buildup_then_steady"),
     ("earliest_st", "two_stage_dedicated_small"),
     ("earliest_st", "two_stage_dedicated_mixed"),
     ("earliest_st", "two_stage_dedicated_overflow"),
