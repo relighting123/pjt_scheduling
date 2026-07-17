@@ -263,25 +263,74 @@ DB 연결: `config/databases.yaml` + `python main.py db-check`
 
 ## 운영 CLI
 
-```bash
-# 데이터 수집
-python main.py collect --facid FAC001 --split train --prevcnt 3 --once
+모든 명령은 `python main.py <command> ...` 형태이며, `--facid`는 대부분 필수입니다.
+전체 옵션은 `python main.py <command> --help`로 확인하세요.
 
-# 학습 / 검증 (dataset JSON)
-python main.py train --facid FAC001 --prevcnt 3
-python main.py test --facid FAC001
+### 1. 데이터 수집 (collect / sample)
 
-# 추론 (Oracle SQL 조회, 결과는 항상 DB 적재까지 수행)
-python main.py infer --facid FAC001
-python main.py infer --facid FAC001 --from 20260621170000 --to 20260623170000
-python main.py infer --facid FAC001 --timeout 300   # DB 조회~DB 적재 전체 5분 제한
+| 명령어 | 설명 |
+|--------|------|
+| `python main.py collect --facid FAC001 --split train --prevcnt 3 --once` | 최근 3개 RULE_TIMEKEY 학습용 데이터 1회 수집 (Oracle SQL → JSON) |
+| `python main.py collect --facid FAC001 --split train --interval 3600` | 1시간 주기로 반복 수집 (daemon 모드, `--once`/`--interval 0`이면 1회) |
+| `python main.py collect --facid FAC001 --split train --from 20260621070000 --to 20260623070000` | 구간(RULE_TIMEKEY) 지정 수집 |
+| `python main.py collect --facid FAC001 --split train --snapshot --period 20260621070000` | 특정 RULE_TIMEKEY 1건 스냅샷 수집 |
+| `python main.py collect --facid FAC001 --split test --lotcd LOT_A` | `:LOT_CD` 바인드 지정 수집 (기본: `COLLECTOR_LOT_CD`/`SQL_LOT_CD`) |
+| `python main.py sample --facid FAC001 --bootstrap` | Oracle 없이 train 3일 + test 1일 + infer 샘플을 한 번에 생성 |
+| `python main.py sample --facid FAC001 --split train --scenario pacing_steady` | 특정 시나리오(`default`/`pacing_steady`/`random` 등) 샘플 생성 |
+| `python main.py sample --facid FAC001 --period 20260621070000` | 특정 RULE_TIMEKEY 폴더에 샘플 생성 |
 
-# 샘플 데이터
-python main.py sample --facid FAC001 --bootstrap
+### 2. 학습 (train)
 
-# UI
-python main.py ui
-```
+| 명령어 | 설명 |
+|--------|------|
+| `python main.py train --facid FAC001 --prevcnt 3` | 이미 수집된 train 폴더 중 최근 3개로 학습 |
+| `python main.py train --facid FAC001 --from 20260621070000 --to 20260623070000` | RULE_TIMEKEY 구간 지정 학습 |
+| `python main.py train --facid FAC001 --ruletimekey 20260621070000` | 단일 RULE_TIMEKEY로 학습 |
+| `python main.py train --facid FAC001 --all` | train 폴더 전체로 학습 |
+
+### 3. 테스트 / 검증 (test)
+
+| 명령어 | 설명 |
+|--------|------|
+| `python main.py test --facid FAC001` | 최신 test dataset JSON 검증 |
+| `python main.py test --facid FAC001 --prevcnt 5` | 최근 수집된 test 폴더 중 5개 검증 |
+| `python main.py test --facid FAC001 --from 20260621070000 --to 20260623070000` | RULE_TIMEKEY 구간 검증 |
+| `python3 -m pytest tests/test_writer.py tests/test_db_load.py tests/test_scheduling_env.py -q` | 핵심 모듈 단위 테스트 |
+| `python3 -m pytest -q` | 전체 회귀 테스트 |
+| `cd frontend && npm run build` | 프론트엔드 빌드 검증 |
+
+### 4. 벤치마크 (benchmark) — [상세](#벤치마크-증명된-최적해)
+
+| 명령어 | 설명 |
+|--------|------|
+| `python -m benchmark.optimal.runner` | 등록된 전체 알고리즘으로 10개 최적해 케이스 채점 |
+| `python -m benchmark.optimal.runner --algo earliest_st --algo minprogress` | 특정 알고리즘만 지정해 채점 |
+| `python3 -m pytest tests/test_optimal_bench.py -v` | 벤치마크 최적값 도달 여부 회귀 테스트 |
+
+### 5. 추론 (infer) — Oracle SQL 조회, 결과는 항상 DB 적재까지 수행
+
+| 명령어 | 설명 |
+|--------|------|
+| `python main.py infer --facid FAC001` | 최신 RULE_TIMEKEY 기준 추론 + DB 적재 |
+| `python main.py infer --facid FAC001 --from 20260621170000 --to 20260623170000` | 구간 조회 후 최신값으로 추론 |
+| `python main.py infer --facid FAC001 --ruletimekey 20260621070000` | 특정 RULE_TIMEKEY로 추론 |
+| `python main.py infer --facid FAC001 --save-kpi` | KPI(`RTS_PERFMON_HIS`)·검증 집계(`RTS_VALIDATION`)도 함께 저장/적재 |
+| `python main.py infer --facid FAC001 --decision-log` | step별 EQP/PPK/OPER 결정·미할당 사유를 `result_full.json`에 기록 |
+| `python main.py infer --facid FAC001 --include-history` | UI 재생용 history/event snapshot 생성 |
+| `python main.py infer --facid FAC001 --enable-wip-inflow` | 공정 완료 시 다음 공정 flow 재공 유입 이벤트 활성화 |
+| `python main.py infer --facid FAC001 --strict-validate` | 결과 검증 실패 시 종료코드 1로 종료 |
+| `python main.py infer --facid FAC001 --db Dev --no-history` | 대상 DB alias 지정, HIS 테이블 적재 생략 |
+| `python main.py infer --facid FAC001 --timeout 300` | DB 조회~DB 적재 전체 5분 제한 |
+
+### 기타 (DB 적재 / UI / 진단)
+
+| 명령어 | 설명 |
+|--------|------|
+| `python main.py db-load --ddl-only` | output 테이블 DDL만 생성 (최초 1회) |
+| `python main.py db-load --facid FAC001 --split test --period 20260624070000` | 기존 output 폴더를 DB에 적재 |
+| `python main.py db-load --json data/dataset/FAC001/infer/output/output.json` | `output.json`을 직접 적재 |
+| `python main.py db-check` | DB alias 설정(`databases.yaml`/`.env`) 진단 |
+| `python main.py ui` | React UI + API 서버 실행 |
 
 ---
 
