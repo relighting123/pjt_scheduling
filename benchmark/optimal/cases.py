@@ -432,20 +432,26 @@ TWO_STAGE_DEDICATED_LARGE_CASE = _two_stage_case(
 
 # ── 파이프라인 재공 이어받기 케이스 (신규) ────────────────────────────────────
 # 위 다중 공정 케이스들과 달리 EQP를 공정별로 분리하지 않는다: EQP 4대가
-# OPER001·OPER002 겸용(같은 EQP_MODEL_CD)이며, LOT_CD도 전 구간 동일해
-# 두 공정을 오가는 재배치 자체에는 전환이 들지 않는다(전환 최소화가 아니라
-# "재공이 없는 공정에 얼마나·언제 배치할지"라는 시점 배분 문제만 남긴다).
+# OPER001·OPER002 겸용(같은 EQP_MODEL_CD)이다. LOT_CD는 전 구간 동일하지만
+# TEMP가 공정마다 다르다(OPER001=T600, OPER002=T900) — _would_need_conversion
+# (simulation/simulator.py)이 "LOT_CD 또는 TEMP 중 하나라도 바뀌면 전환"으로
+# 판정하므로, 같은 LOT_CD라도 공정을 넘나드는 재배치엔 실제 전환 비용이 든다.
 # OPER001은 초기 재공 8LOT(수요 전량)을 이미 보유("재고 많음"), OPER002는
 # 재공 0("재공 없음")에서 출발 — OPER002 재공은 flow_next를 통해 LOT이
 # 실제로 OPER001 처리를 마친 시각에만 생긴다.
 def _build_pipeline_buildup_env() -> dict:
     """[OPER001→OPER002] EQP 4대(겸용) × LOT 8개, 1PPK. 후공정(OPER002) ST가
-    전공정(OPER001)보다 짧다(40분 < 100분).
+    전공정(OPER001)보다 짧고(40분 < 100분), 공정 전환 시 TEMP가 바뀌어 진짜
+    전환 비용(60분)이 든다.
 
-    증명된 최적: 생산 16(=8LOT×2공정), 전환 0, sim=280분(달성 가능한 최소 길이).
+    증명된 최적: 생산 16(=8LOT×2공정), 전환 1, sim=340분(달성 가능한 최소 길이).
+    benchmark/optimal 밖에서 exhaustive search로 재검증됨(아래 proof 참고) —
+    "EQP 4대 전부가 각 1회씩 전환"하는 대칭적 배분(4전환)은 하한이 아니며,
+    비대칭 배분(EQP 1대만 전환)이 동일한 최소 시간에 전환 수를 줄인다.
     """
     n_eqp, n_lots, model = 4, 8, "A"
     st1, st2 = 100, 40  # OPER001(전공정) > OPER002(후공정) — 후공정이 더 짧다
+    conv_min = 60  # 공정 전환(TEMP 변경) 1회당 소요 시간
     ppk = "PPK001"
     oper1, oper2 = "OPER001", "OPER002"
     eqps = [f"EQP{i + 1:03d}" for i in range(n_eqp)]
@@ -480,10 +486,10 @@ def _build_pipeline_buildup_env() -> dict:
         _abstract_row(ppk, oper2, model, st2),
     ]
     lot_master = build_lot_master_from_discrete(discrete)
-    lot_cd = lot_master[0]["LOT_CD"]  # 전 LOT 동일 코드 — 공정 재배치에 전환 불필요
+    lot_cd = lot_master[0]["LOT_CD"]  # 전 LOT 동일 코드 — LOT_CD만으로는 전환 안 생김
     batch_info = [
         {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper1, "LOT_CD": lot_cd, "TEMP": "T600"},
-        {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper2, "LOT_CD": lot_cd, "TEMP": "T600"},
+        {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper2, "LOT_CD": lot_cd, "TEMP": "T900"},
     ]
     tool_capacity = [{"LOT_CD": lot_cd, "EQP_MODEL_CD": model, "MAX_TOOL": 99}]
 
@@ -495,40 +501,55 @@ def _build_pipeline_buildup_env() -> dict:
     }
     ed = preprocess(raw)
     ed["eqp_selection"] = "order"
-    ed["sim_end_minutes"] = (n_lots // n_eqp) * (st1 + st2)  # 280 — 상한이자 하한(증명 참고)
-    ed["conversion_minutes"] = st1
+    ed["sim_end_minutes"] = 340  # 하한이자 상한(증명 참고, exhaustive search로 확인)
+    ed["conversion_minutes"] = conv_min
     return ed
 
 
 PIPELINE_BUILDUP_THEN_STEADY_CASE = OptimalCase(
     id="pipeline_wip_buildup_then_steady",
     description=(
-        "1PPK·EQP4대(OPER001·OPER002 겸용, 전환 없는 동일 LOT_CD)·LOT8개. "
-        "전공정(OPER001) ST=100분 > 후공정(OPER002) ST=40분(후공정이 더 짧다). "
-        "OPER001 초기 재공 8LOT(수요 전량, '재고 많음') / OPER002 초기 재공 0. sim=280분."
+        "1PPK·EQP4대(OPER001·OPER002 겸용, 동일 LOT_CD·다른 TEMP)·LOT8개. "
+        "전공정(OPER001) ST=100분 > 후공정(OPER002) ST=40분, 전환 60분. "
+        "OPER001 초기 재공 8LOT(수요 전량, '재고 많음') / OPER002 초기 재공 0. sim=340분."
     ),
     build=_build_pipeline_buildup_env,
     enable_wip_inflow=True,
     optimal=OptimalTarget(
-        production=16, conversions=0,
+        production=16, conversions=1,
         proof=(
-            "총 작업량=OPER001 8LOT×100분+OPER002 8LOT×40분=1120분. EQP 4대가 임의의 "
-            "sim분 동안 낼 수 있는 총 처리용량은 4×sim분을 넘을 수 없으므로(자원 총량 "
-            "상한), 16건 전부를 마치려면 4×sim≥1120, 즉 sim≥280이 항상 필요하다 — "
-            "이는 OPER002 초기재공이 0이라는 사실과 무관하게 성립하는 하한이다. "
-            "이 하한은 다음과 같이 유휴 없이 달성 가능하다: [0,200)분엔 4대 전부를 "
-            "OPER001에 배정해 8LOT을 2라운드(대당 2LOT×100분)로 전량 완료한다("
-            "'전공정을 몰아 재공을 쌓는' 구간 — OPER002는 이 구간 내내 재공이 0이라 "
-            "어차피 투입할 대상이 없으므로 4대 전부를 OPER001에 묶어도 손실이 없다). "
-            "t=200에 8LOT 전부가 OPER001을 마치고 그 순간 OPER002 재공으로 일괄 전입 "
-            "→ [200,280)분엔 4대 전부를 OPER002로 재배치해 8LOT을 2라운드(대당 2LOT× "
-            "40분)로 전량 완료한다('재공이 생기는 순간부터 후공정에 꾸준히 배정' 구간). "
-            "두 구간 모두 4대가 단 1분도 쉬지 않으므로(200+80=280=하한과 정확히 일치) "
-            "sim=280에서 유휴 없이 16건이 끝나고, 전 LOT의 LOT_CD가 동일해 공정 재배치 "
-            "에도 전환이 불필요하므로 전환 0회가 동시에 달성된다. 후공정 ST가 전공정보다 "
-            "짧으므로(40<100) 재배치 이후 구간이 상대적으로 짧게 끝나는 것도 이 사실을 "
-            "반영한다 — '전공정을 먼저 몰아 재공을 쌓고, 그 재공이 생기는 대로 EQP를 "
-            "후공정에 재배치'하는 시점 배분이 정답이다."
+            "달성 가능한 스케줄(하한과 정확히 일치, 전환 1회) — 4대를 비대칭으로 "
+            "나눈다: EQP002·EQP003은 OPER001만 각 3LOT씩 [0,300) 동안 100분×3 "
+            "연속 처리(전환 없음, 완료 시각 100·200·300). EQP004는 OPER001을 2LOT만 "
+            "처리([0,200), 완료 100·200)한 뒤 t=200에 전환(TEMP 600→900, 60분, "
+            "[200,260))해 OPER002로 넘어간다. EQP001은 OPER001을 전혀 하지 않고 "
+            "(자신의 첫 배정이라 전환 없음) 첫 재공이 생기는 t=100부터 OPER002를 "
+            "연속 처리한다. OPER001 완료(=OPER002 재공 전입) 시각은 누적으로 "
+            "t=100에 3LOT(EQP002·003·004 각 1개), t=200에 3LOT(같은 세 대 각 1개, "
+            "누적 6), t=300에 2LOT(EQP002·003의 마지막 1개씩, 누적 8)이다. EQP001은 "
+            "[100,140)부터 40분 간격으로 연속 처리해 t=100/140/180/220의 재공(t=100 "
+            "묶음 3개+t=200 묶음 중 2개)을 소진하고, EQP004는 전환이 끝나는 t=260에 "
+            "합류해 t=200 묶음의 마지막 1개를 [260,300)에 처리한다. 이어 t=300 묶음 "
+            "2개를 EQP001·EQP004가 [300,340)에 하나씩 나눠 처리하며 둘 다 t=340에 "
+            "끝난다 — 이 순서는 실제 이산사건 시뮬레이션(그리디: 먼저 준비된 설비가 "
+            "먼저 재공을 가져감)으로 검증했으며 두 설비 모두 대기 없이 연속 가동된다. "
+            "OPER001 8LOT(=2+3+3)·OPER002 8LOT(=6+2)이 정확히 나뉘어 t=340에 16건 "
+            "전부가 끝나고 전환은 EQP004의 1회뿐이다.\n"
+            "이보다 짧게는 불가능하다: 전환 0회를 강제하면(모든 EQP가 OPER001 "
+            "전용이거나 OPER002 전용) OPER002 담당 설비가 최소 1대 필요한데 그 "
+            "설비는 t=100 이전엔 처리할 재공이 없고 8LOT×40분=320분을 혼자 감당해야 "
+            "해 t=100+320=420에야 끝난다(0~420 구간에서 이보다 빠른 0전환 배분은 "
+            "없음을 전수 확인). 반대로 EQP 4대 모두 대칭으로 OPER001 2LOT→전환→ "
+            "OPER002 2LOT씩 맡는(전환 4회) 배분은 직접 시뮬레이션하면 t=280~300 "
+            "구간에서 재공 공급이 일시적으로 수요를 못 따라가 t=340으로 늘어나 "
+            "위 1전환 배분과 시간은 같으면서 전환만 더 든다. EQP 4대·OPER001 8LOT·"
+            "OPER002 8LOT에 대해 가능한 모든 (EQP별 OPER001량, OPER002량) 정수 "
+            "배분과 그 실제 재공 전입 타이밍을 전수 탐색(exhaustive search)한 결과 "
+            "340분 미만을 달성하는 배분은 없고, 340분을 달성하는 배분 중 전환 "
+            "횟수의 최솟값이 1이다 — 따라서 production=16·conversions=1·sim=340이 "
+            "동시에 성립하는 최적이다. 요약하면 '전공정을 먼저 몰아 재공을 쌓고, "
+            "그 재공이 생기는 대로 EQP 일부(4대 중 1대)를 후공정에 재배치'하되 "
+            "재배치는 정확히 한 번만 하는 것이 정답이다."
         ),
     ),
 )

@@ -101,14 +101,21 @@ def _resolve_lot_oper_seq(
     )
 
 
+def _ppk_suffix_int(plan_prod_attr_val: str) -> int:
+    """data/generator.py의 동명 함수와 동일한 규칙 — lot_master·batch_info가
+    모두 없을 때만 쓰이는 최종 폴백이라도 PPK로부터 LOT_CD/TEMP를 도출하는
+    방식이 어긋나면 같은 PPK가 경로에 따라 다른 전환 판정을 받을 수 있다."""
+    suffix = plan_prod_attr_val[-3:]
+    return int(suffix) if suffix.isdigit() else sum(ord(c) for c in plan_prod_attr_val)
+
+
 def _default_lot_cd(lot_id: str, plan_prod_attr_val: str) -> str:
-    suffix = plan_prod_attr_val.replace("PPK", "") if "PPK" in plan_prod_attr_val else lot_id[-3:]
-    return f"LC{suffix.zfill(2)[-2:]}"
+    del lot_id  # PPK 기반 LOT_CD로 통일(data/generator.py와 동일 규칙)
+    return f"LC{plan_prod_attr_val[-3:]}"
 
 
 def _default_temp(plan_prod_attr_val: str) -> str:
-    n = sum(ord(c) for c in plan_prod_attr_val)
-    return "T650" if n % 2 == 0 else "T700"
+    return "T650" if _ppk_suffix_int(plan_prod_attr_val) % 2 == 0 else "T700"
 
 
 def _build_batch_info_map(

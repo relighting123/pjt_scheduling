@@ -175,6 +175,26 @@ def build_split_rules(
     ]
 
 
+def _ppk_suffix_int(ppk: str) -> int:
+    """PPK 접미 3자리(숫자)면 그 값, 아니면 전체 문자열 ord 합 — LOT_CD/TEMP를
+    PPK로부터 유도하는 유일한 규칙(build_lot_master_from_discrete·
+    build_batch_info_from_discrete가 반드시 이 함수를 통해서만 값을 내야
+    두 산출물의 (LOT_CD, TEMP)가 동일 PPK에 대해 항상 일치한다 — 어긋나면
+    simulation/simulator.py의 _would_need_conversion(LOT_CD 또는 TEMP 변경
+    시 전환)이 lot_master 유래 값과 batch_info 유래 값 중 무엇을 보느냐에
+    따라 같은 PPK에 대해 서로 다른 전환 판정을 내릴 수 있다)."""
+    suffix = ppk[-3:]
+    return int(suffix) if suffix.isdigit() else sum(ord(c) for c in ppk)
+
+
+def _ppk_lot_cd(ppk: str) -> str:
+    return f"LC{ppk[-3:]}"
+
+
+def _ppk_temp(ppk: str) -> str:
+    return "T650" if _ppk_suffix_int(ppk) % 2 == 0 else "T700"
+
+
 def build_lot_master_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
     rows = []
     seen = set()
@@ -186,8 +206,8 @@ def build_lot_master_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
         ppk = r["PLAN_PROD_ATTR_VAL"]
         rows.append({
             "LOT_ID": lid,
-            "LOT_CD": f"LC{ppk[-3:]}",
-            "TEMP": "T650" if int(ppk[-3:]) % 2 else "T700",
+            "LOT_CD": _ppk_lot_cd(ppk),
+            "TEMP": _ppk_temp(ppk),
         })
     return rows
 
@@ -202,12 +222,11 @@ def build_batch_info_from_discrete(discrete_arrange: List[dict]) -> List[dict]:
         pairs.add((r["PLAN_PROD_ATTR_VAL"], oper_id))
     rows = []
     for ppk, oper_id in sorted(pairs):
-        suffix = int(ppk[-3:]) if ppk[-3:].isdigit() else sum(ord(c) for c in ppk)
         rows.append({
             "PLAN_PROD_ATTR_VAL": ppk,
             "OPER_ID": oper_id,
-            "LOT_CD": f"LC{ppk[-3:]}",
-            "TEMP": "T650" if suffix % 2 == 0 else "T700",
+            "LOT_CD": _ppk_lot_cd(ppk),
+            "TEMP": _ppk_temp(ppk),
         })
     return rows
 
