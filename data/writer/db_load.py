@@ -118,8 +118,9 @@ def load_output_sql_files(
     """
     dataset .../output/sql/*.sql 을 Oracle에 실행.
 
-    INF 테이블(RTS_RSLT_INF/RTS_EQPCONVPLAN_INF)은 동일 FAC_ID 기준 전체 DELETE 후
-    INSERT하여 항상 최신 결과만 남긴다(writer 생성 SQL, RULE_TIMEKEY 무관).
+    RTS_RSLT_INF는 동일 FAC_ID 기준 전체 DELETE 후 INSERT하여 항상 최신 결과만
+    남긴다(writer 생성 SQL, RULE_TIMEKEY 무관). RTS_EQPCONVPLAN_INF는 HIS와 동일하게
+    삭제 없이 INSERT만 누적한다.
     """
     output_dir = Path(output_dir)
     sql_dir = _ensure_sql_dir(
