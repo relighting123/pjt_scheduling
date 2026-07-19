@@ -90,10 +90,13 @@ def _build_rts_conv_rows(
 ) -> List[dict]:
     """시뮬 conversion 이벤트 → RTS_EQPCONVPLAN_INF 행.
 
-    RULE_TIMEKEY 기준 CONFIG.env.conv_output_window_minutes(기본 60분) 이내에
-    시작하는 전환만 포함한다 — 그보다 먼 미래의 전환은 재계획 여지가 커
+    CONFIG.env.conv_output_enabled(옵션, 기본 True)가 False면 저장하지 않는다.
+    활성화된 경우 RULE_TIMEKEY 기준 CONFIG.env.conv_output_window_minutes(기본 60분)
+    이내에 시작하는 전환만 포함한다 — 그보다 먼 미래의 전환은 재계획 여지가 커
     추측성이므로 확정 출력(RTS_EQPCONVPLAN_INF/HIS)에 싣지 않는다.
     """
+    if not CONFIG.env.conv_output_enabled:
+        return []
     window = CONFIG.env.conv_output_window_minutes
     in_window = [ev for ev in conversion_plans if int(ev["conv_start_min"]) <= window]
 
@@ -117,7 +120,7 @@ def _build_rts_conv_rows(
             "RULE_TIMEKEY":           meta["RULE_TIMEKEY"],
             "PRCS_STAT_CD":           "PLAN",
             "JOB_ID":                 job_id,
-            "RTS_GBN_CD_VAL":             "CONV",
+            "REQ_GBN_CD":             "RTS",
             "EQP_ID":                 eqp_id,
             "EQP_MODEL_CD":           eqp_model,
             "TESTER_EQP_MODEL_CD":    eqp_model,
