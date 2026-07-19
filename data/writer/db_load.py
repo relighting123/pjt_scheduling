@@ -118,7 +118,8 @@ def load_output_sql_files(
     """
     dataset .../output/sql/*.sql 을 Oracle에 실행.
 
-    INF 테이블은 RULE_TIMEKEY 기준 DELETE 후 INSERT (writer 생성 SQL).
+    INF 테이블(RTS_RSLT_INF/RTS_EQPCONVPLAN_INF)은 매 회차 전체 DELETE 후 INSERT하여
+    항상 최신 결과만 남긴다(writer 생성 SQL, RULE_TIMEKEY 무관).
     """
     output_dir = Path(output_dir)
     sql_dir = _ensure_sql_dir(
