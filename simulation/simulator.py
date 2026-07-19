@@ -2110,7 +2110,7 @@ class SchedulingSimulator:
 
         self.schedule.append({
             "EQP_ID":        eqp_id,
-            "LOT_ID":        lot_id,
+            "LOT_ID":        pending.get("logical_lot_id") or lot_id,
             "CARRIER_ID":    carrier_id,
             "PLAN_PROD_ATTR_VAL": ppk,
             "OPER_ID":       oper_id,

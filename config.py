@@ -498,6 +498,9 @@ class EnvConfig:
     conversion_minutes:   int = 60      # LOT_CD/TEMP 변경 시 setup
     max_conversions: Optional[int] = None          # 시뮬 전체 전환 상한 (None=무제한)
     max_conversions_per_eqp: Optional[int] = None  # EQP별 전환 상한 (None=무제한)
+    # RTS_EQPCONVPLAN_INF/HIS 테이블 저장 여부 (옵션). False면 두 테이블 모두
+    # 비워서 출력한다(간트/API 응답의 conversion_plans는 영향 없이 항상 전체가 보임).
+    conv_output_enabled: bool = True
     # RTS_EQPCONVPLAN_INF/HIS 출력에는 RULE_TIMEKEY 기준 이 시간(분) 이내에
     # 시작하는 전환만 포함한다. 그보다 먼 미래의 전환은 재계획 여지가 커
     # 추측성이므로 확정 출력에 싣지 않는다(간트/API 응답의 conversion_plans는 영향 없음).

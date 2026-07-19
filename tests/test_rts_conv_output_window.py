@@ -33,13 +33,42 @@ def _conv(eqp_id: str, start_min: int) -> dict:
 
 @pytest.fixture(autouse=True)
 def _restore_window():
-    original = CONFIG.env.conv_output_window_minutes
+    original_window = CONFIG.env.conv_output_window_minutes
+    original_enabled = CONFIG.env.conv_output_enabled
     yield
-    CONFIG.env.conv_output_window_minutes = original
+    CONFIG.env.conv_output_window_minutes = original_window
+    CONFIG.env.conv_output_enabled = original_enabled
 
 
 def test_default_window_is_60_minutes():
     assert CONFIG.env.conv_output_window_minutes == 60
+
+
+def test_conv_output_enabled_by_default():
+    assert CONFIG.env.conv_output_enabled is True
+
+
+def test_conv_output_disabled_yields_no_rows():
+    CONFIG.env.conv_output_enabled = False
+    plans = [_conv("EQP001", 0), _conv("EQP002", 30)]
+    rows = _build_rts_conv_rows(plans, META, BASE_TIME)
+    assert rows == []
+
+
+def test_conv_output_disabled_full_pipeline_empty_sql():
+    CONFIG.env.conv_output_enabled = False
+    env_data = {"sim_base_time": BASE_TIME, "plan": []}
+    result = {
+        "algorithm": "earliest_st",
+        "schedule": [],
+        "conversion_plans": [_conv("EQP001", 30)],
+    }
+    payload = build_rts_output(result, env_data, fac_id="FAC001", rule_timekey="20260715070000")
+    assert payload["RTS_EQPCONVPLAN_INF"] == []
+
+    scripts = build_writer_sql_scripts(payload)
+    assert scripts["rts_eqpconvplan_inf.sql"].count("INSERT INTO") == 0
+    assert scripts["rts_eqpconvplan_his.sql"].count("INSERT INTO") == 0
 
 
 def test_excludes_conversions_starting_after_window():
@@ -47,6 +76,13 @@ def test_excludes_conversions_starting_after_window():
     plans = [_conv("EQP001", 0), _conv("EQP002", 60), _conv("EQP003", 61), _conv("EQP004", 600)]
     rows = _build_rts_conv_rows(plans, META, BASE_TIME)
     assert [r["EQP_ID"] for r in rows] == ["EQP001", "EQP002"]
+
+
+def test_req_gbn_cd_defaults_to_rts():
+    plans = [_conv("EQP001", 0)]
+    rows = _build_rts_conv_rows(plans, META, BASE_TIME)
+    assert rows[0]["REQ_GBN_CD"] == "RTS"
+    assert "RTS_GBN_CD_VAL" not in rows[0]
 
 
 def test_window_is_configurable():
