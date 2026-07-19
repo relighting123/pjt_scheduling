@@ -6,7 +6,9 @@ loader.fetch_from_db 의 출력 반대 경로.
 from __future__ import annotations
 
 import json
+import logging
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Union
 
@@ -19,6 +21,48 @@ _INF_SCRIPTS = ("rts_rslt_inf.sql", "rts_eqpconvplan_inf.sql")
 _HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
 # save_kpi 옵션 켰을 때만 생성되는 스크립트 — 있으면 적재, 없으면 조용히 생략
 _OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql")
+
+# ---------------------------------------------------------------------------
+# SQL 실행(INSERT/DELETE/DDL) 파일 로거 — loader.fetch(SELECT)의 sql_fetch_*.log와 짝
+# ---------------------------------------------------------------------------
+_sql_logger: Optional[logging.Logger] = None
+
+
+def _get_sql_logger() -> logging.Logger:
+    """logs/sql_load_YYYYMMDD.log 에 기록하는 파일 로거 (호출 시 1회 초기화)."""
+    global _sql_logger
+    if _sql_logger is not None:
+        return _sql_logger
+
+    log_dir = BASE_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    today = datetime.now().strftime("%Y%m%d")
+    log_path = log_dir / f"sql_load_{today}.log"
+
+    logger = logging.getLogger("sql_load")
+    logger.setLevel(logging.DEBUG)
+
+    if not logger.handlers:
+        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s [%(levelname)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(fh)
+
+    _sql_logger = logger
+    return logger
+
+
+def _log_sql_execute(label: str, stmt: str, row_count: int) -> None:
+    """INSERT/DELETE/DDL 등 실행문 1건을 로그 파일에 기록(바인드 없이 이미 값이 인라인된 SQL)."""
+    log = _get_sql_logger()
+    level = logging.WARNING if row_count == 0 else logging.INFO
+    log.log(level, "[%s] rows=%d\n%s", label, row_count, stmt)
 
 
 def _resolve_ddl_path() -> Path:
@@ -61,6 +105,8 @@ def execute_sql_text(
     try:
         for stmt in statements:
             cur.execute(stmt)
+            row_count = cur.rowcount if cur.rowcount is not None else 0
+            _log_sql_execute(label, stmt, row_count)
         conn.commit()
     except Exception:
         conn.rollback()
