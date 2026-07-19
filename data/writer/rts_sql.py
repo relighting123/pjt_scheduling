@@ -2,7 +2,8 @@
 data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 
 RTS_RSLT_INF: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
-RTS_EQPCONVPLAN_INF: INSERT only (RTS_*_HIS와 동일하게 누적 — 삭제 없음)
+RTS_EQPCONVPLAN_INF: 동일 FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT
+                      (같은 회차 재실행 시 JOB_ID 중복/PK 위반 방지, 다른 회차는 계속 누적)
 HIS: INSERT only (EVENT_TIMEKEY = 생성 시각)
 """
 from __future__ import annotations
@@ -41,6 +42,14 @@ _NOW_EXPR = "TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS')"
 def _delete_inf(table: str, fac_id: str) -> str:
     """RTS_RSLT_INF는 매 회차 동일 FAC_ID의 기존 행을 모두 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
     return f"DELETE FROM {table} WHERE FAC_ID = {_sql_str(fac_id)};"
+
+
+def _delete_inf_for_rule_timekey(table: str, fac_id: str, rule_timekey: str) -> str:
+    """동일 FAC_ID+RULE_TIMEKEY 기존 행만 비우고 이번 회차 결과로 대체한다(다른 회차는 유지)."""
+    return (
+        f"DELETE FROM {table} "
+        f"WHERE FAC_ID = {_sql_str(fac_id)} AND RULE_TIMEKEY = {_sql_str(rule_timekey)};"
+    )
 
 
 def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
@@ -202,6 +211,9 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     scripts["rts_rslt_inf.sql"] = "\n".join(inf_lines) + "\n"
 
     conv_inf_lines = [f"-- RTS_EQPCONVPLAN_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
+    if rule_timekey:
+        conv_inf_lines.append(_delete_inf_for_rule_timekey("RTS_EQPCONVPLAN_INF", fac_id, rule_timekey))
+        conv_inf_lines.append("")
     conv_inf_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=False))
     scripts["rts_eqpconvplan_inf.sql"] = "\n".join(conv_inf_lines) + "\n"
 

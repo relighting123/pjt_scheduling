@@ -209,8 +209,8 @@ python main.py db-load --ddl --facid FAC001 --split infer
 |--------|------|
 | `RTS_RSLT_INF` | 스케줄 결과 (매 회차 동일 FAC_ID 전체 교체 — 최신 결과만 유지, 다른 FAC_ID는 영향 없음) |
 | `RTS_RSLT_HIS` | 스케줄 이력 |
-| `RTS_EQPCONVPLAN_INF` | Conversion 계획 (삭제 없이 INSERT만 누적. 옵션: `CONFIG.env.conv_output_enabled`, 기본 True. RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`, 기본 60분 이내에 시작하는 건만) |
-| `RTS_EQPCONVPLAN_HIS` | Conversion 이력(위와 동일한 옵션/window 적용, 마찬가지로 INSERT만 누적) |
+| `RTS_EQPCONVPLAN_INF` | Conversion 계획 (동일 FAC_ID+RULE_TIMEKEY 기존 행만 교체, 다른 회차는 누적. 옵션: `CONFIG.env.conv_output_enabled`, 기본 True. RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`, 기본 60분 이내에 시작하는 건만) |
+| `RTS_EQPCONVPLAN_HIS` | Conversion 이력(위와 동일한 옵션/window 적용, 삭제 없이 INSERT만 누적) |
 | `RTS_PERFMON_HIS` | KPI 이력 (옵션: `--save-kpi` / `save_kpi=true`) |
 | `RTS_VALIDATION` | 투입 불가 장비 재공 선택 건수 집계, EQP/PPK/OPER 조합별 (옵션: `--save-kpi` / `save_kpi=true`) |
 

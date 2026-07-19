@@ -3,7 +3,7 @@ tests/test_rts_eqpconvplan_timestamps.py
 
 RTS_EQPCONVPLAN_INF/HIS는 CRT_TM/CHG_TM 컬럼을 가지며, 적재 SQL은 이 두 값을
 세션 NLS_DATE_FORMAT에 좌우되지 않는 고정 포맷(YYYY-MM-DD HH24:MI:SS)으로
-채워야 한다(INF/HIS 공통). RTS_EQPCONVPLAN_INF는 삭제 없이 INSERT만 한다.
+채워야 한다(INF/HIS 공통).
 """
 from datetime import datetime
 
@@ -37,7 +37,6 @@ def _scripts():
 
 def test_eqpconvplan_inf_insert_sets_crt_tm_and_chg_tm_to_fixed_format():
     sql = _scripts()["rts_eqpconvplan_inf.sql"]
-    assert "DELETE" not in sql
     insert_line = next(line for line in sql.splitlines() if line.startswith("INSERT INTO"))
     assert "CRT_TM" in sql and "CHG_TM" in sql
     assert insert_line.count(NOW_EXPR) == 2
