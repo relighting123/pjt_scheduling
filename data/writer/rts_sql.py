@@ -1,7 +1,8 @@
 """
 data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 
-INF: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
+RTS_RSLT_INF: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
+RTS_EQPCONVPLAN_INF: INSERT only (RTS_*_HIS와 동일하게 누적 — 삭제 없음)
 HIS: INSERT only (EVENT_TIMEKEY = 생성 시각)
 """
 from __future__ import annotations
@@ -33,8 +34,12 @@ def _sql_float(val: Any) -> str:
     return str(float(val))
 
 
+# CRT_TM/CHG_TM은 세션 NLS_DATE_FORMAT에 영향받지 않도록 VARCHAR2에 고정 포맷으로 저장한다.
+_NOW_EXPR = "TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS')"
+
+
 def _delete_inf(table: str, fac_id: str) -> str:
-    """INF 테이블은 매 회차 동일 FAC_ID의 기존 행을 모두 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
+    """RTS_RSLT_INF는 매 회차 동일 FAC_ID의 기존 행을 모두 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
     return f"DELETE FROM {table} WHERE FAC_ID = {_sql_str(fac_id)};"
 
 
@@ -67,10 +72,10 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
         ]
         if history:
             cols.extend(["CRT_TM", "EVENT_TIMEKEY"])
-            vals.extend(["SYSTIMESTAMP", _sql_str(event_key)])
+            vals.extend([_NOW_EXPR, _sql_str(event_key)])
         else:
             cols.append("CRT_TM")
-            vals.append("SYSTIMESTAMP")
+            vals.append(_NOW_EXPR)
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
@@ -125,10 +130,10 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
         ]
         if history:
             cols.extend(["CRT_TM", "CHG_TM", "EVENT_TIMEKEY"])
-            vals.extend(["SYSDATE", "SYSDATE", _sql_str(event_key)])
+            vals.extend([_NOW_EXPR, _NOW_EXPR, _sql_str(event_key)])
         else:
             cols.extend(["CRT_TM", "CHG_TM"])
-            vals.extend(["SYSDATE", "SYSDATE"])
+            vals.extend([_NOW_EXPR, _NOW_EXPR])
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
@@ -146,7 +151,7 @@ def _insert_rts_perfmon_his(rows: List[dict]) -> List[str]:
             _sql_str(r["KPI_NM"]),
             _sql_float(r["KPI_VAL"]),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
-            "SYSTIMESTAMP",
+            _NOW_EXPR,
         ]
         lines.append(
             f"INSERT INTO RTS_PERFMON_HIS ({', '.join(cols)}) VALUES ({', '.join(vals)});"
@@ -170,7 +175,7 @@ def _insert_rts_validation(rows: List[dict]) -> List[str]:
             _sql_str(r["OPER_ID"]),
             _sql_num(r["VIOLATION_CNT"]),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
-            "SYSTIMESTAMP",
+            _NOW_EXPR,
         ]
         lines.append(
             f"INSERT INTO RTS_VALIDATION ({', '.join(cols)}) VALUES ({', '.join(vals)});"
@@ -197,8 +202,6 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     scripts["rts_rslt_inf.sql"] = "\n".join(inf_lines) + "\n"
 
     conv_inf_lines = [f"-- RTS_EQPCONVPLAN_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
-    conv_inf_lines.append(_delete_inf("RTS_EQPCONVPLAN_INF", fac_id))
-    conv_inf_lines.append("")
     conv_inf_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=False))
     scripts["rts_eqpconvplan_inf.sql"] = "\n".join(conv_inf_lines) + "\n"
 

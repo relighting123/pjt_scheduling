@@ -1,9 +1,9 @@
 """
 tests/test_rts_sql_delete_all.py
 
-RTS_RSLT_INF/RTS_EQPCONVPLAN_INF은 매 회차 동일 FAC_ID의 기존 행을 모두 DELETE한 뒤
-INSERT하여 항상 최신 결과만 남아야 한다(RULE_TIMEKEY 단위 부분 삭제가 아니고,
-다른 FAC_ID의 데이터는 건드리지 않는다).
+RTS_RSLT_INF는 매 회차 동일 FAC_ID의 기존 행을 모두 DELETE한 뒤 INSERT하여 항상
+최신 결과만 남아야 한다(RULE_TIMEKEY 단위 부분 삭제가 아니고, 다른 FAC_ID의 데이터는
+건드리지 않는다). RTS_EQPCONVPLAN_INF/HIS는 삭제 없이 INSERT만 누적한다.
 """
 from data.writer.rts_sql import build_writer_sql_scripts
 
@@ -23,27 +23,20 @@ def test_rslt_inf_delete_scoped_by_fac_id_only():
     assert "DELETE FROM RTS_RSLT_INF WHERE FAC_ID = 'FAC001';" in scripts["rts_rslt_inf.sql"]
 
 
-def test_eqpconvplan_inf_delete_scoped_by_fac_id_only():
-    scripts = build_writer_sql_scripts(_payload())
-    assert (
-        "DELETE FROM RTS_EQPCONVPLAN_INF WHERE FAC_ID = 'FAC001';"
-        in scripts["rts_eqpconvplan_inf.sql"]
-    )
-
-
 def test_delete_scoped_to_own_fac_id_leaves_others_untouched():
     scripts = build_writer_sql_scripts(_payload(fac_id="FAC002"))
     assert "DELETE FROM RTS_RSLT_INF WHERE FAC_ID = 'FAC002';" in scripts["rts_rslt_inf.sql"]
     assert "FAC001" not in scripts["rts_rslt_inf.sql"]
 
 
-def test_delete_present_even_without_rule_timekey():
+def test_rslt_inf_delete_present_even_without_rule_timekey():
     scripts = build_writer_sql_scripts(_payload(rule_timekey=""))
     assert "DELETE FROM RTS_RSLT_INF WHERE FAC_ID = 'FAC001';" in scripts["rts_rslt_inf.sql"]
-    assert (
-        "DELETE FROM RTS_EQPCONVPLAN_INF WHERE FAC_ID = 'FAC001';"
-        in scripts["rts_eqpconvplan_inf.sql"]
-    )
+
+
+def test_eqpconvplan_inf_has_no_delete():
+    scripts = build_writer_sql_scripts(_payload())
+    assert "DELETE" not in scripts["rts_eqpconvplan_inf.sql"]
 
 
 def test_his_scripts_have_no_delete():
