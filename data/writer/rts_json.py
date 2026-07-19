@@ -65,6 +65,7 @@ def _build_rts_rslt_rows(
         ordered = sorted(by_eqp[eqp_id], key=lambda r: (r["START_TM"], r.get("SEQ", 0)))
         for seq_no, rec in enumerate(ordered, start=1):
             rows.append({
+                "FAC_ID":         meta["FAC_ID"],
                 "RULE_TIMEKEY":   meta["RULE_TIMEKEY"],
                 "LOT_CD":         rec.get("LOT_CD", ""),
                 "TEMPER_VAL":     rec.get("TEMP", ""),
