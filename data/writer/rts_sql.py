@@ -33,8 +33,9 @@ def _sql_float(val: Any) -> str:
     return str(float(val))
 
 
-def _delete_inf(table: str, rule_timekey: str) -> str:
-    return f"DELETE FROM {table} WHERE RULE_TIMEKEY = {_sql_str(rule_timekey)};"
+def _delete_inf(table: str) -> str:
+    """INF 테이블은 매 회차 전체를 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
+    return f"DELETE FROM {table};"
 
 
 def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
@@ -188,18 +189,14 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     scripts: Dict[str, str] = {}
 
     inf_lines = [f"-- RTS_RSLT_INF RULE_TIMEKEY={rule_timekey}", ""]
-    if rule_timekey:
-        inf_lines.append(_delete_inf("RTS_RSLT_INF", rule_timekey))
-        inf_lines.append("")
+    inf_lines.append(_delete_inf("RTS_RSLT_INF"))
+    inf_lines.append("")
     inf_lines.extend(_insert_rts_rslt_inf(rslt_rows, history=False))
     scripts["rts_rslt_inf.sql"] = "\n".join(inf_lines) + "\n"
 
     conv_inf_lines = [f"-- RTS_EQPCONVPLAN_INF RULE_TIMEKEY={rule_timekey}", ""]
-    if rule_timekey:
-        conv_inf_lines.append(
-            f"DELETE FROM RTS_EQPCONVPLAN_INF WHERE RULE_TIMEKEY = {_sql_str(rule_timekey)};"
-        )
-        conv_inf_lines.append("")
+    conv_inf_lines.append(_delete_inf("RTS_EQPCONVPLAN_INF"))
+    conv_inf_lines.append("")
     conv_inf_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=False))
     scripts["rts_eqpconvplan_inf.sql"] = "\n".join(conv_inf_lines) + "\n"
 

@@ -1,5 +1,5 @@
 -- @db: Prd
--- RTS 추론 결과 적재 테이블 (INF: RULE_TIMEKEY 단위 교체, HIS: 이력 누적)
+-- RTS 추론 결과 적재 테이블 (INF: 매 회차 전체 교체(최신 결과만 유지), HIS: 이력 누적)
 -- 최초 1회: python main.py db-load --ddl-only
 -- 또는:     python main.py db-load --ddl --facid FAC001 --split infer
 
