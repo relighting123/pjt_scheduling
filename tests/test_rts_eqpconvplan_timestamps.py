@@ -1,9 +1,9 @@
 """
 tests/test_rts_eqpconvplan_timestamps.py
 
-RTS_EQPCONVPLAN_INF/HIS는 CRT_TM/CHG_TM 컬럼을 가지며, 적재 SQL은 이 두 값을
-세션 NLS_DATE_FORMAT에 좌우되지 않는 고정 포맷(YYYY-MM-DD HH24:MI:SS)으로
-채워야 한다(INF/HIS 공통).
+RTS_EQPCONVPLAN_INF/HIS는 CRT_TM/CHG_TM 컬럼(DATE, DEFAULT SYSDATE)을 가지며,
+적재 SQL은 이 두 값을 모두 SYSDATE로 채워야 한다(INF/HIS 공통).
+RTS_RSLT_INF의 CRT_TM은 TIMESTAMP 컬럼이라 SYSTIMESTAMP를 채운다.
 """
 from datetime import datetime
 
@@ -12,7 +12,6 @@ from data.writer.rts_sql import build_writer_sql_scripts
 
 BASE_TIME = datetime(2026, 7, 15, 7, 0, 0)
 META = {"FAC_ID": "FAC001", "RULE_TIMEKEY": "20260715070000", "CRT_USER_ID": "RTS"}
-NOW_EXPR = "TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS')"
 
 
 def _conv(eqp_id: str, start_min: int) -> dict:
@@ -35,21 +34,21 @@ def _scripts():
     return build_writer_sql_scripts(payload)
 
 
-def test_eqpconvplan_inf_insert_sets_crt_tm_and_chg_tm_to_fixed_format():
+def test_eqpconvplan_inf_insert_sets_crt_tm_and_chg_tm_to_sysdate():
     sql = _scripts()["rts_eqpconvplan_inf.sql"]
     insert_line = next(line for line in sql.splitlines() if line.startswith("INSERT INTO"))
     assert "CRT_TM" in sql and "CHG_TM" in sql
-    assert insert_line.count(NOW_EXPR) == 2
+    assert insert_line.count("SYSDATE") == 2
 
 
-def test_eqpconvplan_his_insert_sets_crt_tm_and_chg_tm_to_fixed_format():
+def test_eqpconvplan_his_insert_sets_crt_tm_and_chg_tm_to_sysdate():
     sql = _scripts()["rts_eqpconvplan_his.sql"]
     insert_line = next(line for line in sql.splitlines() if line.startswith("INSERT INTO"))
     assert "CRT_TM" in sql and "CHG_TM" in sql
-    assert insert_line.count(NOW_EXPR) == 2
+    assert insert_line.count("SYSDATE") == 2
 
 
-def test_rslt_inf_insert_sets_crt_tm_to_fixed_format():
+def test_rslt_inf_insert_sets_crt_tm_to_systimestamp():
     payload = {
         "meta": META,
         "RTS_RSLT_INF": [{
@@ -63,4 +62,4 @@ def test_rslt_inf_insert_sets_crt_tm_to_fixed_format():
     }
     sql = build_writer_sql_scripts(payload)["rts_rslt_inf.sql"]
     insert_line = next(line for line in sql.splitlines() if line.startswith("INSERT INTO"))
-    assert insert_line.count(NOW_EXPR) == 1
+    assert "SYSTIMESTAMP" in insert_line

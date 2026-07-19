@@ -35,10 +35,6 @@ def _sql_float(val: Any) -> str:
     return str(float(val))
 
 
-# CRT_TM/CHG_TM은 세션 NLS_DATE_FORMAT에 영향받지 않도록 VARCHAR2에 고정 포맷으로 저장한다.
-_NOW_EXPR = "TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS')"
-
-
 def _delete_inf(table: str, fac_id: str) -> str:
     """RTS_RSLT_INF는 매 회차 동일 FAC_ID의 기존 행을 모두 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
     return f"DELETE FROM {table} WHERE FAC_ID = {_sql_str(fac_id)};"
@@ -81,10 +77,10 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
         ]
         if history:
             cols.extend(["CRT_TM", "EVENT_TIMEKEY"])
-            vals.extend([_NOW_EXPR, _sql_str(event_key)])
+            vals.extend(["SYSTIMESTAMP", _sql_str(event_key)])
         else:
             cols.append("CRT_TM")
-            vals.append(_NOW_EXPR)
+            vals.append("SYSTIMESTAMP")
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
@@ -139,10 +135,10 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
         ]
         if history:
             cols.extend(["CRT_TM", "CHG_TM", "EVENT_TIMEKEY"])
-            vals.extend([_NOW_EXPR, _NOW_EXPR, _sql_str(event_key)])
+            vals.extend(["SYSDATE", "SYSDATE", _sql_str(event_key)])
         else:
             cols.extend(["CRT_TM", "CHG_TM"])
-            vals.extend([_NOW_EXPR, _NOW_EXPR])
+            vals.extend(["SYSDATE", "SYSDATE"])
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
@@ -160,7 +156,7 @@ def _insert_rts_perfmon_his(rows: List[dict]) -> List[str]:
             _sql_str(r["KPI_NM"]),
             _sql_float(r["KPI_VAL"]),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
-            _NOW_EXPR,
+            "SYSTIMESTAMP",
         ]
         lines.append(
             f"INSERT INTO RTS_PERFMON_HIS ({', '.join(cols)}) VALUES ({', '.join(vals)});"
@@ -184,7 +180,7 @@ def _insert_rts_validation(rows: List[dict]) -> List[str]:
             _sql_str(r["OPER_ID"]),
             _sql_num(r["VIOLATION_CNT"]),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
-            _NOW_EXPR,
+            "SYSTIMESTAMP",
         ]
         lines.append(
             f"INSERT INTO RTS_VALIDATION ({', '.join(cols)}) VALUES ({', '.join(vals)});"

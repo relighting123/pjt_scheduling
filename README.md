@@ -205,11 +205,6 @@ python main.py db-load --ddl-only
 python main.py db-load --ddl --facid FAC001 --split infer
 ```
 
-기존에 이미 만들어둔 테이블이 있다면 `data/sql.example/rts_output_tables.sql`만 바꿔서는
-반영되지 않는다(DDL은 최초 1회 CREATE TABLE용). CRT_TM/CHG_TM이 DATE/TIMESTAMP였던
-과거 버전에서 올린 테이블은 `data/sql.example/migrate_crt_chg_tm_varchar.sql`을 실행해
-VARCHAR2(19)로 옮겨야 `ORA-01843(not a valid month)` 없이 적재된다.
-
 | 테이블 | 용도 |
 |--------|------|
 | `RTS_RSLT_INF` | 스케줄 결과 (매 회차 동일 FAC_ID 전체 교체 — 최신 결과만 유지, 다른 FAC_ID는 영향 없음) |
