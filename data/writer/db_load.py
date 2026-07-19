@@ -58,9 +58,14 @@ def _get_sql_logger() -> logging.Logger:
     return logger
 
 
-def _log_sql_execute(label: str, stmt: str, row_count: int) -> None:
+def _log_sql_execute(
+    label: str, stmt: str, row_count: int, *, error: Optional[str] = None,
+) -> None:
     """INSERT/DELETE/DDL 등 실행문 1건을 로그 파일에 기록(바인드 없이 이미 값이 인라인된 SQL)."""
     log = _get_sql_logger()
+    if error is not None:
+        log.log(logging.ERROR, "[%s] FAILED: %s\n%s", label, error, stmt)
+        return
     level = logging.WARNING if row_count == 0 else logging.INFO
     log.log(level, "[%s] rows=%d\n%s", label, row_count, stmt)
 
@@ -104,7 +109,11 @@ def execute_sql_text(
     cur = conn.cursor()
     try:
         for stmt in statements:
-            cur.execute(stmt)
+            try:
+                cur.execute(stmt)
+            except Exception as exc:
+                _log_sql_execute(label, stmt, 0, error=str(exc))
+                raise
             row_count = cur.rowcount if cur.rowcount is not None else 0
             _log_sql_execute(label, stmt, row_count)
         conn.commit()

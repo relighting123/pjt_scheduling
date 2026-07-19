@@ -39,6 +39,20 @@ class _FakeConn:
         self.rolled_back = True
 
 
+class _FailingCursor(_FakeCursor):
+    def execute(self, stmt):
+        self.executed.append(stmt)
+        if "BAD" in stmt.upper():
+            raise Exception("ORA-01843: not a valid month")
+        self.rowcount = 1
+
+
+class _FailingConn(_FakeConn):
+    def __init__(self):
+        super().__init__()
+        self.cursor_obj = _FailingCursor()
+
+
 def _log_path(tmp_path):
     today = datetime.now().strftime("%Y%m%d")
     return tmp_path / "logs" / f"sql_load_{today}.log"
@@ -81,3 +95,27 @@ def test_ddl_statements_are_also_logged(tmp_path, monkeypatch):
 
     log_path = _log_path(tmp_path)
     assert "CREATE TABLE FOO" in log_path.read_text(encoding="utf-8")
+
+
+def test_failing_statement_is_logged_before_the_exception_propagates(tmp_path, monkeypatch):
+    _reset_sql_logger(monkeypatch, tmp_path)
+
+    sql_text = (
+        "INSERT INTO GOOD_TABLE (ID) VALUES (1);\n"
+        "INSERT INTO BAD_TABLE (ID) VALUES (2);\n"
+    )
+    conn = _FailingConn()
+    try:
+        db_load.execute_sql_text(conn, sql_text, label="mixed.sql")
+        assert False, "expected exception to propagate"
+    except Exception as exc:
+        assert "not a valid month" in str(exc)
+
+    assert conn.rolled_back is True
+    assert conn.committed is False
+
+    contents = _log_path(tmp_path).read_text(encoding="utf-8")
+    assert "INSERT INTO GOOD_TABLE" in contents
+    assert "FAILED" in contents
+    assert "BAD_TABLE" in contents
+    assert "not a valid month" in contents
