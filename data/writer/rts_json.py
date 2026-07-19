@@ -50,20 +50,50 @@ def resolve_writer_meta(
     }
 
 
+def _eligible_eqp_ids(ppk: str, oper_id: str, env_data: dict) -> List[str]:
+    """(PPK,OPER) 투입 가능 EQP 목록 — simulator._eqp_can_process()와 동일 규칙.
+
+    abstract_arrange_map(EQP 모델 매칭) 또는 eqp_oper_cap(discrete 실적으로 확인된
+    EQP별 가능 OPER) 중 하나라도 해당하면 투입 가능으로 본다.
+    """
+    eqp_model_map = env_data.get("eqp_model_map", {})
+    arrange_map = env_data.get("abstract_arrange_map", {})
+    eqp_oper_cap = env_data.get("eqp_oper_cap", {})
+    eligible = [
+        eqp_id for eqp_id, model in eqp_model_map.items()
+        if (ppk, oper_id, model) in arrange_map or oper_id in eqp_oper_cap.get(eqp_id, [])
+    ]
+    return sorted(eligible)
+
+
+def _prgs_enable_eqp_lval(ppk: str, oper_id: str, env_data: dict, cache: dict) -> str:
+    """PRGS_ENABLE_EQP_LVAL: 해당 재공이 투입 가능한 EQP_ID 목록(콤마 구분, 4000자 제한)."""
+    key = (ppk, oper_id)
+    if key not in cache:
+        cache[key] = ",".join(_eligible_eqp_ids(ppk, oper_id, env_data))[:4000]
+    return cache[key]
+
+
 def _build_rts_rslt_rows(
     schedule: List[dict],
     meta: Dict[str, str],
     base_time: datetime,
+    env_data: dict,
 ) -> List[dict]:
     """EQP별 SEQ_NO 부여 후 RTS_RSLT_INF 행 생성."""
     by_eqp: Dict[str, List[dict]] = defaultdict(list)
     for rec in schedule:
         by_eqp[rec["EQP_ID"]].append(rec)
 
+    plan_meta = env_data.get("plan_meta", {})
+    eqp_lval_cache: dict = {}
+
     rows: List[dict] = []
     for eqp_id in sorted(by_eqp.keys()):
         ordered = sorted(by_eqp[eqp_id], key=lambda r: (r["START_TM"], r.get("SEQ", 0)))
         for seq_no, rec in enumerate(ordered, start=1):
+            ppk = rec["PLAN_PROD_ATTR_VAL"]
+            oper_id = rec.get("OPER_ID", "")
             rows.append({
                 "FAC_ID":         meta["FAC_ID"],
                 "RULE_TIMEKEY":   meta["RULE_TIMEKEY"],
@@ -72,13 +102,20 @@ def _build_rts_rslt_rows(
                 "EQP_ID":         eqp_id,
                 "EQP_MODEL_CD":   rec.get("EQP_MODEL", ""),
                 "SEQ_NO":         seq_no,
-                "PLAN_PROD_ATTR_VAL":  rec["PLAN_PROD_ATTR_VAL"],
-                "OPER_ID":        rec.get("OPER_ID", ""),
+                "PLAN_PROD_ATTR_VAL":  ppk,
+                "OPER_ID":        oper_id,
                 "LOT_ID":         rec["LOT_ID"],
                 "CARRIER_ID":     rec.get("CARRIER_ID", ""),
+                "LOT_STAT_CD":    rec.get("LOT_STAT_CD", "WAIT"),
+                "FLOW_ID":        ppk,
+                "WF_QTY":         int(rec.get("WF_QTY", 0)),
+                "ST":             int(rec.get("ST", 0)),
+                "PRGS_ENABLE_EQP_LVAL": _prgs_enable_eqp_lval(ppk, oper_id, env_data, eqp_lval_cache),
+                "PLAN_QTY":       int(plan_meta.get((ppk, oper_id), {}).get("d0_plan_qty", 0)),
                 "START_TIME":     minutes_to_timekey(int(rec["START_TM"]), base_time),
                 "END_TIME":       minutes_to_timekey(int(rec["END_TM"]), base_time),
                 "PRODUCE_QTY":    int(rec.get("WF_QTY", 0)),
+                "FUNCTION_NM":    "TEST",
                 "CRT_USER_ID":    meta["CRT_USER_ID"],
             })
     return rows
@@ -241,7 +278,7 @@ def build_rts_output(
 
     payload = {
         "meta": meta,
-        "RTS_RSLT_INF": _build_rts_rslt_rows(schedule, meta, base_time),
+        "RTS_RSLT_INF": _build_rts_rslt_rows(schedule, meta, base_time, env_data),
         "RTS_EQPCONVPLAN_INF": _build_rts_conv_rows(conversion_plans, meta, base_time),
     }
     if include_kpi:

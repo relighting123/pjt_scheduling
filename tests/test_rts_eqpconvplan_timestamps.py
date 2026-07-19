@@ -48,6 +48,17 @@ def test_eqpconvplan_his_insert_sets_crt_tm_and_chg_tm_to_sysdate():
     assert insert_line.count("SYSDATE") == 2
 
 
+def test_eqpconvplan_his_insert_has_exec_timekey():
+    scripts = _scripts()
+    his_line = next(
+        line for line in scripts["rts_eqpconvplan_his.sql"].splitlines()
+        if line.startswith("INSERT INTO")
+    )
+    assert "EXEC_TIMEKEY" in his_line
+    inf_sql = scripts["rts_eqpconvplan_inf.sql"]
+    assert "EXEC_TIMEKEY" not in inf_sql
+
+
 def test_rslt_inf_insert_sets_crt_tm_to_systimestamp():
     payload = {
         "meta": META,

@@ -4,14 +4,16 @@ data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 RTS_RSLT_INF: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
 RTS_EQPCONVPLAN_INF: 동일 FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT
                       (같은 회차 재실행 시 JOB_ID 중복/PK 위반 방지, 다른 회차는 계속 누적)
-HIS: INSERT only
+HIS: INSERT only (EXEC_TIMEKEY = 생성 시각, PK에 포함되어 같은 회차 재실행도 누적)
 """
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
+from config import RULE_TIMEKEY_FMT
 from data.writer.rts_json import PRB_CARD_PLACEHOLDER
 
 
@@ -49,11 +51,13 @@ def _delete_inf_for_rule_timekey(table: str, fac_id: str, rule_timekey: str) -> 
 def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
     table = "RTS_RSLT_HIS" if history else "RTS_RSLT_INF"
     lines: List[str] = []
+    exec_timekey = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
         cols = [
             "FAC_ID", "RULE_TIMEKEY", "LOT_CD", "TEMPER_VAL", "EQP_ID", "EQP_MODEL_CD",
             "SEQ_NO", "PLAN_PROD_ATTR_VAL", "OPER_ID", "LOT_ID", "CARRIER_ID",
-            "START_TIME", "END_TIME", "PRODUCE_QTY", "CRT_USER_ID",
+            "LOT_STAT_CD", "FLOW_ID", "WF_QTY", "ST", "PRGS_ENABLE_EQP_LVAL", "PLAN_QTY",
+            "START_TIME", "END_TIME", "PRODUCE_QTY", "FUNCTION_NM", "CRT_USER_ID",
         ]
         vals = [
             _sql_str(r["FAC_ID"]),
@@ -67,13 +71,23 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
             _sql_str(r["OPER_ID"]),
             _sql_str(r["LOT_ID"]),
             _sql_str(r["CARRIER_ID"]),
+            _sql_str(r.get("LOT_STAT_CD", "WAIT")),
+            _sql_str(r.get("FLOW_ID", r["PLAN_PROD_ATTR_VAL"])),
+            _sql_num(r.get("WF_QTY", 0)),
+            _sql_num(r.get("ST", 0)),
+            _sql_str(r.get("PRGS_ENABLE_EQP_LVAL", "")),
+            _sql_num(r.get("PLAN_QTY", 0)),
             _sql_str(r["START_TIME"]),
             _sql_str(r["END_TIME"]),
             _sql_num(r["PRODUCE_QTY"]),
+            _sql_str(r.get("FUNCTION_NM", "TEST")),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
         ]
         cols.append("CRT_TM")
         vals.append("SYSTIMESTAMP")
+        if history:
+            cols.append("EXEC_TIMEKEY")
+            vals.append(_sql_str(exec_timekey))
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
@@ -83,6 +97,7 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
 def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
     table = "RTS_EQPCONVPLAN_HIS" if history else "RTS_EQPCONVPLAN_INF"
     lines: List[str] = []
+    exec_timekey = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
         cols = [
             "FAC_ID", "RULE_TIMEKEY", "PRCS_STAT_CD", "JOB_ID", "REQ_GBN_CD",
@@ -127,6 +142,9 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
         ]
         cols.extend(["CRT_TM", "CHG_TM"])
         vals.extend(["SYSDATE", "SYSDATE"])
+        if history:
+            cols.append("EXEC_TIMEKEY")
+            vals.append(_sql_str(exec_timekey))
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
