@@ -4,16 +4,14 @@ data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 RTS_RSLT_INF: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
 RTS_EQPCONVPLAN_INF: 동일 FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT
                       (같은 회차 재실행 시 JOB_ID 중복/PK 위반 방지, 다른 회차는 계속 누적)
-HIS: INSERT only (EVENT_TIMEKEY = 생성 시각)
+HIS: INSERT only
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
-from config import RULE_TIMEKEY_FMT
 from data.writer.rts_json import PRB_CARD_PLACEHOLDER
 
 
@@ -51,7 +49,6 @@ def _delete_inf_for_rule_timekey(table: str, fac_id: str, rule_timekey: str) -> 
 def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
     table = "RTS_RSLT_HIS" if history else "RTS_RSLT_INF"
     lines: List[str] = []
-    event_key = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
         cols = [
             "FAC_ID", "RULE_TIMEKEY", "LOT_CD", "TEMPER_VAL", "EQP_ID", "EQP_MODEL_CD",
@@ -75,12 +72,8 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
             _sql_num(r["PRODUCE_QTY"]),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
         ]
-        if history:
-            cols.extend(["CRT_TM", "EVENT_TIMEKEY"])
-            vals.extend(["SYSTIMESTAMP", _sql_str(event_key)])
-        else:
-            cols.append("CRT_TM")
-            vals.append("SYSTIMESTAMP")
+        cols.append("CRT_TM")
+        vals.append("SYSTIMESTAMP")
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
@@ -90,7 +83,6 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
 def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
     table = "RTS_EQPCONVPLAN_HIS" if history else "RTS_EQPCONVPLAN_INF"
     lines: List[str] = []
-    event_key = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
         cols = [
             "FAC_ID", "RULE_TIMEKEY", "PRCS_STAT_CD", "JOB_ID", "REQ_GBN_CD",
@@ -133,12 +125,8 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
             _sql_str(r.get("CRT_USER_ID", "RTS")),
             _sql_str(r.get("CHG_USER_ID", r.get("CRT_USER_ID", "RTS"))),
         ]
-        if history:
-            cols.extend(["CRT_TM", "CHG_TM", "EVENT_TIMEKEY"])
-            vals.extend(["SYSDATE", "SYSDATE", _sql_str(event_key)])
-        else:
-            cols.extend(["CRT_TM", "CHG_TM"])
-            vals.extend(["SYSDATE", "SYSDATE"])
+        cols.extend(["CRT_TM", "CHG_TM"])
+        vals.extend(["SYSDATE", "SYSDATE"])
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
