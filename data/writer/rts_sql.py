@@ -1,7 +1,7 @@
 """
 data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 
-INF: RULE_TIMEKEY 기준 DELETE 후 INSERT
+INF: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
 HIS: INSERT only (EVENT_TIMEKEY = 생성 시각)
 """
 from __future__ import annotations
@@ -33,9 +33,9 @@ def _sql_float(val: Any) -> str:
     return str(float(val))
 
 
-def _delete_inf(table: str) -> str:
-    """INF 테이블은 매 회차 전체를 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
-    return f"DELETE FROM {table};"
+def _delete_inf(table: str, fac_id: str) -> str:
+    """INF 테이블은 매 회차 동일 FAC_ID의 기존 행을 모두 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
+    return f"DELETE FROM {table} WHERE FAC_ID = {_sql_str(fac_id)};"
 
 
 def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
@@ -44,11 +44,12 @@ def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
     event_key = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
         cols = [
-            "RULE_TIMEKEY", "LOT_CD", "TEMPER_VAL", "EQP_ID", "EQP_MODEL_CD",
+            "FAC_ID", "RULE_TIMEKEY", "LOT_CD", "TEMPER_VAL", "EQP_ID", "EQP_MODEL_CD",
             "SEQ_NO", "PLAN_PROD_ATTR_VAL", "OPER_ID", "LOT_ID", "CARRIER_ID",
             "START_TIME", "END_TIME", "PRODUCE_QTY", "CRT_USER_ID",
         ]
         vals = [
+            _sql_str(r["FAC_ID"]),
             _sql_str(r["RULE_TIMEKEY"]),
             _sql_str(r["LOT_CD"]),
             _sql_str(r["TEMPER_VAL"]),
@@ -181,6 +182,7 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     """output.json 본문 → {파일명: SQL 텍스트}."""
     meta = payload.get("meta", {})
     rule_timekey = meta.get("RULE_TIMEKEY", "")
+    fac_id = meta.get("FAC_ID", "")
     rslt_rows = payload.get("RTS_RSLT_INF", [])
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
     perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
@@ -188,14 +190,14 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
 
     scripts: Dict[str, str] = {}
 
-    inf_lines = [f"-- RTS_RSLT_INF RULE_TIMEKEY={rule_timekey}", ""]
-    inf_lines.append(_delete_inf("RTS_RSLT_INF"))
+    inf_lines = [f"-- RTS_RSLT_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
+    inf_lines.append(_delete_inf("RTS_RSLT_INF", fac_id))
     inf_lines.append("")
     inf_lines.extend(_insert_rts_rslt_inf(rslt_rows, history=False))
     scripts["rts_rslt_inf.sql"] = "\n".join(inf_lines) + "\n"
 
-    conv_inf_lines = [f"-- RTS_EQPCONVPLAN_INF RULE_TIMEKEY={rule_timekey}", ""]
-    conv_inf_lines.append(_delete_inf("RTS_EQPCONVPLAN_INF"))
+    conv_inf_lines = [f"-- RTS_EQPCONVPLAN_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
+    conv_inf_lines.append(_delete_inf("RTS_EQPCONVPLAN_INF", fac_id))
     conv_inf_lines.append("")
     conv_inf_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=False))
     scripts["rts_eqpconvplan_inf.sql"] = "\n".join(conv_inf_lines) + "\n"
