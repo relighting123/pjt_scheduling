@@ -406,6 +406,13 @@ class InferFetchOptions(BaseModel):
         ge=0,
         description="LOT_CD/TEMP 전환 1회 소요 시간(분)",
     )
+    discrete_wait_enabled: Optional[bool] = Field(
+        default=None,
+        description=(
+            "WAIT LOT의 전환 불필요 배정에 discrete(EQP×carrier 정밀 조합) 자격 검증을 "
+            "요구할지 여부 (기본 True). False면 discrete 조합이 없어도 abstract로 배정 가능."
+        ),
+    )
 
 
 class InferenceRequest(InferFetchOptions):
@@ -705,6 +712,7 @@ def get_config():
             "conversion_minutes": CONFIG.env.conversion_minutes,
             "max_conversions": CONFIG.env.max_conversions,
             "max_conversions_per_eqp": CONFIG.env.max_conversions_per_eqp,
+            "discrete_wait_enabled": CONFIG.env.discrete_wait_enabled,
         },
     }
 
@@ -811,46 +819,52 @@ def inference(req: InferenceRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
 
+    original_discrete_wait_enabled = CONFIG.env.discrete_wait_enabled
+    if req.discrete_wait_enabled is not None:
+        CONFIG.env.discrete_wait_enabled = req.discrete_wait_enabled
     try:
-        env_data = _load_env_data(period_key=infer_meta["rule_timekey"])
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-    try:
-        validate_algorithm(req.algorithm)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    agent = None
-    if req.algorithm == "scheduling_rl":
         try:
-            agent = SchedulingAgent.load(env_data=env_data)
-        except (FileNotFoundError, ValueError) as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=str(exc),
-            ) from exc
+            env_data = _load_env_data(period_key=infer_meta["rule_timekey"])
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
-    result = run_inference(
-        env_data,
-        algorithm=req.algorithm,
-        agent=agent,
-        record_history=req.include_history,
-        record_decision_log=req.decision_log,
-        enable_wip_inflow=req.enable_wip_inflow,
-        max_conversions=req.max_conversions,
-        max_conversions_per_eqp=req.max_conversions_per_eqp,
-        conversion_minutes=req.conversion_minutes,
-    )
-    result["prod_keys"] = env_data["prod_keys"]
-    result["oper_ids"] = env_data["oper_ids"]
-    result["eqp_ids"] = env_data["eqp_ids"]
-    result["sim_end_minutes"] = env_data["sim_end_minutes"]
-    result["validation"] = validate_schedule_output(result, env_data)
-    save_result(
-        result, output_dir=CONFIG.path.output_dir, env_data=env_data,
-        fac_id=infer_meta["fac_id"], rule_timekey=infer_meta["rule_timekey"],
-    )
+        try:
+            validate_algorithm(req.algorithm)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        agent = None
+        if req.algorithm == "scheduling_rl":
+            try:
+                agent = SchedulingAgent.load(env_data=env_data)
+            except (FileNotFoundError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=str(exc),
+                ) from exc
+
+        result = run_inference(
+            env_data,
+            algorithm=req.algorithm,
+            agent=agent,
+            record_history=req.include_history,
+            record_decision_log=req.decision_log,
+            enable_wip_inflow=req.enable_wip_inflow,
+            max_conversions=req.max_conversions,
+            max_conversions_per_eqp=req.max_conversions_per_eqp,
+            conversion_minutes=req.conversion_minutes,
+        )
+        result["prod_keys"] = env_data["prod_keys"]
+        result["oper_ids"] = env_data["oper_ids"]
+        result["eqp_ids"] = env_data["eqp_ids"]
+        result["sim_end_minutes"] = env_data["sim_end_minutes"]
+        result["validation"] = validate_schedule_output(result, env_data)
+        save_result(
+            result, output_dir=CONFIG.path.output_dir, env_data=env_data,
+            fac_id=infer_meta["fac_id"], rule_timekey=infer_meta["rule_timekey"],
+        )
+    finally:
+        CONFIG.env.discrete_wait_enabled = original_discrete_wait_enabled
     try:
         load_output_sql_files(
             CONFIG.path.output_dir,
@@ -888,27 +902,33 @@ def inference_compare(req: CompareRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
 
+    original_discrete_wait_enabled = CONFIG.env.discrete_wait_enabled
+    if req.discrete_wait_enabled is not None:
+        CONFIG.env.discrete_wait_enabled = req.discrete_wait_enabled
     try:
-        env_data = _load_env_data(period_key=infer_meta["rule_timekey"])
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-    for algo in req.algorithms:
         try:
-            validate_algorithm(algo)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            env_data = _load_env_data(period_key=infer_meta["rule_timekey"])
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
-    payload = run_inference_compare(
-        env_data,
-        req.algorithms,
-        record_history=req.include_history,
-        record_decision_log=req.decision_log,
-        enable_wip_inflow=req.enable_wip_inflow,
-        max_conversions=req.max_conversions,
-        max_conversions_per_eqp=req.max_conversions_per_eqp,
-        conversion_minutes=req.conversion_minutes,
-    )
+        for algo in req.algorithms:
+            try:
+                validate_algorithm(algo)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        payload = run_inference_compare(
+            env_data,
+            req.algorithms,
+            record_history=req.include_history,
+            record_decision_log=req.decision_log,
+            enable_wip_inflow=req.enable_wip_inflow,
+            max_conversions=req.max_conversions,
+            max_conversions_per_eqp=req.max_conversions_per_eqp,
+            conversion_minutes=req.conversion_minutes,
+        )
+    finally:
+        CONFIG.env.discrete_wait_enabled = original_discrete_wait_enabled
     if not payload["results"]:
         raise HTTPException(
             status_code=400,
