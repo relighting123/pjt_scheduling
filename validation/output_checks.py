@@ -17,6 +17,19 @@ from typing import Dict, List, Optional
 from utils.helpers import effective_proc_time
 
 
+def _internal_lot_id(row: dict) -> str:
+    """시뮬레이터 내부 lot_id(=carrier 단위 키) 복원.
+
+    schedule의 row["LOT_ID"]는 논리(비즈니스) LOT_ID다(LOT_ID:CARRIER_ID = 1:N을
+    구분하기 위한 출력 스키마 수정 이후). proc_time_matrix/env_data["lots"]/
+    eqp_forced_queue는 여전히 내부 carrier 단위 키로 색인돼 있으므로, 이 값들과
+    매칭하려면 CARRIER_ID를 우선 사용해 내부 키를 다시 구해야 한다
+    (preprocess._carrier_instance_id와 동일 규칙: CARRIER_ID가 있으면 그것,
+    없으면 LOT_ID).
+    """
+    return row.get("CARRIER_ID") or row["LOT_ID"]
+
+
 def _eqp_can_process(env_data: dict, eqp_id: str, ppk: str, oper_id: str) -> bool:
     """simulation/simulator.py::SchedulingSimulator._eqp_can_process 와 동일한 판정 로직."""
     model = env_data.get("eqp_model_map", {}).get(eqp_id)
@@ -63,18 +76,18 @@ def check_processing_time(
     """실제 처리시간(END_TM-START_TM)이 입력 데이터 기대값과 다른 경우를 찾는다."""
     mismatches = []
     for row in schedule:
-        lot_id, eqp_id, oper_id, ppk = (
-            row["LOT_ID"], row["EQP_ID"], row["OPER_ID"], row["PLAN_PROD_ATTR_VAL"],
-        )
+        internal_lot_id = _internal_lot_id(row)
+        eqp_id, oper_id, ppk = row["EQP_ID"], row["OPER_ID"], row["PLAN_PROD_ATTR_VAL"]
         wf_qty = row.get("WF_QTY", 0)
         actual = row["END_TM"] - row["START_TM"]
-        expected = _expected_proc_time(env_data, lot_id, eqp_id, oper_id, ppk, wf_qty)
+        expected = _expected_proc_time(env_data, internal_lot_id, eqp_id, oper_id, ppk, wf_qty)
         if expected is None:
             # 근거 데이터 자체가 없는 경우는 check_eligibility()가 별도로 잡는다.
             continue
         if abs(actual - expected) > tolerance_minutes:
             mismatches.append({
-                "lot_id":             lot_id,
+                "lot_id":             row["LOT_ID"],
+                "carrier_id":         internal_lot_id,
                 "eqp_id":             eqp_id,
                 "oper_id":            oper_id,
                 "wf_qty":             wf_qty,
@@ -95,7 +108,7 @@ def check_forced_placement(schedule: List[dict], env_data: dict) -> List[dict]:
     home_eqp_by_lot = {
         lot_id: eqp_id for eqp_id, lot_ids in forced_queue.items() for lot_id in lot_ids
     }
-    actual_eqp_by_lot = {row["LOT_ID"]: row["EQP_ID"] for row in schedule}
+    actual_eqp_by_lot = {_internal_lot_id(row): row["EQP_ID"] for row in schedule}
     for lot_id, home_eqp in home_eqp_by_lot.items():
         actual_eqp = actual_eqp_by_lot.get(lot_id)
         if actual_eqp is not None and actual_eqp != home_eqp:
@@ -111,7 +124,9 @@ def check_forced_placement(schedule: List[dict], env_data: dict) -> List[dict]:
             (r for r in schedule if r["EQP_ID"] == eqp_id),
             key=lambda r: r["START_TM"],
         )
-        actual_order = [r["LOT_ID"] for r in eqp_rows if r["LOT_ID"] in expected_order]
+        actual_order = [
+            _internal_lot_id(r) for r in eqp_rows if _internal_lot_id(r) in expected_order
+        ]
         if actual_order != expected_order[:len(actual_order)]:
             violations.append({
                 "eqp_id":         eqp_id,
@@ -124,7 +139,7 @@ def check_forced_placement(schedule: List[dict], env_data: dict) -> List[dict]:
 
 def check_completeness(schedule: List[dict], env_data: dict, stats: dict) -> List[dict]:
     """입력 LOT 중 결과에 배정되지 않았고, 잔여 재공 통계로도 설명되지 않는 LOT을 찾는다."""
-    scheduled_lot_ids = {row["LOT_ID"] for row in schedule}
+    scheduled_lot_ids = {_internal_lot_id(row) for row in schedule}
     remaining_current_wip = stats.get("remaining_current_wip") or {}
     remaining_wip = stats.get("remaining_wip") or {}
 
@@ -138,7 +153,8 @@ def check_completeness(schedule: List[dict], env_data: dict, stats: dict) -> Lis
             # 시뮬레이션 종료 시점까지 대기 중인 재공으로 설명됨 (누락 아님)
             continue
         missing.append({
-            "lot_id":        lot_id,
+            "lot_id":        lot.get("logical_lot_id", lot_id),
+            "carrier_id":    lot_id,
             "PLAN_PROD_ATTR_VAL": lot["PLAN_PROD_ATTR_VAL"],
             "oper_id":       lot["oper_id"],
             "wf_qty":        lot.get("wf_qty"),
