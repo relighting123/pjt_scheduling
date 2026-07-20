@@ -26,6 +26,10 @@ from simulation.events import (
 )
 from utils.helpers import effective_proc_time
 
+# 강제 배정(PROC/LOAD/RESV/SELE) LOT에 abstract_arrange row도, discrete(실측) ST도
+# 전혀 없는 극단적 데이터 누락 상황에서만 쓰이는 최후 폴백 처리시간(분).
+FORCED_ASSIGNMENT_FALLBACK_ST_MINUTES = 60
+
 
 @dataclass(order=True)
 class SimEvent:
@@ -599,17 +603,26 @@ class SchedulingSimulator:
         return meta.get("lot_stat_cd", "WAIT")
 
     def _try_assign_staged_forced(self, eqp_id: str) -> bool:
-        """선부착(staged) 강제 carrier를 가공 슬롯이 비면 즉시 배정."""
+        """선부착(staged) 강제 carrier를 가공 슬롯이 비면 즉시 배정.
+
+        맨 앞 항목만 시도하면, 그 항목이 어떤 이유로든 배정 실패할 때 뒤에 대기
+        중인 다른 강제 carrier까지 영원히 막혀버린다. 큐 순서대로 하나씩 시도해
+        먼저 성공하는 것을 배정한다(실패한 항목은 staged에 그대로 남아 다음
+        idle 시점에 다시 시도된다).
+        """
         staged = self._eqp_staged_forced.get(eqp_id)
         if not staged:
             return False
         eqp = self.eqps.get(eqp_id)
         if eqp is None or eqp.status != "idle":
             return False
-        lot_id = staged[0]
         saved_eqp = self._current_eqp
         self._current_eqp = None
-        ok = self.assign_lot(eqp_id, lot_id) != -1.0
+        ok = False
+        for lot_id in list(staged):
+            if self.assign_lot(eqp_id, lot_id) != -1.0:
+                ok = True
+                break
         self._current_eqp = saved_eqp
         return ok
 
@@ -731,8 +744,14 @@ class SchedulingSimulator:
                 return True
         return False
 
-    def _assign_blocked(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
-        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 + 전환 횟수 제약."""
+    def _assign_blocked(self, eqp_id: str, lot_cd: str, temp: str, lot_stat_cd: str = "WAIT") -> bool:
+        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 + 전환 횟수 제약.
+
+        강제 배정(PROC/LOAD/RESV/SELE)은 물리적으로 이미 그 상태로 진행 중이므로
+        이 자유 스케줄링 제약들을 전부 우회하고 항상 배정 가능으로 본다.
+        """
+        if lot_stat_cd != "WAIT":
+            return False
         return (
             self._tool_cap_blocks(eqp_id, lot_cd, temp)
             or self._conversion_group_blocks(eqp_id, lot_cd, temp)
@@ -775,7 +794,7 @@ class SchedulingSimulator:
                     continue
                 lot_cd = lot.get("lot_cd", "")
                 temp = lot.get("temp", "")
-                if self._assign_blocked(eqp_id, lot_cd, temp):
+                if self._assign_blocked(eqp_id, lot_cd, temp, lot.get("lot_stat_cd", "WAIT")):
                     continue
                 score = self.earliest_st_combo_score(eqp_id, lot)
                 if score < best_score:
@@ -1264,16 +1283,21 @@ class SchedulingSimulator:
         feasible: set = set()
         buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
         for bucket_ppk, bucket_oper in buckets:
-            lot_id = self._auto_select_lot(eqp_id, [
+            bucket_lots = [
                 l for l in lots
                 if l["PLAN_PROD_ATTR_VAL"] == bucket_ppk and l["oper_id"] == bucket_oper
-            ])
+            ]
+            lot_id = self._auto_select_lot(eqp_id, bucket_lots)
             if lot_id is None:
                 continue
             lot_cd, temp = self._lot_cd_temp(
                 lot_id, self.lot_pool.get(lot_id), ppk=bucket_ppk, oper_id=bucket_oper,
             )
-            if self._assign_blocked(eqp_id, lot_cd, temp):
+            lot_stat_cd = next(
+                (l.get("lot_stat_cd", "WAIT") for l in bucket_lots if l["lot_id"] == lot_id),
+                "WAIT",
+            )
+            if self._assign_blocked(eqp_id, lot_cd, temp, lot_stat_cd):
                 continue
             feasible.add((bucket_ppk, bucket_oper))
         return feasible
@@ -1730,7 +1754,11 @@ class SchedulingSimulator:
         lot_cd, temp = self._lot_cd_temp(
             lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
         )
-        if self._assign_blocked(eqp_id, lot_cd, temp):
+        lot_stat_cd = next(
+            (l.get("lot_stat_cd", "WAIT") for l in lots if l["lot_id"] == lot_id),
+            "WAIT",
+        )
+        if self._assign_blocked(eqp_id, lot_cd, temp, lot_stat_cd):
             return -1.0
         return self.assign_lot(eqp_id, lot_id)
 
@@ -2199,11 +2227,13 @@ class SchedulingSimulator:
         proc_time = effective_proc_time(st_per_wafer, wf_qty)
 
         lot_cd, temp = self._lot_cd_temp(lot_id, ppk=ppk, oper_id=oper_id)
-        if self._assign_blocked(eqp_id, lot_cd, temp):
+        if self._assign_blocked(eqp_id, lot_cd, temp, lot_stat_cd):
             return -1.0
 
+        # 강제 배정(PROC/LOAD/RESV/SELE)은 물리적으로 이미 그 상태로 진행 중이므로
+        # abstract WIP 풀 카운트와 무관하게 항상 배정한다.
         wip = self._wip_for(ppk, oper_id)
-        if not wip or wip["wip_qty"] <= 0:
+        if lot_stat_cd == "WAIT" and (not wip or wip["wip_qty"] <= 0):
             return -1.0
 
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
@@ -2305,12 +2335,22 @@ class SchedulingSimulator:
             seq, wf_qty, carrier_id = lot.seq, lot.wf_qty, lot.carrier_id
             lot_stat_cd = lot.lot_stat_cd
 
-        row = self._abstract_row_for(eqp_id, ppk, oper_id)
-        if row is None:
-            return -1.0
-
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
         has_discrete = self._has_discrete_combo(eqp_id, lot_id, oper_id)
+
+        row = self._abstract_row_for(eqp_id, ppk, oper_id)
+        if row is None:
+            if lot_stat_cd == "WAIT":
+                return -1.0
+            # 강제 배정(PROC/LOAD/RESV/SELE)은 물리적으로 이미 그 상태로 진행 중이므로
+            # abstract_arrange에 (PPK,OPER,EQP_MODEL_CD) 조합이 없어도 배정을 막지 않는다
+            # — 실측(discrete) ST가 있으면 그걸 쓰고, 없으면 기본값으로 폴백한다.
+            row = {
+                "eqp_model": self._eqp_model_map.get(eqp_id, ""),
+                "proc_time": proc_time_matrix.get(
+                    (lot_id, eqp_id, oper_id), FORCED_ASSIGNMENT_FALLBACK_ST_MINUTES,
+                ),
+            }
 
         if lot_stat_cd == "WAIT" and CONFIG.env.discrete_wait_enabled:
             lot_cd, temp = self._lot_cd_temp(lot_id, lot, ppk=ppk, oper_id=oper_id)
