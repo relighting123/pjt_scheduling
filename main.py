@@ -301,6 +301,37 @@ def cmd_db_load(
     )
 
 
+def _inference_summary_kpi(result: dict) -> dict:
+    """CLI 요약 출력용 makespan/계획 달성률.
+
+    프론트엔드 computeInferenceKpi()의 makespan/avgAchPct와 동일 정의
+    (D0_PLAN_QTY 기준, (PPK,OPER) 버킷별 달성률을 100% 상한으로 평균).
+    """
+    schedule = result.get("schedule", [])
+    makespan = max((r["END_TM"] for r in schedule), default=0)
+
+    done: dict = {}
+    for r in schedule:
+        key = (r.get("PLAN_PROD_ATTR_VAL", ""), r.get("OPER_ID", ""))
+        done[key] = done.get(key, 0) + (r.get("WF_QTY") or 25)
+
+    plan_qty: dict = {}
+    for p in result.get("plan", []):
+        key = (p.get("PLAN_PROD_ATTR_VAL", ""), p.get("oper_id", ""))
+        plan_qty[key] = plan_qty.get(key, 0) + p.get("d0_plan_qty", 0)
+
+    if plan_qty:
+        pcts = [
+            min(done.get(key, 0) / max(qty, 1) * 100, 100)
+            for key, qty in plan_qty.items()
+        ]
+        achievement_pct = sum(pcts) / len(pcts)
+    else:
+        achievement_pct = 0.0
+
+    return {"makespan": makespan, "achievement_pct": achievement_pct}
+
+
 def cmd_inference(
     fac_id: str,
     rule_timekey: str = None,
@@ -416,7 +447,11 @@ def cmd_inference(
         fac_id=fac_id, rule_timekey=rtk,
     )
     stats = result["stats"]
+    kpi = _inference_summary_kpi(result)
     print(f"  배정 LOT 수:    {len(result['schedule'])}")
+    print(f"  계획 달성률:    {kpi['achievement_pct']:.1f}%")
+    print(f"  Makespan:       {kpi['makespan']}분")
+    print(f"  Tool 교체횟수:  {stats['conversions']}")
     print(f"  공정 전환 횟수: {stats['oper_switches']}")
     print(f"  제품 전환 횟수: {stats['prod_switches']}")
     print(f"  Idle 합계:      {stats['idle_total']}분")
