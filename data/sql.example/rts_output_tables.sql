@@ -1,11 +1,11 @@
 -- @db: Prd
 -- RTS 추론 결과 적재 테이블
--- (RTS_RSLT_INF: 매 회차 동일 FAC_ID 전체 교체(최신 결과만 유지), RTS_EQPCONVPLAN_INF/HIS: 누적, HIS: 이력 누적)
+-- (RTS_RSLT_MAS: 매 회차 동일 FAC_ID 전체 교체(최신 결과만 유지), RTS_EQPCONVPLAN_INF/HIS: 누적, HIS: 이력 누적)
 -- 최초 1회: python main.py db-load --ddl-only
 -- 또는:     python main.py db-load --ddl --facid FAC001 --split infer
 
 -- ── 스케줄 결과 (가공 계획) ────────────────────────────────────────────────
-CREATE TABLE RTS_RSLT_INF (
+CREATE TABLE RTS_RSLT_MAS (
     FAC_ID          VARCHAR2(32)   NOT NULL,
     RULE_TIMEKEY    VARCHAR2(14)   NOT NULL,
     LOT_CD          VARCHAR2(64)   NOT NULL,
@@ -29,11 +29,11 @@ CREATE TABLE RTS_RSLT_INF (
     FUNCTION_NM     VARCHAR2(64)   DEFAULT 'TEST' NOT NULL,
     CRT_USER_ID     VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
     CRT_TM          TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
-    CONSTRAINT PK_RTS_RSLT_INF PRIMARY KEY (FAC_ID, RULE_TIMEKEY, EQP_ID, SEQ_NO)
+    CONSTRAINT PK_RTS_RSLT_MAS PRIMARY KEY (FAC_ID, RULE_TIMEKEY, EQP_ID, SEQ_NO)
 );
 
-CREATE INDEX IX_RTS_RSLT_INF_FAC ON RTS_RSLT_INF (FAC_ID, RULE_TIMEKEY);
-CREATE INDEX IX_RTS_RSLT_INF_LOT ON RTS_RSLT_INF (LOT_ID);
+CREATE INDEX IX_RTS_RSLT_MAS_FAC ON RTS_RSLT_MAS (FAC_ID, RULE_TIMEKEY);
+CREATE INDEX IX_RTS_RSLT_MAS_LOT ON RTS_RSLT_MAS (LOT_ID);
 
 -- PRODUCE_QTY/PLAN_QTY는 RULE_TIMEKEY(07:00) 기준 당일 값이며, 다음 07:00에는
 -- 그 다음 날 계획으로 넘어간다(누적되지 않음).

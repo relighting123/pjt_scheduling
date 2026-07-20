@@ -17,7 +17,7 @@ from data.writer.rts_sql import build_writer_sql_scripts, write_sql
 from utils.file_logger import get_daily_file_logger
 
 _DDL_FILE = "rts_output_tables.sql"
-_INF_SCRIPTS = ("rts_rslt_inf.sql", "rts_eqpconvplan_inf.sql")
+_INF_SCRIPTS = ("rts_rslt_mas.sql", "rts_eqpconvplan_inf.sql")
 _HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
 # save_kpi 옵션 켰을 때만 생성되는 스크립트 — 있으면 적재, 없으면 조용히 생략
 _OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql")
@@ -153,7 +153,7 @@ def load_output_sql_files(
     """
     dataset .../output/sql/*.sql 을 Oracle에 실행.
 
-    RTS_RSLT_INF는 동일 FAC_ID 기준 전체 DELETE 후 INSERT하여 항상 최신 결과만
+    RTS_RSLT_MAS는 동일 FAC_ID 기준 전체 DELETE 후 INSERT하여 항상 최신 결과만
     남긴다(writer 생성 SQL, RULE_TIMEKEY 무관). RTS_EQPCONVPLAN_INF는 동일
     FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT한다(같은 회차 재실행 시
     JOB_ID 중복/PK 위반 방지, 다른 회차 결과는 계속 누적).
