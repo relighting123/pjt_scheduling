@@ -402,11 +402,14 @@ def cmd_inference(
             print(f"    · [투입불가] LOT={v['lot_id']} EQP={v['eqp_id']} OPER={v['oper_id']}")
         for m in validation["proc_time_mismatches"][:10]:
             print(
-                f"    · [처리시간불일치] LOT={m['lot_id']} EQP={m['eqp_id']} "
-                f"기대={m['expected_proc_time']}분 실제={m['actual_proc_time']}분"
+                f"    · [처리시간불일치] LOT={m['lot_id']} CARRIER={m.get('carrier_id', '')} "
+                f"EQP={m['eqp_id']} 기대={m['expected_proc_time']}분 실제={m['actual_proc_time']}분"
             )
         for u in validation["unassigned_lots"][:10]:
-            print(f"    · [미배정] LOT={u['lot_id']} PPK={u['PLAN_PROD_ATTR_VAL']} OPER={u['oper_id']}")
+            print(
+                f"    · [미배정] LOT={u['lot_id']} CARRIER={u.get('carrier_id', '')} "
+                f"PPK={u['PLAN_PROD_ATTR_VAL']} OPER={u['oper_id']}"
+            )
 
     path = save_result(result, env_data=env_data, write_kpi=save_kpi)
     stats = result["stats"]
