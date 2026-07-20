@@ -67,7 +67,7 @@ from validation.runner import run_validation
 from validation.output_checks import validate_schedule_output
 
 
-def _load_env_data(folder: str) -> dict:
+def _load_env_data(folder: str, period_key: str = None) -> dict:
     set_input_folder(folder)
     raw = load_data()
     errors = validate_data(raw)
@@ -75,7 +75,7 @@ def _load_env_data(folder: str) -> dict:
         for e in errors:
             print(f"  [오류] {e}")
         sys.exit(1)
-    env_data = preprocess(raw)
+    env_data = preprocess(raw, period_key=period_key)
     print(
         f"  EQP: {len(env_data['eqp_ids'])}대  "
         f"LOT: {len(env_data['lots'])}개  "
@@ -353,7 +353,7 @@ def cmd_inference(
 
     print("=" * 60)
     print("[inference] 데이터 로드 및 전처리")
-    env_data = _load_env_data(f"{fac_id}/infer")
+    env_data = _load_env_data(f"{fac_id}/infer", period_key=rtk)
 
     print("=" * 60)
     print("[inference] 추론 실행")
@@ -411,7 +411,10 @@ def cmd_inference(
                 f"PPK={u['PLAN_PROD_ATTR_VAL']} OPER={u['oper_id']}"
             )
 
-    path = save_result(result, env_data=env_data, write_kpi=save_kpi)
+    path = save_result(
+        result, env_data=env_data, write_kpi=save_kpi,
+        fac_id=fac_id, rule_timekey=rtk,
+    )
     stats = result["stats"]
     print(f"  배정 LOT 수:    {len(result['schedule'])}")
     print(f"  공정 전환 횟수: {stats['oper_switches']}")

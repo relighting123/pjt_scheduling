@@ -77,7 +77,7 @@ def _require_input_files(input_dir: Path) -> None:
         raise FileNotFoundError(format_missing_input_file_error(input_dir, required))
 
 
-def _load_env_data() -> dict:
+def _load_env_data(period_key: Optional[str] = None) -> dict:
     global _env_data_cache, _data_warnings
     if _env_data_cache is not None:
         return _env_data_cache
@@ -111,7 +111,7 @@ def _load_env_data() -> dict:
         raise HTTPException(status_code=400, detail={"errors": hard})
     _data_warnings = soft  # 소프트 경고는 저장하고 계속 진행
     try:
-        _env_data_cache = preprocess(raw)
+        _env_data_cache = preprocess(raw, period_key=period_key)
     except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
         raise HTTPException(
             status_code=400,
@@ -172,6 +172,8 @@ def _prepare_infer_input(
     infer_folder = f"{resolved_fac}/infer"
     set_input_folder(infer_folder)
     _env_data_cache = None
+
+    print(f"[inference] FAC={resolved_fac}  RULE_TIMEKEY={rtk}")
 
     return {
         "fac_id": resolved_fac,
@@ -810,7 +812,7 @@ def inference(req: InferenceRequest):
         raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
 
     try:
-        env_data = _load_env_data()
+        env_data = _load_env_data(period_key=infer_meta["rule_timekey"])
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -845,7 +847,10 @@ def inference(req: InferenceRequest):
     result["eqp_ids"] = env_data["eqp_ids"]
     result["sim_end_minutes"] = env_data["sim_end_minutes"]
     result["validation"] = validate_schedule_output(result, env_data)
-    save_result(result, output_dir=CONFIG.path.output_dir, env_data=env_data)
+    save_result(
+        result, output_dir=CONFIG.path.output_dir, env_data=env_data,
+        fac_id=infer_meta["fac_id"], rule_timekey=infer_meta["rule_timekey"],
+    )
     try:
         load_output_sql_files(
             CONFIG.path.output_dir,
@@ -884,7 +889,7 @@ def inference_compare(req: CompareRequest):
         raise HTTPException(status_code=500, detail=f"DB 조회 실패: {e}")
 
     try:
-        env_data = _load_env_data()
+        env_data = _load_env_data(period_key=infer_meta["rule_timekey"])
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

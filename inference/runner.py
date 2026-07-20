@@ -274,6 +274,8 @@ def save_result(
     *,
     write_sql: bool = True,
     write_kpi: bool = False,
+    fac_id: Optional[str] = None,
+    rule_timekey: Optional[str] = None,
 ) -> Path:
     """
     추론 결과 저장:
@@ -281,6 +283,9 @@ def save_result(
       - result_full.json : UI·디버그용 전체 결과
 
     write_kpi=True: KPI(RTS_PERFMON_HIS), 검증 집계(RTS_VALIDATION) 도 output.json/sql에 포함 (옵션).
+    fac_id/rule_timekey: 데이터 조회(fetch) 시점에 확정된 값을 그대로 전달해야
+        output.json의 meta.RULE_TIMEKEY가 저장 시점이 아닌 조회 시점 기준으로 기록된다
+        (미지정 시 write_inference_result가 폴더명 파싱 → 현재 시각 순으로 폴백).
     """
     d = output_dir or CONFIG.path.infer_output_dir
     d.mkdir(parents=True, exist_ok=True)
@@ -289,6 +294,7 @@ def save_result(
     if env_data is not None:
         writer_path = write_inference_result(
             result, env_data, output_dir=d, write_sql_files=write_sql, write_kpi=write_kpi,
+            fac_id=fac_id, rule_timekey=rule_timekey,
         )
 
     full_path = d / f"{result_name}_full.json"
