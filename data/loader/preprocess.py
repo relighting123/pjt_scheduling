@@ -9,7 +9,7 @@ from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
 from utils.helpers import (
-    build_index_map, coerce_int, effective_proc_time, FORCED_LOT_STAT_ORDER,
+    build_index_map, coerce_int, effective_proc_time, FORCED_LOT_STAT_CDS, FORCED_LOT_STAT_ORDER,
     normalize_lot_stat_cd, normalize_tool_capacity_rows, split_wf_qty,
 )
 
@@ -309,7 +309,11 @@ def _apply_wafer_lot_split(
     split_lookup: Dict[Tuple[str, str, str], int],
     eqp_forced_queue: Optional[Dict[str, List[str]]] = None,
 ) -> None:
-    """PPK×OPER×MODEL SPLIT_QTY 규칙에 따라 LOT을 wafer sub-lot으로 분할"""
+    """PPK×OPER×MODEL SPLIT_QTY 규칙에 따라 LOT을 wafer sub-lot으로 분할.
+
+    LOT_STAT_CD가 PROC/LOAD/RESV/SELE(이미 확정된 재공)이면 분할하지 않고
+    지정된 EQP_ID에 원래 수량 그대로 배정한다.
+    """
     if not split_lookup:
         return
 
@@ -317,6 +321,9 @@ def _apply_wafer_lot_split(
 
     for parent_id in list(lot_info.keys()):
         info = lot_info[parent_id]
+        if info.get("lot_stat_cd", "WAIT") in FORCED_LOT_STAT_CDS:
+            # PROC/LOAD/RESV/SELE: 이미 확정된 재공 — 지정 EQP_ID에 그대로(분할 없이) 배정
+            continue
         wf = coerce_int(info["wf_qty"], field="wf_qty")
         model = eqp_model_map[info["original_eqp"]]
         split_qty = _resolve_split_qty(
