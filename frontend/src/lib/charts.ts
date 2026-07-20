@@ -1769,7 +1769,10 @@ function inflowHoverLines(records: GanttBarSegment["records"], baseMs: number | 
     .filter((t) => t > 0);
   if (inflowTimes.length === 0) return "";
 
-  const lines: string[] = ["─────────────────", "유형: 유입 재공"];
+  // 박스 드로잉 문자(─)는 폰트에 따라 글리프가 없어 폴백 폰트로 렌더링되며,
+  // Plotly 툴팁의 여러 줄 tspan 수직 위치 계산이 그 줄만 어긋나 글자가 말풍선
+  // 밖으로 밀려나는 렌더링 버그를 유발할 수 있다 — 순수 ASCII로 대체.
+  const lines: string[] = ["-----------------", "유형: 유입 재공"];
   const minT = Math.min(...inflowTimes);
   const maxT = Math.max(...inflowTimes);
   const minLabel = formatGanttMinuteLabel(minT, baseMs);
@@ -1804,7 +1807,7 @@ function segmentHoverTemplate(
       (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
       `EQP: ${rec.EQP_ID}<br>` +
       `제품: ${prodLabel} (${rec.PLAN_PROD_ATTR_VAL})<br>` +
-      `공정: ${operLabel}<br>` +
+      `공정: ${operLabel} (${oper})<br>` +
       (rec.LOT_STAT_CD ? `상태: ${rec.LOT_STAT_CD}<br>` : "") +
       `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
       inflowLines +
@@ -1818,7 +1821,7 @@ function segmentHoverTemplate(
 
   return (
     `<b>제품: ${prodLabel}</b> (${first.PLAN_PROD_ATTR_VAL})<br>` +
-    `공정: ${operLabel}<br>` +
+    `공정: ${operLabel} (${oper})<br>` +
     `EQP: ${first.EQP_ID}<br>` +
     `병합 LOT ${records.length}건: ${lotSummary}<br>` +
     `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
