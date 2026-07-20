@@ -282,6 +282,12 @@ def _carrier_instance_id(row: dict) -> str:
     return carrier_id if carrier_id else lot_id
 
 
+def _row_is_discrete_wait(row: dict) -> bool:
+    """discrete_arrange 행의 LOT_STAT_CD가 WAIT(강제 배정 아님)인지."""
+    carrier_id = _carrier_instance_id(row)
+    return normalize_lot_stat_cd(row.get("LOT_STAT_CD"), lot_id=carrier_id) == "WAIT"
+
+
 def _build_tool_capacity_map(
     tool_raw: List[dict],
     lot_cds: List[str],
@@ -488,10 +494,15 @@ def _rebuild_eqp_oper_cap(
     discrete_raw: List[dict],
     lot_info: Dict[str, dict],
 ) -> Dict[str, List[str]]:
+    """discrete_wait_enabled=False면 WAIT LOT의 실적으로는 EQP 가능 OPER을 넓히지
+    않는다(abstract_arrange_map 모델 매칭만으로 판정하도록)."""
+    discrete_wait_enabled = CONFIG.env.discrete_wait_enabled
     cap: Dict[str, List[str]] = {}
     for r in discrete_raw:
-        lid = r["LOT_ID"]
+        lid = _carrier_instance_id(r)
         if lid not in lot_info:
+            continue
+        if not discrete_wait_enabled and lot_info[lid].get("lot_stat_cd", "WAIT") == "WAIT":
             continue
         eid = r["EQP_ID"]
         oper_id = lot_info[lid]["oper_id"]
@@ -559,12 +570,17 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     prod_idx = build_index_map(prod_keys)
 
     # discrete_arrange로 EQP별 LOT 및 WF_QTY 조회
+    # discrete_wait_enabled=False면 WAIT LOT은 특정 EQP에 고정하지 않는다
+    # (수량/제품/공정 정체성은 유지한 채 abstract 매칭 경로만 태움).
+    discrete_wait_enabled = CONFIG.env.discrete_wait_enabled
     avail_map: Dict[Tuple[str, str], int] = {}
     eqp_lot_map: Dict[str, List[str]] = {}
     for r in discrete_raw:
         carrier_id = _carrier_instance_id(r)
         key = (r["EQP_ID"], carrier_id)
         avail_map[key] = coerce_int(r["WF_QTY"], field="WF_QTY")
+        if not discrete_wait_enabled and _row_is_discrete_wait(r):
+            continue
         eqp_lot_map.setdefault(r["EQP_ID"], [])
         if carrier_id not in eqp_lot_map[r["EQP_ID"]]:
             eqp_lot_map[r["EQP_ID"]].append(carrier_id)
@@ -643,9 +659,13 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         flow_list[ppk].sort(key=lambda x: x["seq_id"])
 
     # ── (LOT, EQP, OPER) 조합별 처리시간 행렬 ───────────────────────────────────
+    # discrete_wait_enabled=False면 WAIT LOT은 discrete ST/EQP 조합을 만들지 않고
+    # abstract 평균 ST(아래 fallback)로만 처리한다.
     proc_time_matrix: Dict[Tuple[str, str, str], int] = {}
     for r in discrete_raw:
         lid = _carrier_instance_id(r)
+        if not discrete_wait_enabled and lot_info.get(lid, {}).get("lot_stat_cd", "WAIT") == "WAIT":
+            continue
         eid = r["EQP_ID"]
         oper_id = r.get("OPER_ID") or lot_info.get(lid, {}).get("oper_id", "")
         pt = _coerce_proc_time(r.get("ST"))
@@ -669,11 +689,15 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         )
 
     # ── EQP → 처리 가능 OPER 집합 ────────────────────────────────────────────
+    # discrete_wait_enabled=False면 WAIT LOT의 실적으로는 EQP 가능 OPER을 넓히지
+    # 않는다(abstract_arrange_map 모델 매칭만으로 판정하도록).
     eqp_oper_cap: Dict[str, List[str]] = {}
     for r in discrete_raw:
         eid = r["EQP_ID"]
         lid = _carrier_instance_id(r)
         if lid in lot_info:
+            if not discrete_wait_enabled and lot_info[lid].get("lot_stat_cd", "WAIT") == "WAIT":
+                continue
             oper_id = lot_info[lid]["oper_id"]
             eqp_oper_cap.setdefault(eid, [])
             if oper_id not in eqp_oper_cap[eid]:
