@@ -1070,10 +1070,23 @@ class SchedulingSimulator:
         기존 셋업 기준 discrete 조합이 더는 유효하지 않으므로).
 
         강제 배정 LOT(PROC/LOAD/RESV/SELE)과 discrete_wait_enabled=False인
-        경우는 이 제약과 무관하게 항상 통과한다(기존 abstract 폴백 유지)."""
+        경우는 이 제약과 무관하게 항상 통과한다(기존 abstract 폴백 유지).
+
+        유입 재공(현재 (LOT, PPK, OPER) 조합이 RULE_TIMEKEY 시점 초기 스냅샷에
+        없음 — 시뮬 도중 다음 공정으로 흘러들어온 carrier)도 이 제약에서
+        제외한다. lot_id는 공정이 바뀌어도 그대로 유지되므로 lot["is_initial_wip"]
+        (lot_id 단위 플래그)만으로는 "그 공정으로 흘러들어온 지금 이 조합"을
+        구분할 수 없다 — 반드시 (lot_id, ppk, oper_id) 3요소로 판단해야 한다.
+        아직 실제 MES에 그 공정 조합으로 존재한 적이 없어 discrete(실측)
+        데이터가 구조적으로 있을 수 없기 때문 — 이 요건을 그대로 적용하면
+        이미 맞는 셋업의 EQP는 후보에서 배제되고, 셋업이 다른 EQP가 불필요한
+        전환까지 해가며 대신 가져가는 결과가 된다."""
         if lot.get("lot_stat_cd", "WAIT") != "WAIT":
             return True
         if not CONFIG.env.discrete_wait_enabled:
+            return True
+        wip_key = (lot.get("lot_id"), lot.get("PLAN_PROD_ATTR_VAL"), lot.get("oper_id"))
+        if wip_key not in self._initial_wip_lot_keys:
             return True
         eqp = self.eqps.get(eqp_id)
         if eqp is None or eqp.prev_lot_cd is None:
@@ -2357,9 +2370,13 @@ class SchedulingSimulator:
             eqp = self.eqps.get(eqp_id)
             needs_conv = self._would_need_conversion(eqp_id, lot_cd, temp)
             first_setup = eqp is None or eqp.prev_lot_cd is None
-            if needs_conv or first_setup:
-                # 전환 발생 시엔 기존 셋업 기준 discrete 조합이 더는 유효하지
-                # 않으므로 abstract(모델 평균 ST)만 참조한다.
+            # 유입 재공(현재 (lot_id,ppk,oper_id)이 RULE_TIMEKEY 시점 초기 스냅샷에
+            # 없음): 그 공정 조합으로 discrete 데이터가 구조적으로 있을 수 없다
+            # (_lot_conv_discrete_eligible과 동일 판단 — 둘 다 일관되게 예외 처리).
+            is_inflowed = (lot_id, ppk, oper_id) not in self._initial_wip_lot_keys
+            if needs_conv or first_setup or is_inflowed:
+                # 전환 발생/첫 배정/유입 재공이면 기존 셋업 기준 discrete 조합을
+                # 참조할 수 없으므로 abstract(모델 평균 ST)만 사용한다.
                 is_abstract = True
                 st_per_wafer = row["proc_time"]
             else:

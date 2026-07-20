@@ -25,7 +25,9 @@ from agent.rl_agent import SchedulingAgent
 from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
 from validation.output_checks import validate_schedule_output
-from api.serializers import serialize_inference_result, serialize_compare_response
+from api.serializers import (
+    env_data_summary, empty_data_summary, serialize_inference_result, serialize_compare_response,
+)
 from api.test_benchmark_store import (
     load_benchmark,
     save_benchmark,
@@ -715,6 +717,27 @@ def get_config():
             "discrete_wait_enabled": CONFIG.env.discrete_wait_enabled,
         },
     }
+
+
+@app.get("/api/data/summary")
+def data_summary():
+    try:
+        env_data = _load_env_data()
+    except FileNotFoundError:
+        return empty_data_summary()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errors": [str(e)],
+                "hint": f"데이터 요약 실패. input 폴더를 확인하세요: {CONFIG.path.input_dir}",
+            },
+        ) from e
+    result = env_data_summary(env_data)
+    result["warnings"] = _data_warnings  # 소프트 경고 포함
+    return result
 
 
 @app.post("/api/config/input")
