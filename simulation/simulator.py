@@ -771,6 +771,8 @@ class SchedulingSimulator:
 
         for eqp_id in self.get_idle_eqps():
             for lot in self.available_lots(eqp_id):
+                if not self._lot_conv_discrete_eligible(eqp_id, lot):
+                    continue
                 lot_cd = lot.get("lot_cd", "")
                 temp = lot.get("temp", "")
                 if self._assign_blocked(eqp_id, lot_cd, temp):
@@ -1040,6 +1042,28 @@ class SchedulingSimulator:
 
     def _has_discrete_combo(self, eqp_id: str, lot_id: str, oper_id: str) -> bool:
         return (lot_id, eqp_id, oper_id) in self._env_data.get("proc_time_matrix", {})
+
+    def _lot_conv_discrete_eligible(self, eqp_id: str, lot: dict) -> bool:
+        """전환이 필요 없는 WAIT LOT은 discrete(EQP×carrier 정밀 조합)이 있어야만
+        배정 가능하다 — 같은 (ppk,oper)라도 carrier별 실제 가능 여부가 다를 수
+        있어 abstract(모델 매칭) 하나만으로는 불충분하다. 전환이 필요한 경우엔
+        반대로 discrete를 참조하지 않고 abstract 기준으로만 판단한다(전환 시
+        기존 셋업 기준 discrete 조합이 더는 유효하지 않으므로).
+
+        강제 배정 LOT(PROC/LOAD/RESV/SELE)과 discrete_wait_enabled=False인
+        경우는 이 제약과 무관하게 항상 통과한다(기존 abstract 폴백 유지)."""
+        if lot.get("lot_stat_cd", "WAIT") != "WAIT":
+            return True
+        if not CONFIG.env.discrete_wait_enabled:
+            return True
+        eqp = self.eqps.get(eqp_id)
+        if eqp is None or eqp.prev_lot_cd is None:
+            return True  # 첫 배정(기존 셋업 없음) — 전환 비교 대상이 없어 abstract 허용
+        lot_cd = lot.get("lot_cd", "")
+        temp = lot.get("temp", "")
+        if self._would_need_conversion(eqp_id, lot_cd, temp):
+            return True
+        return not lot.get("is_abstract", True)
 
     def get_remaining_arrange_actual(self) -> List[dict]:
         """
@@ -1668,6 +1692,10 @@ class SchedulingSimulator:
         if not candidates:
             return None
 
+        candidates = [c for c in candidates if self._lot_conv_discrete_eligible(eqp_id, c)]
+        if not candidates:
+            return None
+
         ppk = candidates[0].get("PLAN_PROD_ATTR_VAL", "")
         oper_id = candidates[0].get("oper_id", "")
         active_logical_lots = self._active_logical_lot_ids(ppk, oper_id)
@@ -2283,8 +2311,26 @@ class SchedulingSimulator:
 
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
         has_discrete = self._has_discrete_combo(eqp_id, lot_id, oper_id)
-        is_abstract = not has_discrete
-        st_per_wafer = proc_time_matrix.get((lot_id, eqp_id, oper_id), row["proc_time"])
+
+        if lot_stat_cd == "WAIT" and CONFIG.env.discrete_wait_enabled:
+            lot_cd, temp = self._lot_cd_temp(lot_id, lot, ppk=ppk, oper_id=oper_id)
+            eqp = self.eqps.get(eqp_id)
+            needs_conv = self._would_need_conversion(eqp_id, lot_cd, temp)
+            first_setup = eqp is None or eqp.prev_lot_cd is None
+            if needs_conv or first_setup:
+                # 전환 발생 시엔 기존 셋업 기준 discrete 조합이 더는 유효하지
+                # 않으므로 abstract(모델 평균 ST)만 참조한다.
+                is_abstract = True
+                st_per_wafer = row["proc_time"]
+            else:
+                # 전환 없음 → EQP×carrier 정밀 조합(discrete)이 있어야만 배정 가능.
+                if not has_discrete:
+                    return -1.0
+                is_abstract = False
+                st_per_wafer = proc_time_matrix[(lot_id, eqp_id, oper_id)]
+        else:
+            is_abstract = not has_discrete
+            st_per_wafer = proc_time_matrix.get((lot_id, eqp_id, oper_id), row["proc_time"])
 
         oper_in_time = meta.get("oper_in_time", 0)
         reward = self._execute_assignment(
