@@ -22,12 +22,17 @@ def write_inference_result(
     *,
     write_sql_files: bool = True,
     write_kpi: bool = False,
+    fac_id: Optional[str] = None,
+    rule_timekey: Optional[str] = None,
 ) -> Path:
     """
     추론 결과 → output.json + sql/*.sql (Oracle 적재용).
 
     write_kpi=True: RTS_PERFMON_HIS(KPI), RTS_VALIDATION(투입 불가 장비 재공 선택 집계)
         행도 output.json/sql에 포함.
+    fac_id/rule_timekey: 데이터 조회(fetch) 시점의 값을 전달하면 meta.RULE_TIMEKEY에
+        그대로 쓰인다. 미지정 시 build_rts_output이 입력 폴더명 → 현재 시각 순으로
+        폴백한다(infer 폴더는 기간 하위 폴더가 없어 결국 저장 시각으로 폴백함에 주의).
 
     Returns:
         output.json 경로
@@ -35,7 +40,9 @@ def write_inference_result(
     d = output_dir or CONFIG.path.output_dir
     d.mkdir(parents=True, exist_ok=True)
 
-    payload = build_rts_output(result, env_data, include_kpi=write_kpi)
+    payload = build_rts_output(
+        result, env_data, fac_id=fac_id, rule_timekey=rule_timekey, include_kpi=write_kpi,
+    )
     out_path = d / CONFIG.path.output_file
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
