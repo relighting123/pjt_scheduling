@@ -380,10 +380,10 @@ def _apply_wafer_lot_split(
 
     expanded_avail: List[dict] = []
     for r in discrete_raw:
-        lot_id = r["LOT_ID"]
-        if lot_id in split_children:
+        parent_id = _carrier_instance_id(r)
+        if parent_id in split_children:
             parent_carrier = r.get("CARRIER_ID", "")
-            for i, (cid, qty) in enumerate(split_children[lot_id], start=1):
+            for i, (cid, qty) in enumerate(split_children[parent_id], start=1):
                 row = dict(r)
                 row["LOT_ID"]     = cid
                 row["WF_QTY"]     = qty
