@@ -50,11 +50,19 @@ def resolve_writer_meta(
     }
 
 
-def _eligible_eqp_ids(ppk: str, oper_id: str, env_data: dict) -> List[str]:
-    """(PPK,OPER) 투입 가능 EQP 목록 — simulator._eqp_can_process()와 동일 규칙.
+def _build_discrete_eqp_index(env_data: dict) -> Dict[tuple, List[str]]:
+    """proc_time_matrix(lot_id, eqp_id, oper_id) → (lot_id, oper_id)별 discrete EQP_ID 목록."""
+    index: Dict[tuple, List[str]] = defaultdict(list)
+    for (lot_id, eqp_id, oper_id) in env_data.get("proc_time_matrix", {}):
+        index[(lot_id, oper_id)].append(eqp_id)
+    return {k: sorted(v) for k, v in index.items()}
 
-    abstract_arrange_map(EQP 모델 매칭) 또는 eqp_oper_cap(discrete 실적으로 확인된
-    EQP별 가능 OPER) 중 하나라도 해당하면 투입 가능으로 본다.
+
+def _abstract_eligible_eqp_ids(ppk: str, oper_id: str, env_data: dict) -> List[str]:
+    """(PPK,OPER) 모델 매칭 기준 투입 가능 EQP 목록 — discrete 조합이 전혀 없는 순수
+    abstract 재공에만 쓰는 fallback. abstract_arrange_map(EQP 모델) 또는
+    eqp_oper_cap(discrete 실적으로 확인된 EQP별 가능 OPER) 중 하나라도 해당하면
+    투입 가능으로 본다(simulator._eqp_can_process()와 동일 규칙).
     """
     eqp_model_map = env_data.get("eqp_model_map", {})
     arrange_map = env_data.get("abstract_arrange_map", {})
@@ -66,11 +74,27 @@ def _eligible_eqp_ids(ppk: str, oper_id: str, env_data: dict) -> List[str]:
     return sorted(eligible)
 
 
-def _prgs_enable_eqp_lval(ppk: str, oper_id: str, env_data: dict, cache: dict) -> str:
-    """PRGS_ENABLE_EQP_LVAL: 해당 재공이 투입 가능한 EQP_ID 목록(콤마 구분, 4000자 제한)."""
+def _prgs_enable_eqp_lval(
+    internal_lot_id: str,
+    ppk: str,
+    oper_id: str,
+    env_data: dict,
+    discrete_index: Dict[tuple, List[str]],
+    cache: dict,
+) -> str:
+    """PRGS_ENABLE_EQP_LVAL: 해당 재공이 투입 가능한 EQP_ID 목록(콤마 구분, 4000자 제한).
+
+    이 LOT에 discrete_arrange로 명시된 (lot_id, eqp_id, oper_id) 조합이 있으면 그
+    EQP들만 사용한다(실제 discrete 조건 그대로 — LOT마다 다르게 나와야 정상).
+    그런 조합이 전혀 없는 순수 abstract 재공일 때만 (PPK,OPER) 모델 매칭으로 대체한다.
+    """
+    discrete_eqps = discrete_index.get((internal_lot_id, oper_id))
+    if discrete_eqps:
+        return ",".join(discrete_eqps)[:4000]
+
     key = (ppk, oper_id)
     if key not in cache:
-        cache[key] = ",".join(_eligible_eqp_ids(ppk, oper_id, env_data))[:4000]
+        cache[key] = ",".join(_abstract_eligible_eqp_ids(ppk, oper_id, env_data))[:4000]
     return cache[key]
 
 
@@ -86,6 +110,7 @@ def _build_rts_rslt_rows(
         by_eqp[rec["EQP_ID"]].append(rec)
 
     plan_meta = env_data.get("plan_meta", {})
+    discrete_eqp_index = _build_discrete_eqp_index(env_data)
     eqp_lval_cache: dict = {}
 
     rows: List[dict] = []
@@ -94,6 +119,9 @@ def _build_rts_rslt_rows(
         for seq_no, rec in enumerate(ordered, start=1):
             ppk = rec["PLAN_PROD_ATTR_VAL"]
             oper_id = rec.get("OPER_ID", "")
+            # 시뮬레이터 내부 lot_id(=carrier 단위 키) 복원: CARRIER_ID가 있으면 그것이
+            # 곧 내부 키이고(preprocess._carrier_instance_id와 동일 규칙), 없으면 LOT_ID.
+            internal_lot_id = rec.get("CARRIER_ID") or rec["LOT_ID"]
             rows.append({
                 "FAC_ID":         meta["FAC_ID"],
                 "RULE_TIMEKEY":   meta["RULE_TIMEKEY"],
@@ -110,7 +138,9 @@ def _build_rts_rslt_rows(
                 "FLOW_ID":        ppk,
                 "WF_QTY":         int(rec.get("WF_QTY", 0)),
                 "ST":             int(rec.get("ST", 0)),
-                "PRGS_ENABLE_EQP_LVAL": _prgs_enable_eqp_lval(ppk, oper_id, env_data, eqp_lval_cache),
+                "PRGS_ENABLE_EQP_LVAL": _prgs_enable_eqp_lval(
+                    internal_lot_id, ppk, oper_id, env_data, discrete_eqp_index, eqp_lval_cache,
+                ),
                 "PLAN_QTY":       int(plan_meta.get((ppk, oper_id), {}).get("d0_plan_qty", 0)),
                 "START_TIME":     minutes_to_timekey(int(rec["START_TM"]), base_time),
                 "END_TIME":       minutes_to_timekey(int(rec["END_TM"]), base_time),
