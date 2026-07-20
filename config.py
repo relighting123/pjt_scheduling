@@ -505,6 +505,12 @@ class EnvConfig:
     # 시작하는 전환만 포함한다. 그보다 먼 미래의 전환은 재계획 여지가 커
     # 추측성이므로 확정 출력에 싣지 않는다(간트/API 응답의 conversion_plans는 영향 없음).
     conv_output_window_minutes: int = 60
+    # False면 LOT_STAT_CD=WAIT인 discrete_arrange 행의 discrete 정보(특정 EQP 고정,
+    # 실측 ST)를 배정 로직에서 쓰지 않고 abstract 매칭 경로(모델 평균 ST, 모델이
+    # 맞는 아무 장비)만 태운다. LOT의 수량/제품/공정 정체성(WIP 카운트)은 그대로
+    # 유지된다 — PROC/LOAD/RESV/SELE(강제 배정) LOT은 이 옵션과 무관하게 항상
+    # discrete 그대로 배정된다.
+    discrete_wait_enabled: bool = True
 
 
 @dataclass
