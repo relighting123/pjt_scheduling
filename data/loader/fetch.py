@@ -9,8 +9,6 @@ SQL 템플릿: data/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 """
 import json
 import logging
-import logging.handlers
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +24,7 @@ from config import (
 )
 from data.db_registry import DbRegistry, parse_sql_db_alias
 from data.loader.sql_binds import merge_fetch_binds, resolve_lot_cd
+from utils.file_logger import get_daily_file_logger
 from utils.helpers import (
     validate_records,
     validate_tool_capacity_records,
@@ -47,35 +46,15 @@ _sql_logger: logging.Logger | None = None
 
 
 def _get_sql_logger() -> logging.Logger:
-    """logs/sql_fetch_YYYYMMDD.log 에 기록하는 파일 로거 (호출 시 1회 초기화)."""
+    """logs/sql_fetch.log 에 기록하는 파일 로거 (자정 회전, 백업 1개만 유지)."""
     global _sql_logger
     if _sql_logger is not None:
         return _sql_logger
 
     from config import BASE_DIR  # 순환 import 방지용 지연 import
 
-    log_dir = BASE_DIR / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    today = datetime.now().strftime("%Y%m%d")
-    log_path = log_dir / f"sql_fetch_{today}.log"
-
-    logger = logging.getLogger("sql_fetch")
-    logger.setLevel(logging.DEBUG)
-
-    if not logger.handlers:
-        fh = logging.FileHandler(log_path, encoding="utf-8")
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s [%(levelname)s] %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        logger.addHandler(fh)
-
-    _sql_logger = logger
-    return logger
+    _sql_logger = get_daily_file_logger("sql_fetch", BASE_DIR / "logs", "sql_fetch.log")
+    return _sql_logger
 
 
 def _inline_binds(sql_text: str, binds: dict) -> str:

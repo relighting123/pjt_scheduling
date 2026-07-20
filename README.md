@@ -260,6 +260,10 @@ DB 연결: `config/databases.yaml` + `python main.py db-check`
 을 각각 준비하고 `APP_ENV=production` / `APP_ENV=development` 로 실행하세요
 (자세한 내용은 `docs/DEPLOYMENT.md` 1.2절 참고).
 
+실행된 SQL은 `logs/sql_fetch.log`(SELECT, 입력 fetch)와 `logs/sql_load.log`(INSERT/DELETE/DDL,
+DB 적재)에 남습니다. 두 로그 모두 자정에 자동 회전되고 백업 1개까지만 보관되어(`utils/file_logger.py`)
+디스크 사용량이 계속 늘어나지 않습니다.
+
 ---
 
 ## 운영 CLI

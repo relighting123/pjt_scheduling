@@ -1,11 +1,9 @@
 """
 tests/test_db_load_logging.py
 
-execute_sql_text()로 실행되는 INSERT/DELETE/DDL 문도 SELECT(sql_fetch_*.log)와
-마찬가지로 logs/sql_load_*.log 파일에 남아야 한다.
+execute_sql_text()로 실행되는 INSERT/DELETE/DDL 문도 SELECT(sql_fetch.log)와
+마찬가지로 logs/sql_load.log 파일에 남아야 한다(자정 회전, 백업 1개 유지).
 """
-from datetime import datetime
-
 import data.writer.db_load as db_load
 
 
@@ -54,8 +52,7 @@ class _FailingConn(_FakeConn):
 
 
 def _log_path(tmp_path):
-    today = datetime.now().strftime("%Y%m%d")
-    return tmp_path / "logs" / f"sql_load_{today}.log"
+    return tmp_path / "logs" / "sql_load.log"
 
 
 def _reset_sql_logger(monkeypatch, tmp_path):
