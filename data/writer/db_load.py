@@ -8,13 +8,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Union
 
 from config import BASE_DIR, CONFIG
 from data.db_registry import DbRegistry, parse_sql_db_alias
 from data.writer.rts_sql import build_writer_sql_scripts, write_sql
+from utils.file_logger import get_daily_file_logger
 
 _DDL_FILE = "rts_output_tables.sql"
 _INF_SCRIPTS = ("rts_rslt_inf.sql", "rts_eqpconvplan_inf.sql")
@@ -23,39 +23,19 @@ _HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
 _OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql")
 
 # ---------------------------------------------------------------------------
-# SQL 실행(INSERT/DELETE/DDL) 파일 로거 — loader.fetch(SELECT)의 sql_fetch_*.log와 짝
+# SQL 실행(INSERT/DELETE/DDL) 파일 로거 — loader.fetch(SELECT)의 sql_fetch.log와 짝
 # ---------------------------------------------------------------------------
 _sql_logger: Optional[logging.Logger] = None
 
 
 def _get_sql_logger() -> logging.Logger:
-    """logs/sql_load_YYYYMMDD.log 에 기록하는 파일 로거 (호출 시 1회 초기화)."""
+    """logs/sql_load.log 에 기록하는 파일 로거 (자정 회전, 백업 1개만 유지)."""
     global _sql_logger
     if _sql_logger is not None:
         return _sql_logger
 
-    log_dir = BASE_DIR / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    today = datetime.now().strftime("%Y%m%d")
-    log_path = log_dir / f"sql_load_{today}.log"
-
-    logger = logging.getLogger("sql_load")
-    logger.setLevel(logging.DEBUG)
-
-    if not logger.handlers:
-        fh = logging.FileHandler(log_path, encoding="utf-8")
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s [%(levelname)s] %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        logger.addHandler(fh)
-
-    _sql_logger = logger
-    return logger
+    _sql_logger = get_daily_file_logger("sql_load", BASE_DIR / "logs", "sql_load.log")
+    return _sql_logger
 
 
 def _log_sql_execute(
