@@ -36,9 +36,9 @@ function sortedUnique(values: string[]): string[] {
   return [...new Set(values.filter((v) => v !== "" && v != null))].sort();
 }
 
-/** RTS output.json(RTS_RSLT_INF 포함) → InferenceResult. */
+/** RTS output.json(RTS_RSLT_MAS 포함) → InferenceResult. */
 function resultFromRtsOutput(payload: Record<string, unknown>): InferenceResult {
-  const rsltRows = (payload.RTS_RSLT_INF as Record<string, unknown>[]) ?? [];
+  const rsltRows = (payload.RTS_RSLT_MAS as Record<string, unknown>[]) ?? [];
   const convRows = (payload.RTS_EQPCONVPLAN_INF as Record<string, unknown>[]) ?? [];
 
   // env_data 가 없으므로 가장 이른 START_TIME 을 base(=0분) 로 사용한다.
@@ -175,7 +175,7 @@ function resultFromFull(payload: Record<string, unknown>): InferenceResult {
 
 /**
  * 업로드한 JSON 을 InferenceResult 로 변환한다.
- * - RTS output.json (RTS_RSLT_INF 포함)
+ * - RTS output.json (RTS_RSLT_MAS 포함)
  * - result_full.json (schedule 최상위 키 포함)
  */
 export function parseResultFile(json: unknown): InferenceResult {
@@ -183,14 +183,14 @@ export function parseResultFile(json: unknown): InferenceResult {
     throw new Error("JSON 형식이 올바르지 않습니다.");
   }
   const payload = json as Record<string, unknown>;
-  if (Array.isArray(payload.RTS_RSLT_INF)) {
+  if (Array.isArray(payload.RTS_RSLT_MAS)) {
     return resultFromRtsOutput(payload);
   }
   if (Array.isArray(payload.schedule)) {
     return resultFromFull(payload);
   }
   throw new Error(
-    "인식할 수 없는 결과 파일입니다. output.json(RTS_RSLT_INF) 또는 result_full.json(schedule) 을 선택하세요.",
+    "인식할 수 없는 결과 파일입니다. output.json(RTS_RSLT_MAS) 또는 result_full.json(schedule) 을 선택하세요.",
   );
 }
 

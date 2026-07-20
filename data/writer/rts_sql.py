@@ -1,7 +1,7 @@
 """
 data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 
-RTS_RSLT_INF: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
+RTS_RSLT_MAS: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
 RTS_EQPCONVPLAN_INF: 동일 FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT
                       (같은 회차 재실행 시 JOB_ID 중복/PK 위반 방지, 다른 회차는 계속 누적)
 HIS: INSERT only (EXEC_TIMEKEY = 생성 시각, PK에 포함되어 같은 회차 재실행도 누적)
@@ -36,7 +36,7 @@ def _sql_float(val: Any) -> str:
 
 
 def _delete_inf(table: str, fac_id: str) -> str:
-    """RTS_RSLT_INF는 매 회차 동일 FAC_ID의 기존 행을 모두 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
+    """RTS_RSLT_MAS는 매 회차 동일 FAC_ID의 기존 행을 모두 비우고 최신 결과만 적재한다(RULE_TIMEKEY 무관)."""
     return f"DELETE FROM {table} WHERE FAC_ID = {_sql_str(fac_id)};"
 
 
@@ -48,8 +48,8 @@ def _delete_inf_for_rule_timekey(table: str, fac_id: str, rule_timekey: str) -> 
     )
 
 
-def _insert_rts_rslt_inf(rows: List[dict], *, history: bool) -> List[str]:
-    table = "RTS_RSLT_HIS" if history else "RTS_RSLT_INF"
+def _insert_rts_rslt_rows(rows: List[dict], *, history: bool) -> List[str]:
+    table = "RTS_RSLT_HIS" if history else "RTS_RSLT_MAS"
     lines: List[str] = []
     exec_timekey = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
@@ -199,18 +199,18 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     meta = payload.get("meta", {})
     rule_timekey = meta.get("RULE_TIMEKEY", "")
     fac_id = meta.get("FAC_ID", "")
-    rslt_rows = payload.get("RTS_RSLT_INF", [])
+    rslt_rows = payload.get("RTS_RSLT_MAS", [])
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
     perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
     validation_rows = payload.get("RTS_VALIDATION", [])
 
     scripts: Dict[str, str] = {}
 
-    inf_lines = [f"-- RTS_RSLT_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
-    inf_lines.append(_delete_inf("RTS_RSLT_INF", fac_id))
-    inf_lines.append("")
-    inf_lines.extend(_insert_rts_rslt_inf(rslt_rows, history=False))
-    scripts["rts_rslt_inf.sql"] = "\n".join(inf_lines) + "\n"
+    mas_lines = [f"-- RTS_RSLT_MAS FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
+    mas_lines.append(_delete_inf("RTS_RSLT_MAS", fac_id))
+    mas_lines.append("")
+    mas_lines.extend(_insert_rts_rslt_rows(rslt_rows, history=False))
+    scripts["rts_rslt_mas.sql"] = "\n".join(mas_lines) + "\n"
 
     conv_inf_lines = [f"-- RTS_EQPCONVPLAN_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
     if rule_timekey:
@@ -221,7 +221,7 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
 
     if include_history:
         his_lines = [f"-- RTS_RSLT_HIS RULE_TIMEKEY={rule_timekey}", ""]
-        his_lines.extend(_insert_rts_rslt_inf(rslt_rows, history=True))
+        his_lines.extend(_insert_rts_rslt_rows(rslt_rows, history=True))
         scripts["rts_rslt_his.sql"] = "\n".join(his_lines) + "\n"
 
         conv_his_lines = [f"-- RTS_EQPCONVPLAN_HIS RULE_TIMEKEY={rule_timekey}", ""]

@@ -929,7 +929,7 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
     """RTS output.json만 있을 때 UI 간트용 result 구조로 복원."""
     base = env_data["sim_base_time"]
     schedule = []
-    for row in payload.get("RTS_RSLT_INF", []):
+    for row in payload.get("RTS_RSLT_MAS", []):
         start_tm = _minutes_from_timekey(str(row.get("START_TIME", "")), base)
         end_tm = _minutes_from_timekey(str(row.get("END_TIME", "")), base)
         schedule.append({

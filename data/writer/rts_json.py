@@ -1,7 +1,7 @@
 """
 data/writer/rts_json.py – 추론 schedule → RTS output.json
 
-RTS_RSLT_INF / RTS_EQPCONVPLAN_INF 스키마 JSON 생성.
+RTS_RSLT_MAS / RTS_EQPCONVPLAN_INF 스키마 JSON 생성.
 """
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def _build_rts_rslt_rows(
     base_time: datetime,
     env_data: dict,
 ) -> List[dict]:
-    """EQP별 SEQ_NO 부여 후 RTS_RSLT_INF 행 생성."""
+    """EQP별 SEQ_NO 부여 후 RTS_RSLT_MAS 행 생성."""
     by_eqp: Dict[str, List[dict]] = defaultdict(list)
     for rec in schedule:
         by_eqp[rec["EQP_ID"]].append(rec)
@@ -296,7 +296,7 @@ def build_rts_output(
     """
     추론 결과 → RTS output.json 본문.
 
-    Keys: meta, RTS_RSLT_INF, RTS_EQPCONVPLAN_INF, (옵션) RTS_PERFMON_HIS, RTS_VALIDATION
+    Keys: meta, RTS_RSLT_MAS, RTS_EQPCONVPLAN_INF, (옵션) RTS_PERFMON_HIS, RTS_VALIDATION
     """
     meta = resolve_writer_meta(
         env_data, fac_id=fac_id, rule_timekey=rule_timekey, crt_user_id=crt_user_id,
@@ -308,7 +308,7 @@ def build_rts_output(
 
     payload = {
         "meta": meta,
-        "RTS_RSLT_INF": _build_rts_rslt_rows(schedule, meta, base_time, env_data),
+        "RTS_RSLT_MAS": _build_rts_rslt_rows(schedule, meta, base_time, env_data),
         "RTS_EQPCONVPLAN_INF": _build_rts_conv_rows(conversion_plans, meta, base_time),
     }
     if include_kpi:
