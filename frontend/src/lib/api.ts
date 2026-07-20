@@ -151,6 +151,7 @@ export const api = {
     max_conversions?: number;
     max_conversions_per_eqp?: number;
     conversion_minutes?: number;
+    discrete_wait_enabled?: boolean;
     timeout_seconds?: number;
   } = {}) =>
     request<InferenceResult>("/api/inference", {
@@ -176,6 +177,9 @@ export const api = {
           ? { max_conversions_per_eqp: opts.max_conversions_per_eqp }
           : {}),
         ...(opts.conversion_minutes != null ? { conversion_minutes: opts.conversion_minutes } : {}),
+        ...(opts.discrete_wait_enabled != null
+          ? { discrete_wait_enabled: opts.discrete_wait_enabled }
+          : {}),
         ...(opts.timeout_seconds != null ? { timeout_seconds: opts.timeout_seconds } : {}),
       }),
     }),
@@ -195,6 +199,7 @@ export const api = {
       max_conversions?: number;
       max_conversions_per_eqp?: number;
       conversion_minutes?: number;
+      discrete_wait_enabled?: boolean;
     } = {},
   ) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
@@ -217,6 +222,9 @@ export const api = {
           ? { max_conversions_per_eqp: opts.max_conversions_per_eqp }
           : {}),
         ...(opts.conversion_minutes != null ? { conversion_minutes: opts.conversion_minutes } : {}),
+        ...(opts.discrete_wait_enabled != null
+          ? { discrete_wait_enabled: opts.discrete_wait_enabled }
+          : {}),
       }),
     }),
   getInferenceResult: (input_folder?: string) =>

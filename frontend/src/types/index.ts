@@ -206,6 +206,7 @@ export interface InferRunOptions {
   max_conversions?: number;
   max_conversions_per_eqp?: number;
   conversion_minutes?: number;
+  discrete_wait_enabled?: boolean;
 }
 
 export interface InferenceResult {
@@ -271,6 +272,7 @@ export interface EnvDefaults {
   conversion_minutes: number;
   max_conversions: number | null;
   max_conversions_per_eqp: number | null;
+  discrete_wait_enabled: boolean;
 }
 
 export interface AppConfig {

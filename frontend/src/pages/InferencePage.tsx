@@ -62,6 +62,7 @@ function buildInferOptions(
     maxConversions: string;
     maxConversionsPerEqp: string;
     conversionMinutes: string;
+    discreteWaitEnabled: boolean;
   },
 ) {
   const facId = opts.facIdOverride.trim() || facIdFromFolder(selectedFolder);
@@ -82,6 +83,7 @@ function buildInferOptions(
     ...(maxConv != null ? { max_conversions: maxConv } : {}),
     ...(maxConvEqp != null ? { max_conversions_per_eqp: maxConvEqp } : {}),
     ...(convMin != null ? { conversion_minutes: convMin } : {}),
+    discrete_wait_enabled: opts.discreteWaitEnabled,
   };
 }
 
@@ -170,6 +172,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [maxConversions, setMaxConversions] = useState("");
   const [maxConversionsPerEqp, setMaxConversionsPerEqp] = useState("");
   const [conversionMinutes, setConversionMinutes] = useState("");
+  const [discreteWaitEnabled, setDiscreteWaitEnabled] = useState(true);
   const [lastInferMeta, setLastInferMeta]   = useState<string | null>(null);
 
   const defaultConversionMinutes = config?.default_env?.conversion_minutes ?? 60;
@@ -318,6 +321,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           maxConversions,
           maxConversionsPerEqp,
           conversionMinutes,
+          discreteWaitEnabled,
         }),
       });
       setResult(res); setFileSource(null); setTab("gantt");
@@ -339,7 +343,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, [
     algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey,
     lotCd, includeHistory, dbAlias, noHistory, saveKpi, maxConversions,
-    maxConversionsPerEqp, conversionMinutes, syncInferFolder,
+    maxConversionsPerEqp, conversionMinutes, discreteWaitEnabled, syncInferFolder,
   ]);
 
   const loadSaved = useCallback(async () => {
@@ -566,6 +570,20 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             onChange={e => setConversionMinutes(e.target.value)}
             disabled={loading}
           />
+
+          <label className="check-label mt-2">
+            <input
+              type="checkbox"
+              checked={discreteWaitEnabled}
+              onChange={e => setDiscreteWaitEnabled(e.target.checked)}
+              disabled={loading}
+            />
+            discrete WAIT 자격 검증 (discrete_wait_enabled)
+          </label>
+          <p className="hint" style={{ marginTop: "-0.25rem" }}>
+            켜면 전환 불필요한 WAIT 재공도 EQP×carrier 실측(discrete) 조합이 있어야만 배정됩니다.
+            끄면 실측 조합이 없어도 abstract(모델 평균 ST)로 배정을 허용합니다.
+          </p>
         </div>
 
         <div className="card">
