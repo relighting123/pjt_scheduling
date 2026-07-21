@@ -106,7 +106,10 @@ def run_inference(
         heuristic_agent = DedicationAgent(run_data)
 
     max_steps = _inference_max_steps(env_data)
-    deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
+    # `if timeout_seconds else None`은 0(초)을 falsy로 취급해 데드라인이 아예
+    # 사라져버린다 — "남은 시간 0초로 즉시 만료"라는 의미 있는 값인데
+    # "타임아웃 설정 안 함"과 같아져 무제한 실행되는 버그였다.
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds is not None else None
 
     # SchedulingRLEnv는 MultiDiscrete action space — 휴리스틱과 별도 루프에서 직접 실행
     if algorithm == "scheduling_rl":

@@ -440,11 +440,11 @@ class InferenceRequest(InferFetchOptions):
     )
     timeout_seconds: Optional[float] = Field(
         default=None,
-        gt=0,
+        ge=0,
         description=(
-            "전체 처리 제한 시간(초): DB 조회 시작~시뮬레이션~DB 적재. 초과 시 결과를 "
-            "저장·반환하지 않고 504 오류로 중단한다(CLI --timeout과 달리 부분 결과를 "
-            "성공으로 돌려주지 않음)."
+            "전체 처리 제한 시간(초, 0 허용 = 즉시 만료). DB 조회 시작~시뮬레이션~DB 적재. "
+            "초과 시 결과를 저장·반환하지 않고 504 오류로 중단한다(CLI --timeout과 달리 "
+            "부분 결과를 성공으로 돌려주지 않음)."
         ),
     )
     summary_only: bool = Field(
