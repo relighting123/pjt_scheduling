@@ -8,6 +8,7 @@ import type {
   OptimalBenchResponse,
   TestBenchmarkResponse,
   TestDatasetsResponse,
+  ToolChangeBenchResponse,
   TrainMetrics,
   TrainStatusResponse,
   RewardConfig,
@@ -284,5 +285,9 @@ export const api = {
   getOptimalBench: (algorithms?: AlgorithmId[]) =>
     request<OptimalBenchResponse>(
       `/api/test/optimal-bench${algorithms?.length ? `?algorithms=${encodeURIComponent(algorithms.join(","))}` : ""}`,
+    ),
+  getToolChangeBench: (algorithms?: AlgorithmId[]) =>
+    request<ToolChangeBenchResponse>(
+      `/api/benchmark/tool-change${algorithms?.length ? `?algorithms=${encodeURIComponent(algorithms.join(","))}` : ""}`,
     ),
 };

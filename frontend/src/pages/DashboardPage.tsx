@@ -1,19 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import PlotChart from "../components/PlotChart";
 import { api } from "../lib/api";
-import {
-  buildTrainRewardChart,
-  buildAlgorithmKpiComparison,
-  hasTrainChartData,
-  type AlgoCompareEntry,
-} from "../lib/charts";
+import { buildAlgorithmKpiComparison, type AlgoCompareEntry } from "../lib/charts";
 import { buildEqpModelMap, computeInferenceKpi } from "../lib/metrics";
-import type { AppMode, InferenceResult, TestBenchmarkResponse, TrainStatusResponse } from "../types";
-
-const EMPTY_SERIES: TrainStatusResponse["series"] = {
-  timesteps: [], ep_rew_mean: [], eval_timesteps: [], eval_reward: [],
-  policy_loss: [], value_loss: [], explained_variance: [],
-};
+import type { AppMode, InferenceResult, TestBenchmarkResponse } from "../types";
 
 interface Props { onNavigate: (m: AppMode) => void; }
 
@@ -25,9 +15,6 @@ export default function DashboardPage({ onNavigate }: Props) {
   const [testData, setTestData] = useState<TestBenchmarkResponse | null>(null);
   const [testLoading, setTestLoading] = useState(true);
 
-  const [trainStatus, setTrainStatus] = useState<TrainStatusResponse | null>(null);
-  const [trainLoading, setTrainLoading] = useState(true);
-
   useEffect(() => {
     api.getInferenceResult()
       .then(setInfer)
@@ -35,7 +22,6 @@ export default function DashboardPage({ onNavigate }: Props) {
       .finally(() => setInferLoading(false));
 
     api.getSavedTestBenchmark().then(setTestData).catch(() => {}).finally(() => setTestLoading(false));
-    api.getTrainingStatus().then(setTrainStatus).catch(() => {}).finally(() => setTrainLoading(false));
   }, []);
 
   const eqpModelMap = useMemo(() => buildEqpModelMap(infer?.event_log ?? []), [infer]);
@@ -52,12 +38,6 @@ export default function DashboardPage({ onNavigate }: Props) {
   const testChart = useMemo(
     () => (testEntries.length ? buildAlgorithmKpiComparison(testEntries) : null),
     [testEntries],
-  );
-
-  const trainSeries = trainStatus?.series ?? EMPTY_SERIES;
-  const trainChart = useMemo(
-    () => (hasTrainChartData(trainSeries) ? buildTrainRewardChart(trainSeries) : null),
-    [trainSeries],
   );
 
   const now = new Date().toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -173,54 +153,25 @@ export default function DashboardPage({ onNavigate }: Props) {
           </div>
         </div>
 
-        {/* ── Training Card ── */}
+        {/* ── Benchmark Card ── */}
         <div className="dash-card">
           <div className="dash-card-top train" />
           <div className="dash-card-header">
-            <div className="dash-card-icon train">↑</div>
+            <div className="dash-card-icon train">◆</div>
             <div>
-              <div className="dash-card-name">학습 결과</div>
+              <div className="dash-card-name">벤치마크</div>
             </div>
-            {trainStatus?.status && (
-              <span className={`badge ${trainStatus.status === "completed" ? "badge-ok" : trainStatus.status === "running" ? "badge-warn" : "badge-accent"}`} style={{ marginLeft: "auto" }}>
-                {trainStatus.status === "completed" ? "완료" : trainStatus.status === "running" ? "진행중" : trainStatus.status}
-              </span>
-            )}
           </div>
           <div className="dash-card-body">
-            {trainLoading && (
-              <div className="dash-loading"><div className="dash-spinner" /> 불러오는 중</div>
-            )}
-            {!trainLoading && !trainChart && (
-              <div className="dash-empty">
-                <span className="dash-empty-icon">◌</span>
-                <p>학습 이력 없음</p>
-                <button type="button" className="btn btn-accent btn-sm" onClick={() => onNavigate("train")}>학습 시작 →</button>
-              </div>
-            )}
-            {!trainLoading && trainChart && (
-              <>
-                <PlotChart {...trainChart} />
-                {trainStatus?.metrics && (
-                  <div className="dash-kpis">
-                    <div className="dash-kpi">
-                      <div className="dash-kpi-label">평균 보상</div>
-                      <div className="dash-kpi-value">{trainStatus.metrics.mean_reward.toFixed(2)}</div>
-                    </div>
-                    <div className="dash-kpi">
-                      <div className="dash-kpi-label">완료율</div>
-                      <div className="dash-kpi-value">{(trainStatus.metrics.mean_completion * 100).toFixed(1)}%</div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+            <div className="dash-empty">
+              <span className="dash-empty-icon">◌</span>
+              <p>정답지(오라클) 대비 알고리즘별 생산량·전환횟수를 비교합니다.</p>
+              <button type="button" className="btn btn-accent btn-sm" onClick={() => onNavigate("benchmark")}>벤치마크 실행 →</button>
+            </div>
           </div>
           <div className="dash-card-footer">
-            <span className="dash-meta">
-              {trainStatus?.timesteps ? `${trainStatus.timesteps.toLocaleString()} steps` : "—"}
-            </span>
-            <button type="button" className="btn btn-accent btn-sm" onClick={() => onNavigate("train")}>자세히 →</button>
+            <span className="dash-meta">10개 시나리오</span>
+            <button type="button" className="btn btn-accent btn-sm" onClick={() => onNavigate("benchmark")}>자세히 →</button>
           </div>
         </div>
       </div>

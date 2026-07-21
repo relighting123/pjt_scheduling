@@ -9,7 +9,9 @@ TOOL_CHANGE_BENCH 평가 — 10개 데이터셋 × 알고리즘 vs 정답지(최
   data/dataset/tool_change_bench_results.json
 """
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -17,10 +19,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import json
 
+from config import CONFIG
 from data.loader.fetch import load_data
 from data.loader.preprocess import preprocess
-from inference.runner import run_inference
+from inference.runner import run_inference, run_inference_compare, run_inference_with_agent
 from env.scheduling_env import SchedulingEnv
+
+
+@contextmanager
+def _discrete_wait_disabled():
+    """TCB04/06처럼 홈배정이 의도적으로 스크램블된(carrier가 다른 EQP에
+    home-assign된) 케이스는, '무전환' 배정이라도 discrete(EQP×carrier 실측)
+    조합이 있어야만 허용하는 기본 규칙(_lot_conv_discrete_eligible) 아래서는
+    비홈 lot을 절대 집어올 수 없어 증명된 0전환 최적(정답지)에 구조적으로
+    도달할 수 없다 — abstract 경로 폴백을 허용해야 한다(discrete_wait_enabled
+    =False). 나머지 8개 케이스는 이 옵션 유무와 무관하게 동일한 결과를 내므로
+    벤치마크 전체를 이 설정 하에서 일관되게 평가한다."""
+    original = CONFIG.env.discrete_wait_enabled
+    CONFIG.env.discrete_wait_enabled = False
+    try:
+        yield
+    finally:
+        CONFIG.env.discrete_wait_enabled = original
 
 ROOT = Path(__file__).parent.parent
 SUITE_ROOT = ROOT / "data/dataset"
@@ -232,6 +252,107 @@ def run_oracle(m: dict, ed: dict) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# API/UI용 상세 벤치마크 — 케이스별 '정답지(오라클)' 스케줄 + 알고리즘별 결과를
+# run_inference()와 동일한 포맷(schedule/conversion_plans 등)으로 돌려줘
+# 프런트 간트 컴포넌트를 그대로 재사용할 수 있게 한다.
+# ═══════════════════════════════════════════════════════════════════════
+
+class _FirstFeasibleAgent:
+    """Category A(공정당 제품 1종 전담)는 배정 모호성이 없어 오라클이 필요
+    없다 — feasible 버킷 중 아무거나(첫 번째) 선택해도 항상 유일한 최적과
+    일치한다."""
+
+    def predict(self, sim):
+        eqp_id = sim.current_idle_eqp()
+        if eqp_id is None:
+            return np.array([0], dtype=np.int64)
+        feasible = sim.get_feasible_ppk_oper(eqp_id)
+        if not feasible:
+            return np.array([0], dtype=np.int64)
+        return np.array([feasible[0]], dtype=np.int64)
+
+
+def _build_reference_agent(m: dict, ed: dict):
+    """케이스 카테고리별 정답지(오라클) 에이전트 + 추가 run_data 오버라이드."""
+    case_id = m["id"]
+    if case_id in ORACLE_SPECS:
+        spec = ORACLE_SPECS[case_id]
+        up_oper = ed["flow"][ed["prod_keys"][0]][0]["oper_id"]
+        down_oper = ed["flow"][ed["prod_keys"][0]][1]["oper_id"]
+        agent = SafetySwitchOracle(up_oper, down_oper, spec["switch_time"], spec["switch_eqp_ids"])
+        return agent, {}
+    if case_id in BLOCK_ORACLE_SPECS:
+        agent = BlockDedicationOracle(BLOCK_ORACLE_SPECS[case_id])
+        extra: dict = {}
+        max_conv = BLOCK_ORACLE_MAX_CONV_PER_EQP.get(case_id)
+        if max_conv is not None:
+            extra["max_conversions_per_eqp"] = max_conv
+        return agent, extra
+    return _FirstFeasibleAgent(), {}
+
+
+def run_case_detailed(m: dict, ed: dict, algorithms: list[str], rl_agent=None) -> dict:
+    """케이스 1건: 정답지(오라클) 결과 + 알고리즘별 결과(둘 다 run_inference()와
+    동일 포맷)를 함께 반환. 프런트가 그대로 Gantt/KPI 컴포넌트에 넣을 수 있다."""
+    inflow = _inflow_enabled(m)
+    ref_agent, extra = _build_reference_agent(m, ed)
+    run_data = dict(ed, enable_wip_inflow=inflow, eqp_selection="order", **extra)
+    reference = run_inference_with_agent(
+        ed, ref_agent, algorithm="reference", run_data=run_data, record_history=False,
+    )
+    reference["prod_keys"] = ed["prod_keys"]
+    reference["oper_ids"] = ed["oper_ids"]
+    reference["eqp_ids"] = ed["eqp_ids"]
+    reference["sim_end_minutes"] = ed["sim_end_minutes"]
+
+    compare = run_inference_compare(
+        ed, algorithms, rl_agent=rl_agent, enable_wip_inflow=inflow, record_history=False,
+    )
+
+    return {
+        "id": m["id"],
+        "category": m["category"],
+        "desc": m["desc"],
+        "test_focus": m["test_focus"],
+        "sim_end_minutes": m["sim_end_minutes"],
+        "optimal": m["optimal"],
+        "reference": reference,
+        "reference_kpi": kpi(reference, m),
+        "results": compare["results"],
+        "errors": compare["errors"],
+        "kpi": {r["algorithm"]: kpi(r, m) for r in compare["results"]},
+    }
+
+
+def run_detailed_benchmark(algorithms: Optional[list] = None, rl_agent=None) -> dict:
+    """API/UI '벤치마크' 탭 전용 — 전체 10개 케이스를 케이스별 상세(정답지 Gantt +
+    알고리즘별 Gantt/KPI)로 실행."""
+    algo_ids = list(algorithms) if algorithms else ["earliest_st", "minprogress"]
+    with _discrete_wait_disabled():
+        cases = [run_case_detailed(m, load_ed(m), algo_ids, rl_agent=rl_agent) for m in META]
+
+    def agg(algo: str) -> dict:
+        rows = [c["kpi"][algo] for c in cases if algo in c["kpi"]]
+        tot_prod = sum(r["prod"] for r in rows)
+        tot_opt = sum(r["prod_opt"] for r in rows)
+        tot_conv = sum(r["conv"] for r in rows)
+        tot_conv_opt = sum(r["conv_opt"] for r in rows)
+        return {
+            "prod": tot_prod, "prod_opt": tot_opt,
+            "prod_pct": round(100 * tot_prod / max(tot_opt, 1), 1),
+            "conv": tot_conv, "conv_opt": tot_conv_opt,
+            "n_optimal": sum(1 for r in rows if r["prod"] == r["prod_opt"] and r["conv"] == r["conv_opt"]),
+            "n_sets": len(rows),
+        }
+
+    return {
+        "algorithms": algo_ids,
+        "cases": cases,
+        "summary": {a: agg(a) for a in algo_ids},
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
 
 def main():
     verify = "--verify" in sys.argv
@@ -239,32 +360,33 @@ def main():
 
     results = []
     print(f"{'dataset':<32}{'algo':<14}{'prod':>12}{'conv':>10}{'gap':>8}")
-    for m, ed in zip(META, eds):
-        row = {"id": m["id"], "category": m["category"], "sim_end_minutes": m["sim_end_minutes"],
-               "optimal": m["optimal"], "algos": {}}
-        for algo, label in (("earliest_st", "Earliest-ST"), ("minprogress", "Min-Progress")):
-            res = run_inference(ed, algorithm=algo, record_history=False,
-                                 enable_wip_inflow=_inflow_enabled(m))
-            k = kpi(res, m)
-            row["algos"][algo] = k
-            gap = f"-{k['prod_gap']}" if k["prod_gap"] else "0"
-            print(f"{m['id']:<32}{label:<14}{k['prod']:>4}/{k['prod_opt']:<7}"
-                  f"{k['conv']:>4}/{k['conv_opt']:<5}{gap:>8}")
-        if verify and m["id"] in ORACLE_SPECS:
-            oc = run_oracle(m, ed)
-            row["oracle_verification"] = oc
-            match = (oc["prod"] == m["optimal"]["production"] and oc["conv"] == m["optimal"]["conversions"])
-            print(f"    ↳ oracle(정답지 재현): prod={oc['prod']} conv={oc['conv']} "
-                  f"makespan={oc['makespan']}  {'✓ 일치' if match else '✗ 불일치'}")
-        if verify and m["id"] in BLOCK_ORACLE_SPECS:
-            oc = run_block_oracle(m, ed, BLOCK_ORACLE_SPECS[m["id"]],
-                                   max_conversions_per_eqp=BLOCK_ORACLE_MAX_CONV_PER_EQP.get(m["id"]))
-            row["oracle_verification"] = oc
-            match = (oc["prod"] == m["optimal"]["production"] and oc["conv"] == m["optimal"]["conversions"])
-            print(f"    ↳ oracle(정답지 재현): prod={oc['prod']} conv={oc['conv']} "
-                  f"makespan={oc['makespan']}  {'✓ 일치' if match else '✗ 불일치'}")
-        results.append(row)
-        print("")
+    with _discrete_wait_disabled():
+        for m, ed in zip(META, eds):
+            row = {"id": m["id"], "category": m["category"], "sim_end_minutes": m["sim_end_minutes"],
+                   "optimal": m["optimal"], "algos": {}}
+            for algo, label in (("earliest_st", "Earliest-ST"), ("minprogress", "Min-Progress")):
+                res = run_inference(ed, algorithm=algo, record_history=False,
+                                     enable_wip_inflow=_inflow_enabled(m))
+                k = kpi(res, m)
+                row["algos"][algo] = k
+                gap = f"-{k['prod_gap']}" if k["prod_gap"] else "0"
+                print(f"{m['id']:<32}{label:<14}{k['prod']:>4}/{k['prod_opt']:<7}"
+                      f"{k['conv']:>4}/{k['conv_opt']:<5}{gap:>8}")
+            if verify and m["id"] in ORACLE_SPECS:
+                oc = run_oracle(m, ed)
+                row["oracle_verification"] = oc
+                match = (oc["prod"] == m["optimal"]["production"] and oc["conv"] == m["optimal"]["conversions"])
+                print(f"    ↳ oracle(정답지 재현): prod={oc['prod']} conv={oc['conv']} "
+                      f"makespan={oc['makespan']}  {'✓ 일치' if match else '✗ 불일치'}")
+            if verify and m["id"] in BLOCK_ORACLE_SPECS:
+                oc = run_block_oracle(m, ed, BLOCK_ORACLE_SPECS[m["id"]],
+                                       max_conversions_per_eqp=BLOCK_ORACLE_MAX_CONV_PER_EQP.get(m["id"]))
+                row["oracle_verification"] = oc
+                match = (oc["prod"] == m["optimal"]["production"] and oc["conv"] == m["optimal"]["conversions"])
+                print(f"    ↳ oracle(정답지 재현): prod={oc['prod']} conv={oc['conv']} "
+                      f"makespan={oc['makespan']}  {'✓ 일치' if match else '✗ 불일치'}")
+            results.append(row)
+            print("")
 
     def agg(algo):
         rows = [r["algos"][algo] for r in results]
