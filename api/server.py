@@ -27,7 +27,8 @@ from agent.registry import ALGORITHMS, validate_algorithm
 from inference.runner import run_inference, run_inference_compare, save_result
 from validation.output_checks import validate_schedule_output
 from api.serializers import (
-    env_data_summary, empty_data_summary, serialize_inference_result, serialize_compare_response,
+    env_data_summary, empty_data_summary, serialize_inference_result,
+    serialize_inference_summary, serialize_compare_response,
 )
 from api.test_benchmark_store import (
     load_benchmark,
@@ -444,6 +445,15 @@ class InferenceRequest(InferFetchOptions):
             "전체 처리 제한 시간(초): DB 조회 시작~시뮬레이션~DB 적재. 초과 시 결과를 "
             "저장·반환하지 않고 504 오류로 중단한다(CLI --timeout과 달리 부분 결과를 "
             "성공으로 돌려주지 않음)."
+        ),
+    )
+    summary_only: bool = Field(
+        default=False,
+        description=(
+            "true면 schedule/conversion_plans/history 등 대용량 필드를 응답에서 "
+            "빼고 성공 여부·통계(stats)·검증 결과만 반환한다. output 파일 생성과 "
+            "Oracle RTS 테이블 저장/적재는 이 옵션과 무관하게 항상 전체 수행된다 — "
+            "응답 크기만 줄인다."
         ),
     )
 
@@ -936,12 +946,15 @@ def inference(req: InferenceRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB 적재 실패: {e}") from e
     _last_inference = result
-    payload = serialize_inference_result(
-        result,
-        include_history=req.include_history,
-        include_event_log=req.include_history,
-        include_decision_log=req.decision_log,
-    )
+    if req.summary_only:
+        payload = serialize_inference_summary(result)
+    else:
+        payload = serialize_inference_result(
+            result,
+            include_history=req.include_history,
+            include_event_log=req.include_history,
+            include_decision_log=req.decision_log,
+        )
     payload["infer_meta"] = infer_meta
     return payload
 
