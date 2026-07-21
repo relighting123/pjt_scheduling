@@ -54,6 +54,7 @@ from data.db_registry import diagnose_db_config, print_db_config_report
 from data.generator import generate_sample, list_sample_scenarios
 from data.loader import fetch_from_db, load_data, validate_data, preprocess
 from data.loader.sql_binds import resolve_lot_cd
+from agent.registry import VALID_ALGORITHMS
 from agent.rl_agent import SchedulingAgent
 from agent.training_report import save_training_convergence_report
 from inference.runner import run_inference, save_result
@@ -376,11 +377,15 @@ def cmd_inference(
     fetch_from_db(fac_id=fac_id, split="infer", period=rtk, lot_cd=lcd)
     set_input_folder(f"{fac_id}/infer")
 
-    try:
-        agent = SchedulingAgent.load()
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"[오류] {exc}")
-        sys.exit(1)
+    agent = None
+    if algorithm == "scheduling_rl":
+        # 휴리스틱(dedication/earliest_st/minprogress)은 모델 파일이 필요 없다
+        # — RL일 때만 로드하고, 없으면 종료.
+        try:
+            agent = SchedulingAgent.load()
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"[오류] {exc}")
+            sys.exit(1)
 
     print("=" * 60)
     print("[inference] 데이터 로드 및 전처리")
@@ -388,6 +393,7 @@ def cmd_inference(
 
     print("=" * 60)
     print("[inference] 추론 실행")
+    print(f"[inference] 알고리즘: {algorithm}")
     print(
         "[inference] 유입 재공 이벤트: "
         + ("ON (다음 공정 flow 유입)" if enable_wip_inflow else "OFF (현재 재공만)")
@@ -681,6 +687,12 @@ def parse_args():
     inf_p = sub.add_parser("infer", help="Oracle SQL 조회 → 추론")
     inf_p.add_argument("--facid", required=True, help="공장 ID")
     inf_p.add_argument(
+        "--algorithm",
+        default="scheduling_rl",
+        choices=sorted(VALID_ALGORITHMS),
+        help="추론 알고리즘 (기본: scheduling_rl. 휴리스틱: dedication / earliest_st / minprogress — 모델 파일 불필요)",
+    )
+    inf_p.add_argument(
         "--ruletimekey", default=None,
         help="추론 RULE_TIMEKEY (미지정 시 최신)",
     )
@@ -904,6 +916,7 @@ def main():
                 to_key=args.to_key,
                 prevcnt=args.prevcnt,
                 lot_cd=args.lotcd,
+                algorithm=args.algorithm,
                 decision_log=args.decision_log,
                 enable_wip_inflow=args.enable_wip_inflow,
                 include_history=args.include_history,

@@ -891,6 +891,7 @@ export const ALGO_CHART_COLORS: Record<string, string> = {
   scheduling_rl: "#8172B3",
   minprogress: "#55A868",
   earliest_st: "#DD8452",
+  dedication: "#4C72B0",
 };
 
 export interface AlgoCompareEntry {

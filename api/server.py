@@ -419,7 +419,7 @@ class InferFetchOptions(BaseModel):
 
 
 class InferenceRequest(InferFetchOptions):
-    algorithm: str = Field(default="scheduling_rl", description="scheduling_rl | minprogress | earliest_st")
+    algorithm: str = Field(default="scheduling_rl", description="scheduling_rl | minprogress | earliest_st | dedication")
     input_folder: Optional[str] = Field(
         default=None,
         description="FAC_ID 추론용 (미지정 시 현재 선택). fetch 후에는 {FAC_ID}/infer 로 고정",

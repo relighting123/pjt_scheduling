@@ -11,6 +11,7 @@ from config import CONFIG
 from agent.rl_agent import SchedulingAgent
 from agent.minprogress_agent import MinProgressAgent
 from agent.earliest_st_agent import EarliestSTAgent
+from agent.dedication_agent import DedicationAgent
 from agent.registry import validate_algorithm, VALID_ALGORITHMS
 from env.scheduling_env import SchedulingEnv
 from data.writer import write_inference_result
@@ -101,6 +102,8 @@ def run_inference(
         heuristic_agent = MinProgressAgent(env_data)
     elif algorithm == "earliest_st":
         heuristic_agent = EarliestSTAgent()
+    elif algorithm == "dedication":
+        heuristic_agent = DedicationAgent(run_data)
 
     max_steps = _inference_max_steps(env_data)
     deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
