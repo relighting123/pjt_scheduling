@@ -290,6 +290,9 @@ class SchedulingEnv(gym.Env):
         )
         self._episode_steps = 0
         self._decision_log = []
+        # HOLD 라운드로빈: 같은 시각에 이미 보류한 EQP 집합 (시각 바뀌면 리셋)
+        self._held_eqps: set = set()
+        self._held_time: int = -1
         obs = self.sim.get_observation()
         return obs, {}
 
@@ -351,18 +354,45 @@ class SchedulingEnv(gym.Env):
                     reward = -0.5
             else:
                 feasible = self.sim.get_feasible_ppk_oper(eqp_id)
-                resolved_flat = self._resolve_ppk_oper(ppk_oper_idx, feasible)
-                if resolved_flat is not None and self.sim.eqps[eqp_id].status == "idle":
-                    ppk, oper_id = self.sim.ppk_oper_from_flat(resolved_flat)
-                    reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
-                elif feasible:
-                    reward = -0.5
-                else:
-                    # tool cap 등으로 idle이지만 배정 불가 → 시간 전진
+                if ppk_oper_idx < 0 and self.sim._has_pending_processing():
+                    # HOLD 센티널(음수 액션): 에이전트가 이번 결정을 명시적으로
+                    # 보류한다(dedication 등 휴리스틱 전용 — 전환 채터링 방지).
+                    # 가공 진행 중인 작업이 있어 시간이 전진 가능할 때만 허용;
+                    # 아니면 아래 일반 경로로 넘겨 배정을 강제한다(교착 방지).
+                    #
+                    # 같은 시각에 결정을 기다리는 '다른' idle EQP가 있으면 시간을
+                    # 전진하지 않고 그쪽으로 결정권만 넘긴다 — 바로 전진해버리면
+                    # 같은 tick의 다른 장비 배정 기회가 통째로 증발해(결정 큐
+                    # 기아) 멀쩡히 재공 있는 장비가 다음 이벤트까지 논다.
+                    now = self.sim.current_time
+                    if self._held_time != now:
+                        self._held_eqps = set()
+                        self._held_time = now
+                    self._held_eqps.add(eqp_id)
                     self.sim._current_eqp = None
-                    if self.sim._has_pending_processing():
+                    next_eqp = next(
+                        (e for e in self.sim._idle_eqps_with_work()
+                         if e not in self._held_eqps),
+                        None,
+                    )
+                    if next_eqp is not None:
+                        self.sim._current_eqp = next_eqp
+                    else:
                         self.sim._advance_to_next_decision()
                         time_advanced = self.sim.current_time != time_at_step_start
+                else:
+                    resolved_flat = self._resolve_ppk_oper(ppk_oper_idx, feasible)
+                    if resolved_flat is not None and self.sim.eqps[eqp_id].status == "idle":
+                        ppk, oper_id = self.sim.ppk_oper_from_flat(resolved_flat)
+                        reward = self.sim.assign_ppk_oper(eqp_id, ppk, oper_id)
+                    elif feasible:
+                        reward = -0.5
+                    else:
+                        # tool cap 등으로 idle이지만 배정 불가 → 시간 전진
+                        self.sim._current_eqp = None
+                        if self.sim._has_pending_processing():
+                            self.sim._advance_to_next_decision()
+                            time_advanced = self.sim.current_time != time_at_step_start
         elif not self.sim.is_done():
             if self.sim._has_pending_processing() or self.sim.get_idle_eqps():
                 self.sim._advance_to_next_decision()

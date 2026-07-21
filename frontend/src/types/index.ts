@@ -2,7 +2,7 @@ import type { ArrangeRow, AssignedLot, AbstractArrangeRow } from "./arrange";
 
 export type { ArrangeRow, AssignedLot, AbstractArrangeRow, AbstractLotUnit } from "./arrange";
 
-export type AlgorithmId = "scheduling_rl" | "minprogress" | "earliest_st";
+export type AlgorithmId = "scheduling_rl" | "minprogress" | "earliest_st" | "dedication";
 
 export interface AlgorithmInfo {
   id: AlgorithmId;
