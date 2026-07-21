@@ -309,11 +309,24 @@ class SchedulingSimulator:
     # --- 성능 최적화 헬퍼 ---
 
     def _build_eqps_by_om(self) -> Dict[tuple, List[str]]:
-        """(oper, eqp_model) → EQP 목록. reset 시 1회 계산 (정적 구조)."""
+        """(oper, eqp_model) → EQP 목록. reset 시 1회 계산 (정적 구조).
+
+        eqp_oper_cap(discrete 실적) 뿐 아니라 abstract_arrange_map(모델 매칭)도
+        반영한다 — _eqp_can_process()와 동일한 두 경로(OR)를 써야 한다.
+        discrete_wait_enabled=False에서는 eqp_oper_cap이 WAIT lot 실적을
+        의도적으로 제외해 거의 비므로(_rebuild_eqp_oper_cap 참고), 이것만
+        보면 get_bucket_features()의 pom_feats(ST/needs_conv/avoidable_frac/
+        setup_changed 등)가 사실상 전부 0이 되어 RL이 전환 관련 신호를 전혀
+        못 받는다."""
         result: Dict[tuple, List[str]] = {}
         eqp_oper_cap = self._env_data.get("eqp_oper_cap", {})
+        arrange_map = self._env_data.get("abstract_arrange_map", {})
+        abstract_opers_by_model: Dict[str, set] = {}
+        for (_ppk, op, model) in arrange_map:
+            abstract_opers_by_model.setdefault(model, set()).add(op)
         for eid, model in self._eqp_model_map.items():
-            for op in eqp_oper_cap.get(eid, []):
+            opers = set(eqp_oper_cap.get(eid, [])) | abstract_opers_by_model.get(model, set())
+            for op in opers:
                 result.setdefault((op, model), []).append(eid)
         return result
 
