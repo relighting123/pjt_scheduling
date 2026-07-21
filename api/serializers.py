@@ -60,6 +60,23 @@ def serialize_inference_result(
     return payload
 
 
+def serialize_inference_summary(result: dict) -> dict:
+    """schedule/conversion_plans/history 등 대용량 필드 없이 성공 여부·통계·검증
+    결과만 담은 경량 응답. 결과 자체는 이 시점에 이미 output 파일 + Oracle RTS
+    테이블에 전체 저장/적재가 끝난 뒤라, 호출자가 응답으로 그 데이터를 다시
+    받을 필요가 없을 때(대형 스케줄) 응답 크기를 줄이는 용도다."""
+    return {
+        "algorithm": result.get("algorithm", "scheduling_rl"),
+        "stats": {
+            **result["stats"],
+            "completed_qty": serialize_completed(result["stats"].get("completed_qty", {})),
+        },
+        "sim_end_minutes": result.get("sim_end_minutes", 0),
+        "sim_base_time": result.get("sim_base_time"),
+        "validation": result.get("validation"),
+    }
+
+
 def serialize_compare_response(payload: dict, *, include_history: bool = False) -> dict:
     return {
         "results": [
