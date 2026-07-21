@@ -44,7 +44,15 @@ def _discrete_wait_disabled():
 
 ROOT = Path(__file__).parent.parent
 SUITE_ROOT = ROOT / "data/dataset"
-META = json.load(open(SUITE_ROOT / "tool_change_bench_meta.json", encoding="utf-8"))
+_META_PATH = SUITE_ROOT / "tool_change_bench_meta.json"
+if not _META_PATH.exists():
+    # data/dataset/은 gitignore 대상 — 이 메타 + 케이스별 input JSON은 저장소에
+    # 커밋돼 있지 않고 gen_tool_change_bench.py가 생성하는 산출물이다. 새로
+    # clone한 환경(또는 UI 서버 최초 기동)에서 이 모듈이 import되는 순간 파일이
+    # 없어 바로 죽지 않도록, 없으면 그 자리에서 1회 생성한다.
+    from benchmark.gen_tool_change_bench import main as _generate_tool_change_bench
+    _generate_tool_change_bench()
+META = json.load(open(_META_PATH, encoding="utf-8"))
 TIMEKEY = "20260703000000"
 
 
