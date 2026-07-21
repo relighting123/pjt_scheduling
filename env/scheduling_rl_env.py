@@ -131,7 +131,12 @@ class SchedulingRLEnv(gym.Env):
             size_mask[0] = True
             return np.concatenate([bucket_mask, size_mask])
 
-        eqp_id = self.sim.current_idle_eqp()
+        # step()과 동일하게 지연 해석을 강제한다 — current_idle_eqp()가 아직
+        # None인 시점(직전 스텝에서 conversion 시작 등으로 리셋된 직후)에 그대로
+        # 읽으면 실제 결정 EQP가 아닌 stale 상태로 마스크가 degenerate(bucket 0만
+        # 허용)되고, step()에서야 다른 EQP로 해석되며 액션이 엉뚱한 버킷으로
+        # 보정(feasible[0] 폴백)되는 버그가 있었다.
+        eqp_id = self._ensure_decision_eqp()
         if eqp_id is None:
             bucket_mask[0] = True
             size_mask[0] = True
