@@ -38,6 +38,7 @@ from api.test_benchmark_store import (
 )
 from api.train_service import train_progress, start_training, stop_training, is_training
 from benchmark.optimal.runner import run_optimal_benchmark
+from benchmark.tool_change_bench import run_detailed_benchmark
 
 app = FastAPI(title="Scheduling RL API", version="1.0.0")
 
@@ -1293,6 +1294,39 @@ def get_optimal_bench(algorithms: Optional[str] = None):
     if algo_list:
         _validate_algorithms(algo_list)
     return run_optimal_benchmark(algorithms=algo_list)
+
+
+@app.get("/api/benchmark/tool-change")
+def get_tool_change_bench(algorithms: Optional[str] = None):
+    """전환(conversion) 벤치마크(benchmark/tool_change_bench) 실행 — 케이스별
+    정답지(오라클) 스케줄 + 알고리즘별 스케줄을 함께 반환해 프런트에서
+    간트/KPI 비교에 바로 쓸 수 있게 한다. 실제 test 데이터셋과 무관하게
+    코드 내장 케이스 10종만 사용한다."""
+    algo_list = [a for a in algorithms.split(",") if a] if algorithms else None
+    if algo_list:
+        _validate_algorithms(algo_list)
+    rl_agent = _get_benchmark_rl_agent() if (algo_list and "scheduling_rl" in algo_list) else None
+    report = run_detailed_benchmark(algorithms=algo_list, rl_agent=rl_agent)
+    return {
+        "algorithms": report["algorithms"],
+        "summary": report["summary"],
+        "cases": [
+            {
+                "id": c["id"],
+                "category": c["category"],
+                "desc": c["desc"],
+                "test_focus": c["test_focus"],
+                "sim_end_minutes": c["sim_end_minutes"],
+                "optimal": c["optimal"],
+                "reference": serialize_inference_result(c["reference"], include_history=False),
+                "reference_kpi": c["reference_kpi"],
+                "results": [serialize_inference_result(r, include_history=False) for r in c["results"]],
+                "errors": c["errors"],
+                "kpi": c["kpi"],
+            }
+            for c in report["cases"]
+        ],
+    }
 
 
 @app.post("/api/test/benchmark")

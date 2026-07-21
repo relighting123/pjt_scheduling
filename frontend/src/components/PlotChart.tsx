@@ -143,6 +143,82 @@ function layoutPixelHeight(layout: Partial<Layout>): number | undefined {
   return typeof h === "number" && Number.isFinite(h) ? h : undefined;
 }
 
+/**
+ * Plotly가 (스크롤 컨테이너처럼) 실제 SVG 높이보다 작게 클리핑된 영역 안에
+ * 그려질 때, hover label의 배경 박스(화살표+사각형 path)는 원래 위치에
+ * 그대로 두고 안의 텍스트만 "화면 안에 들어오게" 별도로 밀어 넣는 내부
+ * 버그가 있다 — 그 결과 텍스트가 자기 박스 밖(주로 위쪽)으로 떨어져 나가
+ * 붕 떠 보인다(스크롤 여부와 무관하게, 이 박스의 path와 text의 y좌표가
+ * 서로 어긋나 있음을 실측으로 확인함). 박스 안에서 텍스트를 다시 수직
+ * 중앙 정렬해 이 어긋남을 없앤다.
+ */
+function realignHoverText(layer: SVGGElement) {
+  layer.querySelectorAll<SVGGElement>("g.hovertext").forEach((g) => {
+    const path = g.querySelector<SVGPathElement>("path");
+    const text = g.querySelector<SVGTextElement>("text");
+    if (!path || !text) return;
+    if (text.style.transform) text.style.transform = "";
+    try {
+      const pathBox = path.getBBox();
+      const textBox = text.getBBox();
+      if (pathBox.height === 0 || textBox.height === 0) return;
+      const desiredTop = pathBox.y + (pathBox.height - textBox.height) / 2;
+      const dy = desiredTop - textBox.y;
+      if (Math.abs(dy) > 0.5) {
+        text.style.transform = `translateY(${dy}px)`;
+      }
+    } catch {
+      /* getBBox unavailable before first paint */
+    }
+  });
+}
+
+/**
+ * Plotly는 hover label을 배치할 때 "SVG 전체" 기준으로 위/아래 여유 공간을
+ * 계산한다 — 스크롤 컨테이너가 overflow-y:auto로 그 SVG의 일부만 보여주고
+ * 있다는 사실을 모른다. 그래서 스크롤된 뷰포트 위쪽 가장자리 근처의 막대를
+ * 가리키면, SVG 좌표로는 "위에 공간 있음"이라 label을 그 위에 그리지만 실제
+ * 화면에서는 그 자리가 스크롤 컨테이너 바깥(클리핑 영역)이라 label이 잘려서
+ * 텍스트만 붕 떠 보이거나 아예 안 보이게 된다(스크롤 안 한 상태에서 맨 위
+ * 행을 호버해도 동일하게 재현됨 — sticky X축 자체가 아니라 overflow 클리핑이
+ * 원인). sticky X축과 같은 방식(translateY)으로 hoverlayer를 보이는 영역
+ * 안으로 밀어 넣어 보정한다.
+ */
+function clampHoverLayer(scrollEl: HTMLElement, graphEl: HTMLElement) {
+  const layer = graphEl.querySelector<SVGGElement>(".hoverlayer");
+  if (!layer) return;
+
+  // 이전에 적용한 보정을 먼저 지워야 "보정된 위치" 기준이 아니라 Plotly가
+  // 실제로 그리려 한 원래 위치를 기준으로 다시 계산할 수 있다.
+  if (layer.style.transform) layer.style.transform = "";
+  if (!layer.hasChildNodes()) return;
+
+  realignHoverText(layer);
+
+  const scrollRect = scrollEl.getBoundingClientRect();
+  const labelRect = layer.getBoundingClientRect();
+  if (labelRect.width === 0 && labelRect.height === 0) return;
+
+  const margin = 4;
+  // 위쪽 경계는 스크롤 컨테이너 자체가 아니라, sticky X축(있다면 그 위에
+  // 그려진 시간 눈금 배경)의 아래 가장자리로 잡는다 — 안 그러면 label을
+  // 컨테이너 안으로는 넣어도 sticky 축 라벨과 겹쳐서 글자가 뒤섞여 보인다.
+  const stickyBottoms = [...graphEl.querySelectorAll(".xaxislayer-above")]
+    .map((el) => el.getBoundingClientRect().bottom);
+  const topBound = Math.max(scrollRect.top, ...stickyBottoms);
+
+  const overflowTop = topBound + margin - labelRect.top;
+  const overflowBottom = labelRect.bottom - (scrollRect.bottom - margin);
+
+  let dy = 0;
+  if (overflowTop > 0) dy = overflowTop;
+  else if (overflowBottom > 0) dy = -overflowBottom;
+
+  if (dy !== 0) {
+    layer.style.transform = `translateY(${dy}px)`;
+  }
+}
+
 export default function PlotChart({
   data,
   layout,
@@ -215,10 +291,40 @@ export default function PlotChart({
     return () => ro.disconnect();
   }, [scrollable, scheduleStickyRefresh]);
 
+  const hoverObserverRef = useRef<MutationObserver | null>(null);
+  const hoverClampScheduledRef = useRef(false);
+
+  const setupHoverClamp = useCallback((graphEl: HTMLElement) => {
+    hoverObserverRef.current?.disconnect();
+    if (!scrollable) return;
+    const layer = graphEl.querySelector(".hoverlayer");
+    if (!layer) return;
+    const obs = new MutationObserver(() => {
+      // Plotly가 hover label DOM(테두리 박스, 화살표, 텍스트 줄들)을 한
+      // 뮤테이션이 아니라 여러 번에 걸쳐 순차적으로 추가하므로, 첫 뮤테이션
+      // 시점에 바로 측정하면 아직 완성되지 않은 크기로 잘못 clamp될 수 있다
+      // — 같은 프레임 내 나머지 뮤테이션이 끝난 뒤 한 번만 측정한다.
+      if (hoverClampScheduledRef.current) return;
+      hoverClampScheduledRef.current = true;
+      requestAnimationFrame(() => {
+        hoverClampScheduledRef.current = false;
+        const scrollEl = scrollRef.current;
+        if (scrollEl) clampHoverLayer(scrollEl, graphEl);
+      });
+    });
+    obs.observe(layer, { childList: true, subtree: true });
+    hoverObserverRef.current = obs;
+  }, [scrollable]);
+
+  useEffect(() => () => hoverObserverRef.current?.disconnect(), []);
+
   const handleGraphInit = useCallback((_: unknown, graphDiv: HTMLElement) => {
     graphDivRef.current = graphDiv;
-    if (scrollable) scheduleStickyRefresh();
-  }, [scrollable, scheduleStickyRefresh]);
+    if (scrollable) {
+      scheduleStickyRefresh();
+      setupHoverClamp(graphDiv);
+    }
+  }, [scrollable, scheduleStickyRefresh, setupHoverClamp]);
 
   const clampPanX = useCallback(
     (ev: PlotRelayoutEvent) => {

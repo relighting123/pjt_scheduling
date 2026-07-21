@@ -112,6 +112,35 @@ def run_inference(
             record_history, record_decision_log, algorithm, deadline,
         )
 
+    return run_inference_with_agent(
+        env_data, heuristic_agent, algorithm=algorithm,
+        run_data=run_data, max_steps=max_steps,
+        record_history=record_history, record_decision_log=record_decision_log,
+        deadline=deadline,
+    )
+
+
+def run_inference_with_agent(
+    env_data: dict,
+    heuristic_agent,
+    *,
+    algorithm: str = "reference",
+    run_data: Optional[dict] = None,
+    max_steps: Optional[int] = None,
+    record_history: bool = False,
+    record_decision_log: bool = False,
+    deadline: Optional[float] = None,
+) -> dict:
+    """임의의 (PPK,OPER) 버킷 휴리스틱(minprogress/earliest_st 및 오라클/검증용
+    정책)을 SchedulingEnv 루프로 실행해 run_inference()와 동일한 결과 포맷을
+    돌려준다. run_data 미지정 시 env_data 그대로(전환 등 상한 미조정) 사용한다
+    — 벤치마크의 '정답지(오라클)' 실행처럼 run_inference()의 algorithm 검증
+    (validate_algorithm)을 우회해야 하는 호출부용 공개 진입점."""
+    if run_data is None:
+        run_data = dict(env_data)
+    if max_steps is None:
+        max_steps = _inference_max_steps(env_data)
+
     env = SchedulingEnv(
         run_data,
         record_history=record_history,
@@ -128,6 +157,10 @@ def run_inference(
     timed_out = False
 
     while not done:
+        # predict()가 sim.current_idle_eqp()를 직접 읽는 에이전트(휴리스틱/오라클
+        # 공통)라 step() 내부의 지연 해석보다 먼저 강제 해석해둬야 의도한 EQP에
+        # 액션이 적용된다(안 하면 stale 상태로 엉뚱한 EQP에 적용될 수 있음).
+        sched_env._ensure_decision_eqp()
         action = heuristic_agent.predict(sched_env.sim)
         _, _, terminated, truncated, _ = env.step(action)
         done = terminated or truncated

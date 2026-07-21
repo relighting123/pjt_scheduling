@@ -407,4 +407,52 @@ export interface OptimalBenchResponse {
   summary: Record<string, { passed: number; total: number }>;
 }
 
-export type AppMode = "dashboard" | "train" | "test" | "inference" | "dataset";
+export interface ToolChangeBenchKpi {
+  prod: number;
+  conv: number;
+  prod_opt: number;
+  conv_opt: number;
+  prod_gap: number;
+  conv_gap: number;
+  prod_pct: number;
+}
+
+export interface ToolChangeBenchOptimal {
+  production: number;
+  conversions: number;
+  by_oper?: Record<string, number>;
+  by_stage?: Record<string, { production: number; conversions: number }>;
+  derivation: string;
+}
+
+export interface ToolChangeBenchCase {
+  id: string;
+  category: string;
+  desc: string;
+  test_focus: string;
+  sim_end_minutes: number;
+  optimal: ToolChangeBenchOptimal;
+  reference: InferenceResult;
+  reference_kpi: ToolChangeBenchKpi;
+  results: InferenceResult[];
+  errors: AlgorithmCompareError[];
+  kpi: Record<string, ToolChangeBenchKpi>;
+}
+
+export interface ToolChangeBenchSummary {
+  prod: number;
+  prod_opt: number;
+  prod_pct: number;
+  conv: number;
+  conv_opt: number;
+  n_optimal: number;
+  n_sets: number;
+}
+
+export interface ToolChangeBenchResponse {
+  algorithms: AlgorithmId[];
+  cases: ToolChangeBenchCase[];
+  summary: Record<string, ToolChangeBenchSummary>;
+}
+
+export type AppMode = "dashboard" | "benchmark" | "test" | "inference" | "dataset";

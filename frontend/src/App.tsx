@@ -4,9 +4,8 @@ import ErrorLogPanel from "./components/ErrorLogPanel";
 import DashboardPage from "./pages/DashboardPage";
 import InferencePage from "./pages/InferencePage";
 import TestPage from "./pages/TestPage";
-import TrainPage from "./pages/TrainPage";
+import BenchmarkPage from "./pages/BenchmarkPage";
 import DatasetPage from "./pages/DatasetPage";
-import DatasetEmptyPanel from "./components/DatasetEmptyPanel";
 import { api } from "./lib/api";
 import type { AppConfig, AppMode, DataSummary } from "./types";
 import "./App.css";
@@ -57,8 +56,6 @@ export default function App() {
     }
   }, [refreshData]);
 
-  const hasData = (summary?.eqp_count ?? 0) > 0;
-
   return (
     <div className="app-shell">
       <TopNav
@@ -93,21 +90,8 @@ export default function App() {
             <TestPage config={config} modelExists={modelExists} />
           )}
 
-          {mode === "train" && !hasData && (
-            <DatasetEmptyPanel
-              loadError={loadError}
-              onGoToDataset={() => setMode("dataset")}
-            />
-          )}
-
-          {mode === "train" && hasData && config && (
-            <TrainPage
-              config={config}
-              summary={summary}
-              modelExists={modelExists}
-              onTrained={() => api.getModelStatus().then((s) => setModelExists(s.exists)).catch(() => {})}
-              onRefresh={refreshData}
-            />
+          {mode === "benchmark" && (
+            <BenchmarkPage modelExists={modelExists} />
           )}
 
           {mode === "dataset" && (
