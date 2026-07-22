@@ -19,8 +19,10 @@ import {
   FORCED_LOT_STAT_LEGEND,
   FORCED_LOT_STAT_LEGEND_ORDER,
   type GanttBarLabel,
+  type GanttBarClickInfo,
   ALGO_CHART_COLORS,
 } from "../lib/charts";
+import GanttBarPopup from "../components/GanttBarPopup";
 import { buildEqpModelMap } from "../lib/metrics";
 import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey, parseSimBaseMs } from "../lib/ganttTime";
 import type {
@@ -158,6 +160,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [tab, setTab]                 = useState<MainTab>("gantt");
   const [fileSource, setFileSource]   = useState<string | null>(null);
   const fileRef                       = useRef<HTMLInputElement>(null);
+  // 간트 바 클릭 상세 팝업 (hover 툴팁 대체)
+  const [ganttBar, setGanttBar]       = useState<GanttBarClickInfo | null>(null);
+  const onGanttBarClick = useCallback((cd: unknown) => {
+    setGanttBar(cd as GanttBarClickInfo);
+  }, []);
 
   const [selectedFolder, setSelectedFolder] = useState("");
   const [facIdOverride, setFacIdOverride]   = useState("");
@@ -732,7 +739,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 {ganttChart && (
                   <FullscreenPanel title="간트 차트" className="gantt-chart-panel-wrap">
                     <div className="chart-wrap gantt-chart-panel">
-                      <PlotChart {...ganttChart} scrollable />
+                      <PlotChart {...ganttChart} scrollable onBarClick={onGanttBarClick} />
                     </div>
                   </FullscreenPanel>
                 )}
@@ -842,7 +849,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                   <div className="stepdbg-page">
                     {debugGanttChart && (
                       <FullscreenPanel title="간트 차트 (스텝 동기화)" className="stepdbg-gantt-wrap chart-wrap gantt-chart-panel">
-                        <PlotChart {...debugGanttChart} scrollable />
+                        <PlotChart {...debugGanttChart} scrollable onBarClick={onGanttBarClick} />
                       </FullscreenPanel>
                     )}
                     <StepDebugger entries={result.decision_log} onStepChange={setDebugStep} />
@@ -856,6 +863,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           </>
         )}
       </div>
+      {ganttBar && <GanttBarPopup info={ganttBar} onClose={() => setGanttBar(null)} />}
     </div>
   );
 }
