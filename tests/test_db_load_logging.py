@@ -2,7 +2,8 @@
 tests/test_db_load_logging.py
 
 execute_sql_text()로 실행되는 INSERT/DELETE/DDL 문도 SELECT(sql_fetch.log)와
-마찬가지로 logs/sql_load.log 파일에 남아야 한다(자정 회전, 백업 1개 유지).
+마찬가지로 logs/sql_load.log 파일에 남아야 한다(자정 회전, 백업 3일치 보관).
+실행 실패(FAILED)는 터미널(stderr)에도 "[ERROR] 시각 …" 한 줄 요약으로 출력된다.
 """
 import data.writer.db_load as db_load
 
@@ -116,3 +117,27 @@ def test_failing_statement_is_logged_before_the_exception_propagates(tmp_path, m
     assert "FAILED" in contents
     assert "BAD_TABLE" in contents
     assert "not a valid month" in contents
+
+
+def test_failing_statement_is_echoed_to_terminal(tmp_path, monkeypatch, capsys):
+    """실행 실패는 파일 외에 stderr에도 '[ERROR] 시각 [label] FAILED: …' 한 줄로 출력."""
+    import re
+
+    _reset_sql_logger(monkeypatch, tmp_path)
+
+    conn = _FailingConn()
+    try:
+        db_load.execute_sql_text(
+            conn, "INSERT INTO BAD_TABLE (ID) VALUES (2);\n", label="mixed.sql"
+        )
+        assert False, "expected exception to propagate"
+    except Exception:
+        pass
+
+    err = capsys.readouterr().err.strip()
+    assert re.match(
+        r"^\[ERROR\] \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} "
+        r"\[mixed\.sql\] FAILED: ORA-01843: not a valid month$",
+        err,
+    )
+    assert "INSERT INTO" not in err  # SQL 본문은 파일 전용
