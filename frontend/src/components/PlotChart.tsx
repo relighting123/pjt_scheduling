@@ -9,6 +9,8 @@ interface PlotChartProps {
   layout: Partial<Layout>;
   className?: string;
   onPointClick?: (pointIndex: number) => void;
+  /** 바 클릭 시 해당 point의 customdata 전달 (간트 바 상세 팝업용) */
+  onBarClick?: (customdata: unknown) => void;
   /** 간트 pan 시 X축이 0 미만으로 가지 않도록 clamp */
   clampXMin?: number;
   /** 세로 스크롤 시 상단 X축(시간 눈금) 고정 */
@@ -224,6 +226,7 @@ export default function PlotChart({
   layout,
   className,
   onPointClick,
+  onBarClick,
   clampXMin,
   scrollable = false,
 }: PlotChartProps) {
@@ -248,7 +251,13 @@ export default function PlotChart({
 
   const handleClick = (ev: Readonly<PlotMouseEvent>) => {
     const pt = ev.points?.[0];
-    if (pt && typeof pt.pointIndex === "number" && onPointClick) {
+    if (!pt) return;
+    const customdata = (pt as { customdata?: unknown }).customdata;
+    if (customdata != null && onBarClick) {
+      onBarClick(customdata);
+      return;
+    }
+    if (typeof pt.pointIndex === "number" && onPointClick) {
       onPointClick(pt.pointIndex);
     }
   };
@@ -363,7 +372,7 @@ export default function PlotChart({
         config: plotConfig,
         useResizeHandler: true,
         style: plotStyle,
-        onClick: onPointClick ? handleClick : undefined,
+        onClick: (onPointClick || onBarClick) ? handleClick : undefined,
         onInitialized: handleGraphInit,
         ...ganttPanHandlers,
       } as Record<string, unknown>)}

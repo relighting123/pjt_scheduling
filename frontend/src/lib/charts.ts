@@ -32,6 +32,47 @@ export interface PlotChartSpec {
   clampXMin?: number;
 }
 
+/** 간트 바 클릭 팝업에 표시할 LOT 1건 정보 */
+export interface GanttBarClickRecord {
+  lot_id: string;
+  carrier_id?: string;
+  prod: string;
+  prod_code?: string;
+  oper: string;
+  oper_code?: string;
+  lot_cd?: string;
+  temp?: string;
+  wf_qty?: number;
+  lot_stat_cd?: string;
+  start_min: number;
+  end_min: number;
+  start_label: string;
+  end_label: string;
+  inflow: boolean;
+}
+
+/** 간트 바 클릭 시 팝업으로 전달되는 정보 (Plotly customdata) */
+export interface GanttBarClickInfo {
+  kind: "assign" | "conversion" | "downtime";
+  eqp_id: string;
+  eqp_label: string;
+  start_min: number;
+  end_min: number;
+  start_label: string;
+  end_label: string;
+  /** assign: 병합 세그먼트의 제품/공정 */
+  prod?: string;
+  prod_code?: string;
+  oper?: string;
+  oper_code?: string;
+  /** assign: 세그먼트에 포함된 LOT 목록 */
+  records?: GanttBarClickRecord[];
+  /** conversion: 전환 내용 (LOT_CD/TEMP → LOT_CD/TEMP) */
+  transition?: string;
+  /** downtime: 종료 미정(무제한 다운) */
+  unbounded?: boolean;
+}
+
 function resolveGanttBaseMs(axis: GanttAxisOptions): number | null {
   return parseSimBaseMs(axis.simBaseTime);
 }
@@ -1644,74 +1685,6 @@ function segmentTimeRange(segment: GanttBarSegment): { start: number; end: numbe
   return { start, end, width: end - start };
 }
 
-function inflowHoverLines(records: GanttBarSegment["records"], baseMs: number | null): string {
-  // 유입 재공 = OPER_IN_TIME>0(시뮬 중 투입)만. ABSTRACT는 초기 재공 출처일 뿐 유입 아님.
-  const inflowTimes = records
-    .map((r) => r.OPER_IN_TIME ?? 0)
-    .filter((t) => t > 0);
-  if (inflowTimes.length === 0) return "";
-
-  // 박스 드로잉 문자(─)는 폰트에 따라 글리프가 없어 폴백 폰트로 렌더링되며,
-  // Plotly 툴팁의 여러 줄 tspan 수직 위치 계산이 그 줄만 어긋나 글자가 말풍선
-  // 밖으로 밀려나는 렌더링 버그를 유발할 수 있다 — 순수 ASCII로 대체.
-  const lines: string[] = ["-----------------", "유형: 유입 재공"];
-  const minT = Math.min(...inflowTimes);
-  const maxT = Math.max(...inflowTimes);
-  const minLabel = formatGanttMinuteLabel(minT, baseMs);
-  lines.push(minT === maxT
-    ? `유입 가능 시각: ${minLabel}`
-    : `유입 시각 범위: ${minLabel} ~ ${formatGanttMinuteLabel(maxT, baseMs)}`);
-  const totalWf = records.reduce((s, r) => s + (r.WF_QTY ?? 0), 0);
-  if (totalWf > 0) lines.push(`유입 재공량: ${totalWf}매`);
-  return lines.join("<br>") + "<br>";
-}
-
-function segmentHoverTemplate(
-  segment: GanttBarSegment,
-  prodCodes: Record<string, string>,
-  operCodes: Record<string, string>,
-  baseMs: number | null,
-): string {
-  const { records } = segment;
-  const first = records[0];
-  const { start, end, width } = segmentTimeRange(segment);
-  const oper = first.OPER_ID ?? "N/A";
-  const prodLabel = prodCodes[first.PLAN_PROD_ATTR_VAL] ?? first.PLAN_PROD_ATTR_VAL;
-  const operLabel = operCodes[oper] ?? oper;
-  const startLabel = formatGanttMinuteLabel(start, baseMs);
-  const endLabel = formatGanttMinuteLabel(end, baseMs);
-  const inflowLines = inflowHoverLines(records, baseMs);
-
-  if (records.length === 1) {
-    const rec = first;
-    return (
-      `<b>LOT: ${rec.LOT_ID}</b><br>` +
-      (rec.CARRIER_ID ? `CAR: ${rec.CARRIER_ID}<br>` : "") +
-      `EQP: ${rec.EQP_ID}<br>` +
-      `제품: ${prodLabel} (${rec.PLAN_PROD_ATTR_VAL})<br>` +
-      `공정: ${operLabel} (${oper})<br>` +
-      (rec.LOT_STAT_CD ? `상태: ${rec.LOT_STAT_CD}<br>` : "") +
-      `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
-      inflowLines +
-      `<extra></extra>`
-    );
-  }
-
-  const lotSummary = records.length <= 5
-    ? records.map((r) => r.LOT_ID).join(", ")
-    : `${records.slice(0, 3).map((r) => r.LOT_ID).join(", ")} 외 ${records.length - 3}건`;
-
-  return (
-    `<b>제품: ${prodLabel}</b> (${first.PLAN_PROD_ATTR_VAL})<br>` +
-    `공정: ${operLabel} (${oper})<br>` +
-    `EQP: ${first.EQP_ID}<br>` +
-    `병합 LOT ${records.length}건: ${lotSummary}<br>` +
-    `시작: ${startLabel} · 종료: ${endLabel} · 소요: ${width}분<br>` +
-    inflowLines +
-    `<extra></extra>`
-  );
-}
-
 export interface GanttLegendItem {
   pairKey: string;
   prodKey: string;
@@ -1812,7 +1785,7 @@ export function buildEnhancedGantt(
     const rec = segment.records[0];
     const pairKey = ganttProdOperKey(rec.PLAN_PROD_ATTR_VAL, rec.OPER_ID ?? "");
     if (hiddenProdOperKeys?.has(pairKey)) return;
-    const { start, width } = segmentTimeRange(segment);
+    const { start, end, width } = segmentTimeRange(segment);
     const label = getEqpLabel(rec.EQP_ID, eqpModelMap);
     const showText = width >= (labelMode === "prod" ? 18 : 24);
     const { base, x } = ganttBarAxisCoords(start, width, baseMs);
@@ -1824,6 +1797,36 @@ export function buildEnhancedGantt(
     const marker = isInflowSeg && !forced
       ? { ...baseMarker, opacity: 0.82, line: { ...(baseMarker.line as object), width: 0 } }
       : baseMarker;
+    const clickInfo: GanttBarClickInfo = {
+      kind: "assign",
+      eqp_id: rec.EQP_ID,
+      eqp_label: label,
+      start_min: start,
+      end_min: end,
+      start_label: formatGanttMinuteLabel(start, baseMs),
+      end_label: formatGanttMinuteLabel(end, baseMs),
+      prod: rec.PLAN_PROD_ATTR_VAL,
+      prod_code: prodCodeMap[rec.PLAN_PROD_ATTR_VAL],
+      oper: rec.OPER_ID ?? "",
+      oper_code: operCodeMap[rec.OPER_ID ?? ""],
+      records: segment.records.map((r) => ({
+        lot_id: r.LOT_ID,
+        carrier_id: r.CARRIER_ID,
+        prod: r.PLAN_PROD_ATTR_VAL,
+        prod_code: prodCodeMap[r.PLAN_PROD_ATTR_VAL],
+        oper: r.OPER_ID ?? "",
+        oper_code: operCodeMap[r.OPER_ID ?? ""],
+        lot_cd: r.LOT_CD,
+        temp: r.TEMP,
+        wf_qty: r.WF_QTY,
+        lot_stat_cd: r.LOT_STAT_CD,
+        start_min: r.START_TM,
+        end_min: r.END_TM,
+        start_label: formatGanttMinuteLabel(r.START_TM, baseMs),
+        end_label: formatGanttMinuteLabel(r.END_TM, baseMs),
+        inflow: (r.OPER_IN_TIME ?? 0) > 0,
+      })),
+    };
     data.push({
       type: "bar",
       orientation: "h",
@@ -1835,9 +1838,13 @@ export function buildEnhancedGantt(
       textposition: "inside",
       insidetextanchor: "middle",
       textfont: { size: 10, color: "#ffffff", family: GANTT_THEME.fontFamily },
-      hovertemplate: segmentHoverTemplate(segment, prodCodeMap, operCodeMap, baseMs),
+      // hover 툴팁은 스크롤 컨테이너 클리핑과 얽혀 글자·말풍선이 어긋나는
+      // Plotly 버그가 있어 간트 바에서는 끄고, 클릭 팝업(customdata)으로 대체.
+      hoverinfo: "none",
+      // GanttBarClickInfo는 Plotly Datum 타입 정의에 없지만 런타임에서는 그대로 전달됨
+      customdata: [clickInfo],
       showlegend: false,
-    } as Data);
+    } as unknown as Data);
   });
 
   // Conversion bars
@@ -1858,10 +1865,19 @@ export function buildEnhancedGantt(
         textposition: "inside",
         insidetextanchor: "middle",
         textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
-        hovertemplate: `<b>Conversion</b><br>EQP: ${p.eqp_id}<br>${conversionTransitionText(p)}<br>` +
-          `시작: ${formatGanttMinuteLabel(p.conv_start_min, baseMs)} · 종료: ${formatGanttMinuteLabel(p.conv_end_min, baseMs)}<extra></extra>`,
+        hoverinfo: "none",
+        customdata: [{
+          kind: "conversion",
+          eqp_id: p.eqp_id,
+          eqp_label: label,
+          start_min: p.conv_start_min,
+          end_min: p.conv_end_min,
+          start_label: formatGanttMinuteLabel(p.conv_start_min, baseMs),
+          end_label: formatGanttMinuteLabel(p.conv_end_min, baseMs),
+          transition: conversionTransitionText(p),
+        } satisfies GanttBarClickInfo],
         showlegend: false,
-      } as Data);
+      } as unknown as Data);
     });
   }
 
@@ -1886,10 +1902,19 @@ export function buildEnhancedGantt(
         textposition: "inside",
         insidetextanchor: "middle",
         textfont: { size: 10, color: "#1e293b", family: GANTT_THEME.fontFamily },
-        hovertemplate: `<b>Downtime (PM/개조)</b><br>EQP: ${p.eqp_id}<br>` +
-          `시작: ${formatGanttMinuteLabel(p.down_start_min, baseMs)} · 종료: ${endLabel}<extra></extra>`,
+        hoverinfo: "none",
+        customdata: [{
+          kind: "downtime",
+          eqp_id: p.eqp_id,
+          eqp_label: label,
+          start_min: p.down_start_min,
+          end_min: effectiveEnd,
+          start_label: formatGanttMinuteLabel(p.down_start_min, baseMs),
+          end_label: endLabel,
+          unbounded,
+        } satisfies GanttBarClickInfo],
         showlegend: false,
-      } as Data);
+      } as unknown as Data);
     });
   }
 
