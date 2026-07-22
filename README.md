@@ -278,8 +278,9 @@ DB 연결: `config/databases.yaml` + `python main.py db-check`
 (자세한 내용은 `docs/DEPLOYMENT.md` 1.2절 참고).
 
 실행된 SQL은 `logs/sql_fetch.log`(SELECT, 입력 fetch)와 `logs/sql_load.log`(INSERT/DELETE/DDL,
-DB 적재)에 남습니다. 두 로그 모두 자정에 자동 회전되고 백업 1개까지만 보관되어(`utils/file_logger.py`)
-디스크 사용량이 계속 늘어나지 않습니다.
+DB 적재)에 남습니다. 두 로그 모두 자정에 자동 회전되고 백업 3일치까지만 보관되어(`utils/file_logger.py`)
+디스크 사용량이 계속 늘어나지 않습니다. ERROR 이상(예: SQL 실행 실패)은 파일과 별도로 터미널(stderr)에도
+`[ERROR] 2026-07-10 10:10:10 [rts_eqpconvplan_inf.sql] FAILED: ORA-00942 ...` 형태의 한 줄 요약이 출력됩니다.
 
 ---
 

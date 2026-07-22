@@ -29,7 +29,7 @@ _sql_logger: Optional[logging.Logger] = None
 
 
 def _get_sql_logger() -> logging.Logger:
-    """logs/sql_load.log 에 기록하는 파일 로거 (자정 회전, 백업 1개만 유지)."""
+    """logs/sql_load.log 에 기록하는 파일 로거 (자정 회전, 백업 3일치 보관, ERROR는 터미널에도 출력)."""
     global _sql_logger
     if _sql_logger is not None:
         return _sql_logger
