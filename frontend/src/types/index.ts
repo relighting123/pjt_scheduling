@@ -151,6 +151,39 @@ export interface DecisionLogBlockedBucket {
   wip_qty?: number;
 }
 
+/** 벌크 블록 크기 산출 근거 (simulator.bulk_block_size_breakdown) */
+export interface BlockSizeCalc {
+  ppk: string;
+  oper_id: string;
+  eqp_id?: string;
+  /** 해당 버킷의 가용 WIP carrier 수 */
+  wip_carriers: number;
+  /** 잔여 계획 carrier 수 (계획 없으면 WIP 한도) */
+  plan_carriers: number;
+  has_plan: boolean;
+  /** cap = min(WIP, 잔여 계획) */
+  cap: number;
+  /** takt 예산 carrier 수 (10^6 이상 = 사실상 무제한) */
+  takt_budget: number;
+  level: number;
+  n_levels: number;
+  /** (level+1)/n_levels */
+  frac: number;
+  /** target = max(round(frac × takt_budget), 1) */
+  target: number;
+  /** 최종 N = max(min(target, cap), 1) — WIP 0이면 0 */
+  block_size: number;
+}
+
+/** 블록 진행 상태 (시작/연속 스텝 공통) */
+export interface BlockProgress {
+  done?: number | null;
+  total?: number | null;
+  remaining?: number | null;
+  /** 블록 재생 중 배정 실패로 조기 종료 */
+  aborted?: boolean;
+}
+
 export interface DecisionLogEntry {
   step: number;
   sim_time: number;
@@ -178,6 +211,10 @@ export interface DecisionLogEntry {
   block_start?: boolean;
   block_size?: number | null;
   size_level?: number;
+  /** 블록 시작 스텝의 크기 산출 근거 */
+  block_size_calc?: BlockSizeCalc;
+  /** 블록 시작/연속 스텝의 진행 상태 (done/total/remaining) */
+  block_progress?: BlockProgress;
   assigned_lot_id?: string | null;
   failure_code?: string;
   failure_detail?: string;

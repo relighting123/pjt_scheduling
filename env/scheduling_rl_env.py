@@ -171,6 +171,8 @@ class SchedulingRLEnv(gym.Env):
         resolved_flat: Optional[int] = None
         block_size_dbg: Optional[int] = None
         is_block_start = False
+        block_size_calc: Optional[dict] = None
+        block_progress: Optional[dict] = None
 
         eqp_id = self._ensure_decision_eqp()
         reward = 0.0
@@ -194,24 +196,38 @@ class SchedulingRLEnv(gym.Env):
                     # 새 블록 시작 — 배정 성공(-1.0이 아님)이면 shaping 적용
                     if reward != -1.0:
                         is_block_start = True
-                        n = self.sim.bulk_block_size(
+                        block_size_calc = self.sim.bulk_block_size_breakdown(
                             eqp_id, ppk, oper_id, size_level, self._L,
                         )
+                        n = block_size_calc["block_size"]
                         block_size_dbg = n
                         reward += self.sim.bulk_decision_shaping(
                             eqp_id, ppk, oper_id, n,
                         )
                         if n > 1:
-                            self._block[eqp_id] = [flat, n - 1]
+                            self._block[eqp_id] = [flat, n - 1, n]
+                        block_progress = {
+                            "done": 1, "total": max(n, 1),
+                            "remaining": max(n - 1, 0),
+                        }
                 else:
                     # 블록 진행 — remaining 감소
                     blk = self._block.get(eqp_id)
                     if blk:
                         blk[1] -= 1
+                        total = blk[2] if len(blk) > 2 else None
+                        remaining = max(blk[1], 0)
+                        block_progress = {
+                            "done": (total - remaining) if total is not None else None,
+                            "total": total,
+                            "remaining": remaining,
+                        }
                         if blk[1] <= 0:
                             self._block.pop(eqp_id, None)
                     if reward == -1.0:
                         self._block.pop(eqp_id, None)
+                        if block_progress is not None:
+                            block_progress["aborted"] = True
             elif feasible:
                 reward = -0.5
             else:
@@ -245,6 +261,10 @@ class SchedulingRLEnv(gym.Env):
             entry["block_start"] = is_block_start
             entry["block_size"] = block_size_dbg
             entry["size_level"] = size_level
+            if block_size_calc is not None:
+                entry["block_size_calc"] = block_size_calc
+            if block_progress is not None:
+                entry["block_progress"] = block_progress
             if len(self.sim.schedule) > schedule_before:
                 entry["assigned_lot_id"] = self.sim.schedule[-1].get("LOT_ID")
                 if entry["status"] not in ("assigned", "action_corrected"):

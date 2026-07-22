@@ -165,9 +165,21 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                 <tr>
                   <th>블록</th>
                   <td>
-                    {cur.block_start
-                      ? <span className="stepdbg-tag stepdbg-tag-accent">블록 시작 · N={cur.block_size ?? "?"} (lv {cur.size_level ?? 0})</span>
-                      : cur.status === "assigned" ? <span className="stepdbg-tag">블록 연속</span> : "—"}
+                    {cur.block_start ? (
+                      <span className="stepdbg-tag stepdbg-tag-accent">
+                        블록 시작 · N={cur.block_size ?? "?"} (lv {cur.size_level ?? 0})
+                      </span>
+                    ) : cur.block_progress ? (
+                      <span className={`stepdbg-tag${cur.block_progress.aborted ? " stepdbg-tag-warn" : ""}`}>
+                        블록 연속
+                        {cur.block_progress.total != null
+                          ? ` · ${cur.block_progress.done ?? "?"}/${cur.block_progress.total} (남은 ${cur.block_progress.remaining ?? "?"})`
+                          : ""}
+                        {cur.block_progress.aborted ? " · 배정 실패로 종료" : ""}
+                      </span>
+                    ) : cur.status === "assigned" ? (
+                      <span className="stepdbg-tag">블록 연속</span>
+                    ) : "—"}
                   </td>
                 </tr>
                 {cur.failure_code ? (
@@ -178,6 +190,52 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                 ) : null}
               </tbody>
             </table>
+
+            {cur.block_size_calc ? (
+              <div className="stepdbg-list">
+                <div className="stepdbg-list-title">
+                  블록 크기 산출 · {cur.block_size_calc.ppk}/{cur.block_size_calc.oper_id}
+                </div>
+                <table className="kv-table stepdbg-calc-table">
+                  <tbody>
+                    <tr>
+                      <th>가용 WIP carrier</th>
+                      <td>{cur.block_size_calc.wip_carriers}</td>
+                    </tr>
+                    <tr>
+                      <th>잔여 계획 carrier</th>
+                      <td>
+                        {cur.block_size_calc.plan_carriers}
+                        {cur.block_size_calc.has_plan ? "" : " (계획 없음 → WIP 한도)"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>상한 cap = min(WIP, 계획)</th>
+                      <td><b>{cur.block_size_calc.cap}</b></td>
+                    </tr>
+                    <tr>
+                      <th>takt 예산 carrier</th>
+                      <td>{cur.block_size_calc.takt_budget >= 1_000_000 ? "무제한 (takt 미정의)" : cur.block_size_calc.takt_budget}</td>
+                    </tr>
+                    <tr>
+                      <th>크기 레벨 비율</th>
+                      <td>
+                        lv {cur.block_size_calc.level} → ({cur.block_size_calc.level + 1}/{cur.block_size_calc.n_levels})
+                        {" = "}{Math.round(cur.block_size_calc.frac * 100)}%
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>목표 = round(예산 × 비율)</th>
+                      <td>{cur.block_size_calc.target}</td>
+                    </tr>
+                    <tr>
+                      <th>최종 블록 크기 N</th>
+                      <td><b>{cur.block_size_calc.block_size}</b> = max(min({cur.block_size_calc.target}, {cur.block_size_calc.cap}), 1)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
 
             {cur.feasible_options?.length ? (
               <div className="stepdbg-list">
