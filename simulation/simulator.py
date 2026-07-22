@@ -1851,12 +1851,62 @@ class SchedulingSimulator:
                 return True
         return False
 
+    def bulk_block_size_breakdown(
+        self, eqp_id: str, ppk: str, oper_id: str, level: int, n_levels: int,
+    ) -> Dict[str, Any]:
+        """bulk_block_size()의 산출 근거 전체 — 스텝 디버거 '블록 크기 산출' 표시용.
+
+        block_size = max(min(round(frac × takt_budget), min(WIP, 잔여계획)), 1)
+        (WIP 0 또는 cap≤0이면 0)
+        """
+        lots = [
+            l for l in self.available_lots(eqp_id)
+            if l["PLAN_PROD_ATTR_VAL"] == ppk and l["oper_id"] == oper_id
+        ]
+        wip_carriers = len(lots)
+
+        data = self._env_data
+        wf_unit = max(data.get("max_wf_qty", 1), 1)
+        pm = data.get("plan_meta", {}).get((ppk, oper_id))
+        has_plan = bool(pm and pm.get("d0_plan_qty", 0) > 0)
+        if has_plan:
+            done = self.stats["completed_qty"].get((ppk, oper_id), 0)
+            plan_carriers = int(np.ceil(max(pm["d0_plan_qty"] - done, 0) / wf_unit))
+        else:
+            plan_carriers = wip_carriers  # 계획 없으면 WIP 한도
+
+        cap = min(wip_carriers, plan_carriers)
+        budget = self._takt_budget_carriers(ppk, oper_id)
+        frac = (level + 1) / max(n_levels, 1)        # level0→작게 … 마지막→budget 전량
+        target = max(int(round(frac * budget)), 1)
+        if wip_carriers == 0 or cap <= 0:
+            block_size = 0
+        else:
+            block_size = max(min(target, cap), 1)
+
+        return {
+            "ppk": ppk,
+            "oper_id": oper_id,
+            "eqp_id": eqp_id,
+            "wip_carriers": wip_carriers,
+            "plan_carriers": plan_carriers,
+            "has_plan": has_plan,
+            "cap": cap,
+            "takt_budget": budget,
+            "level": int(level),
+            "n_levels": int(n_levels),
+            "frac": round(frac, 4),
+            "target": target,
+            "block_size": block_size,
+        }
+
     def bulk_block_size(
         self, eqp_id: str, ppk: str, oper_id: str, level: int, n_levels: int,
     ) -> int:
         """size_level(0..n_levels-1) → 한 번에 커밋할 블록 carrier 수.
 
         상한 = min(takt 예산, 가용 WIP, 잔여 계획).
+        산출 근거는 bulk_block_size_breakdown() 참고.
 
         주의: tool capacity는 '동시에 같은 LOT_CD를 돌리는 장비 수' 제한(동시성)
         이지, 한 장비가 순차 처리하는 블록 길이 제한이 아니다. 한 장비는 블록
@@ -1864,31 +1914,7 @@ class SchedulingSimulator:
         tool 잔여로 깎으면 안 된다. 동시성은 블록 재생 중 매 carrier마다
         _tool_cap_blocks(can_assign, 잔여 기준)가 검사해 초과 시 블록을 끊는다.
         """
-        lots = [
-            l for l in self.available_lots(eqp_id)
-            if l["PLAN_PROD_ATTR_VAL"] == ppk and l["oper_id"] == oper_id
-        ]
-        wip_carriers = len(lots)
-        if wip_carriers == 0:
-            return 0
-
-        data = self._env_data
-        wf_unit = max(data.get("max_wf_qty", 1), 1)
-        pm = data.get("plan_meta", {}).get((ppk, oper_id))
-        if pm and pm.get("d0_plan_qty", 0) > 0:
-            done = self.stats["completed_qty"].get((ppk, oper_id), 0)
-            plan_carriers = int(np.ceil(max(pm["d0_plan_qty"] - done, 0) / wf_unit))
-        else:
-            plan_carriers = wip_carriers  # 계획 없으면 WIP 한도
-
-        cap = min(wip_carriers, plan_carriers)
-        if cap <= 0:
-            return 0
-
-        budget = self._takt_budget_carriers(ppk, oper_id)
-        frac = (level + 1) / max(n_levels, 1)        # level0→작게 … 마지막→budget 전량
-        target = max(int(round(frac * budget)), 1)
-        return max(min(target, cap), 1)
+        return self.bulk_block_size_breakdown(eqp_id, ppk, oper_id, level, n_levels)["block_size"]
 
     def bulk_decision_shaping(
         self, eqp_id: str, ppk: str, oper_id: str, block_size: int,
