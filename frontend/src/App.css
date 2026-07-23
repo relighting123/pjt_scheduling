@@ -2293,12 +2293,10 @@
 /* ══════════════════════════════════════════════════════════════════
    STEP DEBUGGER (스텝별 결정·리워드 분해)
    ══════════════════════════════════════════════════════════════════ */
-.stepdbg-page { display: flex; flex-direction: column; gap: 1rem; align-items: center; }
+.stepdbg-page { display: flex; flex-direction: column; gap: 1rem; align-items: stretch; }
 
 .stepdbg-gantt-wrap {
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
 }
 
 .step-debugger { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 1200px; margin: 0 auto; }
