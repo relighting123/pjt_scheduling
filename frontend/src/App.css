@@ -2541,3 +2541,7 @@
 .gantt-popup-lot-table { width: 100%; font-size: 0.8rem; }
 .gantt-popup-lot-table th { position: sticky; top: 0; }
 .gantt-popup-hint { margin-top: 0.6rem; text-align: right; }
+
+/* ── 간트 확대/축소 버튼 (전체화면 버튼 옆) ─────────────────────────────── */
+.gantt-zoom-group { display: flex; align-items: center; gap: 0.3rem; }
+.gantt-zoom-group .btn:disabled { opacity: 0.4; cursor: not-allowed; }

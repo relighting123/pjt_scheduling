@@ -231,6 +231,50 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   );
   useEffect(() => { if (dataEnd > 0 && !ganttFixed) setGanttEnd(dataEnd); }, [dataEnd, ganttFixed]);
 
+  // 간트 확대/축소 — 현재 보이는 구간(고정 안 했으면 전체)을 중심으로 절반씩
+  // 좁히거나(확대) 두 배씩 넓힌다(축소). 축소가 전체 구간을 넘으면 X축 고정을
+  // 풀어 자동(전체) 보기로 되돌린다.
+  const GANTT_ZOOM_FACTOR = 2;
+  const GANTT_ZOOM_MIN_WIDTH = 30;
+  const ganttViewWidth = ganttFixed ? Math.max(ganttEnd - ganttStart, 1) : dataEnd;
+  const canZoomInGantt = ganttViewWidth > GANTT_ZOOM_MIN_WIDTH + 0.5;
+  const canZoomOutGantt = ganttViewWidth < dataEnd - 0.5;
+
+  const zoomGantt = useCallback((factor: number) => {
+    const curStart = ganttFixed ? ganttStart : 0;
+    const curEnd = ganttFixed ? ganttEnd : dataEnd;
+    const width = Math.max(curEnd - curStart, 1);
+    const center = (curStart + curEnd) / 2;
+    const nextWidth = factor < 1
+      ? Math.max(width * factor, GANTT_ZOOM_MIN_WIDTH)
+      : Math.min(width * factor, dataEnd);
+
+    if (nextWidth >= dataEnd - 0.5) {
+      setGanttFixed(false);
+      return;
+    }
+    const nextStart = Math.max(0, Math.min(center - nextWidth / 2, dataEnd - nextWidth));
+    setGanttFixed(true);
+    setGanttStart(Math.round(nextStart));
+    setGanttEnd(Math.round(nextStart + nextWidth));
+  }, [ganttFixed, ganttStart, ganttEnd, dataEnd]);
+
+  const zoomInGantt = useCallback(() => zoomGantt(1 / GANTT_ZOOM_FACTOR), [zoomGantt]);
+  const zoomOutGantt = useCallback(() => zoomGantt(GANTT_ZOOM_FACTOR), [zoomGantt]);
+
+  const ganttZoomActions = (
+    <div className="gantt-zoom-group">
+      <button type="button" className="btn btn-ghost btn-xs" onClick={zoomInGantt}
+        disabled={!canZoomInGantt} title="확대 (구간 절반으로 축소해 확대)">
+        🔍＋
+      </button>
+      <button type="button" className="btn btn-ghost btn-xs" onClick={zoomOutGantt}
+        disabled={!canZoomOutGantt} title="축소 (구간 두 배로 넓혀 축소)">
+        🔍－
+      </button>
+    </div>
+  );
+
   const simBaseTime = useMemo(() => {
     const resultBase = result?.sim_base_time;
     if (resultBase && parseSimBaseMs(resultBase) != null) return resultBase;
@@ -811,7 +855,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 )}
 
                 {ganttChart && (
-                  <FullscreenPanel title="간트 차트" className="gantt-chart-panel-wrap">
+                  <FullscreenPanel title="간트 차트" className="gantt-chart-panel-wrap" actions={ganttZoomActions}>
                     <div className="chart-wrap gantt-chart-panel">
                       <PlotChart {...ganttChart} scrollable onBarClick={onGanttBarClick} />
                     </div>
@@ -922,7 +966,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 {result.decision_log?.length ? (
                   <div className="stepdbg-page">
                     {debugGanttChart && (
-                      <FullscreenPanel title="간트 차트 (스텝 동기화)" className="stepdbg-gantt-wrap chart-wrap gantt-chart-panel">
+                      <FullscreenPanel
+                        title="간트 차트 (스텝 동기화)"
+                        className="stepdbg-gantt-wrap chart-wrap gantt-chart-panel"
+                        actions={ganttZoomActions}
+                      >
                         <PlotChart {...debugGanttChart} scrollable onBarClick={onGanttBarClick} />
                       </FullscreenPanel>
                     )}
