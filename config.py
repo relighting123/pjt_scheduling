@@ -537,7 +537,7 @@ class RewardConfig:
     w_same_setup:      float = 1.0
     w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
     w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
-    w_pacing:          float = 2.5       # 선형 takt 추종 (achievable 기준; Step C) ↑강화
+    w_pacing:          float = 0.0       # [제거] 선형 takt 추종 (achievable 기준; Step C)
     # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
     # 생산(coverage)'으로 봄 → 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주해
     # 추가 몰림(lockstep)을 억제. 0이면 done-only(기존 동작). 작게 시작 권장.
