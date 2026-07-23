@@ -16,10 +16,12 @@ import {
   buildProductProductionCharts,
   buildInferenceWipChart,
   ganttStepMarkerShape,
+  ganttBlockSizeAnnotations,
   FORCED_LOT_STAT_LEGEND,
   FORCED_LOT_STAT_LEGEND_ORDER,
   type GanttBarLabel,
   type GanttBarClickInfo,
+  type BlockSizeMarker,
   ALGO_CHART_COLORS,
 } from "../lib/charts";
 import GanttBarPopup from "../components/GanttBarPopup";
@@ -388,15 +390,87 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     });
   }, [result, axis, labelMode, eqpModelMap, hiddenLegendKeys, showConversionBars, showDownBars]);
 
+  // 스텝 디버거 간트: 최종 결과 전체가 아니라, 현재 스텝까지 "배정된" 것만 누적
+  // 표시한다. schedule 배열은 assign_ppk_oper() 호출(=배정 성사) 순서 그대로
+  // append되므로, decision_log에서 status가 assigned/action_corrected인 항목
+  // 수를 현재 스텝까지 누적하면 그게 곧 schedule의 "여기까지 표시할 행 수"다.
+  const debugAssignedCount = useMemo(() => {
+    const log = result?.decision_log;
+    if (!log?.length || !debugStep) return 0;
+    let count = 0;
+    for (const e of log) {
+      if (e.status === "assigned" || e.status === "action_corrected") count++;
+      if (e.step === debugStep.step) break;
+    }
+    return count;
+  }, [result, debugStep]);
+
+  const debugSchedule = useMemo(
+    () => result?.schedule.slice(0, debugAssignedCount) ?? [],
+    [result, debugAssignedCount],
+  );
+
+  const debugTimeCutoff = debugStep?.sim_time_after ?? 0;
+  const debugConversionPlans = useMemo(
+    () => (result?.conversion_plans ?? []).filter((p) => p.conv_start_min <= debugTimeCutoff),
+    [result, debugTimeCutoff],
+  );
+  const debugDownWindows = useMemo(
+    () => (result?.down_windows ?? []).filter((p) => p.down_start_min <= debugTimeCutoff),
+    [result, debugTimeCutoff],
+  );
+
+  // 블록(2carrier 이상 벌크 커밋) 시작 지점 → schedule 행 인덱스 매핑 (전체 1회 계산)
+  const blockStartRows = useMemo(() => {
+    const log = result?.decision_log;
+    if (!log?.length) return [];
+    const rows: { rowIndex: number; n: number }[] = [];
+    let count = 0;
+    for (const e of log) {
+      const grew = e.status === "assigned" || e.status === "action_corrected";
+      if (grew) count++;
+      if (grew && e.block_start && (e.block_size ?? 0) > 1) {
+        rows.push({ rowIndex: count - 1, n: e.block_size as number });
+      }
+    }
+    return rows;
+  }, [result]);
+
+  const debugBlockMarkers = useMemo((): BlockSizeMarker[] => {
+    if (!result) return [];
+    return blockStartRows
+      .filter((b) => b.rowIndex < debugAssignedCount)
+      .map((b): BlockSizeMarker | null => {
+        const rec = result.schedule[b.rowIndex];
+        return rec ? { eqp_id: rec.EQP_ID, start_min: rec.START_TM, block_size: b.n } : null;
+      })
+      .filter((x): x is BlockSizeMarker => x != null);
+  }, [result, blockStartRows, debugAssignedCount]);
+
   const debugGanttChart = useMemo(() => {
-    if (!ganttChart) return null;
+    if (!result) return null;
+    const base = buildEnhancedGantt(debugSchedule, result.prod_keys, result.oper_ids, axis, {
+      labelMode,
+      eqpModelMap,
+      conversionPlans: debugConversionPlans,
+      downtimePlans: debugDownWindows,
+      hiddenProdOperKeys: hiddenLegendKeys,
+      showConversion: showConversionBars,
+      showDowntime: showDownBars,
+    });
     const marker = ganttStepMarkerShape(debugStep?.sim_time, axis);
-    if (!marker) return ganttChart;
     return {
-      ...ganttChart,
-      layout: { ...ganttChart.layout, shapes: [...(ganttChart.layout.shapes ?? []), marker] },
+      ...base,
+      layout: {
+        ...base.layout,
+        shapes: marker ? [...(base.layout.shapes ?? []), marker] : base.layout.shapes,
+        annotations: ganttBlockSizeAnnotations(debugBlockMarkers, axis, eqpModelMap),
+      },
     };
-  }, [ganttChart, debugStep, axis]);
+  }, [
+    result, debugSchedule, axis, labelMode, eqpModelMap, debugConversionPlans, debugDownWindows,
+    hiddenLegendKeys, showConversionBars, showDownBars, debugStep, debugBlockMarkers,
+  ]);
 
   const productionChart = useMemo(() => {
     if (!result?.schedule.length) return null;

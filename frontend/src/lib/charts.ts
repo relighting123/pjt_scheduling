@@ -414,6 +414,36 @@ function sortedEqpIds(eqpIds: string[]): string[] {
   return [...eqpIds].sort();
 }
 
+/** 스텝 디버거 간트에 표시할 벌크 블록 시작 위치 (EQP, 시작 시각, 블록 크기). */
+export interface BlockSizeMarker {
+  eqp_id: string;
+  start_min: number;
+  block_size: number;
+}
+
+/** 블록 시작 지점마다 "×N" 라벨을 바 위에 붙이는 annotation 목록. */
+export function ganttBlockSizeAnnotations(
+  markers: BlockSizeMarker[],
+  axis: Pick<GanttAxisOptions, "simBaseTime">,
+  eqpModelMap: Record<string, string> = {},
+): NonNullable<Layout["annotations"]> {
+  const baseMs = resolveGanttBaseMs(axis as GanttAxisOptions);
+  return markers.map((m) => ({
+    x: ganttAxisValue(m.start_min, baseMs),
+    y: getEqpLabel(m.eqp_id, eqpModelMap),
+    xref: "x",
+    yref: "y",
+    text: `×${m.block_size}`,
+    showarrow: false,
+    yshift: 22,
+    font: { size: 10, color: "#7c3aed", family: GANTT_THEME.fontFamily },
+    bgcolor: "rgba(255,255,255,0.85)",
+    bordercolor: "#c4b5fd",
+    borderwidth: 1,
+    borderpad: 1,
+  }));
+}
+
 function legendTraces(
   prodKeys: string[],
   operIds: string[],
