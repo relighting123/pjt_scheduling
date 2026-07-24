@@ -158,8 +158,14 @@ def split_wf_qty(total: int, split_qty: int) -> List[int]:
     if remainder == 0:
         return [split_qty] * n_full
 
-    if remainder == 1 and n_full >= 1:
-        return [split_qty] * (n_full - 1) + [split_qty - 1, split_qty - 1]
+    if remainder == 1 and n_full >= 1 and split_qty >= 3:
+        # 마지막 full 그룹(split_qty) + remainder(1)를 절반씩 재분배해 외톨이 1장을 없앤다.
+        # split_qty-1, split_qty-1 로 고정하면 split_qty!=3일 때 합계가 total과 어긋나므로
+        # (split_qty+1)을 균등 분할해 총량을 보존한다.
+        last_total = split_qty + 1
+        a = last_total // 2
+        b = last_total - a
+        return [split_qty] * (n_full - 1) + [a, b]
 
     return [split_qty] * n_full + [remainder]
 
