@@ -143,7 +143,8 @@ def normalize_lot_stat_cd(value, *, lot_id: str = "") -> str:
 def split_wf_qty(total: int, split_qty: int) -> List[int]:
     """
     wafer 수량을 SPLIT_QTY(장) 단위로 분할.
-    예: 25장, split_qty=3 → [3,3,3,3,3,3,3,2,2]
+    예: 25장, split_qty=3 → [3,3,3,3,3,3,3,4]
+    예: 25장, split_qty=8 → [8,8,9]
     """
     if total <= 0:
         return []
@@ -158,14 +159,9 @@ def split_wf_qty(total: int, split_qty: int) -> List[int]:
     if remainder == 0:
         return [split_qty] * n_full
 
-    if remainder == 1 and n_full >= 1 and split_qty >= 3:
-        # 마지막 full 그룹(split_qty) + remainder(1)를 절반씩 재분배해 외톨이 1장을 없앤다.
-        # split_qty-1, split_qty-1 로 고정하면 split_qty!=3일 때 합계가 total과 어긋나므로
-        # (split_qty+1)을 균등 분할해 총량을 보존한다.
-        last_total = split_qty + 1
-        a = last_total // 2
-        b = last_total - a
-        return [split_qty] * (n_full - 1) + [a, b]
+    if remainder == 1 and n_full >= 1:
+        # 외톨이 1장 그룹이 생기지 않도록 나머지 1장을 마지막 full 그룹에 합친다.
+        return [split_qty] * (n_full - 1) + [split_qty + 1]
 
     return [split_qty] * n_full + [remainder]
 
