@@ -39,6 +39,25 @@ interface Props {
   entries: DecisionLogEntry[];
   /** 현재 스텝 변경 시 부모에 통지 (간트 동기화용) */
   onStepChange?: (entry: DecisionLogEntry | null) => void;
+  /** 간트 차트와 동일한 P1/O1 축약 코드 — PPK/OPER 원본과 나란히 표기해 표기 체계를 통일한다 */
+  prodCodeMap?: Record<string, string>;
+  operCodeMap?: Record<string, string>;
+}
+
+/** "P3/O2 (실제PPK/실제OPER)" 형태로 코드와 원본을 함께 표기. 코드 맵이 없으면 원본만. */
+function pairLabel(
+  ppk: string | null | undefined,
+  oper: string | null | undefined,
+  prodCodeMap?: Record<string, string>,
+  operCodeMap?: Record<string, string>,
+): string {
+  if (!ppk && !oper) return "—";
+  const p = ppk ?? "";
+  const o = oper ?? "";
+  const pc = prodCodeMap?.[p];
+  const oc = operCodeMap?.[o];
+  if (!pc && !oc) return `${p}/${o}`;
+  return `${pc ?? p}/${oc ?? o} (${p}/${o})`;
 }
 
 function stepDetailLines(entry: DecisionLogEntry): string[] {
@@ -58,7 +77,7 @@ function stepDetailLines(entry: DecisionLogEntry): string[] {
   return lines;
 }
 
-export default function StepDebugger({ entries, onStepChange }: Props) {
+export default function StepDebugger({ entries, onStepChange, prodCodeMap, operCodeMap }: Props) {
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [onlyAssigned, setOnlyAssigned] = useState(false);
@@ -156,9 +175,9 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                 <tr>
                   <th>요청 → 선택 PPK/OPER</th>
                   <td>
-                    {cur.action_requested_ppk ? `${cur.action_requested_ppk}/${cur.action_requested_oper}` : "—"}
+                    {pairLabel(cur.action_requested_ppk, cur.action_requested_oper, prodCodeMap, operCodeMap)}
                     {"  →  "}
-                    <b>{(cur.selected_ppk ?? cur.resolved_ppk) ? `${cur.selected_ppk ?? cur.resolved_ppk}/${cur.selected_oper_id ?? cur.resolved_oper}` : "—"}</b>
+                    <b>{pairLabel(cur.selected_ppk ?? cur.resolved_ppk, cur.selected_oper_id ?? cur.resolved_oper, prodCodeMap, operCodeMap)}</b>
                   </td>
                 </tr>
                 <tr><th>선택 LOT</th><td><b>{cur.selected_lot_id ?? cur.assigned_lot_id ?? "—"}</b></td></tr>
@@ -178,7 +197,7 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                         {cur.block_progress.aborted ? " · 배정 실패로 종료" : ""}
                       </span>
                     ) : cur.status === "assigned" ? (
-                      <span className="stepdbg-tag">블록 연속</span>
+                      <span className="stepdbg-tag">단일 배정 (블록 아님)</span>
                     ) : "—"}
                   </td>
                 </tr>
@@ -194,7 +213,7 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
             {cur.block_size_calc ? (
               <div className="stepdbg-list">
                 <div className="stepdbg-list-title">
-                  블록 크기 산출 · {cur.block_size_calc.ppk}/{cur.block_size_calc.oper_id}
+                  블록 크기 산출 · {pairLabel(cur.block_size_calc.ppk, cur.block_size_calc.oper_id, prodCodeMap, operCodeMap)}
                 </div>
                 <table className="kv-table stepdbg-calc-table">
                   <tbody>
@@ -243,7 +262,7 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                 <div className="stepdbg-chips">
                   {cur.feasible_options.map((o, i) => (
                     <span key={i} className={`stepdbg-chip${(o.ppk === (cur.selected_ppk ?? cur.resolved_ppk) && o.oper_id === (cur.selected_oper_id ?? cur.resolved_oper)) ? " stepdbg-chip-sel" : ""}`}>
-                      {o.ppk}/{o.oper_id}{o.lot_id ? ` · ${o.lot_id}` : ""}
+                      {pairLabel(o.ppk, o.oper_id, prodCodeMap, operCodeMap)}{o.lot_id ? ` · ${o.lot_id}` : ""}
                     </span>
                   ))}
                 </div>
@@ -256,7 +275,7 @@ export default function StepDebugger({ entries, onStepChange }: Props) {
                 <div className="stepdbg-blocked stepdbg-blocked-scroll">
                   {cur.blocked_buckets.map((b, i) => (
                     <div key={i} className="stepdbg-blocked-row">
-                      <b>{b.ppk}/{b.oper_id}</b>
+                      <b>{pairLabel(b.ppk, b.oper_id, prodCodeMap, operCodeMap)}</b>
                       <span className="stepdbg-blocked-reason">
                         {BLOCK_REASON_LABELS[b.reason] ?? b.reason}
                       </span>

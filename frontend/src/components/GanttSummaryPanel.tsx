@@ -298,9 +298,12 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                   <td className="mono col-code">
                     <span className="code-text" style={{ color: item.color }}>{item.label}</span>
                   </td>
-                  <td className="cell-key col-key">{item.prodKey}</td>
-                  <td className="cell-key col-key">{item.operId}</td>
-                  <td className="mono col-color">{item.color}</td>
+                  <td className="cell-key col-key" title={item.prodKey}>{item.prodKey}</td>
+                  <td className="cell-key col-key" title={item.operId}>{item.operId}</td>
+                  <td className="mono col-color">
+                    <span className="color-swatch" style={{ background: item.color }} />
+                    {item.color}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -361,7 +364,7 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
               {eqpTable.filtered.map((row) => (
                 <tr key={row.eqp_id}>
                   <td className="mono">{row.eqp_id}</td>
-                  <td className="cell-key">{row.model ?? "—"}</td>
+                  <td className="cell-key" title={row.model ?? undefined}>{row.model ?? "—"}</td>
                   <td className="mono num">{fmtMin(row.firstStart)}</td>
                   <td className="mono num">{fmtMin(row.lastEnd)}</td>
                   <td className="mono num">{row.jobCount}건</td>
@@ -429,8 +432,8 @@ export default function GanttSummaryPanel({ result, eqpModelMap }: Props) {
                   <tr key={row.key}>
                     <td className="mono col-code"><span className="code-text">{pCode}</span></td>
                     <td className="mono col-code"><span className="code-text">{oCode}</span></td>
-                    <td className="cell-key col-key">{row.prod}</td>
-                    <td className="cell-key col-key">{row.oper}</td>
+                    <td className="cell-key col-key" title={row.prod}>{row.prod}</td>
+                    <td className="cell-key col-key" title={row.oper}>{row.oper}</td>
                     <td className="mono num col-num">{row.planQty.toLocaleString()}매</td>
                     <td className="mono num col-num">{row.targetQty.toLocaleString()}매</td>
                     <td className="mono num col-num">{row.doneQty.toLocaleString()}매</td>

@@ -20,9 +20,15 @@ export default function ExpandableErrorBanner({ message, variant = "err" }: Prop
   }, [message]);
 
   const bannerClass = variant === "warn" ? "banner banner-warn" : "banner banner-err";
+  const icon = variant === "warn" ? "⚠" : "✕";
 
   if (!expandable) {
-    return <div className={bannerClass}>{message}</div>;
+    return (
+      <div className={bannerClass}>
+        <span className="banner-icon">{icon}</span>
+        {message}
+      </div>
+    );
   }
 
   return (
@@ -33,6 +39,7 @@ export default function ExpandableErrorBanner({ message, variant = "err" }: Prop
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
+        <span className="banner-icon">{icon}</span>
         <span className="expandable-banner-text">
           {open ? (
             <span className="expandable-banner-body">{message}</span>
@@ -40,8 +47,8 @@ export default function ExpandableErrorBanner({ message, variant = "err" }: Prop
             <span className="expandable-banner-preview">{previewLine(message)}</span>
           )}
         </span>
-        <span className="expandable-banner-action">
-          {open ? "▲ 접기" : "▼ 클릭하여 상세 보기"}
+        <span className="expandable-banner-chevron" title={open ? "접기" : "클릭하여 상세 보기"}>
+          {open ? "▲" : "▼"}
         </span>
       </button>
     </div>

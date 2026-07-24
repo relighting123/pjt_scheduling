@@ -17,6 +17,7 @@ import {
   computeTAT,
   countToolSwitches,
 } from "../lib/metrics";
+import { buildShortCodeMap } from "../lib/ganttLabels";
 import type { InferenceResult } from "../types";
 
 interface Props {
@@ -53,6 +54,8 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
     }),
     [sched, result.plan, result.prod_keys, result.oper_ids],
   );
+  const prodCodeMap = useMemo(() => buildShortCodeMap(result.prod_keys, "P").codeByKey, [result.prod_keys]);
+  const operCodeMap = useMemo(() => buildShortCodeMap(result.oper_ids, "O").codeByKey, [result.oper_ids]);
   const tat    = useMemo(() => computeTAT(sched), [sched]);
   const toolSw = countToolSwitches(sched, result.conversion_plans ?? []);
   const totalDownMin = eqpSummary.reduce((s, r) => s + r.downMin, 0);
@@ -109,7 +112,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
             ))}
           </div>
 
-          {tab === "ach"   && <div className="chart-wrap"><PlotChart {...buildAchievementTableChart(ach)} /></div>}
+          {tab === "ach"   && <div className="chart-wrap"><PlotChart {...buildAchievementTableChart(ach, prodCodeMap, operCodeMap)} /></div>}
           {tab === "eqp"   && <div className="chart-wrap"><PlotChart {...buildEqpUtilChart(utils)} /></div>}
           {tab === "idle"  && <div className="chart-wrap"><PlotChart {...buildEqpIdleChart(eqpSummary)} /></div>}
 
@@ -118,7 +121,7 @@ export default function GanttKpiPanel({ result, eqpModelMap }: Props) {
               {tat.length > 0
                 ? (
                   <>
-                    <div className="chart-wrap mb-2"><PlotChart {...buildTatChart(tat)} /></div>
+                    <div className="chart-wrap mb-2"><PlotChart {...buildTatChart(tat, prodCodeMap)} /></div>
                     <div className="table-wrap">
                       <table className="data-table">
                         <thead><tr><th>제품</th><th className="num">LOT 수</th><th className="num">평균 TAT</th><th className="num">최소</th><th className="num">최대</th></tr></thead>

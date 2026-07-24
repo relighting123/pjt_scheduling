@@ -22,10 +22,13 @@ import {
   type GanttBarLabel,
   type GanttBarClickInfo,
   type BlockSizeMarker,
+  type GanttPendingBlockPreview,
   ALGO_CHART_COLORS,
 } from "../lib/charts";
-import GanttBarPopup from "../components/GanttBarPopup";
+import GanttBarPopup, { GanttHoverSummary } from "../components/GanttBarPopup";
 import { buildEqpModelMap } from "../lib/metrics";
+import { buildShortCodeMap } from "../lib/ganttLabels";
+import { useTableFilterSort, compareStrings, compareNumbers, type SortDir } from "../hooks/useTableFilterSort";
 import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey, parseSimBaseMs } from "../lib/ganttTime";
 import type {
   AlgorithmId, AlgorithmInfo,
@@ -94,17 +97,56 @@ function buildInferOptions(
 type MainTab = "gantt" | "events" | "table" | "debug";
 const ROWS = 200;
 
+type ScheduleRow = InferenceResult["schedule"][number];
+const VTABLE_COLS = ["EQP_ID","LOT_ID","CARRIER_ID","PLAN_PROD_ATTR_VAL","OPER_ID","ST","START_TM","END_TM","PROC_TIME","WF_QTY"] as const;
+const VTABLE_NUM_COLS = new Set<string>(["START_TM","END_TM","PROC_TIME","WF_QTY"]);
+
+function filterScheduleRow(row: ScheduleRow, query: string): boolean {
+  return [
+    row.EQP_ID, row.LOT_ID, row.CARRIER_ID ?? "", row.PLAN_PROD_ATTR_VAL, row.OPER_ID ?? "", row.ST ?? "",
+    row.START_TM, row.END_TM, row.PROC_TIME ?? "", row.WF_QTY ?? "",
+  ].join(" ").toLowerCase().includes(query);
+}
+
+function sortScheduleRow(a: ScheduleRow, b: ScheduleRow, key: string, dir: SortDir): number {
+  switch (key) {
+    case "EQP_ID": return compareStrings(a.EQP_ID, b.EQP_ID, dir);
+    case "LOT_ID": return compareStrings(a.LOT_ID, b.LOT_ID, dir);
+    case "CARRIER_ID": return compareStrings(a.CARRIER_ID ?? "", b.CARRIER_ID ?? "", dir);
+    case "PLAN_PROD_ATTR_VAL": return compareStrings(a.PLAN_PROD_ATTR_VAL, b.PLAN_PROD_ATTR_VAL, dir);
+    case "OPER_ID": return compareStrings(a.OPER_ID ?? "", b.OPER_ID ?? "", dir);
+    case "ST": return compareStrings(a.ST ?? "", b.ST ?? "", dir);
+    case "PROC_TIME": return compareNumbers(a.PROC_TIME ?? 0, b.PROC_TIME ?? 0, dir);
+    case "WF_QTY": return compareNumbers(a.WF_QTY ?? 0, b.WF_QTY ?? 0, dir);
+    case "END_TM": return compareNumbers(a.END_TM, b.END_TM, dir);
+    default: return compareNumbers(a.START_TM, b.START_TM, dir);
+  }
+}
+
 function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
   const [page, setPage] = useState(0);
   const total = rows.length;
-  const pages = Math.ceil(total / ROWS);
-  const visible = rows.slice(page * ROWS, (page + 1) * ROWS);
-  const cols = ["EQP_ID","LOT_ID","CARRIER_ID","PLAN_PROD_ATTR_VAL","OPER_ID","ST","START_TM","END_TM","PROC_TIME","WF_QTY"] as const;
+  const { query, setQuery, sort, toggleSort, filtered } = useTableFilterSort(
+    rows, filterScheduleRow, sortScheduleRow, { key: "START_TM", dir: "asc" },
+  );
+  useEffect(() => { setPage(0); }, [query, sort]);
+
+  const pages = Math.ceil(filtered.length / ROWS);
+  const visible = filtered.slice(page * ROWS, (page + 1) * ROWS);
 
   return (
     <>
+      <div className="gantt-table-toolbar">
+        <input
+          type="search"
+          className="gantt-table-search"
+          placeholder="EQP·LOT·CARRIER·제품·공정 검색"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <span className="gantt-table-count">{filtered.length.toLocaleString()}/{total.toLocaleString()}건</span>
+      </div>
       <div className="vtable-header">
-        <span className="vtable-count">총 {total.toLocaleString()}건</span>
         {pages > 1 && (
           <div className="vtable-pagination">
             <button type="button" className="btn btn-ghost btn-xs" disabled={page === 0} onClick={() => setPage(0)}>«</button>
@@ -117,7 +159,24 @@ function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
       </div>
       <div className="table-wrap">
         <table className="data-table">
-          <thead><tr>{cols.map(c => <th key={c} className={["START_TM","END_TM","PROC_TIME","WF_QTY"].includes(c) ? "num" : undefined}>{c}</th>)}</tr></thead>
+          <thead>
+            <tr>
+              {VTABLE_COLS.map(c => {
+                const active = sort.key === c;
+                return (
+                  <th
+                    key={c}
+                    className={[VTABLE_NUM_COLS.has(c) ? "num" : "", "sortable", active ? "active" : ""].filter(Boolean).join(" ")}
+                    onClick={() => toggleSort(c)}
+                    aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+                  >
+                    <span className="sortable-label">{c}</span>
+                    {active && <span className="sort-indicator">{sort.dir === "asc" ? "↑" : "↓"}</span>}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
           <tbody>
             {visible.map((r, i) => (
               <tr key={`${r.EQP_ID}-${r.LOT_ID}-${r.START_TM}-${i}`}>
@@ -128,6 +187,7 @@ function VirtualTable({ rows }: { rows: InferenceResult["schedule"] }) {
             ))}
           </tbody>
         </table>
+        {filtered.length === 0 && <p className="gantt-table-empty">검색 결과가 없습니다.</p>}
       </div>
     </>
   );
@@ -167,6 +227,10 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const onGanttBarClick = useCallback((cd: unknown) => {
     setGanttBar(cd as GanttBarClickInfo);
   }, []);
+  const ganttHoverTooltip = useCallback(
+    (cd: unknown) => <GanttHoverSummary info={cd as GanttBarClickInfo} />,
+    [],
+  );
 
   const [selectedFolder, setSelectedFolder] = useState("");
   const [facIdOverride, setFacIdOverride]   = useState("");
@@ -186,6 +250,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const defaultConversionMinutes = config?.default_env?.conversion_minutes ?? 60;
 
+  const [ctrlCollapsed, setCtrlCollapsed] = useState(false);
   const [labelMode, setLabelMode]         = useState<GanttBarLabel>("lot");
   const [ganttFixed, setGanttFixed]       = useState(false);
   const [ganttStart, setGanttStart]       = useState(0);
@@ -307,6 +372,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }), [result, ganttFixed, ganttStart, ganttEnd, dataEnd, simBaseTime]);
 
   const eqpModelMap = useMemo(() => buildEqpModelMap(result?.event_log ?? []), [result]);
+  // 간트 차트의 P1/O1 축약 코드 — 스텝 디버거에서도 동일한 코드를 병기해 표기 체계를 통일한다
+  const prodCodeMap = useMemo(() => buildShortCodeMap(result?.prod_keys ?? [], "P").codeByKey, [result]);
+  const operCodeMap = useMemo(() => buildShortCodeMap(result?.oper_ids ?? [], "O").codeByKey, [result]);
 
   useEffect(() => {
     setHiddenLegendKeys(new Set());
@@ -320,6 +388,11 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
   const hasForcedLotStat = useMemo(
     () => (result?.schedule ?? []).some((r) => r.LOT_STAT_CD && r.LOT_STAT_CD !== "WAIT"),
+    [result],
+  );
+
+  const hasInflowLots = useMemo(
+    () => (result?.schedule ?? []).some((r) => (r.OPER_IN_TIME ?? 0) > 0),
     [result],
   );
 
@@ -491,6 +564,26 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       .filter((x): x is BlockSizeMarker => x != null);
   }, [result, blockStartRows, debugAssignedCount]);
 
+  // 이번 스텝에서 시작/진행 중인 블록(N carrier)의 아직 개별 스텝으로 진행되지 않은
+  // 나머지를 흐린 bar로 미리 보여준다 — 방금 배정된 구간 바로 뒤에 같은 소요시간만큼 이어붙임.
+  const debugPendingBlock = useMemo((): GanttPendingBlockPreview | null => {
+    if (!debugStep) return null;
+    const remaining = debugStep.block_start
+      ? Math.max((debugStep.block_size ?? 1) - 1, 0)
+      : (debugStep.block_progress?.aborted ? 0 : (debugStep.block_progress?.remaining ?? 0));
+    if (!remaining || remaining <= 0) return null;
+    const eqpId = debugStep.selected_eqp_id ?? debugStep.eqp_id;
+    const ppk = debugStep.selected_ppk ?? debugStep.resolved_ppk;
+    const oper = debugStep.selected_oper_id ?? debugStep.resolved_oper;
+    if (!eqpId || !ppk || !oper) return null;
+    const eqpRows = debugSchedule.filter((r) => r.EQP_ID === eqpId);
+    if (!eqpRows.length) return null;
+    const last = eqpRows.reduce((a, b) => (b.END_TM > a.END_TM ? b : a));
+    const unitDuration = last.PROC_TIME ?? Math.max(last.END_TM - last.START_TM, 0);
+    if (unitDuration <= 0) return null;
+    return { eqp_id: eqpId, ppk, oper, anchor_min: last.END_TM, unit_duration: unitDuration, count: remaining };
+  }, [debugStep, debugSchedule]);
+
   const debugGanttChart = useMemo(() => {
     if (!result) return null;
     const base = buildEnhancedGantt(debugSchedule, result.prod_keys, result.oper_ids, axis, {
@@ -501,8 +594,12 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
       hiddenProdOperKeys: hiddenLegendKeys,
       showConversion: showConversionBars,
       showDowntime: showDownBars,
+      pendingBlock: debugPendingBlock,
     });
-    const marker = ganttStepMarkerShape(debugStep?.sim_time, axis);
+    // 재생 헤드(빨간선)는 "이 스텝 결정 이후의 현재 시각"을 가리켜야 downtime/conversion
+    // 컷오프(debugTimeCutoff, 아래)와 같은 시간 기준을 쓴다 — sim_time(결정 전 시각)을 쓰면
+    // 시간 전진(time_advanced)이 큰 스텝에서 선이 실제보다 뒤에 멈춰 있는 것처럼 보인다.
+    const marker = ganttStepMarkerShape(debugStep?.sim_time_after ?? debugStep?.sim_time, axis);
     return {
       ...base,
       layout: {
@@ -513,7 +610,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
     };
   }, [
     result, debugSchedule, axis, labelMode, eqpModelMap, debugConversionPlans, debugDownWindows,
-    hiddenLegendKeys, showConversionBars, showDownBars, debugStep, debugBlockMarkers,
+    hiddenLegendKeys, showConversionBars, showDownBars, debugStep, debugBlockMarkers, debugPendingBlock,
   ]);
 
   const productionChart = useMemo(() => {
@@ -541,7 +638,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, [result]);
 
   return (
-    <div className="detail-page">
+    <div className={`detail-page${ctrlCollapsed ? " ctrl-collapsed" : ""}`}>
       <div className="detail-page-title">
         추론 결과
         <span className="page-badge badge badge-accent">Inference</span>
@@ -549,8 +646,24 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
 
       {/* ── Control panel ── */}
       <aside className="ctrl-panel">
+        <div className="ctrl-panel-head">
+          {!ctrlCollapsed && <span className="ctrl-panel-head-title">조회 조건</span>}
+          <button
+            type="button"
+            className="ctrl-panel-toggle"
+            onClick={() => setCtrlCollapsed((v) => !v)}
+            title={ctrlCollapsed ? "조회조건 패널 펼치기" : "조회조건 패널 접기"}
+            aria-expanded={!ctrlCollapsed}
+          >
+            {ctrlCollapsed ? "▶" : "◀"}
+          </button>
+        </div>
+        {!ctrlCollapsed && (
+        <>
         <div className="card">
-          <div className="card-title">데이터셋</div>
+          <div className="card-title">조회 대상</div>
+          <p className="hint mb-2">CLI <code>infer</code> 와 동일한 옵션입니다. 기본은 Oracle에서 input JSON을 조회한 뒤 추론합니다.</p>
+
           <label className="field-label" htmlFor="infer-folder">경로</label>
           <select id="infer-folder" className="select" value={selectedFolder}
             onChange={e => void (async () => {
@@ -566,13 +679,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           {summary && (
             <p className="hint mt-1">EQP {summary.eqp_count} · LOT {summary.lot_count} · 제품 {summary.prod_count}</p>
           )}
-        </div>
 
-        <div className="card">
-          <div className="card-title">실행 옵션</div>
-          <p className="hint mb-2">CLI <code>infer</code> 와 동일한 옵션입니다. 기본은 Oracle에서 input JSON을 조회한 뒤 추론합니다.</p>
-
-          <label className="field-label" htmlFor="infer-fac-id">FAC_ID</label>
+          <label className="field-label mt-2" htmlFor="infer-fac-id">FAC_ID</label>
           <input
             id="infer-fac-id"
             className="input"
@@ -617,41 +725,10 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             />
             history/event 포함 (--include-history)
           </label>
-
-          <p className="hint mt-2">추론 후 결과는 항상 Oracle RTS 테이블에 적재됩니다.</p>
-          <label className="field-label mt-2" htmlFor="infer-db-alias">DB alias</label>
-          <input
-            id="infer-db-alias"
-            className="input"
-            type="text"
-            placeholder="미지정 시 default"
-            value={dbAlias}
-            onChange={e => setDbAlias(e.target.value)}
-            disabled={loading}
-          />
-          <label className="check-label mt-2">
-            <input
-              type="checkbox"
-              checked={noHistory}
-              onChange={e => setNoHistory(e.target.checked)}
-              disabled={loading}
-            />
-            HIS 테이블 적재 생략 (--no-history)
-          </label>
-
           <label className="check-label">
-            <input
-              type="checkbox"
-              checked={saveKpi}
-              onChange={e => setSaveKpi(e.target.checked)}
-              disabled={loading}
-            />
-            KPI/검증 집계 저장 (RTS_PERFMON_HIS, RTS_VALIDATION, --save-kpi)
+            <input type="checkbox" checked={wipInflow} onChange={e => setWipInflow(e.target.checked)} disabled={loading} />
+            유입 재공 이벤트
           </label>
-
-          {lastInferMeta && (
-            <p className="hint mt-2">최근 실행: {lastInferMeta}</p>
-          )}
         </div>
 
         <div className="card">
@@ -733,10 +810,6 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           <p className="hint" style={{ marginTop: "-0.25rem", marginBottom: "0.5rem" }}>
             스텝 디버거에서 스텝별 배정·차단 사유를 보려면 켜고 추론을 실행하세요.
           </p>
-          <label className="check-label">
-            <input type="checkbox" checked={wipInflow} onChange={e => setWipInflow(e.target.checked)} disabled={loading} />
-            유입 재공 이벤트
-          </label>
 
           <div className="gap-row mt-2">
             <button type="button" className={`btn btn-primary${loading ? " loading" : ""}`}
@@ -757,6 +830,46 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           {fileSource && <p className="hint mt-1">파일: <code>{fileSource}</code></p>}
           {needsModel && !modelExists && <p className="hint mt-1" style={{ color:"var(--warn)" }}>⚠ PPO는 모델이 필요합니다</p>}
         </div>
+
+        <div className="card">
+          <div className="card-title">저장 옵션</div>
+          <p className="hint mb-2">추론 후 결과는 항상 Oracle RTS 테이블에 적재됩니다.</p>
+          <label className="field-label" htmlFor="infer-db-alias">DB alias</label>
+          <input
+            id="infer-db-alias"
+            className="input"
+            type="text"
+            placeholder="미지정 시 default"
+            value={dbAlias}
+            onChange={e => setDbAlias(e.target.value)}
+            disabled={loading}
+          />
+          <label className="check-label mt-2">
+            <input
+              type="checkbox"
+              checked={noHistory}
+              onChange={e => setNoHistory(e.target.checked)}
+              disabled={loading}
+            />
+            HIS 테이블 적재 생략 (--no-history)
+          </label>
+
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={saveKpi}
+              onChange={e => setSaveKpi(e.target.checked)}
+              disabled={loading}
+            />
+            KPI/검증 집계 저장 (RTS_PERFMON_HIS, RTS_VALIDATION, --save-kpi)
+          </label>
+
+          {lastInferMeta && (
+            <p className="hint mt-2">최근 실행: {lastInferMeta}</p>
+          )}
+        </div>
+        </>
+        )}
       </aside>
 
       {/* ── Main content ── */}
@@ -857,7 +970,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 {ganttChart && (
                   <FullscreenPanel title="간트 차트" className="gantt-chart-panel-wrap" actions={ganttZoomActions}>
                     <div className="chart-wrap gantt-chart-panel">
-                      <PlotChart {...ganttChart} scrollable onBarClick={onGanttBarClick} />
+                      <PlotChart {...ganttChart} scrollable onBarClick={onGanttBarClick} hoverTooltip={ganttHoverTooltip} />
                     </div>
                   </FullscreenPanel>
                 )}
@@ -877,6 +990,13 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                         {item.label}
                       </span>
                     ))}
+                  </div>
+                )}
+
+                {hasInflowLots && (
+                  <div className="gantt-base-info gantt-forced-legend">
+                    <span className="gantt-inflow-swatch" />
+                    유입 재공 — 반투명하게 표시된 바
                   </div>
                 )}
 
@@ -971,10 +1091,10 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                         className="stepdbg-gantt-wrap chart-wrap gantt-chart-panel"
                         actions={ganttZoomActions}
                       >
-                        <PlotChart {...debugGanttChart} scrollable onBarClick={onGanttBarClick} />
+                        <PlotChart {...debugGanttChart} scrollable onBarClick={onGanttBarClick} hoverTooltip={ganttHoverTooltip} />
                       </FullscreenPanel>
                     )}
-                    <StepDebugger entries={result.decision_log} onStepChange={setDebugStep} />
+                    <StepDebugger entries={result.decision_log} onStepChange={setDebugStep} prodCodeMap={prodCodeMap} operCodeMap={operCodeMap} />
                   </div>
                 ) : (
                   <StepDebugger entries={[]} />

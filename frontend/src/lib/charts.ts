@@ -283,7 +283,8 @@ function ganttXAxisLayout(
   timeStart: number,
   timeEnd: number,
   extra: Record<string, unknown> = {},
-  fixedRange?: boolean,
+  // 호출부 호환용 파라미터. fixedrange는 더 이상 적용하지 않는다(아래 주석 참고).
+  _fixedRange?: boolean,
   baseMs: number | null = null,
 ): Record<string, unknown> {
   const start = Math.max(0, timeStart);
@@ -301,7 +302,10 @@ function ganttXAxisLayout(
       tickformat: ganttTickFormat(end - start),
       hoverformat: "%H:%M",
       tickfont: { size: 11, color: GANTT_THEME.axisColor },
-      ...(fixedRange ? { fixedrange: true } : {}),
+      // 「X축 고정」/줌 상태에서도 여전히 드래그로 좌우 이동(pan)이 가능해야 하므로
+      // fixedrange는 적용하지 않는다 — fixedrange:true는 Plotly에서 해당 축의
+      // 드래그 자체를 막아버려, PlotChart의 clampXMin 팬 클램프 로직과 충돌해
+      // 확대 후 드래그 이동이 안 되는 버그가 있었다.
       ...extra,
     };
   }
@@ -316,7 +320,6 @@ function ganttXAxisLayout(
     rangemode: "nonnegative",
     minallowed: 0,
     tickfont: { size: 11, color: GANTT_THEME.axisColor },
-    ...(fixedRange ? { fixedrange: true } : {}),
     ...extra,
   };
 }
@@ -1753,23 +1756,17 @@ export function buildGanttLegendItems(
 
 const ENHANCED_GANTT_BARGAP = 0.18;
 
-function inflowLegendTrace(hasInflow: boolean): Data {
-  return {
-    type: "scatter",
-    mode: "markers",
-    x: [null],
-    y: [null],
-    name: "유입 재공",
-    marker: {
-      size: 12,
-      color: "rgba(255,255,255,0)",
-      symbol: "square",
-      line: { color: "rgba(15,23,42,0.72)", width: 2 },
-    },
-    showlegend: hasInflow,
-    hoverinfo: "skip",
-    visible: hasInflow ? true : "legendonly",
-  } as Data;
+/** 스텝 디버거: 블록(N carrier) 중 아직 개별 스텝으로 진행되지 않은 나머지를 미리보기로 표시 */
+export interface GanttPendingBlockPreview {
+  eqp_id: string;
+  ppk: string;
+  oper: string;
+  /** 미리보기 첫 구간 시작(분) — 보통 방금 배정된 구간의 종료 시각 */
+  anchor_min: number;
+  /** 구간 1개당 예상 소요(분) — 보통 방금 배정된 구간의 소요시간 */
+  unit_duration: number;
+  /** 남은 구간 수 */
+  count: number;
 }
 
 export function buildEnhancedGantt(
@@ -1786,6 +1783,8 @@ export function buildEnhancedGantt(
     hiddenProdOperKeys?: ReadonlySet<string>;
     showConversion?: boolean;
     showDowntime?: boolean;
+    /** 스텝 디버거 전용: 블록 잔여분 미리보기(흐린 bar) */
+    pendingBlock?: GanttPendingBlockPreview | null;
   } = {},
 ): PlotChartSpec {
   const {
@@ -1797,6 +1796,7 @@ export function buildEnhancedGantt(
     hiddenProdOperKeys,
     showConversion = true,
     showDowntime = true,
+    pendingBlock,
   } = options;
   const prodCodeMap = buildShortCodeMap(prodKeys, "P").codeByKey;
   const operCodeMap = buildShortCodeMap(operIds, "O").codeByKey;
@@ -1868,14 +1868,48 @@ export function buildEnhancedGantt(
       textposition: "inside",
       insidetextanchor: "middle",
       textfont: { size: 10, color: "#ffffff", family: GANTT_THEME.fontFamily },
-      // hover 툴팁은 스크롤 컨테이너 클리핑과 얽혀 글자·말풍선이 어긋나는
-      // Plotly 버그가 있어 간트 바에서는 끄고, 클릭 팝업(customdata)으로 대체.
+      // Plotly 내장 hoverlayer는 스크롤 컨테이너 클리핑과 얽혀 글자·말풍선이
+      // 어긋나는 버그가 있어 끄고, PlotChart의 커스텀 hover 요약(hoverTooltip
+      // prop, customdata 기반)으로 대체 — 클릭 시에는 상세 팝업을 띄운다.
       hoverinfo: "none",
       // GanttBarClickInfo는 Plotly Datum 타입 정의에 없지만 런타임에서는 그대로 전달됨
       customdata: [clickInfo],
       showlegend: false,
     } as unknown as Data);
   });
+
+  // 블록 잔여분 미리보기(흐린 bar) — 아직 개별 스텝으로 진행되지 않은 나머지 carrier
+  if (pendingBlock && pendingBlock.count > 0 && pendingBlock.unit_duration > 0) {
+    const label = getEqpLabel(pendingBlock.eqp_id, eqpModelMap);
+    const pairKey = ganttProdOperKey(pendingBlock.ppk, pendingBlock.oper);
+    const fillColor = prodOperColorMap[pairKey] ?? "#94a3b8";
+    for (let i = 0; i < pendingBlock.count; i++) {
+      const start = pendingBlock.anchor_min + i * pendingBlock.unit_duration;
+      const { base, x } = ganttBarAxisCoords(start, pendingBlock.unit_duration, baseMs);
+      data.push({
+        type: "bar",
+        orientation: "h",
+        x: [x],
+        y: [label],
+        base: [base],
+        marker: ganttBarMarker(fillColor, false),
+        hoverinfo: "none",
+        customdata: [{
+          kind: "assign",
+          eqp_id: pendingBlock.eqp_id,
+          eqp_label: label,
+          start_min: start,
+          end_min: start + pendingBlock.unit_duration,
+          start_label: formatGanttMinuteLabel(start, baseMs),
+          end_label: formatGanttMinuteLabel(start + pendingBlock.unit_duration, baseMs),
+          prod: pendingBlock.ppk,
+          oper: pendingBlock.oper,
+          records: [],
+        } satisfies GanttBarClickInfo],
+        showlegend: false,
+      } as unknown as Data);
+    }
+  }
 
   // Conversion bars
   if (showConversion) {
@@ -1948,12 +1982,6 @@ export function buildEnhancedGantt(
     });
   }
 
-  // 유입 재공 범례
-  const hasInflow = barSegments.some((seg) =>
-    seg.records.some((r) => (r.OPER_IN_TIME ?? 0) > 0),
-  );
-  data.push(inflowLegendTrace(hasInflow));
-
   const layout: Partial<Layout> = {
     ...GANTT_PAN_LAYOUT,
     title: title ? { text: title, font: { size: 15, color: GANTT_THEME.titleColor, family: GANTT_THEME.fontFamily } } : undefined,
@@ -1970,15 +1998,11 @@ export function buildEnhancedGantt(
     shapes: ganttTableGridShapes(eqpLabels.length),
     barmode: "overlay",
     bargap: ENHANCED_GANTT_BARGAP,
-    showlegend: hasInflow,
-    legend: hasInflow ? {
-      title: { text: "범례", font: { size: 11 } },
-      ...GANTT_LEGEND,
-    } : undefined,
+    showlegend: false,
     height: Math.max(350, 72 * Math.max(sortedEqps.length, 1)),
     plot_bgcolor: GANTT_THEME.plotBg,
     paper_bgcolor: GANTT_THEME.paperBg,
-    margin: { l: 160, r: 20, t: 48, b: hasInflow ? 72 : 40 },
+    margin: { l: 160, r: 20, t: 48, b: 40 },
     font: GANTT_LAYOUT_FONT,
     hovermode: "closest",
     hoverdistance: 30,
@@ -2044,24 +2068,32 @@ export function buildEqpIdleChart(rows: EqpScheduleSummary[]): { data: Data[]; l
   };
 }
 
-export function buildTatChart(rows: TatRow[]): { data: Data[]; layout: Partial<Layout> } {
+export function buildTatChart(
+  rows: TatRow[],
+  prodCodeMap: Record<string, string> = {},
+): { data: Data[]; layout: Partial<Layout> } {
+  // 원본 제품명은 길어서 x축 카테고리로 그대로 쓰면 잘린다 — 간트차트와 동일한
+  // P 축약 코드를 쓰고, 원본은 hover에서 보여준다.
+  const labels = rows.map((r) => prodCodeMap[r.prod] ?? r.prod);
   return {
     data: [
       {
         type: "bar",
         name: "평균 TAT",
-        x: rows.map((r) => r.prod),
+        x: labels,
         y: rows.map((r) => r.avgMin),
         marker: { color: "#4C72B0" },
-        hovertemplate: "%{x}<br>평균 TAT: %{y}분<extra></extra>",
+        customdata: rows.map((r) => r.prod),
+        hovertemplate: "%{customdata}<br>평균 TAT: %{y}분<extra></extra>",
       },
       {
         type: "bar",
         name: "최대 TAT",
-        x: rows.map((r) => r.prod),
+        x: labels,
         y: rows.map((r) => r.maxMin),
         marker: { color: "#DD8452", opacity: 0.6 },
-        hovertemplate: "%{x}<br>최대 TAT: %{y}분<extra></extra>",
+        customdata: rows.map((r) => r.prod),
+        hovertemplate: "%{customdata}<br>최대 TAT: %{y}분<extra></extra>",
       },
     ],
     layout: {
@@ -2077,8 +2109,15 @@ export function buildTatChart(rows: TatRow[]): { data: Data[]; layout: Partial<L
   };
 }
 
-export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data[]; layout: Partial<Layout> } {
-  const labels = rows.map((r) => `${r.prod}/${r.oper}`);
+export function buildAchievementTableChart(
+  rows: AchievementRow[],
+  prodCodeMap: Record<string, string> = {},
+  operCodeMap: Record<string, string> = {},
+): { data: Data[]; layout: Partial<Layout> } {
+  // 원본 PPK/OPER 문자열은 길어서 y축에 그대로 쓰면 왼쪽 여백을 넘어 잘린다 —
+  // 간트차트와 동일한 P/O 축약 코드를 쓰고, 원본은 hover에서 보여준다.
+  const labels = rows.map((r) => `${prodCodeMap[r.prod] ?? r.prod}/${operCodeMap[r.oper] ?? r.oper}`);
+  const rawLabels = rows.map((r) => `${r.prod}/${r.oper}`);
   const planColors = rows.map((r) => r.pct >= 100 ? "#55A868" : r.pct >= 60 ? "#DD8452" : "#C44E52");
   const targetColors = rows.map((r) => r.targetPct >= 100 ? "#3b8a5a" : r.targetPct >= 60 ? "#b86830" : "#8b2e31");
   return {
@@ -2092,8 +2131,8 @@ export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data
         text: rows.map((r) => `${r.pct}%`),
         textposition: "outside",
         marker: { color: planColors },
-        hovertemplate: "%{y}<br>계획달성률: %{x}% (%{customdata}매/%{meta}매)<extra></extra>",
-        customdata: rows.map((r) => r.doneQty),
+        hovertemplate: "%{customdata[2]}<br>계획달성률: %{x}% (%{customdata[0]}매/%{meta}매)<extra></extra>",
+        customdata: rows.map((r, i) => [r.doneQty, r.planQty, rawLabels[i]]),
         meta: rows.map((r) => r.planQty),
       } as Data,
       {
@@ -2105,8 +2144,8 @@ export function buildAchievementTableChart(rows: AchievementRow[]): { data: Data
         text: rows.map((r) => `${r.targetPct}%`),
         textposition: "outside",
         marker: { color: targetColors, opacity: 0.65 },
-        hovertemplate: "%{y}<br>타겟달성률: %{x}% (%{customdata}매/%{meta}매)<extra></extra>",
-        customdata: rows.map((r) => r.doneQty),
+        hovertemplate: "%{customdata[2]}<br>타겟달성률: %{x}% (%{customdata[0]}매/%{meta}매)<extra></extra>",
+        customdata: rows.map((r, i) => [r.doneQty, r.targetQty, rawLabels[i]]),
         meta: rows.map((r) => r.targetQty),
       } as Data,
     ],

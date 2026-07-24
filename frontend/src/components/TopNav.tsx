@@ -7,7 +7,7 @@ interface TopNavProps {
 }
 
 const ITEMS = [
-  { id: "dashboard"  as AppMode, label: "Overview", dot: "◈" },
+  { id: "dashboard"  as AppMode, label: "개요", dot: "◈" },
   { id: "inference"  as AppMode, label: "추론 결과", dot: "▶" },
   { id: "test"       as AppMode, label: "테스트 셋", dot: "⊞" },
   { id: "benchmark"  as AppMode, label: "벤치마크", dot: "◆" },
@@ -36,10 +36,6 @@ export default function TopNav({ mode, onModeChange, inputFolder }: TopNavProps)
       </div>
 
       <div className="nav-right">
-        <div className="nav-status">
-          <div className="nav-pulse" />
-          LIVE
-        </div>
         {inputFolder && (
           <code className="nav-folder">{inputFolder}</code>
         )}

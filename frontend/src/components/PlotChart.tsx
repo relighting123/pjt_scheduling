@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { loadPlotly, type PlotlyBundle } from "../lib/plotlyComponent";
 import { CHART_HOVERLABEL } from "../lib/charts";
-import type { Data, Layout, Config, PlotMouseEvent, PlotRelayoutEvent } from "plotly.js";
+import type { Data, Layout, Config, PlotMouseEvent, PlotHoverEvent, PlotRelayoutEvent } from "plotly.js";
 
 interface PlotChartProps {
   data: Data[];
@@ -11,6 +12,12 @@ interface PlotChartProps {
   onPointClick?: (pointIndex: number) => void;
   /** 바 클릭 시 해당 point의 customdata 전달 (간트 바 상세 팝업용) */
   onBarClick?: (customdata: unknown) => void;
+  /**
+   * hover 중인 point의 customdata로 커서 옆에 띄울 요약 콘텐츠를 반환.
+   * Plotly 내장 hoverlayer 대신 이 콜백으로 직접 그린다(스크롤 컨테이너
+   * 클리핑 버그 회피 — PlotChart 내부 주석 참고).
+   */
+  hoverTooltip?: (customdata: unknown) => ReactNode;
   /** 간트 pan 시 X축이 0 미만으로 가지 않도록 clamp */
   clampXMin?: number;
   /** 세로 스크롤 시 상단 X축(시간 눈금) 고정 */
@@ -227,10 +234,12 @@ export default function PlotChart({
   className,
   onPointClick,
   onBarClick,
+  hoverTooltip,
   clampXMin,
   scrollable = false,
 }: PlotChartProps) {
   const graphDivRef = useRef<HTMLElement | null>(null);
+  const [hoverTip, setHoverTip] = useState<{ x: number; y: number; content: ReactNode } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickyBasesRef = useRef<Map<Element, number>>(new Map());
   const paperBg = (layout.paper_bgcolor as string | undefined) ?? "#ffffff";
@@ -262,6 +271,30 @@ export default function PlotChart({
     }
   };
 
+  const handleHover = useCallback((ev: Readonly<PlotHoverEvent>) => {
+    if (!hoverTooltip) return;
+    const pt = ev.points?.[0] as { customdata?: unknown } | undefined;
+    const customdata = pt?.customdata;
+    if (customdata == null) { setHoverTip(null); return; }
+    const content = hoverTooltip(customdata);
+    if (!content) { setHoverTip(null); return; }
+    setHoverTip({ x: ev.event.clientX, y: ev.event.clientY, content });
+  }, [hoverTooltip]);
+
+  const handleUnhover = useCallback(() => setHoverTip(null), []);
+
+  // react-plotly.js는 onClick/onHover/onUnhover를 data/layout 참조가 바뀔 때만
+  // 재동기화하는데, 이 프로젝트의 스크롤 간트 구성에서는 그 재동기화가 누락되어
+  // 리스너가 아예 붙지 않는 경우가 관찰되었다. props 재동기화에 기대지 않고
+  // graphDiv 초기화 시 한 번만 직접 gd.on(...)으로 붙이고, 최신 핸들러는 ref로
+  // 참조해 클로저가 stale해지지 않게 한다.
+  const handleClickRef = useRef(handleClick);
+  handleClickRef.current = handleClick;
+  const handleHoverRef = useRef(handleHover);
+  handleHoverRef.current = handleHover;
+  const handleUnhoverRef = useRef(handleUnhover);
+  handleUnhoverRef.current = handleUnhover;
+
   const refreshStickyXAxis = useCallback(() => {
     const scrollEl = scrollRef.current;
     const graphEl = graphDivRef.current;
@@ -274,6 +307,7 @@ export default function PlotChart({
 
   const clearHover = useCallback(() => {
     const graphEl = graphDivRef.current;
+    setHoverTip(null);
     if (!graphEl) return;
     plotlyRef.current?.Fx.unhover(graphEl);
   }, []);
@@ -329,6 +363,12 @@ export default function PlotChart({
 
   const handleGraphInit = useCallback((_: unknown, graphDiv: HTMLElement) => {
     graphDivRef.current = graphDiv;
+    const gd = graphDiv as unknown as {
+      on: (evt: string, cb: (e: unknown) => void) => void;
+    };
+    gd.on("plotly_click", (ev) => handleClickRef.current(ev as PlotMouseEvent));
+    gd.on("plotly_hover", (ev) => handleHoverRef.current(ev as PlotHoverEvent));
+    gd.on("plotly_unhover", () => handleUnhoverRef.current());
     if (scrollable) {
       scheduleStickyRefresh();
       setupHoverClamp(graphDiv);
@@ -372,7 +412,6 @@ export default function PlotChart({
         config: plotConfig,
         useResizeHandler: true,
         style: plotStyle,
-        onClick: (onPointClick || onBarClick) ? handleClick : undefined,
         onInitialized: handleGraphInit,
         ...ganttPanHandlers,
       } as Record<string, unknown>)}
@@ -383,8 +422,21 @@ export default function PlotChart({
     </div>
   );
 
+  const hoverTipPortal = hoverTip
+    ? createPortal(
+        <div
+          className="gantt-hover-tip-anchor"
+          style={{ left: hoverTip.x, top: hoverTip.y }}
+        >
+          {hoverTip.content}
+        </div>,
+        document.body,
+      )
+    : null;
+
   return (
     <div className={className ?? "plot-chart"}>
+      {hoverTipPortal}
       {scrollable ? (
         <div
           className="gantt-chart-scroll"
