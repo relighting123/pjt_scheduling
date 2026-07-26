@@ -532,16 +532,8 @@ class RLConfig:
 
 @dataclass
 class RewardConfig:
-    # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
     # 제품·공정이 '모두' 직전과 동일할 때만 주는 연속 보너스 (전환 회피와 정렬).
     w_same_setup:      float = 1.0
-    w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
-    w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
-    w_pacing:          float = 0.0       # [제거] 선형 takt 추종 (achievable 기준; Step C)
-    # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
-    # 생산(coverage)'으로 봄 → 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주해
-    # 추가 몰림(lockstep)을 억제. 0이면 done-only(기존 동작). 작게 시작 권장.
-    pacing_coverage_scale: float = 1.0
     w_conversion:      float = -10.0     # LOT_CD/TEMP 전환 1회 패널티
     # 회피 가능한 conversion(이미 같은 LOT_CD/TEMP로 세팅된 다른 장비가 시간 내
     # 재공을 커버 가능)일 때 w_conversion에 더해지는 추가 패널티. 0이면 비활성.
@@ -554,17 +546,25 @@ class RewardConfig:
     w_bulk_block_bonus:   float = 0.0
     # ② 전용 오용 페널티(<0): 범용 장비가 더 전용적인 idle 장비도 가능한 버킷을
     #    잡을 때 감점 → 전용 장비가 놀지 않게.
-    w_dedication_misuse:  float = 0.0
+    w_dedication_misuse:  float = -4.0
     # ③ 중복 커버 페널티(<0): 이미 다른 셋업 장비가 horizon 내 충분히 덮는 버킷을
     #    잡으면 감점 → 다른 제품으로 전환할 '용기'.
-    w_redundant_cover:    float = 0.0
-    # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
-    w_flow_balance:    float = 0.0       # [제거] cover 무시 → 전담 방해 2위라 제거
+    w_redundant_cover:    float = -5.0
+    # --- flow-balance shaping (WIP 비중 vs 계획 비중 기준, cover 반영) ---
+    w_flow_balance:    float = 1.0       # 재활성화: _bucket_projected_cover로 cover 반영(전담 방해 수정)
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
     flow_balance_starving_cover_min: float = 120.0
-    # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
+    # --- 제품 간 생산 균형 (flow_balance의 제품판; 재공 넉넉한 구간에서만 작동) ---
+    # 뒤처진 제품·공정의 achievable 상한 대비 진척률이 다른(역시 재공 넉넉한) 제품
+    # 평균보다 낮으면 그 격차만큼 +. 재공 부족 구간(achievable_ratio 낮음)엔 관여하지
+    # 않음 — 그건 flow_balance/redundant_cover가 담당(앞공정 몰아치기와 충돌 방지).
+    w_product_balance: float = 1.0
+    # achievable_qty / plan_qty가 이 값 이상인 버킷만 '재공 넉넉'으로 보고 비교 대상에 포함.
+    product_balance_achievable_min: float = 0.85
+    # step reward clip 범위 (PPO advantage 안정화)
     reward_clip:       float = 10.0
-    # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
+    # achievable target 사용 여부 (재공 한계까지만 계획 추종) — redundant_cover/flow_balance의
+    # need 계산에도 쓰임
     use_achievable_target: bool = True
 
 
@@ -573,10 +573,6 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
     r = reward or CONFIG.reward
     return {
         "w_same_setup": r.w_same_setup,
-        "w_idle_per_min": r.w_idle_per_min,
-        "w_plan_hit": r.w_plan_hit,
-        "w_pacing": r.w_pacing,
-        "pacing_coverage_scale": r.pacing_coverage_scale,
         "w_conversion": r.w_conversion,
         "w_avoidable_conversion": r.w_avoidable_conversion,
         "conversion_amortize_factor": r.conversion_amortize_factor,
@@ -585,6 +581,8 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_redundant_cover": r.w_redundant_cover,
         "w_flow_balance": r.w_flow_balance,
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
+        "w_product_balance": r.w_product_balance,
+        "product_balance_achievable_min": r.product_balance_achievable_min,
         "reward_clip": r.reward_clip,
         "use_achievable_target": r.use_achievable_target,
     }
@@ -594,11 +592,11 @@ def apply_reward_params(params: dict) -> None:
     """학습 요청 파라미터 → CONFIG.reward 반영."""
     r = CONFIG.reward
     float_keys = (
-        "w_same_setup", "w_idle_per_min",
-        "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
+        "w_same_setup", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
-        "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
+        "w_flow_balance", "flow_balance_starving_cover_min",
+        "w_product_balance", "product_balance_achievable_min", "reward_clip",
     )
     for key in float_keys:
         if key in params and params[key] is not None:

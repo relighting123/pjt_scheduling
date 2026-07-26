@@ -14,7 +14,7 @@ EQP가 idle이 될 때마다 **투입할 (PPK, OPER)** 를 선택합니다. LOT�
 | 재공이 계획 대비 충분 | **takt time**에 맞춰 공정별로 꾸준히 생산 |
 | 재공 부족·특정 공정 편중 | 몰린 공정에 장비 투입 → 후공정 재공 축적 → flow 밸런스 회복 |
 
-RL 보상(`w_pacing`, `w_plan_hit`, `w_flow_balance`, `use_achievable_target`)은 위 목표를 반영하도록 설계되어 있습니다.
+RL 보상(`w_same_setup`, `w_flow_balance`, `w_redundant_cover`, `w_dedication_misuse`, `use_achievable_target`)은 위 목표를 반영하도록 설계되어 있습니다.
 다만 RL action은 **(PPK, OPER) 버킷**만 선택하고, EQP·LOT은 simulator 규칙이 처리합니다.
 
 ---
@@ -168,7 +168,7 @@ run_inference(env_data, algorithm="earliest_st")
 |------|-----|
 | Action | `Discrete(O×P)` = `(OPER, PPK)` bucket |
 | Mask | 현재 idle EQP feasible bucket |
-| obs_dim | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
+| obs_dim | `5 + O×P×6 + O×P×K×5` = **935** (O=3, P=10, K=5) |
 
 **Bucket feature (po 6ch + pom 5ch)**: WIP 비율, urgency, achievable_ratio, projected_cover_ratio, starve_time_norm / ST, conversion·tool 가용, avoidable_frac, setup_changed 등.
 prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설비 수(`n_eqp_per_oper`) 기반이라 설비 공유·실시간 배정 상태를 반영 못 했고, LOT_CD/TEMP는 범주형 ID를 순서 있는 스칼라로 인코딩해 신호 품질이 낮았음 (전환 관련 정보는 pom_feats에 이미 더 정확히 포함).
@@ -177,13 +177,14 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 
 | 항목 | 가중치 | 역할 |
 |------|--------|------|
-| `w_plan_hit` | 3.0 | achievable 상한 대비 계획 gap 감소 |
-| `w_pacing` | 2.0 | 선형 takt ideal 추종 (재공 한도 반영) |
-| `w_flow_balance` | 1.5 | WIP 편중 공정 배정·후공정 feeding |
-| `flow_balance_starving_cover_min` | 120 | 후속 ready WIP÷capa(분) ≤ 이 값일 때만 feeding 보너스 |
-| `w_same_oper` | 1.0 | 동일 OPER 연속 (과생산 시 억제) |
-| `w_idle_per_min` | -0.1 | idle 패널티 |
-| `w_conversion` | -10.0 | LOT_CD/TEMP 전환 |
+| `w_same_setup` | 1.0 | 직전과 (PPK, OPER) 모두 동일할 때만 연속 보너스 (전환 회피) |
+| `w_flow_balance` | 1.0 | WIP 편중(계획 비중 대비 적체) 공정 배정·후공정 feeding. `_bucket_projected_cover`로 이미 다른 장비가 커버 중인 만큼은 적체에서 제외(coverage-aware) |
+| `flow_balance_starving_cover_min` | 120 | 후속 ready WIP÷순감소율(분) ≤ 이 값일 때만 feeding 보너스 |
+| `w_redundant_cover` | -5.0 | 다른 셋업 장비가 horizon 내 이미 충분히 덮는 버킷을 또 잡으면 감점(다른 제품으로 전환할 '용기') |
+| `w_dedication_misuse` | -4.0 | 범용 장비가 더 전용적인 idle 장비도 가능한 버킷을 잡으면 감점(전용 장비가 놀지 않게) |
+| `w_bulk_block_bonus` | 0.0 | 큰 블록 커밋 보너스 (기본 비활성) |
+| `w_conversion` | -10.0 | LOT_CD/TEMP 전환 1회 패널티 |
+| `w_avoidable_conversion` | -8.0 | 회피 가능한 전환(다른 무전환 설비가 커버 가능)에 대한 추가 패널티 |
 | `reward_clip` | ±10.0 | PPO 안정화 |
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.

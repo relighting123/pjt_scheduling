@@ -301,10 +301,6 @@ def _prepare_train_env_data(req: "TrainRequest") -> tuple[list[dict], list[str]]
 
 class RewardParams(BaseModel):
     w_same_setup: float = Field(default=CONFIG.reward.w_same_setup)
-    w_idle_per_min: float = Field(default=CONFIG.reward.w_idle_per_min)
-    w_plan_hit: float = Field(default=CONFIG.reward.w_plan_hit)
-    w_pacing: float = Field(default=CONFIG.reward.w_pacing)
-    pacing_coverage_scale: float = Field(default=CONFIG.reward.pacing_coverage_scale)
     w_conversion: float = Field(default=CONFIG.reward.w_conversion)
     w_avoidable_conversion: float = Field(default=CONFIG.reward.w_avoidable_conversion)
     conversion_amortize_factor: float = Field(default=CONFIG.reward.conversion_amortize_factor)
@@ -314,6 +310,8 @@ class RewardParams(BaseModel):
     w_redundant_cover: float = Field(default=CONFIG.reward.w_redundant_cover)
     w_flow_balance: float = Field(default=CONFIG.reward.w_flow_balance)
     flow_balance_starving_cover_min: float = Field(default=CONFIG.reward.flow_balance_starving_cover_min)
+    w_product_balance: float = Field(default=CONFIG.reward.w_product_balance)
+    product_balance_achievable_min: float = Field(default=CONFIG.reward.product_balance_achievable_min)
     reward_clip: float = Field(default=CONFIG.reward.reward_clip, ge=0.1)
     use_achievable_target: bool = Field(default=CONFIG.reward.use_achievable_target)
 

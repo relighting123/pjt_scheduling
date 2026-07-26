@@ -289,10 +289,6 @@ export interface DataSummary {
 
 export interface RewardConfig {
   w_same_setup: number;
-  w_idle_per_min: number;
-  w_plan_hit: number;
-  w_pacing: number;
-  pacing_coverage_scale: number;
   w_conversion: number;
   w_avoidable_conversion: number;
   conversion_amortize_factor: number;
@@ -301,6 +297,8 @@ export interface RewardConfig {
   w_redundant_cover: number;
   w_flow_balance: number;
   flow_balance_starving_cover_min: number;
+  w_product_balance: number;
+  product_balance_achievable_min: number;
   reward_clip: number;
   use_achievable_target: boolean;
 }

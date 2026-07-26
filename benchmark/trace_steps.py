@@ -20,9 +20,6 @@ SIM = 480
 
 cfg = CONFIG.reward
 cfg.w_bulk_block_bonus = 3.0
-cfg.w_dedication_misuse = -4.0
-cfg.w_redundant_cover = -5.0
-cfg.w_plan_hit = 1.0
 
 
 def _schedule_snapshot(schedule: list) -> list:
@@ -88,11 +85,10 @@ def _state_summary(obs: np.ndarray, sim, total_plan: int, ppk: str = "", oper: s
         "idle_eqps": len(sim.get_idle_eqps()),
         "obs_global": {
             "time_norm": round(float(obs[0]), 3),
-            "takt_margin": round(float(obs[1]), 3),
-            "remaining_lots": round(float(obs[2]), 3),
-            "plan_progress": round(float(obs[3]), 3),
-            "conv_idle_ratio": round(float(obs[4]), 3),
-            "tool_util": round(float(obs[5]), 3),
+            "remaining_lots": round(float(obs[1]), 3),
+            "plan_progress": round(float(obs[2]), 3),
+            "conv_idle_ratio": round(float(obs[3]), 3),
+            "tool_util": round(float(obs[4]), 3),
         },
         "obs_bucket": _bucket_state(sim, ppk, oper, eqp_id),
     }
