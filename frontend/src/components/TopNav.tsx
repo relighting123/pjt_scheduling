@@ -7,10 +7,11 @@ interface TopNavProps {
 }
 
 const ITEMS = [
-  { id: "dashboard"  as AppMode, label: "개요", dot: "◈" },
-  { id: "inference"  as AppMode, label: "추론 결과", dot: "▶" },
-  { id: "test"       as AppMode, label: "테스트 셋", dot: "⊞" },
-  { id: "benchmark"  as AppMode, label: "벤치마크", dot: "◆" },
+  { id: "dashboard"  as AppMode, label: "개요" },
+  { id: "inference"  as AppMode, label: "추론 결과" },
+  { id: "test"       as AppMode, label: "테스트 셋" },
+  { id: "benchmark"  as AppMode, label: "벤치마크" },
+  { id: "dataset"    as AppMode, label: "데이터셋" },
 ];
 
 export default function TopNav({ mode, onModeChange, inputFolder }: TopNavProps) {
@@ -37,7 +38,14 @@ export default function TopNav({ mode, onModeChange, inputFolder }: TopNavProps)
 
       <div className="nav-right">
         {inputFolder && (
-          <code className="nav-folder">{inputFolder}</code>
+          <button
+            type="button"
+            className="nav-folder"
+            onClick={() => onModeChange("dataset")}
+            title="데이터셋 변경"
+          >
+            {inputFolder}
+          </button>
         )}
       </div>
     </nav>

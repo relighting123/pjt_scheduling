@@ -22,6 +22,13 @@ interface PlotChartProps {
   clampXMin?: number;
   /** 세로 스크롤 시 상단 X축(시간 눈금) 고정 */
   scrollable?: boolean;
+  /**
+   * true인 동안 hover 툴팁을 그리지 않는다. 바 클릭으로 연 상세 팝업이 차트를
+   * 덮으면 이후 마우스 이벤트가 Plotly에 전달되지 않아 plotly_unhover가 발생하지
+   * 않는다 — 클릭 시점 hover 툴팁이 팝업 뒤에 계속 남는 것을 막기 위해, 팝업이
+   * 열려있는 동안은 호출 측(상세 팝업 상태를 가진 부모)이 이 값을 true로 준다.
+   */
+  suppressHover?: boolean;
 }
 
 const plotConfig: Partial<Config> = {
@@ -237,6 +244,7 @@ export default function PlotChart({
   hoverTooltip,
   clampXMin,
   scrollable = false,
+  suppressHover = false,
 }: PlotChartProps) {
   const graphDivRef = useRef<HTMLElement | null>(null);
   const [hoverTip, setHoverTip] = useState<{ x: number; y: number; content: ReactNode } | null>(null);
@@ -244,6 +252,13 @@ export default function PlotChart({
   const stickyBasesRef = useRef<Map<Element, number>>(new Map());
   const paperBg = (layout.paper_bgcolor as string | undefined) ?? "#ffffff";
   const plotPixelHeight = layoutPixelHeight(layout);
+
+  // suppressHover가 켜져있는 동안 상태 자체를 비워둔다 — 렌더링만 숨기면
+  // suppressHover가 다시 꺼질 때(팝업 닫힘) 클릭 시점의 낡은 좌표에 툴팁이
+  // 잠깐 다시 나타난다.
+  useEffect(() => {
+    if (suppressHover) setHoverTip(null);
+  }, [suppressHover]);
 
   // Plotly(약 5MB)는 첫 차트 렌더 때 동적 로드 → 초기 번들 분리
   const [bundle, setBundle] = useState<PlotlyBundle | null>(null);
@@ -263,6 +278,11 @@ export default function PlotChart({
     if (!pt) return;
     const customdata = (pt as { customdata?: unknown }).customdata;
     if (customdata != null && onBarClick) {
+      // 바 클릭 시 상세 팝업(모달)이 열리는 동안엔 호출 측이 suppressHover로 툴팁
+      // 렌더링 자체를 막는다(아래 hoverTipPortal). 여기서는 그와 별개로, 팝업이
+      // 없는 케이스(onBarClick만 쓰고 suppressHover는 안 주는 호출부)를 위해
+      // 상태도 지워둔다.
+      clearHover();
       onBarClick(customdata);
       return;
     }
@@ -273,13 +293,18 @@ export default function PlotChart({
 
   const handleHover = useCallback((ev: Readonly<PlotHoverEvent>) => {
     if (!hoverTooltip) return;
+    // Plotly는 클릭 처리 도중에도 그 지점에 대해 한 번 더 hover를 재계산해
+    // plotly_hover를 내보낸다 — 바 클릭으로 상세 팝업이 뜬 "직후"에 이 지연된
+    // hover가 도착해 팝업이 닫힐 때 그 시점의 낡은 좌표에 툴팁이 다시 나타나는
+    // 원인이 된다. suppressHover(팝업이 열려있는 동안)에는 아예 반영하지 않는다.
+    if (suppressHover) return;
     const pt = ev.points?.[0] as { customdata?: unknown } | undefined;
     const customdata = pt?.customdata;
     if (customdata == null) { setHoverTip(null); return; }
     const content = hoverTooltip(customdata);
     if (!content) { setHoverTip(null); return; }
     setHoverTip({ x: ev.event.clientX, y: ev.event.clientY, content });
-  }, [hoverTooltip]);
+  }, [hoverTooltip, suppressHover]);
 
   const handleUnhover = useCallback(() => setHoverTip(null), []);
 
@@ -422,7 +447,7 @@ export default function PlotChart({
     </div>
   );
 
-  const hoverTipPortal = hoverTip
+  const hoverTipPortal = hoverTip && !suppressHover
     ? createPortal(
         <div
           className="gantt-hover-tip-anchor"

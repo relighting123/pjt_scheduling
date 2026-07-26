@@ -819,6 +819,7 @@ export function buildProductProductionCharts(
       ...ganttXAxisLayout(timeStart, timeEnd, {}, options.timeAxis?.fixedRange, baseMs),
     };
     (layout as Record<string, unknown>)[yKey] = {
+      type: "linear",
       title: { text: `${prodCode} 누적 생산 (매)` },
       rangemode: "tozero",
       showgrid: true,
@@ -1047,11 +1048,16 @@ export function buildAlgorithmKpiComparison(
   const extraAxes: Record<string, unknown> = {};
   metricDefs.forEach((metric, mi) => {
     const vals = rawByAlgo.map((r) => r[metric.key as RawKey] as number);
-    const maxVal = Math.max(...vals, 1);
+    // 전 알고리즘이 0인 지표(예: Idle 합계 0)는 실제 최대값이 0이라 축 범위가
+    // [0, 1.35]로 눌려 "깨진 차트"처럼 보인다 — 값이 전부 0이면 보기 좋은
+    // 고정 축(0~10)을 대신 사용해 정상적인 "0 상태"로 읽히게 한다.
+    const realMax = Math.max(...vals, 0);
+    const maxVal = realMax > 0 ? realMax : 10;
     extraAxes[axisRefs[mi].xKey] = { ...sharedAxisStyle, domain: domainX[mi], anchor: axisRefs[mi].y, automargin: true };
     // 단위는 상단 주석에만 표기 — y축 제목과 눈금 겹침 방지
     extraAxes[axisRefs[mi].yKey] = {
       ...sharedAxisStyle,
+      type: "linear" as const,
       domain: domainY[mi],
       anchor: axisRefs[mi].x,
       automargin: true,
@@ -1104,7 +1110,7 @@ export function buildAlgorithmAchievementComparison(
     layout: mergeSharedLayout({
       title: { text: "알고리즘별 계획 달성률 비교 (%)" },
       barmode: "group",
-      yaxis: { title: { text: "달성률 (%)" }, range: [0, 120], automargin: true },
+      yaxis: { type: "linear", title: { text: "달성률 (%)" }, range: [0, 120], automargin: true },
       xaxis: { title: { text: "P / O" }, automargin: true, tickangle: labels.length > 6 ? -35 : 0 },
       shapes: [{
         type: "line",
@@ -1263,6 +1269,7 @@ function algoCategoryXAxis(categories: string[]) {
 
 function metricYAxisLayout(yTitle: string, yRange: [number, number]) {
   return {
+    type: "linear" as const,
     title: { text: yTitle, standoff: 14 },
     range: yRange,
     rangemode: "tozero" as const,
@@ -2032,7 +2039,7 @@ export function buildEqpUtilChart(utils: EqpUtil[]): { data: Data[]; layout: Par
     }],
     layout: {
       title: { text: "장비별 가동률 (%)", font: { size: 13 } },
-      xaxis: { range: [0, 115], title: { text: "가동률 (%)" } },
+      xaxis: { type: "linear", range: [0, 115], title: { text: "가동률 (%)" } },
       height: Math.max(300, 28 * Math.max(utils.length, 6)),
       margin: { l: 140, r: 60, t: 40, b: 56 },
       ...SHARED_DARK,
@@ -2060,7 +2067,7 @@ export function buildEqpIdleChart(rows: EqpScheduleSummary[]): { data: Data[]; l
     }],
     layout: {
       title: { text: "장비별 유휴율 (%)", font: { size: 13 } },
-      xaxis: { range: [0, 115], title: { text: "유휴율 (%)" } },
+      xaxis: { type: "linear", range: [0, 115], title: { text: "유휴율 (%)" } },
       height: Math.max(300, 28 * Math.max(rows.length, 6)),
       margin: { l: 140, r: 60, t: 40, b: 56 },
       ...SHARED_DARK,
@@ -2100,7 +2107,7 @@ export function buildTatChart(
       title: { text: "제품별 TAT (Turn Around Time)", font: { size: 13 } },
       barmode: "group",
       xaxis: { title: { text: "제품" } },
-      yaxis: { title: { text: "TAT (분)" } },
+      yaxis: { type: "linear", title: { text: "TAT (분)" } },
       height: 300,
       margin: { t: 44, b: 80, l: 55, r: 20 },
       ...SHARED_DARK,
@@ -2152,7 +2159,7 @@ export function buildAchievementTableChart(
     layout: {
       title: { text: "제품/공정별 달성률 (계획 vs 타겟)", font: { size: 13 } },
       barmode: "group",
-      xaxis: { range: [0, 130], title: { text: "달성률 (%)" } },
+      xaxis: { type: "linear", range: [0, 130], title: { text: "달성률 (%)" } },
       shapes: [{ type: "line" as const, x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper" as const, line: { dash: "dash" as const, color: "#4C72B0", width: 1.5 } }],
       legend: { orientation: "h", y: -0.15 },
       height: Math.max(300, 40 * Math.max(rows.length, 5)),
