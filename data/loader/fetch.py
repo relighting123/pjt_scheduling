@@ -9,6 +9,7 @@ SQL 템플릿: data/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 """
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -247,11 +248,17 @@ def fetch_from_db(
     verbose: bool = False,
     dry_run: bool = False,
 ) -> Path:
-    """data/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용)."""
+    """data/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용).
+
+    수집 완료 후 필수 테이블 누락(0건)·필수 필드 누락을 검사해, 불완전한
+    수집 결과가 정상 수집인 것처럼 폴더에 남지 않도록 한다(검증 실패 시
+    이번에 새로 만든 출력 폴더를 정리하고 예외를 던져 collect 를 실패 처리).
+    """
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     per = period or snapshot
     if output_dir is None:
         output_dir, _ = resolve_dataset_path(fac_id, split, per)
+    dir_preexisted = output_dir.exists()
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -259,6 +266,8 @@ def fetch_from_db(
 
     own_registry = db_registry is None
     registry = db_registry or DbRegistry()
+
+    collected: Dict[str, List[dict]] = {}
 
     if verbose:
         print(
@@ -298,6 +307,7 @@ def fetch_from_db(
                 _log_sql_execute(sql_file, alias, per, binds, sql, len(rows))
                 with open(out_path, "w", encoding="utf-8") as f:
                     json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
+                collected[key] = rows
                 row_warn = " ⚠ 0건" if not rows else ""
                 print(
                     f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows{row_warn})",
@@ -322,11 +332,37 @@ def fetch_from_db(
                         cause=exc,
                     ),
                 ) from exc
+
+        if not dry_run:
+            errors = _missing_data_errors(collected)
+            if errors:
+                if not dir_preexisted:
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                raise RuntimeError(
+                    "수집 데이터 누락/불완전 → collect 실패 처리"
+                    f" (fac={fac_id} split={split} period={per}):\n  - "
+                    + "\n  - ".join(errors)
+                )
     finally:
         if own_registry:
             registry.close_all()
 
     return output_dir
+
+
+def _missing_data_errors(collected: Dict[str, List[dict]]) -> List[str]:
+    """필수 테이블 0건 + 필수 필드 누락을 함께 검사해 오류 메시지 목록 반환."""
+    errors: List[str] = [
+        f"필수 테이블 0건: {key} ({SQL_JSON_MAP[key][1]})"
+        for key in SQL_REQUIRED_KEYS
+        if not collected.get(key)
+    ]
+    # validate_data()는 필수 키를 raw[key]로 직접 인덱싱하므로, 키 자체가 없는
+    # 경우(위 0건 체크와 별개로 이미 오류 목록에 반영됨)에도 KeyError 없이
+    # 안전하게 돌 수 있도록 빈 리스트로 채워서 넘긴다.
+    safe_raw = {key: collected.get(key, []) for key in SQL_JSON_MAP}
+    errors += validate_data(safe_raw)
+    return errors
 
 
 def fetch_period_range(

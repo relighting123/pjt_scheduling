@@ -211,6 +211,7 @@ class SchedulingAgent:
             batch_size=effective_batch,
             n_epochs=cfg.n_epochs,
             gamma=cfg.gamma,
+            ent_coef=cfg.ent_coef,
             verbose=verbose,
             device=cfg.device,
         )
