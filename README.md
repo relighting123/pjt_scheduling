@@ -177,16 +177,23 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 
 | 항목 | 가중치 | 역할 |
 |------|--------|------|
-| `w_plan_hit` | 3.0 | achievable 상한 대비 계획 gap 감소 |
-| `w_pacing` | 2.0 | 선형 takt ideal 추종 (재공 한도 반영) |
-| `w_flow_balance` | 1.5 | WIP 편중 공정 배정·후공정 feeding |
-| `flow_balance_starving_cover_min` | 120 | 후속 ready WIP÷capa(분) ≤ 이 값일 때만 feeding 보너스 |
-| `w_same_oper` | 1.0 | 동일 OPER 연속 (과생산 시 억제) |
-| `w_idle_per_min` | -0.1 | idle 패널티 |
+| `w_same_setup` | 1.0 | 직전과 제품·공정 모두 동일할 때 연속 생산 보너스 |
 | `w_conversion` | -10.0 | LOT_CD/TEMP 전환 |
+| `w_avoidable_conversion` | -8.0 | 회피 가능한 전환(이미 같은 셋업의 다른 장비가 커버 가능) 추가 패널티 |
+| `w_bulk_block_bonus` | 3.0 | (Bulk-Fill 전용) 같은 제품군을 큰 블록으로 커밋할수록 보상 |
+| `w_dedication_misuse` | -4.0 | (Bulk-Fill 전용) 범용 장비가 더 전용적인 idle 장비 몫의 버킷을 잡으면 감점 |
+| `w_redundant_cover` | -5.0 | (Bulk-Fill 전용) 이미 다른 장비가 충분히 커버 중인 버킷을 또 잡으면 감점 |
 | `reward_clip` | ±10.0 | PPO 안정화 |
+| `w_plan_hit` / `w_pacing` / `w_flow_balance` / `w_idle_per_min` | 0.0 | cover 무시·전담 방해로 판단되어 제거됨(주석 참고) |
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.
+
+`w_bulk_block_bonus`/`w_dedication_misuse`/`w_redundant_cover`(전담 셰이핑)와
+`RLConfig.ent_coef`(기본 0.02, PPO 엔트로피 보너스)는 대칭 벤치마크(SYM_5x5 등,
+설비=제품 전담 시 전환 0회가 최적)에서 실험으로 검증된 값이다: 이 셋을 0.0으로
+꺼두고 엔트로피 없이 학습하면 200k 스텝을 돌려도 전환이 15회 안팎에서 정체되지만,
+위 값으로 켜면 같은 스텝 수에서 전환 2회까지 줄고 이후 정체(local optimum)된다 —
+완전한 0회 수렴은 추가 튜닝(더 높은 엔트로피, 시드 다양화, 커리큘럼 등)이 필요하다.
 
 ---
 

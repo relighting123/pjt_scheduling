@@ -521,6 +521,12 @@ class RLConfig:
     batch_size:      int   = 64
     n_epochs:        int   = 10
     gamma:           float = 0.99
+    # 엔트로피 보너스: 0.0(기본 SB3 값)이면 대칭 케이스(예: SYM_5x5)에서 정책이
+    # 조기에 하나의 순열로 굳어져(collapse) 전환 0회 최적해를 못 찾고 국소 최적에
+    # 갇히는 경향이 실험으로 확인됨. 0.02 정도만 줘도 SYM_5x5 기준 전환 횟수가
+    # 학습 후반까지 계속 줄어드는 걸 확인(240k+ 스텝에서 전환 2회까지 감소, 0.0
+    # 대비 큰 개선). 0으로 되돌리면 기존(엔트로피 없음) 동작과 동일.
+    ent_coef:        float = 0.02
     total_timesteps: int   = 200_000
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
@@ -550,14 +556,18 @@ class RewardConfig:
     # 변환을 정당한 것으로 보고 회피 패널티를 면제. 짧으면 패널티↑.
     conversion_amortize_factor: float = 1.0
     # --- 벌크 점유(Bulk-Fill) 전용 보상항 (SchedulingRLEnv에서만 사용; 0이면 비활성) ---
+    # SYM_5x5(대칭 5x5, 전담 시 전환 0회가 최적) 학습 실험에서 이 세 항을 꺼둔
+    # 기본값(0.0)으로는 200k 스텝을 학습해도 전환이 15회 안팎에서 정체됐다.
+    # 아래 값(bench_suite.py의 co-train 전용 오버라이드였던 값과 동일)으로 켜면
+    # 같은 스텝 수에서 전환이 2회까지 줄어드는 걸 확인해 기본값으로 승격했다.
     # ① 블록 크기 보너스: 같은 제품군을 큰 블록으로 커밋할수록 보상(전담 커밋 유도).
-    w_bulk_block_bonus:   float = 0.0
+    w_bulk_block_bonus:   float = 3.0
     # ② 전용 오용 페널티(<0): 범용 장비가 더 전용적인 idle 장비도 가능한 버킷을
     #    잡을 때 감점 → 전용 장비가 놀지 않게.
-    w_dedication_misuse:  float = 0.0
+    w_dedication_misuse:  float = -4.0
     # ③ 중복 커버 페널티(<0): 이미 다른 셋업 장비가 horizon 내 충분히 덮는 버킷을
     #    잡으면 감점 → 다른 제품으로 전환할 '용기'.
-    w_redundant_cover:    float = 0.0
+    w_redundant_cover:    float = -5.0
     # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
     w_flow_balance:    float = 0.0       # [제거] cover 무시 → 전담 방해 2위라 제거
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
