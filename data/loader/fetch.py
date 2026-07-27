@@ -402,22 +402,35 @@ def fetch_period_range(
             print(f"[loader] dry-run: {range_label} 중 1일만 검증")
 
     paths: List[Path] = []
+    failed: List[tuple[str, str]] = []
     with DbRegistry() as registry:
         for period in keys:
             day_binds = {"RULE_TIMEKEY": period, **(extra_binds or {})}
-            path = fetch_from_db(
-                fac_id=fac_id,
-                split=split,
-                period=period,
-                extra_binds=day_binds,
-                lot_cd=lot_cd,
-                db_registry=registry,
-                verbose=verbose,
-                dry_run=dry_run,
-            )
+            try:
+                path = fetch_from_db(
+                    fac_id=fac_id,
+                    split=split,
+                    period=period,
+                    extra_binds=day_binds,
+                    lot_cd=lot_cd,
+                    db_registry=registry,
+                    verbose=verbose,
+                    dry_run=dry_run,
+                )
+            except Exception as exc:
+                # 한 기간의 누락/오류가 나머지 기간 수집까지 막지 않도록, 이
+                # period 만 건너뛰고 계속 진행한다(해당 period 의 출력 폴더는
+                # fetch_from_db 가 이미 정리했거나 애초에 생성되지 않았다).
+                print(f"[loader] {period} 수집 실패 → 건너뜀: {exc}")
+                failed.append((period, str(exc)))
+                continue
             paths.append(path)
     if dry_run:
         print(f"[loader] dry-run 완료 – {len(paths)}개 폴더 계획 확인")
     else:
-        print(f"[loader] {split} RULE_TIMEKEY {range_label} → {len(paths)}개 폴더 생성")
+        print(
+            f"[loader] {split} RULE_TIMEKEY {range_label} → "
+            f"{len(paths)}/{len(keys)}개 폴더 생성"
+            + (f" ({len(failed)}건 실패: {', '.join(p for p, _ in failed)})" if failed else "")
+        )
     return paths
