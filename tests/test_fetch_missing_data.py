@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from data.loader.fetch import _missing_data_errors, fetch_from_db
+from data.loader.fetch import _missing_data_errors, fetch_from_db, fetch_period_range
 
 
 def _valid_collected() -> dict:
@@ -105,3 +105,32 @@ def test_fetch_from_db_fails_and_cleans_up_dir_when_required_table_empty(tmp_pat
 
     # 실패 시 이번에 새로 만든 출력 폴더는 남지 않아야 한다
     assert not output_dir.exists()
+
+
+class _FakeDbRegistryCtx:
+    """fetch_period_range 의 `with DbRegistry() as registry:` 를 대체하는 더미."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_fetch_period_range_skips_failed_period_and_keeps_the_rest(monkeypatch):
+    periods = ["20260101070000", "20260102070000", "20260103070000"]
+    ok_paths = {p: Path(f"/tmp/{p}") for p in periods}
+
+    def fake_fetch_from_db(*, fac_id, split, period, extra_binds, lot_cd,
+                            db_registry, verbose, dry_run):
+        if period == "20260102070000":
+            raise RuntimeError("수집 데이터 누락/불완전 → collect 실패 처리 (테스트)")
+        return ok_paths[period]
+
+    monkeypatch.setattr("data.loader.fetch.DbRegistry", _FakeDbRegistryCtx)
+    monkeypatch.setattr("data.loader.fetch.fetch_from_db", fake_fetch_from_db)
+
+    result = fetch_period_range(fac_id="FAC001", split="train", periods=periods)
+
+    # 실패한 중간 기간 하나만 빠지고 나머지 두 기간은 그대로 적재된다
+    assert result == [ok_paths["20260101070000"], ok_paths["20260103070000"]]
