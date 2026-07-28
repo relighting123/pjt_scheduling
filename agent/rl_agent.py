@@ -22,6 +22,7 @@ from env.scheduling_rl_env import SchedulingRLEnv
 from agent.train_progress import (
     TrainProgressState,
     ProgressCallback,
+    EntropyDecayCallback,
     EvalProgressCallback,
     EpisodeBudgetCallback,
     StopTrainingCallback,
@@ -143,6 +144,8 @@ class SchedulingAgent:
         eval_env = DummyVecEnv([make_env(datasets[0])])
 
         callbacks = []
+        if cfg.ent_coef_final != cfg.ent_coef:
+            callbacks.append(EntropyDecayCallback(cfg.ent_coef, cfg.ent_coef_final))
         use_episode_budget = n_episodes is not None and n_episodes > 0
         learn_timesteps = (
             EPISODE_TRAIN_TIMESTEP_CEILING if use_episode_budget else cfg.total_timesteps
