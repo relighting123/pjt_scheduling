@@ -3,6 +3,16 @@
 -- (RTS_RSLT_MAS: 매 회차 동일 FAC_ID 전체 교체(최신 결과만 유지), RTS_EQPCONVPLAN_INF/HIS: 누적, HIS: 이력 누적)
 -- 최초 1회: python main.py db-load --ddl-only
 -- 또는:     python main.py db-load --ddl --facid FAC001 --split infer
+--
+-- 테이블별로 다른 DB에 적재하고 싶으면, 그 테이블의 CREATE TABLE 바로 위에
+-- "-- @db: <alias>" 를 새로 추가하세요. 다음 헤더가 나오기 전까지는 그
+-- alias가 계속 적용되므로(예: 아래처럼 파일 맨 위 한 번만 있으면 전체
+-- 테이블이 그 alias), 다른 DB로 보낼 테이블 바로 위에만 헤더를 추가하면
+-- 됩니다. 예)
+--   -- @db: Dev
+--   CREATE TABLE RTS_PERFMON_HIS ( ... )
+-- 이렇게 하면 RTS_PERFMON_HIS(및 그 아래 다음 헤더 전까지의 테이블)만 Dev로,
+-- 나머지는 위에서 지정한 Prd로 적재됩니다.
 
 -- ── 스케줄 결과 (가공 계획) ────────────────────────────────────────────────
 CREATE TABLE RTS_RSLT_MAS (

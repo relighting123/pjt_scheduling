@@ -625,13 +625,37 @@ def apply_reward_params(params: dict) -> None:
         r.use_achievable_target = bool(params["use_achievable_target"])
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+@dataclass
+class SchedulerConfig:
+    """API 서버(main.py ui / uvicorn) 기동 시 주기적으로 infer 를 자동 실행하는 옵션.
+
+    기본은 비활성(enabled=False) — 명시적으로 켜야 동작한다. fac_id 없이
+    enabled=True 만 켜면 시작하지 않고 경고만 남긴다(운영 DB에 의도치 않게
+    자동 적재되는 사고를 막기 위한 opt-in 설계).
+    """
+    enabled:          bool  = field(default_factory=lambda: _env_bool("SCHEDULER_ENABLED"))
+    interval_seconds: int   = field(default_factory=lambda: int(os.environ.get("SCHEDULER_INTERVAL_SECONDS", "3600") or 3600))
+    fac_id:           str   = field(default_factory=lambda: os.environ.get("SCHEDULER_FAC_ID", "").strip())
+    algorithm:        str   = field(default_factory=lambda: os.environ.get("SCHEDULER_ALGORITHM", "scheduling_rl").strip())
+    db_alias:         Optional[str] = field(default_factory=lambda: os.environ.get("SCHEDULER_DB_ALIAS", "").strip() or None)
+    no_history:       bool  = field(default_factory=lambda: _env_bool("SCHEDULER_NO_HISTORY"))
+
+
 @dataclass
 class Config:
-    path:   PathConfig   = field(default_factory=PathConfig)
-    oracle: OracleConfig = field(default_factory=OracleConfig)
-    env:    EnvConfig    = field(default_factory=EnvConfig)
-    rl:     RLConfig     = field(default_factory=RLConfig)
-    reward: RewardConfig = field(default_factory=RewardConfig)
+    path:      PathConfig      = field(default_factory=PathConfig)
+    oracle:    OracleConfig    = field(default_factory=OracleConfig)
+    env:       EnvConfig       = field(default_factory=EnvConfig)
+    rl:        RLConfig        = field(default_factory=RLConfig)
+    reward:    RewardConfig    = field(default_factory=RewardConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 
 CONFIG = Config()

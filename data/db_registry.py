@@ -496,6 +496,35 @@ def parse_sql_db_alias(sql_text: str, default_alias: str = "main") -> str:
     return _normalize_alias(default_alias)
 
 
+_TABLE_DECL_RE = re.compile(r"^\s*CREATE\s+TABLE\s+([A-Za-z_]\w*)", re.IGNORECASE)
+
+
+def parse_per_table_db_aliases(
+    sql_text: str, default_alias: str = "main",
+) -> Dict[str, str]:
+    """출력 DDL(``data/sql/rts_output_tables.sql``)에서 테이블별 ``-- @db:``
+    헤더를 읽어 ``{TABLE_NAME: alias}`` 매핑을 만든다 (입력 SQL의 파일 단위
+    ``-- @db:`` 헤더와 동일한 표기를 테이블 단위로 확장한 것).
+
+    ``-- @db: <alias>`` 줄을 만나면 그 아래 ``CREATE TABLE`` 문들에 다음
+    헤더가 나오기 전까지 계속 적용된다 — 테이블마다 매번 반복 지정할 필요
+    없이, 다른 DB로 보낼 테이블 바로 위에만 새 헤더를 추가하면 된다. 파일
+    맨 위에 헤더가 하나뿐이면(기존 파일) 모든 테이블이 같은 alias로 매핑돼
+    이전 동작과 동일하다.
+    """
+    current = _normalize_alias(default_alias)
+    out: Dict[str, str] = {}
+    for line in sql_text.splitlines():
+        header = _DB_HEADER_RE.match(line)
+        if header:
+            current = _normalize_alias(header.group(1))
+            continue
+        table = _TABLE_DECL_RE.match(line)
+        if table:
+            out[table.group(1).upper()] = current
+    return out
+
+
 def resolve_db_credentials(
     alias: str,
     buckets: Dict[str, Dict[str, str]],

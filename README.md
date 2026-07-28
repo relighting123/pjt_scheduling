@@ -244,6 +244,12 @@ python main.py db-load --ddl --facid FAC001 --split infer
 (별도 옵션 아님). `--db`/`db_alias`로 대상 DB alias를, `--no-history`/`no_history`로 HIS 테이블 적재
 여부를 조정할 수 있습니다.
 
+**테이블별로 다른 DB에 적재**하고 싶으면(예: `RTS_RSLT_MAS`/`RTS_RSLT_HIS`는 운영 DB, `RTS_PERFMON_HIS`는
+개발/집계 DB), `data/sql/rts_output_tables.sql`에서 그 테이블의 `CREATE TABLE` 바로 위에
+`-- @db: <alias>`를 추가하세요(입력 SQL의 파일 단위 헤더와 동일한 표기). 헤더는 다음 헤더가 나오기
+전까지 그 아래 테이블들에 계속 적용되므로, 다른 DB로 보낼 테이블 앞에만 새로 추가하면 됩니다. 헤더가
+없는(또는 파일 자체가 없는) 경우 모든 테이블이 `--db`/`db_alias` 인자 하나로 기존처럼 동작합니다.
+
 `RTS_EQPCONVPLAN_INF`/`RTS_EQPCONVPLAN_HIS` 저장 자체는 `CONFIG.env.conv_output_enabled`(기본 `True`)
 옵션으로 켜고 끌 수 있습니다. 켜져 있으면 RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`
 (기본 60분) 이내에 시작하는 전환만 기록됩니다 — 그보다 먼 미래의 전환은 재계획 여지가 커 추측성이므로
@@ -402,6 +408,26 @@ npm run dev
 ```
 
 헬스 체크: `curl http://localhost:8001/api/health` (자세한 배포 절차는 `docs/DEPLOYMENT.md` 참고)
+
+### 주기 추론 스케줄러 (선택)
+
+API 서버 기동 시 `python main.py infer`와 동일한 추론+DB 적재를 일정 주기로 자동 반복할 수 있습니다.
+기본은 **비활성**(opt-in) — 운영 DB에 의도치 않게 자동 적재되는 사고를 막기 위해, 아래 두 값을 모두
+명시해야 켜집니다.
+
+```bash
+# .env
+SCHEDULER_ENABLED=true
+SCHEDULER_FAC_ID=FAC001
+SCHEDULER_INTERVAL_SECONDS=3600   # 기본 3600(1시간)
+SCHEDULER_ALGORITHM=scheduling_rl # 기본값, minprogress/earliest_st/dedication도 가능
+SCHEDULER_DB_ALIAS=Prd            # 미지정 시 databases.yaml default
+SCHEDULER_NO_HISTORY=false
+```
+
+서버 기동 직후 1회 즉시 실행하고, 이후 `SCHEDULER_INTERVAL_SECONDS`마다 반복합니다. 한 회차가
+실패해도(DB 오류 등) 다음 주기에 다시 시도하며 서버 자체는 죽지 않습니다. 현재 상태는
+`GET /api/scheduler/status`(활성 여부, 누적 실행 횟수, 마지막 실행 시각/결과)로 확인할 수 있습니다.
 
 ---
 
