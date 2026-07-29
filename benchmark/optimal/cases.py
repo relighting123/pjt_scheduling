@@ -104,7 +104,19 @@ class StagePiece:
 
 
 def _stage_dedicated(oper: str, n: int, prefix: str, model: str = "A") -> StagePiece:
-    """[oper] EQP n대 × PPK n종 전담 배정 — 증명된 최적: 생산 n*CAP, 전환 0."""
+    """[oper] EQP n대 × PPK n종 전담 배정 — 증명된 최적: 생산 n*CAP, 전환 0.
+
+    같은 모델의 EQP n대는 서로 교체 가능하다는 전제이므로, 각 로트의
+    discrete_arrange는 n대 전부에 대해 투입 가능(M:N)하다고 선언한다 — 로트를
+    특정 EQP 1대에만 좁혀 선언하면(과거 라운드로빈 홈 방식) discrete_wait_enabled
+    (기본 True)하에서 "전환 없이 이어가려면 discrete에 선언된 EQP여야 한다"는
+    규칙과 충돌해, 실제로는 어느 EQP가 전담해도 무전환으로 처리 가능해야 할
+    로트가 특정 EQP에서만 무전환 처리 가능한 것으로 오인되어 이 케이스의
+    증명된 최적(전환 0)이 구조적으로 달성 불가능해진다. n대 전부를 투입
+    가능하다고 선언해도 어떤 EQP가 어떤 PPK를 전담할지는 여전히 알고리즘이
+    스스로 판단해야 하므로(모든 EQP·모든 PPK 조합이 동등하게 가능), 홈 힌트로
+    답을 흘리는 것은 아니다.
+    """
     eqps = [f"{prefix}EQP{i + 1:03d}" for i in range(n)]
     ppks = [f"{prefix}PPK{i + 1:03d}" for i in range(n)]
     lot_cds = {ppk: f"{prefix}LC_{chr(65 + i)}" for i, ppk in enumerate(ppks)}
@@ -113,12 +125,13 @@ def _stage_dedicated(oper: str, n: int, prefix: str, model: str = "A") -> StageP
     lot_cd_overrides = {}
     for pi, ppk in enumerate(ppks):
         for ci in range(_CAP):
-            home_eqp = eqps[(pi + ci) % n]  # 라운드로빈 홈 배정 — 일부러 섞음
             lot_id = f"{prefix}LOT{pi:02d}{ci:02d}"
-            discrete.append(_discrete_row(
-                home_eqp, lot_id, ppk, oper, _ST, 1, eqp_model=model,
-                carrier_id=f"{prefix}CAR{pi:02d}{ci:02d}", seq=ci + 1,
-            ))
+            carrier_id = f"{prefix}CAR{pi:02d}{ci:02d}"
+            for eqp_id in eqps:  # n대 전부에 투입 가능(M:N) — 특정 1대로 좁히지 않음
+                discrete.append(_discrete_row(
+                    eqp_id, lot_id, ppk, oper, _ST, 1, eqp_model=model,
+                    carrier_id=carrier_id, seq=ci + 1,
+                ))
             lot_cd_overrides[lot_id] = (lot_cds[ppk], "T600")
 
     flow = [{"PLAN_PROD_ATTR_VAL": ppk, "OPER_SEQ": 1, "OPER_ID": oper} for ppk in ppks]
