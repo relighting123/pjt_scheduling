@@ -2,9 +2,10 @@
 agent/rl_agent.py – StableBaselines3 MaskablePPO 에이전트 래퍼
 """
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
+import torch
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
@@ -19,6 +20,7 @@ from env.scheduling_env import (
     validate_obs_shape,
 )
 from env.scheduling_rl_env import SchedulingRLEnv
+from agent.dedication_agent import DedicationAgent, HOLD_ACTION
 from agent.train_progress import (
     TrainProgressState,
     ProgressCallback,
@@ -34,6 +36,108 @@ from agent.train_progress import (
 
 def _mask_fn(env: SchedulingEnv) -> np.ndarray:
     return env.action_masks()
+
+
+def _collect_expert_transitions(
+    data: dict,
+    env_cls: type,
+    max_steps: int = 2000,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """DedicationAgent(전담 배분 휴리스틱)로 1 에피소드를 굴려 (obs, action,
+    action_mask) 전문가 시연 데이터를 모은다 — 모방학습(BC) 워밍스타트용.
+
+    DedicationAgent는 (PPK,OPER) 버킷 1개(또는 HOLD_ACTION)만 반환하는
+    SchedulingEnv 대상 휴리스틱이라, SchedulingRLEnv의 [bucket, size_level]
+    액션에 맞춰 두 가지를 보정한다:
+      - HOLD(-1): 이 env는 진짜 보류가 없으므로, 방금까지 커밋 중이던
+        버킷(agent._committed)이 있으면 그걸, 없으면 feasible 버킷 중
+        아무거나(0번)를 대신 쓴다.
+      - size_level: DedicationAgent는 "가능한 한 오래 전담 유지"가 목표라,
+        항상 최대 블록 레벨(L-1)을 시연 라벨로 준다.
+    """
+    env = env_cls(data, record_history=False, record_event_log=False)
+    expert = DedicationAgent(data)
+    obs_list: List[np.ndarray] = []
+    action_list: List[Tuple[int, int]] = []
+    mask_list: List[np.ndarray] = []
+
+    obs, _ = env.reset()
+    max_size_level = env._L - 1
+    for _ in range(max_steps):
+        mask = env.action_masks()
+        eqp_id = env.sim.current_idle_eqp()
+        choice = int(expert.predict(env.sim)[0]) if eqp_id is not None else 0
+        if choice == HOLD_ACTION:
+            committed = expert._committed.get(eqp_id) if eqp_id is not None else None
+            if committed is not None:
+                choice = committed
+            else:
+                feasible = np.flatnonzero(mask[: env._n_bucket])
+                choice = int(feasible[0]) if feasible.size else 0
+
+        obs_list.append(obs)
+        action_list.append((choice, max_size_level))
+        mask_list.append(mask)
+
+        obs, _reward, terminated, truncated, _info = env.step(
+            np.array([choice, max_size_level], dtype=np.int64)
+        )
+        if terminated or truncated:
+            break
+
+    return (
+        np.asarray(obs_list, dtype=np.float32),
+        np.asarray(action_list, dtype=np.int64),
+        np.asarray(mask_list, dtype=bool),
+    )
+
+
+def _behavior_clone_pretrain(
+    model: MaskablePPO,
+    datasets: List[dict],
+    env_cls: type,
+    epochs: int,
+    lr: float,
+    verbose: int = 1,
+) -> None:
+    """DedicationAgent 시연으로 PPO 정책을 지도학습 워밍스타트 (RL 학습 전).
+
+    무작위 초기화 대신 이미 알려진 좋은 정책(전담 유지) 근처에서 RL을
+    시작시켜 수렴을 앞당기는 목적 — SYM_5x5류 대칭 벤치마크에서 순수 PPO는
+    ~20만 스텝을 학습해도 전환 2회 부근에서 정체되는 경향이 있었다.
+    """
+    obs_parts, action_parts, mask_parts = [], [], []
+    for data in datasets:
+        obs, action, mask = _collect_expert_transitions(data, env_cls)
+        if obs.size:
+            obs_parts.append(obs)
+            action_parts.append(action)
+            mask_parts.append(mask)
+    if not obs_parts:
+        if verbose:
+            print("[bc] 시연 데이터 없음 — 워밍스타트 생략")
+        return
+
+    obs_t = torch.as_tensor(np.concatenate(obs_parts), dtype=torch.float32, device=model.device)
+    action_t = torch.as_tensor(np.concatenate(action_parts), dtype=torch.long, device=model.device)
+    mask_t = torch.as_tensor(np.concatenate(mask_parts), dtype=torch.bool, device=model.device)
+
+    policy = model.policy
+    policy.set_training_mode(True)
+    n = obs_t.shape[0]
+    if verbose:
+        print(f"[bc] 워밍스타트 시작 — 시연 {n}건, epochs={epochs}, lr={lr}")
+    for group in policy.optimizer.param_groups:
+        group["lr"] = lr
+    for epoch in range(epochs):
+        _values, log_prob, _entropy = policy.evaluate_actions(obs_t, action_t, mask_t)
+        loss = -log_prob.mean()
+        policy.optimizer.zero_grad()
+        loss.backward()
+        policy.optimizer.step()
+        if verbose and (epoch == 0 or epoch == epochs - 1 or (epoch + 1) % max(epochs // 5, 1) == 0):
+            print(f"[bc] epoch {epoch + 1}/{epochs} loss={loss.item():.4f}")
+    policy.set_training_mode(False)
 
 
 def _model_obs_dim(model: MaskablePPO) -> int:
@@ -236,6 +340,18 @@ class SchedulingAgent:
                 f"n_steps={cfg.n_steps}, batch={effective_batch}(base={cfg.batch_size}×{total_envs}envs), "
                 f"eval_freq={cfg.eval_freq}, device={cfg.device}, n_envs={n_envs}"
             )
+
+        if cfg.bc_pretrain_epochs > 0:
+            if progress_state is not None:
+                progress_state.add_log(
+                    f"모방학습 워밍스타트: epochs={cfg.bc_pretrain_epochs}, lr={cfg.bc_pretrain_lr}"
+                )
+            _behavior_clone_pretrain(
+                self.model, datasets, env_cls,
+                epochs=cfg.bc_pretrain_epochs, lr=cfg.bc_pretrain_lr,
+                verbose=verbose,
+            )
+
         self.model.learn(
             total_timesteps=learn_timesteps,
             callback=callbacks,

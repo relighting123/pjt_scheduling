@@ -537,6 +537,12 @@ class RLConfig:
     # GPU / 병렬 환경 설정
     device:          str   = "auto"         # "auto" | "cuda" | "cpu"
     n_envs:          int   = 1              # SubprocVecEnv 병렬 환경 수 (1=DummyVecEnv)
+    # 모방학습(behavior cloning) 워밍스타트: DedicationAgent 시연으로 정책을
+    # 지도학습한 뒤 PPO를 이어서 돌린다. 0이면 비활성(기존처럼 무작위 초기화
+    # 그대로 PPO 시작) — 기본 꺼둠(opt-in), SYM_5x5류 대칭 벤치마크에서
+    # 수렴 속도를 실험할 때만 켠다.
+    bc_pretrain_epochs: int   = 0
+    bc_pretrain_lr:     float = 1e-3
 
 
 @dataclass
