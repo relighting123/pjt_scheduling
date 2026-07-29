@@ -47,12 +47,30 @@ pjt_scheduling/
 
 | 레이어 | 단위 | 설명 |
 |--------|------|------|
-| `discrete_arrange` | `(EQP, LOT, OPER)` | 실제 EQP×carrier 조합, ST, WF_QTY, `LOT_STAT_CD` |
-| `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿 |
+| `discrete_arrange` | `(EQP, LOT, OPER)` | 이 carrier가 이 EQP에 투입 가능하다는 선언(ST, WF_QTY, `LOT_STAT_CD` 포함) |
+| `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿(모델 단위, 더 성긴 단위) |
 | Runtime WIP | `(PPK, OPER)` + LOT list | 현재/유입 재공, `oper_in_time` |
 
 부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`,
 `eqp_conv_plan`(외부 확정 EQP 전환 계획), `eqp_down`(EQP 다운타임)
+
+#### `discrete_arrange`는 "실적"이 아니라 투입 가능 관계(M:N)다
+
+`discrete_arrange`의 `(EQP, LOT)` 행은 "이 EQP가 과거에 이 LOT/제품을 만든 적 있다"는
+이력·실적 데이터가 **아니다**. "이 carrier가 이 EQP에 물리적으로 투입 가능하다"는 선언이며,
+같은 LOT이 여러 EQP에 대해 동시에 선언될 수도 있는 **M:N 관계**다(한 carrier가 여러 대에
+투입 가능, 한 EQP가 여러 carrier를 받을 수 있음). `abstract_arrange`가 더 성긴
+(PPK, OPER, EQP_MODEL) 단위의 투입 가능 템플릿이라면, `discrete_arrange`는 그보다 세밀한
+(EQP, carrier) 단위의 투입 가능 템플릿이라고 보면 된다 — 둘 다 "가능 여부" 선언이지 실적 기록이 아니다.
+
+`LOT_STAT_CD=WAIT`이고 `CONFIG.env.discrete_wait_enabled=True`(기본값)인 경우, 이미 셋업을
+잡은(=최소 한 건 이상 처리한) EQP가 전환 없이 다음 WAIT LOT을 이어서 처리하려면, **그 LOT이
+discrete_arrange에서 이 EQP에 대해 투입 가능하다고 선언되어 있어야 한다** — abstract 단위
+(모델만 일치)로는 부족하다. 따라서 입력 데이터가 실제로는 여러 EQP에 대해 M:N으로 투입
+가능한 carrier를, 편의상 EQP 1대에 대해서만 1:1로 좁혀 선언해 두면(예: 벤치마크 데이터
+생성기가 라운드로빈으로 EQP 하나씩만 배정), 시뮬레이터는 그 선언을 있는 그대로 신뢰해 나머지
+EQP에서는 그 LOT을 "투입 불가"로 취급한다 — 실제로는 모델이 같아 전부 처리 가능한 조합이라도,
+declared 관계가 좁으면 결과도 좁게 나온다.
 
 #### 외부 확정 EQP 전환 계획 (`eqp_conv_plan.json`, 선택)
 

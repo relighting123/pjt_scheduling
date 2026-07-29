@@ -311,10 +311,10 @@ class SchedulingSimulator:
     def _build_eqps_by_om(self) -> Dict[tuple, List[str]]:
         """(oper, eqp_model) → EQP 목록. reset 시 1회 계산 (정적 구조).
 
-        eqp_oper_cap(discrete 실적) 뿐 아니라 abstract_arrange_map(모델 매칭)도
+        eqp_oper_cap(discrete 투입 가능 선언) 뿐 아니라 abstract_arrange_map(모델 매칭)도
         반영한다 — _eqp_can_process()와 동일한 두 경로(OR)를 써야 한다.
-        discrete_wait_enabled=False에서는 eqp_oper_cap이 WAIT lot 실적을
-        의도적으로 제외해 거의 비므로(_rebuild_eqp_oper_cap 참고), 이것만
+        discrete_wait_enabled=False에서는 eqp_oper_cap이 WAIT lot의 discrete
+        투입 가능 관계를 의도적으로 제외해 거의 비므로(_rebuild_eqp_oper_cap 참고), 이것만
         보면 get_bucket_features()의 pom_feats(ST/needs_conv/avoidable_frac/
         setup_changed 등)가 사실상 전부 0이 되어 RL이 전환 관련 신호를 전혀
         못 받는다."""
