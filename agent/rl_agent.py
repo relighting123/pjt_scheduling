@@ -221,12 +221,18 @@ class SchedulingAgent:
         progress_state: Optional[TrainProgressState] = None,
         n_episodes: Optional[int] = None,
         env_cls: type = SchedulingRLEnv,
+        restore_best: bool = True,
     ) -> "SchedulingAgent":
         """
         목적: 주어진 환경 데이터로 PPO 에이전트 학습
         Input:
             env_data (dict | list[dict]): preprocess() 결과. list면 기간별 VecEnv
             verbose  (int):  0=조용히, 1=진행상황 출력
+            restore_best (bool): 학습 종료 후 EvalCallback이 저장해둔
+                best_model.zip이 있으면 그걸로 self.model을 되돌린다(기본
+                True). PPO가 이미 좋은 정책을 찾은 뒤 계속 학습하며 오히려
+                더 나빠지는 경우가 있어, 학습이 끝난 시점의 모델을 무조건
+                쓰지 않고 학습 중 가장 평가가 좋았던 체크포인트를 채택한다.
         Output:
             self (체이닝 가능)
         """
@@ -368,6 +374,19 @@ class SchedulingAgent:
             callback=callbacks,
             progress_bar=(verbose > 0 and progress_state is None),
         )
+
+        if restore_best:
+            best_path = model_dir / "best" / "best_model.zip"
+            if best_path.exists():
+                # EvalCallback/EvalProgressCallback가 eval_freq마다 평가해 가장
+                # 좋았던 체크포인트를 best_model.zip에 저장해둔다. PPO는 이미
+                # 좋은 정책을 찾은 뒤에도 계속 학습하면서 오히려 더 나빠지는
+                # 경우가 실험으로 확인돼(SYM_5x5: 1만 스텝에 전환 0회 도달 후
+                # 유지하다가 후반에 다시 나빠짐), 학습이 끝난 시점의 모델을
+                # 그대로 쓰는 대신 best_model로 되돌린다.
+                if verbose:
+                    print(f"[agent] 학습 종료 시점보다 나은 체크포인트로 복원 ← {best_path}")
+                self.model = MaskablePPO.load(str(best_path), device=cfg.device)
         return self
 
     # ── 저장 / 로드 ──────────────────────────────────────────────────────────
