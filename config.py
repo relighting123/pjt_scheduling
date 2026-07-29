@@ -530,6 +530,11 @@ class RLConfig:
     # 감쇠 없이 기존처럼 고정값 그대로 동작한다.
     ent_coef:        float = 0.05   # 학습 시작 시점 엔트로피 계수
     ent_coef_final:  float = 0.0    # 학습 종료 시점 엔트로피 계수(선형 감쇠 목표)
+    # 감쇠를 전체 구간(1.0) 대신 초반 일부에서 끝낸다(예: 0.2=처음 20%).
+    # BC 워밍스타트와 같이 쓸 때 특히 중요 — 이미 좋은 정책 근처에서
+    # 시작했는데 감쇠를 느리게 끌면 후반까지 남은 탐색이 그 정책을 다시
+    # 흔들어버리는 게 실험으로 확인됨.
+    ent_coef_decay_fraction: float = 1.0
     total_timesteps: int   = 200_000
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"

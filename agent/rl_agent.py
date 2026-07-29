@@ -257,7 +257,10 @@ class SchedulingAgent:
 
         callbacks = []
         if cfg.ent_coef_final != cfg.ent_coef:
-            callbacks.append(EntropyDecayCallback(cfg.ent_coef, cfg.ent_coef_final))
+            callbacks.append(EntropyDecayCallback(
+                cfg.ent_coef, cfg.ent_coef_final,
+                decay_fraction=cfg.ent_coef_decay_fraction,
+            ))
         use_episode_budget = n_episodes is not None and n_episodes > 0
         learn_timesteps = (
             EPISODE_TRAIN_TIMESTEP_CEILING if use_episode_budget else cfg.total_timesteps
