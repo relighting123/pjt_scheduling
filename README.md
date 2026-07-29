@@ -188,12 +188,36 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.
 
-`w_bulk_block_bonus`/`w_dedication_misuse`/`w_redundant_cover`(전담 셰이핑)와
-`RLConfig.ent_coef`(기본 0.02, PPO 엔트로피 보너스)는 대칭 벤치마크(SYM_5x5 등,
-설비=제품 전담 시 전환 0회가 최적)에서 실험으로 검증된 값이다: 이 셋을 0.0으로
-꺼두고 엔트로피 없이 학습하면 200k 스텝을 돌려도 전환이 15회 안팎에서 정체되지만,
-위 값으로 켜면 같은 스텝 수에서 전환 2회까지 줄고 이후 정체(local optimum)된다 —
-완전한 0회 수렴은 추가 튜닝(더 높은 엔트로피, 시드 다양화, 커리큘럼 등)이 필요하다.
+`w_bulk_block_bonus`/`w_dedication_misuse`/`w_redundant_cover`(전담 셰이핑),
+`RLConfig.ent_coef`/`ent_coef_final`(0.05→0.0 선형 감쇠, `ent_coef_decay_fraction`으로
+감쇠를 초반 일부에서 끝낼 수도 있음), `reward_clip=20.0`(`w_conversion`+
+`w_avoidable_conversion`이 이전 clip=10에 눌려 회피 가능 전환 신호가 죽어있던 걸
+수정)은 모두 대칭 벤치마크(SYM_5x5 등, 설비=제품 전담 시 전환 0회가 최적)에서
+실험으로 검증된 값이다.
+
+이것만으로는 SYM_5x5에서 전환이 2회 수준까지만 줄고 정체됐는데, 다음 두 가지를
+추가로 확인했다:
+- **모방학습(behavior cloning) 워밍스타트** (`RLConfig.bc_pretrain_epochs`, 기본 0=비활성):
+  이미 전환 0회를 확정적으로 내는 `DedicationAgent` 시연으로 PPO 정책을 먼저 지도학습시킨
+  뒤 RL을 이어감. 켜면(`bc_pretrain_epochs=300` 등) 1만 스텝 만에 전환 0회에 도달.
+- **`restore_best`** (`SchedulingAgent.train()`, 기본 `True`): PPO는 이미 좋은 정책을
+  찾은 뒤에도 계속 학습하며 오히려 나빠질 수 있어서(SYM_5x5에서 실측: 1만~9만 스텝은
+  전환 0회를 유지하다 10만 스텝에 다시 나빠짐), 학습 종료 시점의 모델 대신
+  `EvalCallback`이 저장해둔 `best_model.zip`으로 자동 복원한다.
+
+`bc_pretrain_epochs`를 켠 상태로 이 둘을 함께 쓰면 SYM_5x5에서 시드 2개(0, 1) 모두
+`agent.train()` → `agent.evaluate()` 표준 흐름만으로 전환 0회·생산 30/30에 재현
+확인됨. `bc_pretrain_epochs`는 아직 기본값이 꺼져 있으므로(opt-in), 켜려면
+학습 전에 `CONFIG.rl.bc_pretrain_epochs = 300` 등으로 설정한다.
+
+### FAC_ID별 모델 관리
+
+RL 모델은 `models/{FAC_ID}/`(체크포인트·best·logs 포함) 아래에 FAC_ID별로 분리해서
+저장·로드된다. `SchedulingAgent.train()/save()/load()/model_exists()`에 `fac_id`를
+넘기면 그 FAC_ID 전용 경로를 쓰고, 넘기지 않으면 기존 공용 경로(`models/` 바로 아래)를
+그대로 써서 이전에 학습된 모델과 호환된다. `main.py train`/`infer`, API의
+`/api/train`·`/api/train/start`·`/api/inference`·`/api/inference/compare`는
+전달된(또는 현재 선택된) FAC_ID로 자동 라우팅한다.
 
 ---
 
