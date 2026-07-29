@@ -52,8 +52,13 @@ def _collect_expert_transitions(
       - HOLD(-1): 이 env는 진짜 보류가 없으므로, 방금까지 커밋 중이던
         버킷(agent._committed)이 있으면 그걸, 없으면 feasible 버킷 중
         아무거나(0번)를 대신 쓴다.
-      - size_level: DedicationAgent는 "가능한 한 오래 전담 유지"가 목표라,
-        항상 최대 블록 레벨(L-1)을 시연 라벨로 준다.
+      - size_level: DedicationAgent는 "가능한 한 오래 전담 유지"가 목표라
+        큰 블록을 선호하지만, 블록이 이미 진행 중인 스텝은 env가 size_mask를
+        레벨 0 하나로 강제한다(action_masks() 참고) — 이때 라벨을 최대
+        레벨로 주면 실제로는 마스크 밖의 선택이 되어(로그확률이 마스킹으로
+        거의 -inf) BC 학습이 폭주한다. 그래서 매 스텝 그 시점의 size_mask에서
+        "허용된 가장 큰 레벨"을 라벨로 쓴다 — 새 블록 시작 시점엔 최대 레벨,
+        진행 중이면 자동으로 0이 된다.
     """
     env = env_cls(data, record_history=False, record_event_log=False)
     expert = DedicationAgent(data)
@@ -62,7 +67,7 @@ def _collect_expert_transitions(
     mask_list: List[np.ndarray] = []
 
     obs, _ = env.reset()
-    max_size_level = env._L - 1
+    n_bucket = env._n_bucket
     for _ in range(max_steps):
         mask = env.action_masks()
         eqp_id = env.sim.current_idle_eqp()
@@ -72,15 +77,18 @@ def _collect_expert_transitions(
             if committed is not None:
                 choice = committed
             else:
-                feasible = np.flatnonzero(mask[: env._n_bucket])
+                feasible = np.flatnonzero(mask[:n_bucket])
                 choice = int(feasible[0]) if feasible.size else 0
 
+        allowed_levels = np.flatnonzero(mask[n_bucket:])
+        size_level = int(allowed_levels[-1]) if allowed_levels.size else 0
+
         obs_list.append(obs)
-        action_list.append((choice, max_size_level))
+        action_list.append((choice, size_level))
         mask_list.append(mask)
 
         obs, _reward, terminated, truncated, _info = env.step(
-            np.array([choice, max_size_level], dtype=np.int64)
+            np.array([choice, size_level], dtype=np.int64)
         )
         if terminated or truncated:
             break
