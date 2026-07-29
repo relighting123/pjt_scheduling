@@ -1,48 +1,36 @@
-"""출력 테이블별 -- @db: 헤더로 다른 DB에 적재할 수 있는지 검증.
+"""출력 테이블별로 다른 DB에 적재할 수 있는지 검증 (config/output_db_routing.yaml).
 
-data/sql/rts_output_tables.sql 에 테이블별 헤더를 두면(입력 SQL과 동일한
-표기), load_output_sql_files()/load_output_json() 이 테이블마다 그 alias로
-연결해 실행해야 한다. 헤더가 없으면(기존 파일) 기존처럼 db_alias 하나만
-그대로 쓴다.
+load_output_sql_files()/load_output_json() 은 이 파일에 적힌 테이블만 그
+alias로 연결해 실행하고, 적히지 않은 테이블이나 파일 자체가 없으면 기존처럼
+db_alias(또는 registry 기본 alias) 하나만 그대로 쓴다.
 """
 from pathlib import Path
 
 import data.writer.db_load as db_load
-from data.db_registry import parse_per_table_db_aliases
 
 
-def test_parse_per_table_db_aliases_single_header_applies_to_all():
-    sql = (
-        "-- @db: Prd\n"
-        "CREATE TABLE RTS_RSLT_MAS (X NUMBER);\n"
-        "CREATE TABLE RTS_RSLT_HIS (X NUMBER);\n"
+def test_load_output_db_routing_returns_empty_when_file_missing(tmp_path):
+    missing = tmp_path / "does_not_exist.yaml"
+    assert db_load.load_output_db_routing(missing) == {}
+
+
+def test_load_output_db_routing_parses_table_to_alias_map(tmp_path):
+    path = tmp_path / "output_db_routing.yaml"
+    path.write_text(
+        "RTS_PERFMON_HIS: Dev\n"
+        "rts_validation: Dev\n",  # 소문자로 적어도 대문자 테이블명으로 정규화
+        encoding="utf-8",
     )
-    assert parse_per_table_db_aliases(sql) == {
-        "RTS_RSLT_MAS": "prd",
-        "RTS_RSLT_HIS": "prd",
+    assert db_load.load_output_db_routing(path) == {
+        "RTS_PERFMON_HIS": "Dev",
+        "RTS_VALIDATION": "Dev",
     }
 
 
-def test_parse_per_table_db_aliases_new_header_overrides_following_tables():
-    sql = (
-        "-- @db: Prd\n"
-        "CREATE TABLE RTS_RSLT_MAS (X NUMBER);\n"
-        "-- @db: Dev\n"
-        "CREATE TABLE RTS_PERFMON_HIS (X NUMBER);\n"
-        "CREATE TABLE RTS_VALIDATION (X NUMBER);\n"
-    )
-    assert parse_per_table_db_aliases(sql) == {
-        "RTS_RSLT_MAS": "prd",
-        "RTS_PERFMON_HIS": "dev",
-        "RTS_VALIDATION": "dev",
-    }
-
-
-def test_parse_per_table_db_aliases_no_header_uses_default():
-    sql = "CREATE TABLE RTS_RSLT_MAS (X NUMBER);\n"
-    assert parse_per_table_db_aliases(sql, default_alias="main") == {
-        "RTS_RSLT_MAS": "main",
-    }
+def test_load_output_db_routing_ignores_default_key(tmp_path):
+    path = tmp_path / "output_db_routing.yaml"
+    path.write_text("default: Prd\nRTS_VALIDATION: Dev\n", encoding="utf-8")
+    assert db_load.load_output_db_routing(path) == {"RTS_VALIDATION": "Dev"}
 
 
 class _FakeConn:
@@ -91,18 +79,9 @@ class _FakeRegistry:
 
 
 def test_load_output_sql_files_routes_each_table_to_its_own_alias(tmp_path, monkeypatch):
-    # DDL: RTS_RSLT_MAS/HIS -> Prd(기본), RTS_PERFMON_HIS -> Dev
-    ddl_dir = tmp_path / "data" / "sql"
-    ddl_dir.mkdir(parents=True)
-    (ddl_dir / "rts_output_tables.sql").write_text(
-        "-- @db: Prd\n"
-        "CREATE TABLE RTS_RSLT_MAS (X NUMBER);\n"
-        "CREATE TABLE RTS_EQPCONVPLAN_INF (X NUMBER);\n"
-        "-- @db: Dev\n"
-        "CREATE TABLE RTS_PERFMON_HIS (X NUMBER);\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(db_load, "BASE_DIR", tmp_path)
+    routing_path = tmp_path / "output_db_routing.yaml"
+    routing_path.write_text("RTS_PERFMON_HIS: dev\n", encoding="utf-8")
+    monkeypatch.setattr(db_load, "_output_db_routing_path", lambda: routing_path)
 
     out_dir = tmp_path / "output"
     sql_dir = out_dir / "sql"
@@ -116,13 +95,14 @@ def test_load_output_sql_files_routes_each_table_to_its_own_alias(tmp_path, monk
 
     executed = db_load.load_output_sql_files(
         out_dir,
+        db_alias="prd",
         include_history=False,
         script_names=["rts_rslt_mas.sql", "rts_eqpconvplan_inf.sql", "rts_perfmon_his.sql"],
     )
 
     assert len(executed) == 3
-    # RTS_RSLT_MAS/RTS_EQPCONVPLAN_INF는 prd 커넥션에, RTS_PERFMON_HIS는 dev
-    # 커넥션에 각각 실행됐어야 한다 (헤더 기준 테이블별 라우팅).
+    # RTS_RSLT_MAS/RTS_EQPCONVPLAN_INF는 명시적으로 넘긴 db_alias="prd"로,
+    # RTS_PERFMON_HIS는 output_db_routing.yaml 을 따라 "dev"로 실행됐어야 한다.
     assert "prd" in fake_registry._connections
     assert "dev" in fake_registry._connections
     prd_sql = "\n".join(fake_registry._connections["prd"].executed)
@@ -131,3 +111,26 @@ def test_load_output_sql_files_routes_each_table_to_its_own_alias(tmp_path, monk
     assert "RTS_EQPCONVPLAN_INF" in prd_sql
     assert "RTS_PERFMON_HIS" not in prd_sql
     assert "RTS_PERFMON_HIS" in dev_sql
+
+
+def test_load_output_sql_files_uses_single_alias_when_no_routing_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(db_load, "_output_db_routing_path", lambda: tmp_path / "missing.yaml")
+
+    out_dir = tmp_path / "output"
+    sql_dir = out_dir / "sql"
+    sql_dir.mkdir(parents=True)
+    (sql_dir / "rts_rslt_mas.sql").write_text("INSERT INTO RTS_RSLT_MAS VALUES (1);", encoding="utf-8")
+    (sql_dir / "rts_perfmon_his.sql").write_text("INSERT INTO RTS_PERFMON_HIS VALUES (1);", encoding="utf-8")
+
+    fake_registry = _FakeRegistry()
+    monkeypatch.setattr(db_load, "DbRegistry", lambda *a, **kw: fake_registry)
+
+    db_load.load_output_sql_files(
+        out_dir,
+        db_alias="prd",
+        include_history=False,
+        script_names=["rts_rslt_mas.sql", "rts_perfmon_his.sql"],
+    )
+
+    # 라우팅 파일이 없으면 모든 테이블이 넘긴 db_alias 하나로만 실행된다
+    assert list(fake_registry._connections.keys()) == ["prd"]

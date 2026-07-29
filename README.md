@@ -245,10 +245,15 @@ python main.py db-load --ddl --facid FAC001 --split infer
 여부를 조정할 수 있습니다.
 
 **테이블별로 다른 DB에 적재**하고 싶으면(예: `RTS_RSLT_MAS`/`RTS_RSLT_HIS`는 운영 DB, `RTS_PERFMON_HIS`는
-개발/집계 DB), `data/sql/rts_output_tables.sql`에서 그 테이블의 `CREATE TABLE` 바로 위에
-`-- @db: <alias>`를 추가하세요(입력 SQL의 파일 단위 헤더와 동일한 표기). 헤더는 다음 헤더가 나오기
-전까지 그 아래 테이블들에 계속 적용되므로, 다른 DB로 보낼 테이블 앞에만 새로 추가하면 됩니다. 헤더가
-없는(또는 파일 자체가 없는) 경우 모든 테이블이 `--db`/`db_alias` 인자 하나로 기존처럼 동작합니다.
+개발/집계 DB) `config/output_db_routing.yaml.example`을 `config/output_db_routing.yaml`로 복사해
+다르게 보낼 테이블만 적으세요(스키마 DDL과는 별개의 선택 파일):
+
+```yaml
+RTS_PERFMON_HIS: Dev
+RTS_VALIDATION: Dev
+```
+
+여기 없는 테이블(또는 파일 자체가 없는 경우)은 그대로 `--db`/`db_alias` 인자 하나로 적재됩니다.
 
 `RTS_EQPCONVPLAN_INF`/`RTS_EQPCONVPLAN_HIS` 저장 자체는 `CONFIG.env.conv_output_enabled`(기본 `True`)
 옵션으로 켜고 끌 수 있습니다. 켜져 있으면 RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`
