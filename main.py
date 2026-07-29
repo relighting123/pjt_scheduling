@@ -43,6 +43,7 @@ from config import (
     resolve_train_period_range,
     resolve_infer_rule_timekey,
     list_split_folders,
+    model_dir_for,
 )
 from data.collector import (
     add_debug_arguments,
@@ -205,11 +206,11 @@ def cmd_train(
     print("  알고리즘: scheduling_rl (SchedulingRLEnv)")
 
     agent = SchedulingAgent()
-    agent.train(env_data, verbose=1, env_cls=env_cls)
-    agent.save()
-    print(f"  모델 저장: {CONFIG.path.model_dir / CONFIG.rl.model_name}.zip")
+    agent.train(env_data, verbose=1, env_cls=env_cls, fac_id=fac_id)
+    agent.save(fac_id=fac_id)
+    print(f"  모델 저장: {model_dir_for(fac_id) / CONFIG.rl.model_name}.zip")
 
-    report = save_training_convergence_report(CONFIG.path.model_dir, algorithm=algorithm)
+    report = save_training_convergence_report(model_dir_for(fac_id), algorithm=algorithm)
     print(f"  수렴 리포트: {report['json_path']}")
     if report["png_path"]:
         print(f"  수렴 차트: {report['png_path']}")
@@ -382,7 +383,7 @@ def cmd_inference(
         # 휴리스틱(dedication/earliest_st/minprogress)은 모델 파일이 필요 없다
         # — RL일 때만 로드하고, 없으면 종료.
         try:
-            agent = SchedulingAgent.load()
+            agent = SchedulingAgent.load(fac_id=fac_id)
         except (FileNotFoundError, ValueError) as exc:
             print(f"[오류] {exc}")
             sys.exit(1)

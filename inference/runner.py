@@ -369,6 +369,7 @@ def run_inference_compare(
     max_conversions: Optional[int] = None,
     max_conversions_per_eqp: Optional[int] = None,
     conversion_minutes: Optional[int] = None,
+    fac_id: Optional[str] = None,
 ) -> dict:
     """
     동일 입력 데이터로 여러 알고리즘 추론 후 비교용 결과 반환
@@ -384,7 +385,7 @@ def run_inference_compare(
         if algo in loaded_agents:
             continue
         try:
-            loaded_agents[algo] = SchedulingAgent.load(model_path, env_data=env_data)
+            loaded_agents[algo] = SchedulingAgent.load(model_path, env_data=env_data, fac_id=fac_id)
         except (FileNotFoundError, ValueError) as exc:
             errors.append({"algorithm": algo, "message": str(exc)})
 

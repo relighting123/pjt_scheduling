@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey, model_dir_for
 from data.loader import load_data, validate_data, fetch_from_db, preprocess
 from data.loader.sql_binds import resolve_lot_cd
 from data.writer.db_load import load_output_sql_files
@@ -57,7 +57,7 @@ app.add_middleware(
 # 세션 캐시 – 마지막 추론 결과 (히스토리 포함)
 _last_inference: Optional[dict] = None
 _env_data_cache: Optional[dict] = None
-_benchmark_rl_agent: Optional[SchedulingAgent] = None
+_benchmark_rl_agent: dict[str, Optional[SchedulingAgent]] = {}  # fac_id -> agent (or None)
 _data_warnings: list[str] = []
 
 
@@ -550,7 +550,7 @@ def health():
     # 3. 모델 파일 상태
     try:
         agent = SchedulingAgent()
-        model_exists = agent.model_exists()
+        model_exists = agent.model_exists(fac_id=CONFIG.path.fac_id)
         status["components"]["model"] = {
             "status": "healthy" if model_exists else "not_found",
             "exists": model_exists
@@ -652,11 +652,11 @@ def health_detailed():
     # 3. 모델
     try:
         agent = SchedulingAgent()
-        model_exists = agent.model_exists()
+        model_exists = agent.model_exists(fac_id=CONFIG.path.fac_id)
         status["components"]["model"] = {
             "status": "healthy" if model_exists else "not_found",
             "exists": model_exists,
-            "model_dir": str(CONFIG.path.model_dir)
+            "model_dir": str(model_dir_for(CONFIG.path.fac_id))
         }
     except Exception as e:
         status["components"]["model"] = {
@@ -718,7 +718,7 @@ def health_detailed():
 @app.get("/api/config")
 def get_config():
     return {
-        "model_dir": str(CONFIG.path.model_dir),
+        "model_dir": str(model_dir_for(CONFIG.path.fac_id)),
         "input_folder": CONFIG.path.input_folder_key,
         "fac_id": CONFIG.path.fac_id,
         "dataset_split": CONFIG.path.dataset_split,
@@ -783,9 +783,10 @@ def select_input_folder(req: InputFolderRequest):
 
 
 @app.get("/api/model/status")
-def model_status():
+def model_status(fac_id: Optional[str] = None):
     agent = SchedulingAgent()
-    return {"exists": agent.model_exists()}
+    resolved = fac_id or CONFIG.path.fac_id
+    return {"exists": agent.model_exists(fac_id=resolved), "fac_id": resolved}
 
 
 @app.post("/api/train/start")
@@ -798,6 +799,7 @@ def train_start(req: TrainRequest):
         raise HTTPException(status_code=409, detail="이미 학습이 진행 중입니다.")
     params = req.model_dump()
     params["input_folders"] = folders
+    params["fac_id"] = req.fac_id or CONFIG.path.fac_id
     payload = env_list if len(env_list) > 1 else env_list[0]
     if not start_training(payload, params):
         raise HTTPException(status_code=409, detail="학습을 시작할 수 없습니다.")
@@ -830,13 +832,14 @@ def train(req: TrainRequest):
     from env.scheduling_rl_env import SchedulingRLEnv
     env_cls = SchedulingRLEnv
 
+    fac_id = req.fac_id or CONFIG.path.fac_id
     agent = SchedulingAgent()
     payload = env_list if len(env_list) > 1 else env_list[0]
-    train_kwargs: dict = {"verbose": 0, "env_cls": env_cls}
+    train_kwargs: dict = {"verbose": 0, "env_cls": env_cls, "fac_id": fac_id}
     if req.train_budget_mode == "episodes" and req.n_episodes:
         train_kwargs["n_episodes"] = req.n_episodes
     agent.train(payload, **train_kwargs)
-    agent.save()
+    agent.save(fac_id=fac_id)
     eval_eps = req.n_episodes if req.train_budget_mode == "episodes" and req.n_episodes else 3
     metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
     return {"message": "학습 완료", "metrics": metrics, "input_folders": folders}
@@ -899,7 +902,7 @@ def inference(req: InferenceRequest):
         agent = None
         if req.algorithm == "scheduling_rl":
             try:
-                agent = SchedulingAgent.load(env_data=env_data)
+                agent = SchedulingAgent.load(env_data=env_data, fac_id=infer_meta["fac_id"])
             except (FileNotFoundError, ValueError) as exc:
                 raise HTTPException(
                     status_code=400,
@@ -1096,6 +1099,7 @@ def inference_compare(req: CompareRequest):
             max_conversions=req.max_conversions,
             max_conversions_per_eqp=req.max_conversions_per_eqp,
             conversion_minutes=req.conversion_minutes,
+            fac_id=infer_meta["fac_id"],
         )
     finally:
         CONFIG.env.discrete_wait_enabled = original_discrete_wait_enabled
@@ -1279,16 +1283,18 @@ def _validate_algorithms(algorithms: list[str]) -> None:
             raise HTTPException(status_code=400, detail=str(e))
 
 
-def _get_benchmark_rl_agent():
-    """test 벤치마크용 PPO 모델 – 세션 동안 1회만 로드"""
+def _get_benchmark_rl_agent(fac_id: Optional[str] = None):
+    """test 벤치마크용 PPO 모델 – FAC_ID별로 세션 동안 1회만 로드해 캐시."""
     global _benchmark_rl_agent
-    if _benchmark_rl_agent is not None:
-        return _benchmark_rl_agent
+    key = fac_id or CONFIG.path.fac_id
+    if key in _benchmark_rl_agent:
+        return _benchmark_rl_agent[key]
     probe = SchedulingAgent()
-    if not probe.model_exists():
+    if not probe.model_exists(fac_id=fac_id):
+        _benchmark_rl_agent[key] = None
         return None
-    _benchmark_rl_agent = SchedulingAgent.load()
-    return _benchmark_rl_agent
+    _benchmark_rl_agent[key] = SchedulingAgent.load(fac_id=fac_id)
+    return _benchmark_rl_agent[key]
 
 
 def _benchmark_single_folder(folder: str, algorithms: list[str]) -> dict:
@@ -1296,7 +1302,8 @@ def _benchmark_single_folder(folder: str, algorithms: list[str]) -> dict:
     label = folder.rsplit("/", 1)[-1]
     original_folder = CONFIG.path.input_folder_key
     global _env_data_cache
-    rl_agent = _get_benchmark_rl_agent() if "scheduling_rl" in algorithms else None
+    folder_fac_id, _split, _period = parse_input_folder(folder)
+    rl_agent = _get_benchmark_rl_agent(fac_id=folder_fac_id) if "scheduling_rl" in algorithms else None
     try:
         _apply_input_folder(folder)
         env_data = _load_env_data()
@@ -1398,8 +1405,7 @@ def delete_saved_test_benchmark(fac_id: Optional[str] = None):
 def init_test_benchmark(req: TestBenchmarkInitRequest):
     fac_id = validate_path_segment(req.fac_id or CONFIG.path.fac_id, "FAC_ID")
     _validate_algorithms(req.algorithms)
-    global _benchmark_rl_agent
-    _benchmark_rl_agent = None
+    _benchmark_rl_agent.pop(fac_id, None)
     if req.from_date and req.to_date and req.prevcnt is not None:
         raise HTTPException(status_code=400, detail="prevcnt와 from_date/to_date를 함께 쓸 수 없습니다.")
     folders = _test_folders_for_fac(

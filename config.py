@@ -339,6 +339,18 @@ def resolve_dataset_path(
     return root / "input", root / "output"
 
 
+def model_dir_for(fac_id: Optional[str] = None) -> Path:
+    """FAC_ID별 RL 모델 저장 경로: models/{FAC_ID}/.
+
+    fac_id 미지정(None/빈 문자열)이면 기존 공용 경로(CONFIG.path.model_dir,
+    models/ 바로 아래)를 그대로 반환해 이전에 학습된 모델과 호환된다 —
+    FAC_ID별 분리는 호출부가 명시적으로 fac_id를 넘길 때만 적용된다.
+    """
+    if not fac_id:
+        return CONFIG.path.model_dir
+    return CONFIG.path.model_dir / validate_path_segment(fac_id, "FAC_ID")
+
+
 def infer_paths(fac_id: str) -> Tuple[Path, Path]:
     """추론 전용 dataset/{FAC_ID}/infer/input|output"""
     return resolve_dataset_path(fac_id, "infer")
@@ -530,6 +542,11 @@ class RLConfig:
     # 감쇠 없이 기존처럼 고정값 그대로 동작한다.
     ent_coef:        float = 0.05   # 학습 시작 시점 엔트로피 계수
     ent_coef_final:  float = 0.0    # 학습 종료 시점 엔트로피 계수(선형 감쇠 목표)
+    # 감쇠를 전체 구간(1.0) 대신 초반 일부에서 끝낸다(예: 0.2=처음 20%).
+    # BC 워밍스타트와 같이 쓸 때 특히 중요 — 이미 좋은 정책 근처에서
+    # 시작했는데 감쇠를 느리게 끌면 후반까지 남은 탐색이 그 정책을 다시
+    # 흔들어버리는 게 실험으로 확인됨.
+    ent_coef_decay_fraction: float = 1.0
     total_timesteps: int   = 200_000
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
@@ -537,6 +554,12 @@ class RLConfig:
     # GPU / 병렬 환경 설정
     device:          str   = "auto"         # "auto" | "cuda" | "cpu"
     n_envs:          int   = 1              # SubprocVecEnv 병렬 환경 수 (1=DummyVecEnv)
+    # 모방학습(behavior cloning) 워밍스타트: DedicationAgent 시연으로 정책을
+    # 지도학습한 뒤 PPO를 이어서 돌린다. 0이면 비활성(기존처럼 무작위 초기화
+    # 그대로 PPO 시작) — 기본 꺼둠(opt-in), SYM_5x5류 대칭 벤치마크에서
+    # 수렴 속도를 실험할 때만 켠다.
+    bc_pretrain_epochs: int   = 0
+    bc_pretrain_lr:     float = 1e-3
 
 
 @dataclass

@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 from typing import Optional, Union
 
-from config import CONFIG, apply_reward_params
+from config import CONFIG, apply_reward_params, model_dir_for
 from agent.rl_agent import SchedulingAgent
 from agent.train_progress import TrainProgressState, TRAIN_BUDGET_EPISODES, TRAIN_BUDGET_TIMESTEPS
 from agent.training_report import save_training_convergence_report
@@ -34,18 +34,22 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
         from env.scheduling_rl_env import SchedulingRLEnv
         env_cls = SchedulingRLEnv
 
+        fac_id = params.get("fac_id")
         agent = SchedulingAgent()
         payload = env_list if len(env_list) > 1 else env_list[0]
-        train_kwargs = {"verbose": 0, "progress_state": train_progress, "env_cls": env_cls}
+        train_kwargs = {
+            "verbose": 0, "progress_state": train_progress, "env_cls": env_cls,
+            "fac_id": fac_id,
+        }
         if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes:
             train_kwargs["n_episodes"] = int(n_episodes)
         algorithm = params.get("algorithm", "scheduling_rl")
         agent.train(payload, **train_kwargs)
         if train_progress.is_stop_requested():
             train_progress.add_log("학습 중지됨 – 부분 모델 저장 중…")
-            agent.save()
+            agent.save(fac_id=fac_id)
             report = save_training_convergence_report(
-                CONFIG.path.model_dir, algorithm=algorithm,
+                model_dir_for(fac_id), algorithm=algorithm,
                 progress_series=train_progress.snapshot()["series"],
             )
             train_progress.add_log(f"수렴 리포트 저장: {report['json_path']}")
@@ -53,12 +57,12 @@ def _run_train(env_data: Union[dict, list], params: dict) -> None:
             train_progress.add_log("학습 중지 완료 (부분 모델 저장됨)")
             return
         train_progress.add_log("모델 저장 중…")
-        agent.save()
+        agent.save(fac_id=fac_id)
         eval_eps = int(n_episodes) if budget_mode == TRAIN_BUDGET_EPISODES and n_episodes else 1
         train_progress.add_log(f"학습 후 평가 ({eval_eps} 에피소드)…")
         metrics = agent.evaluate(env_list[0], n_episodes=eval_eps)
         report = save_training_convergence_report(
-            CONFIG.path.model_dir, algorithm=algorithm,
+            model_dir_for(fac_id), algorithm=algorithm,
             progress_series=train_progress.snapshot()["series"],
             eval_metrics=metrics,
         )
