@@ -523,10 +523,13 @@ class RLConfig:
     gamma:           float = 0.99
     # 엔트로피 보너스: 0.0(기본 SB3 값)이면 대칭 케이스(예: SYM_5x5)에서 정책이
     # 조기에 하나의 순열로 굳어져(collapse) 전환 0회 최적해를 못 찾고 국소 최적에
-    # 갇히는 경향이 실험으로 확인됨. 0.02 정도만 줘도 SYM_5x5 기준 전환 횟수가
-    # 학습 후반까지 계속 줄어드는 걸 확인(240k+ 스텝에서 전환 2회까지 감소, 0.0
-    # 대비 큰 개선). 0으로 되돌리면 기존(엔트로피 없음) 동작과 동일.
-    ent_coef:        float = 0.02
+    # 갇히는 경향이 실험으로 확인됨. ent_coef를 고정값으로만 주면(과거 0.02) 학습
+    # 후반(21만 스텝 이후)에도 여전히 전환 2회에서 정체되는 것도 확인됨 — 그래서
+    # start(탐색)→final(착취)로 선형 감쇠시킨다(EntropyDecayCallback,
+    # agent/train_progress.py). ent_coef_final을 ent_coef와 같은 값으로 두면
+    # 감쇠 없이 기존처럼 고정값 그대로 동작한다.
+    ent_coef:        float = 0.05   # 학습 시작 시점 엔트로피 계수
+    ent_coef_final:  float = 0.0    # 학습 종료 시점 엔트로피 계수(선형 감쇠 목표)
     total_timesteps: int   = 200_000
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
@@ -573,7 +576,12 @@ class RewardConfig:
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
     flow_balance_starving_cover_min: float = 120.0
     # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
-    reward_clip:       float = 10.0
+    # w_conversion(-10.0) 하나만으로 이미 옛 clip(10.0)을 다 써버려서, 그 위에
+    # 붙는 w_avoidable_conversion(-8.0)이 항상 clip에 눌려 아무 효과가 없었다
+    # (회피 가능한 전환과 불가피한 전환이 똑같이 -10.0으로만 보임). |w_conversion|
+    # + |w_avoidable_conversion| = 18.0 을 clip 안에 넣어 그 차이가 실제로
+    # 보상에 반영되게 한다.
+    reward_clip:       float = 20.0
     # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
     use_achievable_target: bool = True
 
@@ -617,13 +625,37 @@ def apply_reward_params(params: dict) -> None:
         r.use_achievable_target = bool(params["use_achievable_target"])
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+@dataclass
+class SchedulerConfig:
+    """API 서버(main.py ui / uvicorn) 기동 시 주기적으로 infer 를 자동 실행하는 옵션.
+
+    기본은 비활성(enabled=False) — 명시적으로 켜야 동작한다. fac_id 없이
+    enabled=True 만 켜면 시작하지 않고 경고만 남긴다(운영 DB에 의도치 않게
+    자동 적재되는 사고를 막기 위한 opt-in 설계).
+    """
+    enabled:          bool  = field(default_factory=lambda: _env_bool("SCHEDULER_ENABLED"))
+    interval_seconds: int   = field(default_factory=lambda: int(os.environ.get("SCHEDULER_INTERVAL_SECONDS", "3600") or 3600))
+    fac_id:           str   = field(default_factory=lambda: os.environ.get("SCHEDULER_FAC_ID", "").strip())
+    algorithm:        str   = field(default_factory=lambda: os.environ.get("SCHEDULER_ALGORITHM", "scheduling_rl").strip())
+    db_alias:         Optional[str] = field(default_factory=lambda: os.environ.get("SCHEDULER_DB_ALIAS", "").strip() or None)
+    no_history:       bool  = field(default_factory=lambda: _env_bool("SCHEDULER_NO_HISTORY"))
+
+
 @dataclass
 class Config:
-    path:   PathConfig   = field(default_factory=PathConfig)
-    oracle: OracleConfig = field(default_factory=OracleConfig)
-    env:    EnvConfig    = field(default_factory=EnvConfig)
-    rl:     RLConfig     = field(default_factory=RLConfig)
-    reward: RewardConfig = field(default_factory=RewardConfig)
+    path:      PathConfig      = field(default_factory=PathConfig)
+    oracle:    OracleConfig    = field(default_factory=OracleConfig)
+    env:       EnvConfig       = field(default_factory=EnvConfig)
+    rl:        RLConfig        = field(default_factory=RLConfig)
+    reward:    RewardConfig    = field(default_factory=RewardConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 
 CONFIG = Config()

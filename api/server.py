@@ -4,10 +4,12 @@ React UI가 호출하는 REST API를 제공합니다.
 
 실행: uvicorn api.server:app --reload --port 8001
 """
+import asyncio
 import json
 import sys
 import time
-from datetime import datetime
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -957,6 +959,100 @@ def inference(req: InferenceRequest):
         )
     payload["infer_meta"] = infer_meta
     return payload
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 주기 추론 스케줄러 — 서버 기동 시 CONFIG.scheduler.enabled=True 면
+# CONFIG.scheduler.interval_seconds 마다 /api/inference 와 동일한 추론+DB
+# 적재를 자동 반복한다. 기본은 비활성(opt-in) — 운영 DB에 의도치 않게
+# 자동 적재되는 사고를 막기 위함. .env: SCHEDULER_ENABLED=true,
+# SCHEDULER_FAC_ID=FAC001, SCHEDULER_INTERVAL_SECONDS=3600 등으로 설정.
+# ─────────────────────────────────────────────────────────────────────────
+_scheduler_task: Optional["asyncio.Task"] = None
+_scheduler_state: dict = {
+    "running": False,
+    "run_count": 0,
+    "last_run_at": None,
+    "last_status": None,   # "ok" | "error"
+    "last_error": None,
+}
+
+
+async def _scheduler_tick(cfg) -> None:
+    """추론 1회 실행 + 상태 갱신 (테스트에서 루프 없이 단독 호출 가능)."""
+    _scheduler_state["running"] = True
+    try:
+        req = InferenceRequest(
+            fac_id=cfg.fac_id,
+            algorithm=cfg.algorithm,
+            db_alias=cfg.db_alias,
+            no_history=cfg.no_history,
+        )
+        await asyncio.to_thread(inference, req)
+        _scheduler_state["last_status"] = "ok"
+        _scheduler_state["last_error"] = None
+        _scheduler_state["run_count"] += 1
+        print(f"[scheduler] 추론 완료 (누적 {_scheduler_state['run_count']}회)")
+    except HTTPException as exc:
+        _scheduler_state["last_status"] = "error"
+        _scheduler_state["last_error"] = str(exc.detail)
+        print(f"[scheduler] 추론 실패: {exc.detail}")
+    except Exception as exc:  # noqa: BLE001 — 반복 실행 중 하나 실패해도 계속 돈다
+        _scheduler_state["last_status"] = "error"
+        _scheduler_state["last_error"] = str(exc)
+        print(f"[scheduler] 추론 실패: {exc}")
+        traceback.print_exc()
+    finally:
+        _scheduler_state["running"] = False
+        _scheduler_state["last_run_at"] = datetime.now(timezone.utc).isoformat()
+
+
+async def _scheduler_loop() -> None:
+    cfg = CONFIG.scheduler
+    interval = max(int(cfg.interval_seconds), 1)
+    print(
+        f"[scheduler] 시작 — fac_id={cfg.fac_id} algorithm={cfg.algorithm} "
+        f"interval={interval}s"
+    )
+    while True:
+        await _scheduler_tick(cfg)
+        await asyncio.sleep(interval)
+
+
+@app.on_event("startup")
+async def _start_scheduler_on_boot() -> None:
+    global _scheduler_task
+    cfg = CONFIG.scheduler
+    if not cfg.enabled:
+        return
+    if not cfg.fac_id:
+        print(
+            "[scheduler] SCHEDULER_ENABLED=true 이지만 SCHEDULER_FAC_ID가 "
+            "없어 시작하지 않습니다."
+        )
+        return
+    _scheduler_task = asyncio.create_task(_scheduler_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_scheduler_on_exit() -> None:
+    global _scheduler_task
+    if _scheduler_task is not None:
+        _scheduler_task.cancel()
+        _scheduler_task = None
+
+
+@app.get("/api/scheduler/status")
+def scheduler_status() -> dict:
+    cfg = CONFIG.scheduler
+    return {
+        "enabled": cfg.enabled,
+        "active": _scheduler_task is not None and not _scheduler_task.done(),
+        "fac_id": cfg.fac_id,
+        "algorithm": cfg.algorithm,
+        "interval_seconds": cfg.interval_seconds,
+        **_scheduler_state,
+    }
 
 
 @app.post("/api/inference/compare")

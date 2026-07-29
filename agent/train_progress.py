@@ -356,6 +356,28 @@ class EvalProgressCallback(EvalCallback):
         return continue_training
 
 
+class EntropyDecayCallback(BaseCallback):
+    """학습 진행률에 따라 model.ent_coef 를 start→end 로 선형 감쇠.
+
+    SB3 PPO의 ent_coef는 learning_rate와 달리 Schedule(callable)을 받지
+    않는 단순 float라, on_step마다 모델 속성을 직접 덮어써 감쇠를 흉내낸다.
+    초반엔 탐색을 넉넉히 주고(국소 최적 탈출) 후반엔 0에 가깝게 낮춰
+    정책을 굳히는 용도(SYM_5x5 실험에서 고정 ent_coef가 전환 2회에서
+    정체되는 걸 완화하기 위해 도입).
+    """
+
+    def __init__(self, start: float, end: float, verbose: int = 0):
+        super().__init__(verbose)
+        self._start = start
+        self._end = end
+
+    def _on_step(self) -> bool:
+        progress_remaining = getattr(self.model, "_current_progress_remaining", 1.0)
+        progress_remaining = min(max(progress_remaining, 0.0), 1.0)
+        self.model.ent_coef = self._end + (self._start - self._end) * progress_remaining
+        return True
+
+
 class EpisodeBudgetCallback(BaseCallback):
     """목표 에피소드 수 도달 시 학습 종료."""
 
