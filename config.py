@@ -339,6 +339,18 @@ def resolve_dataset_path(
     return root / "input", root / "output"
 
 
+def model_dir_for(fac_id: Optional[str] = None) -> Path:
+    """FAC_ID별 RL 모델 저장 경로: models/{FAC_ID}/.
+
+    fac_id 미지정(None/빈 문자열)이면 기존 공용 경로(CONFIG.path.model_dir,
+    models/ 바로 아래)를 그대로 반환해 이전에 학습된 모델과 호환된다 —
+    FAC_ID별 분리는 호출부가 명시적으로 fac_id를 넘길 때만 적용된다.
+    """
+    if not fac_id:
+        return CONFIG.path.model_dir
+    return CONFIG.path.model_dir / validate_path_segment(fac_id, "FAC_ID")
+
+
 def infer_paths(fac_id: str) -> Tuple[Path, Path]:
     """추론 전용 dataset/{FAC_ID}/infer/input|output"""
     return resolve_dataset_path(fac_id, "infer")

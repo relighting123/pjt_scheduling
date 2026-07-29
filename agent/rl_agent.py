@@ -12,7 +12,7 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
-from config import CONFIG
+from config import CONFIG, model_dir_for
 from env.scheduling_env import (
     SchedulingEnv,
     compute_obs_dim,
@@ -152,12 +152,14 @@ def _model_obs_dim(model: MaskablePPO) -> int:
     return int(model.observation_space.shape[0])
 
 
-def _model_zip_candidates(explicit: Optional[str] = None) -> List[Path]:
+def _model_zip_candidates(
+    explicit: Optional[str] = None, fac_id: Optional[str] = None,
+) -> List[Path]:
     if explicit:
         p = Path(explicit)
         return [p.with_suffix(".zip") if p.suffix != ".zip" else p]
 
-    model_dir = CONFIG.path.model_dir
+    model_dir = model_dir_for(fac_id)
     name = CONFIG.rl.model_name
     candidates: List[Path] = [
         model_dir / f"{name}.zip",
@@ -177,12 +179,13 @@ def _model_zip_candidates(explicit: Optional[str] = None) -> List[Path]:
 def _load_compatible_model(
     explicit: Optional[str] = None,
     env_data: Optional[dict] = None,
+    fac_id: Optional[str] = None,
 ) -> tuple[MaskablePPO, Path]:
     """현재 env obs 차원과 맞는 모델 로드 (없으면 예외)."""
     expected = compute_obs_dim()
     mismatches: List[tuple[str, int]] = []
 
-    for candidate in _model_zip_candidates(explicit):
+    for candidate in _model_zip_candidates(explicit, fac_id=fac_id):
         if not candidate.exists():
             continue
         model = MaskablePPO.load(str(candidate))
@@ -201,8 +204,9 @@ def _load_compatible_model(
             model_files=model_files,
         )
         raise ValueError(msg)
+    fac_note = f" (FAC_ID={fac_id})" if fac_id else ""
     raise FileNotFoundError(
-        "학습된 모델이 없습니다. python main.py train 을 먼저 실행하세요."
+        f"학습된 모델이 없습니다{fac_note}. python main.py train 을 먼저 실행하세요."
     )
 
 
@@ -222,6 +226,7 @@ class SchedulingAgent:
         n_episodes: Optional[int] = None,
         env_cls: type = SchedulingRLEnv,
         restore_best: bool = True,
+        fac_id: Optional[str] = None,
     ) -> "SchedulingAgent":
         """
         목적: 주어진 환경 데이터로 PPO 에이전트 학습
@@ -233,11 +238,14 @@ class SchedulingAgent:
                 True). PPO가 이미 좋은 정책을 찾은 뒤 계속 학습하며 오히려
                 더 나빠지는 경우가 있어, 학습이 끝난 시점의 모델을 무조건
                 쓰지 않고 학습 중 가장 평가가 좋았던 체크포인트를 채택한다.
+            fac_id (str, optional): 지정하면 models/{FAC_ID}/ 아래에 체크포인트·
+                best·logs를 분리해서 저장한다(FAC_ID별 모델 관리). 미지정 시
+                기존처럼 공용 models/ 그대로 사용.
         Output:
             self (체이닝 가능)
         """
         cfg = CONFIG.rl
-        model_dir = CONFIG.path.model_dir
+        model_dir = model_dir_for(fac_id)
         model_dir.mkdir(parents=True, exist_ok=True)
 
         datasets: List[dict] = env_data if isinstance(env_data, list) else [env_data]
@@ -391,38 +399,46 @@ class SchedulingAgent:
 
     # ── 저장 / 로드 ──────────────────────────────────────────────────────────
 
-    def save(self, path: str = None):
+    def save(self, path: str = None, fac_id: Optional[str] = None):
         """
         목적: 학습된 모델을 파일로 저장
         Input:  path (str) – 저장 경로 (확장자 없이). None이면 기본값 사용
+                fac_id (str, optional) – models/{FAC_ID}/ 아래에 저장 (path 미지정 시만 적용)
         Output: 없음
         """
         if self.model is None:
             raise RuntimeError("학습된 모델이 없습니다. train()을 먼저 실행하세요.")
-        save_path = path or str(CONFIG.path.model_dir / CONFIG.rl.model_name)
+        save_path = path or str(model_dir_for(fac_id) / CONFIG.rl.model_name)
         self.model.save(save_path)
         print(f"[agent] 모델 저장 → {save_path}.zip")
 
     @classmethod
-    def load(cls, path: str = None, env_data: Optional[dict] = None) -> "SchedulingAgent":
+    def load(
+        cls,
+        path: str = None,
+        env_data: Optional[dict] = None,
+        fac_id: Optional[str] = None,
+    ) -> "SchedulingAgent":
         """
         목적: 저장된 모델 파일을 로드하여 에이전트 반환
         Input:  path (str)       – 명시적 경로. None이면 기본 후보군 탐색
                 env_data (dict)  – obs_dim 진단용
+                fac_id (str, optional) – models/{FAC_ID}/ 아래에서 탐색(path 미지정 시만 적용)
         Output: SchedulingAgent 인스턴스
         """
-        model, load_path = _load_compatible_model(path, env_data=env_data)
+        model, load_path = _load_compatible_model(path, env_data=env_data, fac_id=fac_id)
         print(f"[agent] 모델 로드 ← {load_path} (obs_dim={_model_obs_dim(model)})")
         return cls(model=model)
 
-    def model_exists(self, path: str = None) -> bool:
+    def model_exists(self, path: str = None, fac_id: Optional[str] = None) -> bool:
         """
         목적: 저장된 모델 파일 존재 여부 확인
         Input:  path (str)
+                fac_id (str, optional)
         Output: bool
         """
         try:
-            _load_compatible_model(path)
+            _load_compatible_model(path, fac_id=fac_id)
             return True
         except (FileNotFoundError, ValueError):
             return False
