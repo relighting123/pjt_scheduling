@@ -639,14 +639,20 @@ class SchedulingAgent:
         return np.asarray(action, dtype=np.int64)
 
     def evaluate(self, env_data: dict, n_episodes: int = 5) -> dict:
+        """학습된 정책으로 n_episodes를 굴려 평균 지표를 반환.
+
+        env는 `build_env()`로 만든다 — 학습·KPI 평가·추론과 같은 조건
+        (truncate_on_time 등)이어야 여기 숫자와 벤치마크 숫자가 어긋나지 않는다.
+        `mean_produced_carriers`/`mean_kpi_score`는 벤치마크와 같은 정의
+        (sim_end 안에 끝난 carrier 수, 생산량−전환수)라 바로 비교할 수 있다.
+        """
         rewards, oper_sws, prod_sws, idles, completions, conversions = [], [], [], [], [], []
+        produced_carriers = []
         max_steps = int(env_data.get("sim_end_minutes", 1440)) + 500
 
         for _ in range(n_episodes):
-            env = ActionMasker(
-                SchedulingRLEnv(env_data, record_history=False, record_event_log=False),
-                _mask_fn,
-            )
+            inner = build_env(SchedulingRLEnv, env_data)
+            env = ActionMasker(inner, _mask_fn)
             obs, _ = env.reset()
             done = False
             ep_reward = 0.0
@@ -667,14 +673,22 @@ class SchedulingAgent:
             prod_sws.append(info["prod_switches"])
             idles.append(info["idle_total"])
             conversions.append(info.get("conversions", 0))
-            total_done = sum(info["completed_qty"].values())
-            completions.append(total_done)
+            completions.append(sum(info["completed_qty"].values()))
+            produced_carriers.append(sum(
+                1 for rec in inner.sim.schedule
+                if rec.get("END_TM", 0) <= inner.sim.sim_end
+            ))
 
+        mean_produced = float(np.mean(produced_carriers))
+        mean_conv = float(np.mean(conversions))
         return {
             "mean_reward":      float(np.mean(rewards)),
             "mean_oper_sw":     float(np.mean(oper_sws)),
             "mean_prod_sw":     float(np.mean(prod_sws)),
             "mean_idle":        float(np.mean(idles)),
             "mean_completion":  float(np.mean(completions)),
-            "mean_conversions": float(np.mean(conversions)),
+            "mean_conversions": mean_conv,
+            # 벤치마크와 같은 정의의 KPI (compare_vs_dedication.py와 비교 가능)
+            "mean_produced_carriers": mean_produced,
+            "mean_kpi_score": mean_produced - CONFIG.rl.kpi_conversion_weight * mean_conv,
         }

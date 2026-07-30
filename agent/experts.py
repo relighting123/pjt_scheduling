@@ -113,7 +113,8 @@ class EarliestSTExpert(ExpertPolicy):
     size_level_policy = "min"
 
     def __init__(self, env_data: dict):
-        self._env_data = env_data
+        # env_data는 팩토리 시그니처 통일용 — 이 전문가는 sim 상태만 본다.
+        del env_data
 
     def bucket(self, sim, eqp_id, mask, n_bucket):
         feasible = set(sim.get_feasible_ppk_oper(eqp_id))
