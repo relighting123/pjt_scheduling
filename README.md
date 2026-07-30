@@ -205,12 +205,22 @@ run_inference(env_data, algorithm="earliest_st")
 
 | 항목 | 값 |
 |------|-----|
-| Action | `Discrete(O×P)` = `(OPER, PPK)` bucket |
-| Mask | 현재 idle EQP feasible bucket |
-| obs_dim | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
+| Action | `MultiDiscrete([O×P, L])` = `(OPER/PPK bucket, 블록 크기 레벨)` |
+| Mask | 현재 idle EQP feasible bucket ｜ 크기 레벨 |
+| obs_dim (기본 env) | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
+| obs_dim (`SchedulingRLEnv`) | 936 + **8**(결정 컨텍스트) = **944** |
 
 **Bucket feature (po 6ch + pom 5ch)**: WIP 비율, urgency, achievable_ratio, projected_cover_ratio, starve_time_norm / ST, conversion·tool 가용, avoidable_frac, setup_changed 등.
 prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설비 수(`n_eqp_per_oper`) 기반이라 설비 공유·실시간 배정 상태를 반영 못 했고, LOT_CD/TEMP는 범주형 ID를 순서 있는 스칼라로 인코딩해 신호 품질이 낮았음 (전환 관련 정보는 pom_feats에 이미 더 정확히 포함).
+
+**결정 컨텍스트 8채널** (`CONFIG.env.rl_extra_obs=True`, `SchedulingRLEnv` 전용):
+결정 장비 유무 / 장비 순번 / 범용성(model_breadth) / 첫 셋업 여부 / 블록 진행 여부 /
+블록 잔여율 / idle 장비 비율 / 잔여 가동 여유.
+`simulator.get_observation()`은 결정 중인 장비를 **모델 인덱스로만** 흘려주기 때문에,
+같은 모델 설비가 여러 대인 대칭 케이스(SYM_5x5 등)에서는 "내가 몇 번 설비이고
+지금 블록 중인지"를 관측으로 구분할 수 없었다 — 전담 정책 자체가 표현 불가능한
+부분관측이 되어 학습이 정체되는 원인이었다. `False`로 두면 이전 obs_dim(936)으로
+학습된 모델과 호환된다.
 
 ### Reward (`config.py` 기본값)
 
@@ -222,32 +232,72 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 | `w_bulk_block_bonus` | 3.0 | (Bulk-Fill 전용) 같은 제품군을 큰 블록으로 커밋할수록 보상 |
 | `w_dedication_misuse` | -4.0 | (Bulk-Fill 전용) 범용 장비가 더 전용적인 idle 장비 몫의 버킷을 잡으면 감점 |
 | `w_redundant_cover` | -5.0 | (Bulk-Fill 전용) 이미 다른 장비가 충분히 커버 중인 버킷을 또 잡으면 감점 |
-| `reward_clip` | ±10.0 | PPO 안정화 |
+| `reward_clip` | ±20.0 | step reward clip (PPO 안정화) |
+| `w_terminal_throughput` | 30.0 | **에피소드 종료 시** `완료 carrier / 생산가능 carrier` 비율 보상 |
+| `w_terminal_conversion` | -1.0 | **에피소드 종료 시** 전환 총횟수 패널티 |
+| `terminal_reward_clip` | ±60.0 | 종단 보상 clip |
 | `w_plan_hit` / `w_pacing` / `w_flow_balance` / `w_idle_per_min` | 0.0 | cover 무시·전담 방해로 판단되어 제거됨(주석 참고) |
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.
 
-`w_bulk_block_bonus`/`w_dedication_misuse`/`w_redundant_cover`(전담 셰이핑),
-`RLConfig.ent_coef`/`ent_coef_final`(0.05→0.0 선형 감쇠, `ent_coef_decay_fraction`으로
-감쇠를 초반 일부에서 끝낼 수도 있음), `reward_clip=20.0`(`w_conversion`+
-`w_avoidable_conversion`이 이전 clip=10에 눌려 회피 가능 전환 신호가 죽어있던 걸
-수정)은 모두 대칭 벤치마크(SYM_5x5 등, 설비=제품 전담 시 전환 0회가 최적)에서
-실험으로 검증된 값이다.
+**종단(terminal) KPI 보상**: 위 step reward는 전부 대리지표라 "보상이 가장 높은
+정책"이 "벤치마크 KPI가 가장 좋은 정책"이라는 보장이 없었다. `w_terminal_*`는
+벤치마크가 실제로 재는 값(sim_end 안에 끝난 carrier 수, 전환 총횟수)을 에피소드
+종료 시 그대로 보상으로 준다 → 최적화 대상과 평가 대상을 일치시킨다. 이 항은
+**step clip 이후**에 더해지고(clip에 눌리면 의미가 없음), 신호가 초반 결정까지
+역전파되도록 `RLConfig.gamma`를 0.997로 올렸다.
 
-이것만으로는 SYM_5x5에서 전환이 2회 수준까지만 줄고 정체됐는데, 다음 두 가지를
-추가로 확인했다:
-- **모방학습(behavior cloning) 워밍스타트** (`RLConfig.bc_pretrain_epochs`, 기본 0=비활성):
-  이미 전환 0회를 확정적으로 내는 `DedicationAgent` 시연으로 PPO 정책을 먼저 지도학습시킨
-  뒤 RL을 이어감. 켜면(`bc_pretrain_epochs=300` 등) 1만 스텝 만에 전환 0회에 도달.
-- **`restore_best`** (`SchedulingAgent.train()`, 기본 `True`): PPO는 이미 좋은 정책을
-  찾은 뒤에도 계속 학습하며 오히려 나빠질 수 있어서(SYM_5x5에서 실측: 1만~9만 스텝은
-  전환 0회를 유지하다 10만 스텝에 다시 나빠짐), 학습 종료 시점의 모델 대신
-  `EvalCallback`이 저장해둔 `best_model.zip`으로 자동 복원한다.
+---
 
-`bc_pretrain_epochs`를 켠 상태로 이 둘을 함께 쓰면 SYM_5x5에서 시드 2개(0, 1) 모두
-`agent.train()` → `agent.evaluate()` 표준 흐름만으로 전환 0회·생산 30/30에 재현
-확인됨. `bc_pretrain_epochs`는 아직 기본값이 꺼져 있으므로(opt-in), 켜려면
-학습 전에 `CONFIG.rl.bc_pretrain_epochs = 300` 등으로 설정한다.
+### 모방학습(BC) → 강화학습 파이프라인
+
+"Dedication 시연으로 모방학습한 뒤 PPO로 개선한다"는 구조 자체는 맞지만, 초기
+구현은 **RL을 돌릴수록 성적이 나빠지고 학습 곡선이 x축과 평행**한 문제가 있었다
+(BENCH_SUITE 8종 실측: Dedication 점수 77.0 → RL 23.0). 원인은 하나가 아니라
+아래 6가지가 겹친 것이고, 각각을 개별적으로 고쳤다.
+
+| # | 원인 | 대응 | 위치 |
+|---|------|------|------|
+| ① | **BC 표본 부족** — 데이터셋당 결정적 시연 1 에피소드(수십 스텝)뿐 | ε 교란 후 **전문가 라벨 재부여**(DAgger식)로 상태분포 확장 | `agent/bc.py: collect_expert_dataset()` |
+| ② | **크리틱 미학습** — value head가 무작위 → PPO 첫 업데이트의 advantage가 순수 잡음이 되어 복제 정책을 즉시 파괴 | 시연의 할인 return-to-go로 **value head도 동시 회귀** | `agent/bc.py: behavior_clone(value_coef)` |
+| ③ | **결정적 붕괴** — full-batch NLL을 오래 돌리면 엔트로피≈0 → 탐색·학습 불가 | 미니배치 + 엔트로피 정규화 + **검증 NLL 조기종료** | `agent/bc.py: behavior_clone()` |
+| ④ | **파국적 망각** — 워밍스타트만으로는 RL 잡음에 전문가 정책에서 이탈 | 롤아웃마다 BC 보조 그래디언트를 섞고 계수를 감쇠 | `agent/bc.py: ExpertAnchorCallback` |
+| ⑤ | **보상 스케일** — step reward ±20 × 수백 스텝 → return 수백 규모, value loss 폭주, `explained_variance≈0` → advantage가 잡음 → **곡선이 평평** | `VecNormalize(norm_reward=True)` | `RLConfig.normalize_reward` |
+| ⑥ | **업데이트 횟수 부족** — `n_steps=2048` × 데이터셋 8개 = 롤아웃 16,384 → 200k 예산에서 PPO 업데이트가 **12번** | `n_steps` 2048 → 512 | `RLConfig.n_steps` |
+
+추가로:
+
+- **KPI 기반 best 모델 선택** (`RLConfig.kpi_eval_enabled`, 기본 `True`):
+  `EvalCallback`은 *평균 보상*이 최고인 체크포인트를 남기는데, shaping 보상 최고점이
+  벤치마크 KPI 최고점과 일치한다는 보장이 없다. 대신 eval 시점마다 실제 KPI
+  (`생산량 − kpi_conversion_weight × 전환수`)로 채점해 best를 고른다
+  (`agent/kpi_eval.py`). **워밍스타트 직후 성적도 후보에 포함**되므로, RL이 그보다
+  나아지지 못하면 `restore_best`가 BC 시점 모델을 되돌린다 — 즉 **"RL 때문에
+  나빠지는" 경우가 구조적으로 없다.**
+- **Dedication 기준선 자동 측정** (`RLConfig.kpi_baseline_enabled`): 학습 시작 시
+  같은 환경에서 `DedicationAgent` KPI를 재고, 매 eval마다 기준선 대비 격차를
+  로그·차트에 남긴다. 최종 모델이 기준선에 못 미치면 경고한다.
+- **학습/추론 환경 일치** (`RLConfig.align_train_env_with_inference`): 학습은
+  simulator 기본값(`termination_mode="all_wip"`, `enable_wip_inflow=True`)으로,
+  추론은 `"current_wip_assigned"` + `inflow=False`로 돌고 있었다 — 학습한 MDP와
+  평가받는 MDP가 다른 train/serve skew. 이제 학습용 데이터셋 복사본에 추론과 같은
+  플래그를 채워 넣는다.
+- **PPO 안정화**: `n_epochs` 10 → 4, `target_kl=0.03`, lr 선형 감쇠,
+  `net_arch=[256,256]`, `gamma` 0.99 → 0.997.
+- **엔트로피 스케줄**: 과거에는 `ent_coef` 0.05 → 0을 **초반 20%**에 끝냈는데,
+  이건 "탐색이 BC 정책을 망가뜨린다"를 탐색을 죽여서 막는 대증요법이었다. 이제
+  ④ 앵커가 그 역할을 제대로 하므로 0.01 → 0.001을 **80% 구간**에 걸쳐 감쇠시켜
+  Dedication '위'를 찾을 탐색 여지를 남긴다.
+
+**수렴 차트**: KPI 평가를 쓰면 `EvalCallback`이 돌지 않아 `evaluations.npz`가 없다.
+대신 `models/{...}/logs/kpi_evaluations.json`에 KPI 곡선이 남고,
+`agent/training_report.py`가 이걸 읽어 **KPI 점수 · 생산량 · 전환수 + Dedication
+기준선**을 한 패널로 그린다. shaping 보상 곡선과 달리 이 곡선은 해석 가능하다.
+
+**벤치마크**: `python benchmark/compare_vs_dedication.py` 가 BENCH_SUITE 8종에서
+`dedication` 기준선 대비 승/무/패와 점수 격차를 출력한다.
+`python benchmark/train_bench_suite.py --timesteps 400000` 은 8종 co-train 후
+곧바로 이 비교를 실행한다.
 
 ### FAC_ID별 모델 관리
 
