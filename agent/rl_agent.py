@@ -44,6 +44,10 @@ from agent.train_progress import (
 )
 
 
+# 학습 시나리오가 이 수 이하이고 별도 평가셋도 없으면 과적합 경고를 남긴다.
+OVERFIT_WARN_DATASETS = 12
+
+
 def _mask_fn(env: SchedulingEnv) -> np.ndarray:
     return env.action_masks()
 
@@ -245,6 +249,12 @@ class SchedulingAgent:
 
         datasets: List[dict] = env_data if isinstance(env_data, list) else [env_data]
         eval_sets: List[dict] = list(eval_datasets) if eval_datasets else datasets
+        # 평가 데이터셋을 따로 주지 않으면 KPI는 '학습에 쓴 시나리오'로 재게 된다
+        # → 낙관적으로 나오고, 새 기간/새 시나리오에서는 크게 떨어질 수 있다.
+        # 실측(BENCH_SUITE 8종만 60만 스텝 co-train): 학습에 쓴 8종에서는
+        # dedication 대비 +14점인데, 학습에 쓰지 않은 6종에서는 −25점이었다
+        # (대칭 케이스조차 전환 0회 → 17회로 무너짐).
+        self.overfit_risk = eval_datasets is None and len(datasets) <= OVERFIT_WARN_DATASETS
         if cfg.align_train_env_with_inference:
             datasets = align_datasets_with_inference(datasets)
             eval_sets = align_datasets_with_inference(eval_sets)
@@ -349,6 +359,14 @@ class SchedulingAgent:
 
         # ── best 모델 선택: KPI 기준(기본) 또는 기존 보상 기준 ────────────────
         kpi_callback: Optional[KPIEvalCallback] = None
+        if cfg.kpi_eval_enabled and self.overfit_risk:
+            log(
+                f"[주의] 학습 시나리오 {len(datasets)}개를 그대로 KPI 평가에도 씁니다 "
+                "— 여기 나오는 점수는 낙관적입니다. 학습에 쓰지 않은 데이터로 꼭 "
+                "재검증하세요(benchmark/compare_vs_dedication.py --suite holdout). "
+                "실측: 8종만 60만 스텝 학습 시 그 8종에선 기준선 +14점, 학습에 "
+                "쓰지 않은 6종에선 −25점."
+            )
         if cfg.kpi_eval_enabled:
             baseline = None
             if cfg.kpi_baseline_enabled:

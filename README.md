@@ -333,6 +333,20 @@ python benchmark/compare_vs_dedication.py --suite holdout
 `compare_vs_dedication.py`는 `dedication` 기준선 대비 승/무/패와 점수 격차를
 데이터셋별로 출력한다.
 
+> ⚠️ **평가 데이터로 학습하면 점수는 오르고 실력은 떨어진다.**
+> BENCH_SUITE 8종만으로 60만 스텝 co-train하면 그 8종에서는 dedication 대비
+> **+14점**(4승 4무 0패)이 나오지만, 학습에 쓰지 않은 HOLDOUT 6종에서는
+> **−25점**으로 뒤집힌다 — 전담만 하면 되는 대칭 케이스(H_SYM_6x6)조차
+> 전환 0회 → 17회로 무너진다. 정책이 아니라 그 8개의 정답 순열을 외운 것이다.
+> 그래서 실전 학습은 `--train-pool`(도메인 랜덤화)을 함께 쓰고, 결과는 반드시
+> `--suite holdout`으로 재검증한다. 학습 시나리오가 12개 이하이고 별도 평가셋도
+> 없으면 `SchedulingAgent.train()`이 이 위험을 로그로 경고한다.
+>
+> **운영 데이터에도 같은 이야기가 적용된다** — RULE_TIMEKEY 기간을 1~2개만
+> 써서 학습하면 그 기간을 외운다. 기간을 최대한 많이 모아
+> (`main.py train --all`) `dataset_sampling="random_reset"`(기본)으로 돌리는 걸
+> 권장한다.
+
 ### FAC_ID별 모델 관리
 
 RL 모델은 `models/{FAC_ID}/`(체크포인트·best·logs 포함) 아래에 FAC_ID별로 분리해서
