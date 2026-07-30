@@ -47,12 +47,48 @@ pjt_scheduling/
 
 | 레이어 | 단위 | 설명 |
 |--------|------|------|
-| `discrete_arrange` | `(EQP, LOT, OPER)` | 실제 EQP×carrier 조합, ST, WF_QTY, `LOT_STAT_CD` |
-| `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿 |
+| `discrete_arrange` | `(EQP, LOT, OPER)` | 이 carrier가 이 EQP에 투입 가능하다는 선언(ST, WF_QTY, `LOT_STAT_CD` 포함) |
+| `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿(모델 단위, 더 성긴 단위) |
 | Runtime WIP | `(PPK, OPER)` + LOT list | 현재/유입 재공, `oper_in_time` |
 
 부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`,
 `eqp_conv_plan`(외부 확정 EQP 전환 계획), `eqp_down`(EQP 다운타임)
+
+#### `discrete_arrange`는 "실적"이 아니라 투입 가능 관계(M:N)다
+
+`discrete_arrange`의 `(EQP, LOT)` 행은 "이 EQP가 과거에 이 LOT/제품을 만든 적 있다"는
+이력·실적 데이터가 **아니다**. "이 carrier가 이 EQP에 물리적으로 투입 가능하다"는 선언이며,
+같은 LOT이 여러 EQP에 대해 동시에 선언될 수도 있는 **M:N 관계**다(한 carrier가 여러 대에
+투입 가능, 한 EQP가 여러 carrier를 받을 수 있음). `abstract_arrange`가 더 성긴
+(PPK, OPER, EQP_MODEL) 단위의 투입 가능 템플릿이라면, `discrete_arrange`는 그보다 세밀한
+(EQP, carrier) 단위의 투입 가능 템플릿이라고 보면 된다 — 둘 다 "가능 여부" 선언이지 실적 기록이 아니다.
+
+**discrete vs abstract, 언제 어느 쪽을 신뢰하는가 (`_lot_conv_discrete_eligible`)**
+
+같은 PPK·같은 장비 모델이라도, 실제로는 LOT/EQP_ID 조합마다 투입 가능 여부가 다를 수 있다
+(설비 점검·챔버 상태 등 모델 단위로는 잡히지 않는 실제 제약). 그래서 시뮬레이터는 상황에
+따라 두 정보 중 하나를 골라 신뢰한다:
+
+- **전환 불필요 + 현재 공정에 이미 존재하는(초기 스냅샷) 재공**: 지금 당장 확정적으로 알 수
+  있는 상태이므로, `discrete_arrange`에 선언된 (EQP, LOT) 조합만 투입 가능한 것으로 본다.
+  abstract(모델만 일치)만으로는 이 세밀한 제약을 대신할 수 없다.
+- **전환이 필요하거나(EQP의 현재 셋업과 달라 전환 발생) / 이전 공정에서 아직 넘어오지 않은
+  (유입 예정) 재공**: 둘 다 "지금은 확정할 수 없고 앞으로 벌어질 일"이라는 예측의 영역이다.
+  전환 후 상태는 아직 discrete로 정밀 검증된 적 없는 새 셋업이고, 유입 재공은 아직 이
+  공정에 도착하지도 않았기 때문에, 이때는 discrete를 참조하지 않고 PPK×모델 단위로
+  추상화된 `abstract_arrange` 기준으로만 판단한다.
+- **전환 후 원래 tool로 복귀**: 장비가 A→B로 전환했다가 다시 B→A로 돌아오면, 그 시점부터는
+  A가 다시 "이미 확정된 현재 셋업"이 되므로 discrete 정보를 다시 사용한다(더 이상 예측이
+  아니라 현재 상태이므로).
+
+이 규칙은 `discrete_wait_enabled=True`(기본값)에서만 적용되고, `LOT_STAT_CD!=WAIT`(강제
+배정)이거나 `discrete_wait_enabled=False`이면 이 구분 없이 항상 abstract 폴백을 허용한다.
+
+따라서 입력 데이터가 실제로는 여러 EQP에 대해 M:N으로 투입 가능한 carrier를, 편의상 EQP
+1대에 대해서만 1:1로 좁혀 선언해 두면(예: 벤치마크 데이터 생성기가 라운드로빈으로 EQP
+하나씩만 배정), 그 데이터는 "전환 불필요 + 현재 공정 재공"에 해당하므로 시뮬레이터는 그
+좁은 선언을 그대로 신뢰해 나머지 EQP에서는 그 LOT을 투입 불가로 취급한다 — 모델이 같아
+실제로는 전부 처리 가능해야 하는 조합이라도, declared 관계가 좁으면 결과도 좁게 나온다.
 
 #### 외부 확정 EQP 전환 계획 (`eqp_conv_plan.json`, 선택)
 
