@@ -542,13 +542,6 @@ class EnvConfig:
     # 유지된다 — PROC/LOAD/RESV/SELE(강제 배정) LOT은 이 옵션과 무관하게 항상
     # discrete 그대로 배정된다.
     discrete_wait_enabled: bool = True
-    # SchedulingRLEnv 전용 '결정 컨텍스트' 관측 8채널 추가 여부.
-    # simulator.get_observation()은 결정 중인 장비를 모델 인덱스로만 흘려줘서,
-    # 같은 모델 장비가 여러 대인 대칭 케이스에서 "내가 어느 장비이고 지금 블록
-    # 중인지"를 구분할 수 없었다(= 전담 정책이 관측만으로 표현 불가능).
-    # 자세한 채널 정의는 env/scheduling_rl_env.py의 RL_EXTRA_OBS_DIM 주석 참고.
-    # False로 두면 이전 obs_dim(936)으로 학습된 모델과 호환된다.
-    rl_extra_obs: bool = True
 
 
 @dataclass

@@ -208,19 +208,34 @@ run_inference(env_data, algorithm="earliest_st")
 | Action | `MultiDiscrete([O×P, L])` = `(OPER/PPK bucket, 블록 크기 레벨)` |
 | Mask | 현재 idle EQP feasible bucket ｜ 크기 레벨 |
 | obs_dim (기본 env) | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
-| obs_dim (`SchedulingRLEnv`) | 936 + **8**(결정 컨텍스트) = **944** |
+| obs_dim (`SchedulingRLEnv`) | 936 + **6**(결정 컨텍스트) = **942** |
 
 **Bucket feature (po 6ch + pom 5ch)**: WIP 비율, urgency, achievable_ratio, projected_cover_ratio, starve_time_norm / ST, conversion·tool 가용, avoidable_frac, setup_changed 등.
 prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설비 수(`n_eqp_per_oper`) 기반이라 설비 공유·실시간 배정 상태를 반영 못 했고, LOT_CD/TEMP는 범주형 ID를 순서 있는 스칼라로 인코딩해 신호 품질이 낮았음 (전환 관련 정보는 pom_feats에 이미 더 정확히 포함).
 
-**결정 컨텍스트 8채널** (`CONFIG.env.rl_extra_obs=True`, `SchedulingRLEnv` 전용):
-결정 장비 유무 / 장비 순번 / 범용성(model_breadth) / 첫 셋업 여부 / 블록 진행 여부 /
-블록 잔여율 / idle 장비 비율 / 잔여 가동 여유.
-`simulator.get_observation()`은 결정 중인 장비를 **모델 인덱스로만** 흘려주기 때문에,
-같은 모델 설비가 여러 대인 대칭 케이스(SYM_5x5 등)에서는 "내가 몇 번 설비이고
-지금 블록 중인지"를 관측으로 구분할 수 없었다 — 전담 정책 자체가 표현 불가능한
-부분관측이 되어 학습이 정체되는 원인이었다. `False`로 두면 이전 obs_dim(936)으로
-학습된 모델과 호환된다.
+**결정 컨텍스트 6채널** (`SchedulingRLEnv` 전용, 항상 활성):
+결정 장비 유무 / 범용성(model_breadth) / 첫 셋업 여부 / **블록 진행 여부** /
+**블록 잔여율** / idle 장비 비율.
+
+핵심은 **블록 상태(3·4번 채널)** 다. `self._block`(어느 버킷을 몇 carrier 남기고
+커밋 중인지)은 env 레이어에만 있고 시뮬레이터에는 없어서, "새 블록을 시작하는
+스텝"과 "블록이 3장 남은 스텝"의 관측이 같았다 — 행동 의미는 전혀 다른데도
+(블록 중이면 마스크가 같은 버킷을 강제하고 `size_level`은 무시된다). 크리틱
+입장에서 남은 커밋 길이에 따라 기대 return이 크게 다른데 구분할 수가 없어
+value 추정과 advantage가 같이 흐려진다.
+
+> ⚠️ **호기(장비 고유 번호)는 관측에 넣지 않는다.**
+> 한때 "같은 모델 설비가 여러 대면 대칭이라 구분이 안 된다"며
+> `(장비 순번)/(장비 수)` 채널을 넣었으나 근거가 틀렸다. 결정은 **순차적**이라
+> 앞 설비가 배정하면 WIP·cover가 바뀌어 다음 설비는 이미 다른 상태를 본다 —
+> SYM_5x5 실제 롤아웃 30개 결정에서 '다른 설비인데 관측이 동일한' 쌍은 **0개**였다
+> (동일하게 보였던 건 t=0 상태를 고정한 채 `_current_eqp`만 바꿔치기한 인위적
+> 테스트에서였다). 반대로 순번 채널의 해악은 분명하다: ① 정책이 "0.6번 설비는
+> 제품 3"을 외워서 설비가 다운·추가되면 인덱스가 밀려 매핑이 통째로 깨지고,
+> ② 명목형 ID를 순서형 축에 얹어 없는 순서 관계를 주입한다(설비 수가 바뀌면
+> 같은 호기의 값도 달라진다). 설비를 구분해야 한다면 식별자가 아니라
+> **성질**(범용성·셋업 상태·블록 상태)로 구분한다.
+> `tests/test_terminal_reward.py`가 이 두 가지를 회귀 테스트로 잡아둔다.
 
 ### Reward (`config.py` 기본값)
 
