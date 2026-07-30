@@ -5,10 +5,10 @@ import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import { api } from "../lib/api";
 import { ALGO_CHART_COLORS, buildAlgorithmGantt, type AlgoCompareEntry } from "../lib/charts";
 import type {
-  AlgorithmId, AlgorithmInfo, ToolChangeBenchCase, ToolChangeBenchResponse,
+  AlgorithmId, AlgorithmInfo, AppConfig, ToolChangeBenchCase, ToolChangeBenchResponse,
 } from "../types";
 
-interface Props { modelExists: boolean; }
+interface Props { config: AppConfig | null; modelExists: boolean; }
 
 type ViewMode = "summary" | "gantt";
 
@@ -20,7 +20,7 @@ function passClass(actual: number, opt: number, better: "eq" | "lte"): string {
   return ok ? "var(--ok)" : "var(--err)";
 }
 
-export default function BenchmarkPage({ modelExists }: Props) {
+export default function BenchmarkPage({ config, modelExists }: Props) {
   const [algorithms, setAlgorithms] = useState<AlgorithmInfo[]>([]);
   const [selectedAlgos, setSelectedAlgos] = useState<Set<AlgorithmId>>(new Set());
   const [report, setReport] = useState<ToolChangeBenchResponse | null>(null);
@@ -28,6 +28,9 @@ export default function BenchmarkPage({ modelExists }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("summary");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [facIdOverride, setFacIdOverride] = useState("");
+
+  const facId = facIdOverride.trim() || config?.fac_id || "FAC001";
 
   const available = useMemo(
     () => algorithms.filter(a => !a.requires_model || modelExists),
@@ -47,7 +50,7 @@ export default function BenchmarkPage({ modelExists }: Props) {
     if (!ids.length) { setError("알고리즘을 선택하세요."); return; }
     setLoading(true); setError(null);
     try {
-      const r = await api.getToolChangeBench(ids as AlgorithmId[]);
+      const r = await api.getToolChangeBench(ids as AlgorithmId[], facId);
       setReport(r);
       setSelectedCaseId(prev => prev && r.cases.some(c => c.id === prev) ? prev : (r.cases[0]?.id ?? null));
     } catch (e) {
@@ -55,7 +58,7 @@ export default function BenchmarkPage({ modelExists }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [selectedAlgos, available]);
+  }, [selectedAlgos, available, facId]);
 
   const hasData = !!report?.cases?.length;
   const displayAlgos = report?.algorithms ?? [];
@@ -104,6 +107,21 @@ export default function BenchmarkPage({ modelExists }: Props) {
             알고리즘별 추론 결과를 생산량·전환횟수 기준으로 비교합니다. 실제 test
             데이터셋과는 무관하며 코드에 내장된 케이스만 사용합니다.
           </p>
+        </div>
+
+        <div className="card">
+          <div className="card-title">설정</div>
+          <label className="field-label" htmlFor="bench-fac-id">FAC_ID</label>
+          <input
+            id="bench-fac-id"
+            className="input"
+            type="text"
+            placeholder={config?.fac_id ?? "FAC001"}
+            value={facIdOverride}
+            onChange={e => setFacIdOverride(e.target.value)}
+            disabled={loading}
+          />
+          <p className="hint mt-1">scheduling_rl 모델을 models/{"{FAC_ID}"}/ 에서 불러옵니다.</p>
         </div>
 
         <div className="card">

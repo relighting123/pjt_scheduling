@@ -91,7 +91,7 @@ export default function App() {
           )}
 
           {mode === "benchmark" && (
-            <BenchmarkPage modelExists={modelExists} />
+            <BenchmarkPage config={config} modelExists={modelExists} />
           )}
 
           {mode === "dataset" && (
