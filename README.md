@@ -348,6 +348,27 @@ python benchmark/compare_vs_dedication.py --suite holdout
 `compare_vs_dedication.py`는 `dedication` 기준선 대비 승/무/패와 점수 격차를
 데이터셋별로 출력한다.
 
+#### 실측 결과 (CPU, 90만 스텝, `--train-pool --bench-weight 2`)
+
+점수 = `sim_end 안에 완료된 carrier − 전환 횟수`.
+
+| 알고리즘 | BENCH (8종) | vs Ded | HOLDOUT (6종) | vs Ded |
+|----------|------------:|-------:|--------------:|-------:|
+| Earliest-ST | 27.0 | −50.0 | 19.0 | −53.0 |
+| Min-Progress | 35.0 | −42.0 | 50.0 | −22.0 |
+| **Dedication (기준선)** | **77.0** | — | **72.0** | — |
+| 개선 전 RL (20만 스텝) | 26.0 | −51.0 | — | — |
+| **Bulk-Fill RL (개선 후)** | **88.0** | **+11.0** | **79.0** | **+7.0** |
+
+개선 전 RL은 기준선은 물론 **모든 휴리스틱보다 낮았다**(26.0 < Earliest-ST 27.0).
+개선 후 모델은 BENCH 3승 5무 0패, HOLDOUT 2승 4무 0패 — **14개 데이터셋 어디에서도
+dedication보다 나쁘지 않다.** 생산은 161→166(BENCH)·139→142(HOLDOUT),
+전환은 84→78·67→63으로 함께 개선된다.
+
+시드·설정을 바꾼 다른 실행은 BENCH를 더 올릴 수 있지만(최고 90.0, +13.0) HOLDOUT에서
+1패가 생겼다. `select_best_model.py --require-holdout`으로 후보를 걸러낸 뒤,
+**어느 데이터셋에서도 기준선에 지지 않는** 쪽을 최종 모델로 채택했다.
+
 > ⚠️ **평가 데이터로 학습하면 점수는 오르고 실력은 떨어진다.**
 > BENCH_SUITE 8종만으로 60만 스텝 co-train하면 그 8종에서는 dedication 대비
 > **+14점**(4승 4무 0패)이 나오지만, 학습에 쓰지 않은 HOLDOUT 6종에서는
