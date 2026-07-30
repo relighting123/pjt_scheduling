@@ -430,7 +430,7 @@ class PathConfig:
     tool_capacity_file: str = "tool_capacity.json"
     eqp_initial_state_file: str = "eqp_initial_state.json"
     batch_info_file:   str = "batch_info.json"
-    conversion_group_file: str = "conversion_group.json"
+    conversion_group_file: str = "conversion_group.json"  # split/period input 폴더에 있으면 우선, 없으면 dataset/{FAC_ID}/ 전역 파일로 폴백
     eqp_conv_plan_file: str = "eqp_conv_plan.json"
     eqp_down_file:     str = "eqp_down.json"
     output_file:       str = "output.json"
