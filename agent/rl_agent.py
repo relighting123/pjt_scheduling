@@ -139,6 +139,31 @@ def _model_obs_dim(model: MaskablePPO) -> int:
     return int(model.observation_space.shape[0])
 
 
+# 모델 zip → obs_dim 캐시 (파일 경로 + mtime + size 기준).
+# /api/health 는 UI가 주기적으로 폴링하는데, 그때마다 수 MB 모델을 통째로
+# 로드하면 응답이 초 단위가 되어 기동 헬스체크가 타임아웃된다(실측: 첫 호출
+# 1.58초). 파일이 바뀌면 키가 달라져 자동으로 무효화된다.
+_MODEL_OBS_DIM_CACHE: dict = {}
+
+
+def _cached_model_obs_dim(path: Path) -> Optional[int]:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    if key in _MODEL_OBS_DIM_CACHE:
+        return _MODEL_OBS_DIM_CACHE[key]
+    try:
+        dim = _model_obs_dim(MaskablePPO.load(str(path), device="cpu"))
+    except Exception:
+        # 실패도 캐시한다 — 깨진/호환 안 되는 zip을 health 폴링마다 다시
+        # 읽으면 응답이 계속 느려진다. 파일이 바뀌면 키가 달라져 재시도된다.
+        dim = None
+    _MODEL_OBS_DIM_CACHE[key] = dim
+    return dim
+
+
 def _model_zip_candidates(
     explicit: Optional[str] = None, fac_id: Optional[str] = None,
 ) -> List[Path]:
@@ -625,11 +650,11 @@ class SchedulingAgent:
                 fac_id (str, optional)
         Output: bool
         """
-        try:
-            _load_compatible_model(path, fac_id=fac_id)
-            return True
-        except (FileNotFoundError, ValueError):
-            return False
+        expected = rl_obs_dim()
+        return any(
+            c.exists() and _cached_model_obs_dim(c) == expected
+            for c in _model_zip_candidates(path, fac_id=fac_id)
+        )
 
     # ── 예측 ─────────────────────────────────────────────────────────────────
 

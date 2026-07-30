@@ -30,7 +30,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
@@ -512,17 +512,40 @@ def cmd_ui():
         cwd=str(ROOT),
     )
 
-    health_url = "http://127.0.0.1:8001/api/health"
-    for _ in range(30):
+    # 기동 확인은 /api/health 가 아니라 /api/ping 을 쓴다.
+    # /api/health 는 Oracle 실제 연결 시도와 모델 zip 로드를 포함해서 응답이
+    # 초 단위가 될 수 있는데(실측: 모델이 있으면 첫 호출 1.58초, DB가 설정돼
+    # 있는데 닿지 않으면 드라이버 connect timeout만큼), 예전 코드는 그걸
+    # timeout=1 로 찔러서 서버가 멀쩡히 떠 있어도 "시작되지 않았다"고
+    # 오판했다.
+    ping_url = "http://127.0.0.1:8001/api/ping"
+    deadline = time.time() + 60          # 콜드 스타트(torch import 등) 여유
+    last_error: Optional[BaseException] = None
+    ready = False
+    while time.time() < deadline:
+        if api_proc.poll() is not None:  # 서버가 죽었으면 더 기다릴 이유가 없다
+            break
         try:
-            with urllib.request.urlopen(health_url, timeout=1) as res:
+            with urllib.request.urlopen(ping_url, timeout=3) as res:
                 if res.status == 200:
+                    ready = True
                     break
-        except (urllib.error.URLError, TimeoutError):
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = exc
             time.sleep(0.5)
-    else:
-        api_proc.terminate()
-        print("[오류] API 서버가 시작되지 않았습니다.")
+
+    if not ready:
+        print("\n[오류] API 서버가 시작되지 않았습니다.")
+        if api_proc.poll() is not None:
+            print(f"  · uvicorn 프로세스가 종료됨 (exit code {api_proc.returncode})")
+            print("    → 위 uvicorn 출력에서 import 에러나 포트 충돌을 확인하세요.")
+            print("    → 8001 포트를 이미 쓰고 있으면 그 프로세스를 먼저 종료하세요.")
+        else:
+            print("  · uvicorn 프로세스는 살아 있는데 60초 안에 응답이 없습니다.")
+            print(f"    → 직접 확인: curl {ping_url}")
+            api_proc.terminate()
+        if last_error is not None:
+            print(f"  · 마지막 오류: {type(last_error).__name__}: {last_error}")
         sys.exit(1)
 
     fe_proc = subprocess.Popen(
