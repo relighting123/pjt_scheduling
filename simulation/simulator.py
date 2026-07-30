@@ -726,7 +726,7 @@ class SchedulingSimulator:
     def _conversion_group_blocks(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
         """전환 그룹 제약: 현재 셋업과 '다른 그룹'으로의 전환이면 배정 차단.
 
-        규칙(conversion_group.json이 있을 때만 활성):
+        규칙(config.CONVERSION_GROUPS[FAC_ID]에 설정이 있을 때만 활성):
           - 전환이 필요 없으면(동일 셋업) 절대 차단하지 않음
           - 첫 배정(prev_lot_cd=None)은 _would_need_conversion=False → 차단 안 함
           - from·to 둘 다 그룹에 속할 때만, 두 그룹이 다르면 차단

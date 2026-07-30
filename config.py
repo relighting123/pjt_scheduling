@@ -339,6 +339,26 @@ def resolve_dataset_path(
     return root / "input", root / "output"
 
 
+# ── 전환 그룹(conversion group) ────────────────────────────────────────────────
+# FAC_ID별 하드코딩 설정. (LOT_CD, TEMP)를 GROUP_ID로 묶어, 같은 그룹끼리만
+# 장비 전환을 허용한다(simulation/simulator.py:_conversion_group_blocks).
+# split/period(train/test/infer)와 무관하게 fac 전체에 공통 적용된다.
+# 행 포맷: {"GROUP_ID": str, "LOT_CD": str, "TEMP": str}
+CONVERSION_GROUPS: dict = {
+    # "FAC001": [
+    #     {"GROUP_ID": "G1", "LOT_CD": "LOTCODE_A", "TEMP": "T1"},
+    #     {"GROUP_ID": "G1", "LOT_CD": "LOTCODE_B", "TEMP": "T1"},
+    #     {"GROUP_ID": "G2", "LOT_CD": "LOTCODE_C", "TEMP": ""},
+    # ],
+}
+
+
+def conversion_group_rows_for(fac_id: str) -> List[dict]:
+    """FAC_ID에 해당하는 전환 그룹 행 목록(CONVERSION_GROUPS). 미설정이면 빈 리스트
+    → 전환 그룹 제약 비활성(기존 동작 유지)."""
+    return CONVERSION_GROUPS.get(fac_id, [])
+
+
 def model_dir_for(fac_id: Optional[str] = None) -> Path:
     """FAC_ID별 RL 모델 저장 경로: models/{FAC_ID}/.
 
@@ -430,7 +450,6 @@ class PathConfig:
     tool_capacity_file: str = "tool_capacity.json"
     eqp_initial_state_file: str = "eqp_initial_state.json"
     batch_info_file:   str = "batch_info.json"
-    conversion_group_file: str = "conversion_group.json"  # split/period input 폴더에 있으면 우선, 없으면 dataset/{FAC_ID}/ 전역 파일로 폴백
     eqp_conv_plan_file: str = "eqp_conv_plan.json"
     eqp_down_file:     str = "eqp_down.json"
     output_file:       str = "output.json"

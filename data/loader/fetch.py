@@ -15,9 +15,9 @@ from typing import Any, Dict, List, Optional
 
 from config import (
     CONFIG,
-    DATASET_DIR,
     SQL_JSON_MAP,
     SQL_REQUIRED_KEYS,
+    conversion_group_rows_for,
     iter_rule_timekeys,
     normalize_rule_timekey,
     resolve_dataset_path,
@@ -128,19 +128,6 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
             return []
         return _read_json_file(path)
 
-    def _read_conversion_group() -> List[dict]:
-        """전환 그룹: split/period별 input 폴더에 로컬 파일이 있으면 그걸
-        우선 쓰고(기존 방식과 호환), 없으면 dataset/{FAC_ID}/conversion_group.json
-        (train/test/infer 공통 fac 전역 설정)으로 폴백한다."""
-        local = _read_optional(CONFIG.path.conversion_group_file)
-        if local:
-            return local
-        if fac_id:
-            global_path = DATASET_DIR / fac_id / CONFIG.path.conversion_group_file
-            if global_path.exists():
-                return _read_json_file(global_path)
-        return []
-
     def _read_discrete() -> List[dict]:
         path = d / CONFIG.path.discrete_arrange_file
         if not path.exists():
@@ -174,7 +161,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "tool_capacity":     tool_capacity,
         "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
         "batch_info":        _read_optional(CONFIG.path.batch_info_file),
-        "conversion_group":  _read_conversion_group(),
+        "conversion_group":  conversion_group_rows_for(fac_id),
         "eqp_conv_plan":     _read_optional(CONFIG.path.eqp_conv_plan_file),
         "eqp_down":          _read_optional(CONFIG.path.eqp_down_file),
     }
