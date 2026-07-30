@@ -564,8 +564,9 @@ class RLConfig:
     # 감쇠를 전체 구간(1.0) 대신 초반 일부에서 끝낸다(예: 0.2=처음 20%).
     # BC 워밍스타트와 같이 쓸 때 특히 중요 — 이미 좋은 정책 근처에서
     # 시작했는데 감쇠를 느리게 끌면 후반까지 남은 탐색이 그 정책을 다시
-    # 흔들어버리는 게 실험으로 확인됨.
-    ent_coef_decay_fraction: float = 1.0
+    # 흔들어버리는 게 실험으로 확인됨. bc_pretrain_epochs>0(기본값)이라
+    # 0.2로 짧게 잡는다 — BC를 끄면(0) 다시 1.0(전체 구간 감쇠)로 늘리는 걸 권장.
+    ent_coef_decay_fraction: float = 0.2
     total_timesteps: int   = 200_000
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
@@ -574,11 +575,14 @@ class RLConfig:
     device:          str   = "auto"         # "auto" | "cuda" | "cpu"
     n_envs:          int   = 1              # SubprocVecEnv 병렬 환경 수 (1=DummyVecEnv)
     # 모방학습(behavior cloning) 워밍스타트: DedicationAgent 시연으로 정책을
-    # 지도학습한 뒤 PPO를 이어서 돌린다. 0이면 비활성(기존처럼 무작위 초기화
-    # 그대로 PPO 시작) — 기본 꺼둠(opt-in), SYM_5x5류 대칭 벤치마크에서
-    # 수렴 속도를 실험할 때만 켠다.
-    bc_pretrain_epochs: int   = 0
-    bc_pretrain_lr:     float = 1e-3
+    # 지도학습한 뒤 PPO를 이어서 돌린다. 0이면 비활성(무작위 초기화 그대로
+    # PPO 시작). epochs를 너무 크게 주면(예: 300) full-batch NLL이 거의
+    # 0까지 수렴하면서 정책이 결정적으로 붕괴(엔트로피≈0)해 PPO 학습 곡선이
+    # 평평해지는 현상이 확인됨 — 그 절충으로 epochs는 완전 수렴 전에서
+    # 멈추는 적당한 값, lr은 기본 PPO lr(3e-4)과 비슷한 수준으로 낮춰서
+    # 완전 결정적 붕괴를 피한다.
+    bc_pretrain_epochs: int   = 20
+    bc_pretrain_lr:     float = 3e-4
 
 
 @dataclass
