@@ -209,7 +209,7 @@ def test_sequential_rollout_gives_distinct_observations_per_equipment():
                 )
 
 
-def test_extra_obs_stays_in_unit_range_and_flags_block():
+def test_decision_context_stays_in_unit_range_and_flags_block():
     ed = _load_ed()
     env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     obs, _ = env.reset()
