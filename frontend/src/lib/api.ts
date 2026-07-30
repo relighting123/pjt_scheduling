@@ -286,8 +286,11 @@ export const api = {
     request<OptimalBenchResponse>(
       `/api/test/optimal-bench${algorithms?.length ? `?algorithms=${encodeURIComponent(algorithms.join(","))}` : ""}`,
     ),
-  getToolChangeBench: (algorithms?: AlgorithmId[]) =>
-    request<ToolChangeBenchResponse>(
-      `/api/benchmark/tool-change${algorithms?.length ? `?algorithms=${encodeURIComponent(algorithms.join(","))}` : ""}`,
-    ),
+  getToolChangeBench: (algorithms?: AlgorithmId[], fac_id?: string) => {
+    const params = new URLSearchParams();
+    if (algorithms?.length) params.set("algorithms", algorithms.join(","));
+    if (fac_id) params.set("fac_id", fac_id);
+    const qs = params.toString();
+    return request<ToolChangeBenchResponse>(`/api/benchmark/tool-change${qs ? `?${qs}` : ""}`);
+  },
 };

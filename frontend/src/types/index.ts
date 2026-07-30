@@ -487,6 +487,7 @@ export interface ToolChangeBenchSummary {
 }
 
 export interface ToolChangeBenchResponse {
+  fac_id: string;
   algorithms: AlgorithmId[];
   cases: ToolChangeBenchCase[];
   summary: Record<string, ToolChangeBenchSummary>;

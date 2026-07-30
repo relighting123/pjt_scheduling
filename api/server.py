@@ -1449,17 +1449,20 @@ def get_optimal_bench(algorithms: Optional[str] = None):
 
 
 @app.get("/api/benchmark/tool-change")
-def get_tool_change_bench(algorithms: Optional[str] = None):
+def get_tool_change_bench(algorithms: Optional[str] = None, fac_id: Optional[str] = None):
     """전환(conversion) 벤치마크(benchmark/tool_change_bench) 실행 — 케이스별
     정답지(오라클) 스케줄 + 알고리즘별 스케줄을 함께 반환해 프런트에서
     간트/KPI 비교에 바로 쓸 수 있게 한다. 실제 test 데이터셋과 무관하게
-    코드 내장 케이스 10종만 사용한다."""
+    코드 내장 케이스 10종만 사용하지만, scheduling_rl 모델은 fac_id별로
+    선택해서 로드한다(models/{FAC_ID}/)."""
     algo_list = [a for a in algorithms.split(",") if a] if algorithms else None
     if algo_list:
         _validate_algorithms(algo_list)
-    rl_agent = _get_benchmark_rl_agent() if (algo_list and "scheduling_rl" in algo_list) else None
+    fac = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
+    rl_agent = _get_benchmark_rl_agent(fac_id=fac) if (algo_list and "scheduling_rl" in algo_list) else None
     report = run_detailed_benchmark(algorithms=algo_list, rl_agent=rl_agent)
     return {
+        "fac_id": fac,
         "algorithms": report["algorithms"],
         "summary": report["summary"],
         "cases": [
