@@ -37,6 +37,80 @@ def _read_eval_npz(model_dir: Path) -> Optional[dict]:
         return None
 
 
+def _read_kpi_history(model_dir: Path) -> Optional[dict]:
+    """KPIEvalCallback이 남긴 model_dir/logs/kpi_evaluations.json.
+
+    KPI 평가(`CONFIG.rl.kpi_eval_enabled=True`)를 쓰면 EvalCallback이 돌지
+    않아 evaluations.npz가 없다. 대신 이 파일이 "생산량·전환수·점수" 곡선을
+    담고 있고, 이쪽이 shaping 보상 곡선보다 훨씬 해석하기 쉽다
+    (보상 곡선이 평평해 보이는 것과 무관하게 KPI는 계단식으로 움직인다).
+    """
+    path = model_dir / "logs" / "kpi_evaluations.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    history = data.get("history") or []
+    if not history:
+        return None
+    return {
+        "timesteps": [h["timestep"] for h in history],
+        "score": [h["score"] for h in history],
+        "produced": [h["produced"] for h in history],
+        "producible": [h.get("producible") for h in history],
+        "conversions": [h["conversions"] for h in history],
+        "baseline_score": data.get("baseline", {}).get("score")
+        if isinstance(data.get("baseline"), dict) else None,
+        "conv_weight": data.get("conv_weight", 1.0),
+    }
+
+
+def _kpi_verdict(kpi_curve: dict) -> dict:
+    """KPI 점수 곡선 기준 판정 — dedication 기준선 대비 위치까지 함께 본다."""
+    scores = kpi_curve["score"]
+    baseline = kpi_curve.get("baseline_score")
+    best = max(scores)
+    first, last = scores[0], scores[-1]
+    n = len(scores)
+    k = max(1, n // 5)
+    tail_spread = max(scores[-k:]) - min(scores[-k:])
+
+    parts = [
+        f"KPI 점수(생산−전환): 시작 {first:.1f} → 최고 {best:.1f} → 종료 {last:.1f}."
+    ]
+    if baseline is not None:
+        gap = best - baseline
+        parts.append(
+            f"Dedication 기준선 {baseline:.1f} 대비 최고 {gap:+.1f}점"
+            f"({'상회' if gap > 0 else '미달'})."
+        )
+
+    if best > first + 1e-9 and tail_spread <= max(abs(best) * 0.1, 1.0):
+        verdict = "converged"
+    elif best > first + 1e-9:
+        verdict = "improving"
+        parts.append(f"최근 구간 변동폭 {tail_spread:.1f}로 아직 흔들립니다.")
+    elif n < 5:
+        verdict = "unknown"
+        parts.append("eval 포인트가 5개 미만이라 추세 판단이 이릅니다.")
+    else:
+        verdict = "plateau"
+        parts.append("워밍스타트 이후 KPI 개선이 없습니다 — 학습 예산·탐색·보상 설계를 점검하세요.")
+
+    return {
+        "verdict": verdict,
+        "note": " ".join(parts),
+        "kpi_first": first,
+        "kpi_best": best,
+        "kpi_last": last,
+        "kpi_baseline": baseline,
+        "tail_spread": tail_spread,
+        "basis": "kpi",
+    }
+
+
 def _convergence_verdict(eval_curve: Optional[dict]) -> dict:
     """eval 보상 곡선의 앞/뒤 20% 평균을 비교하는 단순 휴리스틱.
 
@@ -94,6 +168,7 @@ def _plot_png(
     png_path: Path,
     eval_curve: Optional[dict],
     progress_series: Optional[dict],
+    kpi_curve: Optional[dict] = None,
 ) -> bool:
     try:
         import matplotlib
@@ -103,6 +178,8 @@ def _plot_png(
         return False
 
     panels = []
+    if kpi_curve and kpi_curve.get("score"):
+        panels.append("kpi")
     if eval_curve and eval_curve.get("mean_reward"):
         panels.append("eval")
     if progress_series and any(progress_series.get("ep_rew_mean") or []):
@@ -116,7 +193,22 @@ def _plot_png(
     axes = [a[0] for a in axes]
 
     for ax, kind in zip(axes, panels):
-        if kind == "eval":
+        if kind == "kpi":
+            ts = kpi_curve["timesteps"]
+            ax.plot(ts, kpi_curve["score"], color="#1B3257", marker="o",
+                    markersize=3, label="KPI score (produced - conversions)")
+            baseline = kpi_curve.get("baseline_score")
+            if baseline is not None:
+                ax.axhline(baseline, color="#B33A3A", linestyle="--",
+                           label=f"Dedication baseline ({baseline:.1f})")
+            ax.plot(ts, kpi_curve["produced"], color="#2E7D4F", alpha=0.6,
+                    label="produced carriers")
+            ax.plot(ts, kpi_curve["conversions"], color="#C8861E", alpha=0.6,
+                    label="conversions")
+            ax.set_title("Benchmark KPI vs Dedication baseline")
+            ax.set_xlabel("timesteps")
+            ax.legend(fontsize=8)
+        elif kind == "eval":
             ts = eval_curve["timesteps"]
             mean = eval_curve["mean_reward"]
             std = eval_curve["std_reward"]
@@ -158,12 +250,16 @@ def save_training_convergence_report(
     """학습 종료 직후 호출. JSON(+가능하면 PNG)을 model_dir에 남기고 요약을 반환한다."""
     model_dir = Path(model_dir)
     eval_curve = _read_eval_npz(model_dir)
-    verdict = _convergence_verdict(eval_curve)
+    kpi_curve = _read_kpi_history(model_dir)
+    # KPI 곡선이 있으면 그쪽을 판정 근거로 쓴다 — shaping 보상보다 실제
+    # 벤치마크 목표에 직접 대응하기 때문.
+    verdict = _kpi_verdict(kpi_curve) if kpi_curve else _convergence_verdict(eval_curve)
 
     report = {
         "generated_at": _now_iso(),
         "algorithm": algorithm,
         "eval_curve": eval_curve,
+        "kpi_curve": kpi_curve,
         "train_series": progress_series,
         "final_eval_metrics": eval_metrics,
         "convergence": verdict,
@@ -175,7 +271,7 @@ def save_training_convergence_report(
     )
 
     png_path = model_dir / f"training_convergence_{algorithm}.png"
-    has_png = _plot_png(png_path, eval_curve, progress_series)
+    has_png = _plot_png(png_path, eval_curve, progress_series, kpi_curve)
 
     return {
         "json_path": str(json_path),

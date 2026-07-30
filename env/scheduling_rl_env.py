@@ -31,6 +31,49 @@ from env.scheduling_env import compute_obs_dim
 # 블록 크기 레벨 수 (action 두 번째 차원). level→takt 예산 분율.
 BULK_SIZE_LEVELS = 4
 
+# ── RL 전용 결정 컨텍스트 관측 (CONFIG.env.rl_extra_obs) ─────────────────────
+# simulator.get_observation()은 "지금 어느 장비가 결정 중인지"를 모델 인덱스
+# (pom_feats의 current_mi 채널)로만 흘려준다. 그래서 같은 모델 장비가 여러 대인
+# 대칭 케이스에서는 "내가 몇 번째 장비인지 / 내가 블록 중인지 / 내 블록이 얼마나
+# 남았는지"를 관측으로 구분할 수 없었다 — 전담 정책 자체가 표현 불가능한
+# 부분관측(POMDP)이 되어 학습이 정체되는 원인이었다.
+#
+# 아래 8개 채널을 RL 환경에서만 관측 뒤에 덧붙인다(모두 [0,1] 정규화):
+#   0 결정 장비 유무(1=idle 결정 중)
+#   1 결정 장비 순번 / 전체 장비 수 (대칭 깨기 — 어느 장비인지 식별)
+#   2 결정 장비 범용성(model_breadth) 비율 (전용/범용 구분)
+#   3 첫 셋업 여부(prev_lot_cd 없음 = 전환 없이 아무거나 잡아도 됨)
+#   4 블록 진행 중 여부
+#   5 블록 잔여 / 블록 총량
+#   6 idle 장비 수 / 전체 장비 수
+#   7 현재 시각 대비 남은 가동 여유 (soft_cutoff 기준)
+RL_EXTRA_OBS_DIM = 8
+
+
+def rl_obs_dim() -> int:
+    """SchedulingRLEnv가 실제로 내보내는 관측 차원."""
+    extra = RL_EXTRA_OBS_DIM if getattr(CONFIG.env, "rl_extra_obs", False) else 0
+    return compute_obs_dim() + extra
+
+
+def build_env(env_cls: type, data: dict, **kwargs):
+    """학습·BC 시연·KPI 평가가 모두 같은 조건의 env를 쓰도록 하는 팩토리.
+
+    특히 `truncate_on_time`: 추론(`inference/runner.py`)은 `False`로 돌려서
+    sim_end를 지나서도 남은 재공을 계속 배정한다. 반면 학습 env는 기본값
+    `True`라 sim_end에서 끊겼다 — 그래서 정책은 "컷오프 이후 구간"을 한 번도
+    겪어보지 못한 채, 벤치마크에서는 그 구간의 전환까지 전부 점수에
+    반영당했다(실측: 같은 모델인데 학습 KPI 전환 63회 ↔ 벤치마크 전환 83회).
+    `CONFIG.rl.train_truncate_on_time`으로 이를 추론과 맞춘다.
+    """
+    params = {
+        "record_history": False,
+        "record_event_log": False,
+        "truncate_on_time": bool(getattr(CONFIG.rl, "train_truncate_on_time", True)),
+    }
+    params.update(kwargs)
+    return env_cls(data, **params)
+
 
 class SchedulingRLEnv(gym.Env):
     """벌크 점유 강화학습 환경 — action=MultiDiscrete([O*P, L])."""
@@ -61,7 +104,8 @@ class SchedulingRLEnv(gym.Env):
         self._P = env_cfg.max_prod_count
         self._n_bucket = self._O * self._P
 
-        obs_dim = compute_obs_dim()
+        self._extra_obs = bool(getattr(CONFIG.env, "rl_extra_obs", False))
+        obs_dim = compute_obs_dim() + (RL_EXTRA_OBS_DIM if self._extra_obs else 0)
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32,
         )
@@ -72,8 +116,10 @@ class SchedulingRLEnv(gym.Env):
         self._total_reward = 0.0
         self._episode_steps = 0
         self._max_episode_steps = 0
-        # 블록 상태: eqp_id -> [flat_bucket, remaining]
+        # 블록 상태: eqp_id -> [flat_bucket, remaining, total]
         self._block: dict = {}
+        self._eqp_order: dict = {}
+        self._terminal_reward: float = 0.0
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -90,7 +136,105 @@ class SchedulingRLEnv(gym.Env):
         sim_end = int(self._env_data.get("sim_end_minutes", CONFIG.env.hard_horizon_minutes))
         self._max_episode_steps = sim_end + 500
         self._block = {}
-        return self.sim.get_observation(), {}
+        self._terminal_reward = 0.0
+        self._eqp_order = {
+            eid: i for i, eid in enumerate(self._env_data.get("eqp_ids", []))
+        }
+        return self._observe(None), {}
+
+    # ── 관측 ──────────────────────────────────────────────────────────────────
+
+    def _decision_context_features(self, eqp_id: Optional[str]) -> np.ndarray:
+        """결정 컨텍스트 8채널 (RL_EXTRA_OBS_DIM 주석 참고)."""
+        feats = np.zeros(RL_EXTRA_OBS_DIM, dtype=np.float32)
+        sim = self.sim
+        if sim is None:
+            return feats
+
+        eqp_ids = self._env_data.get("eqp_ids", [])
+        n_eqp = max(len(eqp_ids), 1)
+
+        if eqp_id is not None:
+            feats[0] = 1.0
+            feats[1] = (self._eqp_order.get(eqp_id, 0) + 1) / n_eqp
+            breadth = sim.model_breadth(eqp_id)
+            max_breadth = max(
+                (sim.model_breadth(e) for e in eqp_ids), default=1,
+            )
+            feats[2] = min(breadth / max(max_breadth, 1), 1.0)
+            eqp = sim.eqps.get(eqp_id)
+            feats[3] = 1.0 if (eqp is None or eqp.prev_lot_cd is None) else 0.0
+            blk = self._block.get(eqp_id)
+            if blk and blk[1] > 0:
+                feats[4] = 1.0
+                total = blk[2] if len(blk) > 2 else max(blk[1], 1)
+                feats[5] = min(blk[1] / max(total, 1), 1.0)
+
+        idle = sum(1 for e in sim.eqps.values() if e.status == "idle")
+        feats[6] = min(idle / n_eqp, 1.0)
+        feats[7] = min(
+            max(sim.soft_cutoff - sim.current_time, 0) / max(sim.soft_cutoff, 1), 1.0,
+        )
+        return feats
+
+    def _observe(self, eqp_id: Optional[str]) -> np.ndarray:
+        obs = self.sim.get_observation()
+        if not self._extra_obs:
+            return obs
+        return np.concatenate([obs, self._decision_context_features(eqp_id)]).astype(
+            np.float32,
+        )
+
+    # ── 종단 KPI 보상 ─────────────────────────────────────────────────────────
+
+    def _compute_terminal_reward(self) -> float:
+        """에피소드 종료 시 벤치마크 KPI를 그대로 보상으로 환산.
+
+        벤치마크가 재는 값과 동일한 정의를 쓴다:
+          생산량 = sim_end 안에 END_TM이 들어오는 schedule 행 수(carrier)
+          전환수 = stats["conversions"]
+        step reward들은 전부 대리지표라 "보상 최고 = KPI 최고"가 보장되지
+        않았는데, 이 항이 그 간극을 직접 메운다.
+        """
+        cfg = CONFIG.reward
+        w_thr = getattr(cfg, "w_terminal_throughput", 0.0)
+        w_conv = getattr(cfg, "w_terminal_conversion", 0.0)
+        if not w_thr and not w_conv:
+            return 0.0
+
+        sim = self.sim
+        sim_end = sim.sim_end
+        produced = sum(
+            1 for r in sim.schedule if r.get("END_TM", 0) <= sim_end
+        )
+        capacity = self.producible_carriers()
+        term = 0.0
+        if w_thr:
+            term += w_thr * min(produced / max(capacity, 1), 1.0)
+        if w_conv:
+            term += w_conv * sim.stats.get("conversions", 0)
+
+        clip = getattr(cfg, "terminal_reward_clip", 0.0)
+        if clip and clip > 0:
+            term = float(np.clip(term, -clip, clip))
+        return float(term)
+
+    def producible_carriers(self) -> int:
+        """이 시나리오에서 최대로 생산 가능한 carrier 수(종단 보상 분모).
+
+        계획(d0_plan_qty)이 있으면 계획 총량, 없으면 초기 재공 총량.
+        wf 단위를 carrier 단위로 환산해 schedule 행 수와 같은 척도로 맞춘다.
+        """
+        data = self._env_data
+        wf_unit = max(data.get("max_wf_qty", 1), 1)
+        plan_total = sum(
+            p.get("d0_plan_qty", 0) for p in data.get("plan", [])
+            if p.get("d0_plan_qty", 0) > 0
+        )
+        if plan_total > 0:
+            return max(int(np.ceil(plan_total / wf_unit)), 1)
+        wip_total = getattr(self.sim, "_initial_wip_total", 0) if self.sim else 0
+        return max(int(np.ceil(max(wip_total, 1) / wf_unit)), 1)
 
     def _ensure_decision_eqp(self) -> Optional[str]:
         if self.sim.current_idle_eqp() is not None:
@@ -279,9 +423,16 @@ class SchedulingRLEnv(gym.Env):
         clip = CONFIG.reward.reward_clip
         if clip and clip > 0:
             reward = float(np.clip(reward, -clip, clip))
+
+        # 종단 KPI 보상은 step clip '이후'에 더한다 — clip 안에 넣으면 ±20에
+        # 눌려 생산량 차이가 보상에 반영되지 않는다.
+        if terminated or truncated:
+            self._terminal_reward = self._compute_terminal_reward()
+            reward += self._terminal_reward
+
         self._total_reward += reward
 
-        obs = self.sim.get_observation()
+        obs = self._observe(eqp_id)
         info = {
             "total_reward":  self._total_reward,
             "oper_switches": self.sim.stats["oper_switches"],
@@ -291,6 +442,12 @@ class SchedulingRLEnv(gym.Env):
             "completed_qty": dict(self.sim.stats["completed_qty"]),
             "current_eqp":   eqp_id,
         }
+        if terminated or truncated:
+            info["terminal_reward"] = self._terminal_reward
+            info["produced_carriers"] = sum(
+                1 for r in self.sim.schedule if r.get("END_TM", 0) <= self.sim.sim_end
+            )
+            info["producible_carriers"] = self.producible_carriers()
         return obs, reward, terminated, truncated, info
 
     # ── accessors ──────────────────────────────────────────────────────────────
