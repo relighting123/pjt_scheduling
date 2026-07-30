@@ -521,9 +521,25 @@ class TestBenchmarkRunOneRequest(BaseModel):
 
 # ── 엔드포인트 ───────────────────────────────────────────────────────────────
 
+@app.get("/api/ping")
+def ping():
+    """기동 확인 전용 — 의존성 검사 없음.
+
+    `/api/health`는 Oracle 실제 연결 시도와 모델 zip 로드를 포함해서 응답이
+    초 단위가 될 수 있다(실측: 모델이 있으면 첫 호출 1.58초, DB가 설정돼
+    있는데 닿지 않으면 드라이버 connect timeout만큼). 기동 대기용으로 그걸
+    쓰면 서버가 멀쩡히 떠 있는데도 "시작되지 않았다"고 오판한다 —
+    `main.py ui`는 이 엔드포인트를 본다.
+    """
+    return {"status": "ok"}
+
+
 @app.get("/api/health")
 def health():
-    """헬스 체크: 시스템 상태 진단"""
+    """헬스 체크: 시스템 상태 진단 (의존성 포함 — 느릴 수 있음).
+
+    기동 여부만 확인하려면 `/api/ping`을 쓸 것.
+    """
     from datetime import datetime, timezone
 
     status = {
