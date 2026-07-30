@@ -31,42 +31,43 @@ from env.scheduling_env import compute_obs_dim
 # 블록 크기 레벨 수 (action 두 번째 차원). level→takt 예산 분율.
 BULK_SIZE_LEVELS = 4
 
-# ── RL 전용 결정 컨텍스트 관측 (CONFIG.env.rl_extra_obs) ─────────────────────
-# 이 블록이 없으면 두 가지가 관측에서 사라진다.
+# ── RL 전용 결정 컨텍스트 관측 ───────────────────────────────────────────────
+# simulator.get_observation()에 없는 '이번 결정의 맥락'을 6채널로 덧붙인다.
+# 모두 [0,1] 정규화이고, **장비 고유 식별자(호기)는 넣지 않는다** — 아래 참고.
 #
-# ① **같은 모델 장비를 구분할 수 없다.** simulator.get_observation()은 "지금
-#    어느 장비가 결정 중인지"를 장비 *모델* 인덱스(pom_feats의 current_mi 채널)
-#    로만 흘려준다. SYM_5x5처럼 5대가 전부 같은 모델이면 t=0에서 다섯 장비의
-#    936차원 관측이 **원소 하나도 다르지 않다**(실측). 정책은 π(a|관측)이므로
-#    관측이 같으면 행동도 같고, deterministic 추론에서는 다섯 대가 전부 같은
-#    버킷을 고른다 — "장비 i는 제품 i" 라는 전담 정책이 이 관측의 함수로는
-#    표현 자체가 불가능했다(상태 aliasing).
+#   0 결정 장비 유무(1=idle 결정 중)        결정 스텝/시간 진행 스텝 구분
+#   1 결정 장비 범용성(model_breadth) 비율   전용/범용 구분(단일 모델이면 상수)
+#   2 첫 셋업 여부(prev_lot_cd 없음)         전환 없이 아무거나 잡아도 되는 시점
+#   3 블록 진행 중 여부                      ↓
+#   4 블록 잔여 / 블록 총량                  ↓
+#   5 idle 장비 수 / 전체 장비 수            지금 몰릴 여유가 있는지
 #
-# ② **블록 상태가 없다.** self._block(어느 버킷을 몇 carrier 남기고 커밋 중인지)
-#    은 env 레이어에만 있고 시뮬레이터에는 없다. "새 블록을 시작하는 스텝"과
-#    "블록이 3장 남은 스텝"의 관측이 같은데 행동 의미는 전혀 다르다(블록 중이면
-#    마스크가 같은 버킷을 강제하고 size_level은 무시된다). 크리틱 입장에서는
-#    남은 커밋 길이에 따라 기대 return이 크게 다른데 구분할 수가 없어 value
-#    추정이 흐려지고 advantage도 같이 흐려진다.
+# **채널 3·4(블록 상태)가 이 블록의 핵심 이유다.** self._block(어느 버킷을 몇
+# carrier 남기고 커밋 중인지)은 env 레이어에만 있고 시뮬레이터에는 없다.
+# 그래서 "새 블록을 시작하는 스텝"과 "블록이 3장 남은 스텝"의 관측이 같았는데,
+# 행동 의미는 전혀 다르다(블록 중이면 마스크가 같은 버킷을 강제하고
+# size_level은 무시된다). 크리틱 입장에서는 남은 커밋 길이에 따라 기대 return이
+# 크게 다른데 구분할 수가 없어 value 추정이 흐려지고 advantage도 같이 흐려진다.
 #
-# 아래 8개 채널을 RL 환경에서만 관측 뒤에 덧붙인다(모두 [0,1] 정규화):
-#   0 결정 장비 유무(1=idle 결정 중)      — 결정 스텝/시간 진행 스텝 구분
-#   1 결정 장비 순번 / 전체 장비 수        — ① 대칭 깨기
-#   2 결정 장비 범용성(model_breadth) 비율 — 전용/범용 구분(단일 모델이면 상수)
-#   3 첫 셋업 여부(prev_lot_cd 없음)       — 전환 없이 아무거나 잡아도 되는 시점
-#   4 블록 진행 중 여부                    — ②
-#   5 블록 잔여 / 블록 총량                — ②
-#   6 idle 장비 수 / 전체 장비 수          — 지금 몰릴 여유가 있는지
-#   7 남은 가동 여유(soft_cutoff 기준)     — group_global[1]과 계산식이 같은
-#     중복 채널이다. 새 정보는 아니고, 결정 컨텍스트 블록을 한 덩어리로 읽을 수
-#     있게 두는 것뿐 — 빼면 obs_dim이 달라져 학습된 모델과 호환이 깨지므로 유지.
-RL_EXTRA_OBS_DIM = 8
+# ⚠️ **장비 순번(호기 인덱스)은 일부러 넣지 않는다.**
+# 한때 "같은 모델 장비가 여러 대면 대칭이라 구분이 안 된다"는 이유로
+# `(장비 순번)/(장비 수)` 채널을 넣었는데, 근거가 틀렸다. 결정은 **순차적**이라
+# 앞 장비가 배정하면 WIP·cover가 바뀌어 다음 장비는 이미 다른 상태를 본다 —
+# SYM_5x5 실제 롤아웃 30개 결정에서 '다른 장비인데 관측이 동일한' 쌍은 0개였다
+# (동일하게 보였던 건 t=0 상태를 고정한 채 _current_eqp만 바꿔치기한 인위적
+# 테스트에서였다). 반면 순번 채널의 해악은 분명하다:
+#   · 호기 종속 — "0.6번 장비는 제품 3"을 외운다. 장비가 다운되거나 추가되면
+#     인덱스가 통째로 밀려 학습한 매핑이 깨진다.
+#   · 명목형(nominal) ID를 순서형 축에 얹어, 없는 순서 관계를 주입한다.
+#     장비 수가 바뀌면 같은 호기의 값도 달라진다.
+# 장비를 구분해야 한다면 식별자가 아니라 **성질**(범용성, 셋업 상태, 블록 상태
+# 처럼 장비 집합이 바뀌어도 의미가 유지되는 값)로 구분한다.
+RL_EXTRA_OBS_DIM = 6
 
 
 def rl_obs_dim() -> int:
-    """SchedulingRLEnv가 실제로 내보내는 관측 차원."""
-    extra = RL_EXTRA_OBS_DIM if getattr(CONFIG.env, "rl_extra_obs", False) else 0
-    return compute_obs_dim() + extra
+    """SchedulingRLEnv가 실제로 내보내는 관측 차원 (기본 관측 + 결정 컨텍스트)."""
+    return compute_obs_dim() + RL_EXTRA_OBS_DIM
 
 
 def build_env(env_cls: type, data: dict, **kwargs):
@@ -117,10 +118,8 @@ class SchedulingRLEnv(gym.Env):
         self._P = env_cfg.max_prod_count
         self._n_bucket = self._O * self._P
 
-        self._extra_obs = bool(getattr(CONFIG.env, "rl_extra_obs", False))
-        obs_dim = compute_obs_dim() + (RL_EXTRA_OBS_DIM if self._extra_obs else 0)
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32,
+            low=0.0, high=1.0, shape=(rl_obs_dim(),), dtype=np.float32,
         )
         self.action_space = spaces.MultiDiscrete([self._n_bucket, self._L])
 
@@ -131,7 +130,6 @@ class SchedulingRLEnv(gym.Env):
         self._max_episode_steps = 0
         # 블록 상태: eqp_id -> [flat_bucket, remaining, total]
         self._block: dict = {}
-        self._eqp_order: dict = {}
         self._terminal_reward: float = 0.0
 
     # ── lifecycle ────────────────────────────────────────────────────────────
@@ -150,15 +148,15 @@ class SchedulingRLEnv(gym.Env):
         self._max_episode_steps = sim_end + 500
         self._block = {}
         self._terminal_reward = 0.0
-        self._eqp_order = {
-            eid: i for i, eid in enumerate(self._env_data.get("eqp_ids", []))
-        }
         return self._observe(None), {}
 
     # ── 관측 ──────────────────────────────────────────────────────────────────
 
     def _decision_context_features(self, eqp_id: Optional[str]) -> np.ndarray:
-        """결정 컨텍스트 8채널 (RL_EXTRA_OBS_DIM 주석 참고)."""
+        """결정 컨텍스트 6채널 (RL_EXTRA_OBS_DIM 주석 참고).
+
+        장비 고유 식별자(호기 인덱스)는 넣지 않는다 — 성질만 넣는다.
+        """
         feats = np.zeros(RL_EXTRA_OBS_DIM, dtype=np.float32)
         sim = self.sim
         if sim is None:
@@ -169,34 +167,26 @@ class SchedulingRLEnv(gym.Env):
 
         if eqp_id is not None:
             feats[0] = 1.0
-            feats[1] = (self._eqp_order.get(eqp_id, 0) + 1) / n_eqp
             breadth = sim.model_breadth(eqp_id)
-            max_breadth = max(
-                (sim.model_breadth(e) for e in eqp_ids), default=1,
-            )
-            feats[2] = min(breadth / max(max_breadth, 1), 1.0)
+            max_breadth = max((sim.model_breadth(e) for e in eqp_ids), default=1)
+            feats[1] = min(breadth / max(max_breadth, 1), 1.0)
             eqp = sim.eqps.get(eqp_id)
-            feats[3] = 1.0 if (eqp is None or eqp.prev_lot_cd is None) else 0.0
+            feats[2] = 1.0 if (eqp is None or eqp.prev_lot_cd is None) else 0.0
             blk = self._block.get(eqp_id)
             if blk and blk[1] > 0:
-                feats[4] = 1.0
+                feats[3] = 1.0
                 total = blk[2] if len(blk) > 2 else max(blk[1], 1)
-                feats[5] = min(blk[1] / max(total, 1), 1.0)
+                feats[4] = min(blk[1] / max(total, 1), 1.0)
 
         idle = sum(1 for e in sim.eqps.values() if e.status == "idle")
-        feats[6] = min(idle / n_eqp, 1.0)
-        feats[7] = min(
-            max(sim.soft_cutoff - sim.current_time, 0) / max(sim.soft_cutoff, 1), 1.0,
-        )
+        feats[5] = min(idle / n_eqp, 1.0)
         return feats
 
     def _observe(self, eqp_id: Optional[str]) -> np.ndarray:
-        obs = self.sim.get_observation()
-        if not self._extra_obs:
-            return obs
-        return np.concatenate([obs, self._decision_context_features(eqp_id)]).astype(
-            np.float32,
-        )
+        return np.concatenate([
+            self.sim.get_observation(),
+            self._decision_context_features(eqp_id),
+        ]).astype(np.float32)
 
     # ── 종단 KPI 보상 ─────────────────────────────────────────────────────────
 

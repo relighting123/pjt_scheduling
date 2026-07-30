@@ -184,8 +184,8 @@ def format_obs_dim_mismatch(
     lines = [header, ""]
     if extra_dim:
         lines.append(
-            f"※ RL 환경은 표준 관측 위에 결정 컨텍스트 {extra_dim}채널을 덧붙입니다"
-            " (CONFIG.env.rl_extra_obs). 아래 분해는 그 채널을 뺀 값 기준입니다."
+            f"※ SchedulingRLEnv는 표준 관측 위에 결정 컨텍스트 {extra_dim}채널을"
+            " 덧붙입니다. 아래 분해는 그 채널을 뺀 값 기준입니다."
         )
         lines.append("")
         expected_dim = expected_dim - extra_dim

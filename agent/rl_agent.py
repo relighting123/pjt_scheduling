@@ -171,8 +171,7 @@ def _load_compatible_model(
     """현재 env obs 차원과 맞는 모델 로드 (없으면 예외).
 
     RL 모델은 SchedulingRLEnv 관측(= 기본 obs + 결정 컨텍스트 채널)을 쓰므로
-    `rl_obs_dim()`을 기준으로 비교한다. `CONFIG.env.rl_extra_obs=False`면
-    이전과 동일한 `compute_obs_dim()` 값이 된다.
+    휴리스틱용 `compute_obs_dim()`이 아니라 `rl_obs_dim()`을 기준으로 비교한다.
     """
     expected = rl_obs_dim()
     mismatches: List[tuple[str, int]] = []

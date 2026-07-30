@@ -53,13 +53,6 @@ def reward_cfg():
     (r.w_terminal_throughput, r.w_terminal_conversion, r.terminal_reward_clip) = original
 
 
-@pytest.fixture
-def env_cfg():
-    original = CONFIG.env.rl_extra_obs
-    yield CONFIG.env
-    CONFIG.env.rl_extra_obs = original
-
-
 def _run_episode(ed):
     """첫 feasible 버킷을 계속 고르는 단순 정책으로 1 에피소드."""
     env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
@@ -154,25 +147,69 @@ def test_terminal_reward_disabled_by_zero_weights(reward_cfg):
 
 # ── 결정 컨텍스트 관측 ───────────────────────────────────────────────────────
 
-def test_extra_obs_changes_dim_and_matches_helper(env_cfg):
+def test_obs_dim_is_base_plus_decision_context():
     ed = _load_ed()
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
+    obs, _ = env.reset()
 
-    env_cfg.rl_extra_obs = False
-    env_off = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
-    obs_off, _ = env_off.reset()
-    assert obs_off.shape[0] == compute_obs_dim()
-    assert rl_obs_dim() == compute_obs_dim()
-
-    env_cfg.rl_extra_obs = True
-    env_on = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
-    obs_on, _ = env_on.reset()
-    assert obs_on.shape[0] == compute_obs_dim() + RL_EXTRA_OBS_DIM
-    assert rl_obs_dim() == obs_on.shape[0]
-    assert env_on.observation_space.shape[0] == obs_on.shape[0]
+    assert obs.shape[0] == compute_obs_dim() + RL_EXTRA_OBS_DIM
+    assert rl_obs_dim() == obs.shape[0]
+    assert env.observation_space.shape[0] == obs.shape[0]
 
 
-def test_extra_obs_stays_in_unit_range_and_flags_block(env_cfg):
-    env_cfg.rl_extra_obs = True
+def test_decision_context_carries_no_equipment_identity():
+    """결정 컨텍스트는 호기 식별자를 담지 않아야 한다.
+
+    `(장비 순번)/(장비 수)` 같은 채널을 넣으면 정책이 "몇 번 호기가 무슨 제품"을
+    외워버리고, 장비가 추가·제외되면 인덱스가 밀려 그 매핑이 통째로 깨진다.
+    같은 성질(같은 모델·같은 셋업 상태·블록 없음)의 장비들은 결정 컨텍스트가
+    서로 구별되지 않아야 한다 — 구별은 시뮬레이터 상태(WIP·cover)가 한다.
+    """
+    ed = _load_ed()   # EQP001/EQP002 둘 다 모델 A, 초기 셋업 없음
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
+    env.reset()
+
+    ctx = {e: env._decision_context_features(e).copy() for e in ed["eqp_ids"]}
+    first = ctx[ed["eqp_ids"][0]]
+    for eqp, vec in ctx.items():
+        assert np.array_equal(vec, first), (
+            f"{eqp}의 결정 컨텍스트가 다르다 — 호기 종속 채널이 섞였는지 확인: {vec}"
+        )
+
+
+def test_sequential_rollout_gives_distinct_observations_per_equipment():
+    """호기 채널 없이도 장비별 관측이 실제로 갈리는지.
+
+    결정은 순차적이라 앞 장비가 배정하면 WIP·cover가 바뀐다 — 대칭 케이스에서도
+    뒤 장비는 이미 다른 상태를 본다. 이게 호기 인덱스를 넣지 않아도 되는 근거다.
+    """
+    ed = _load_ed()
+    env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
+    obs, _ = env.reset()
+
+    seen: list = []
+    for _ in range(120):
+        mask = env.action_masks()
+        eqp = env.sim.current_idle_eqp()
+        if eqp is not None:
+            seen.append((eqp, obs.copy()))
+        feasible = np.flatnonzero(mask[:env._n_bucket])
+        action = np.array([int(feasible[0]) if feasible.size else 0, env._L - 1],
+                          dtype=np.int64)
+        obs, _r, terminated, truncated, _i = env.step(action)
+        if terminated or truncated:
+            break
+
+    assert len(seen) >= 2
+    for i in range(len(seen)):
+        for j in range(i + 1, len(seen)):
+            if seen[i][0] != seen[j][0]:
+                assert not np.array_equal(seen[i][1], seen[j][1]), (
+                    f"{seen[i][0]}와 {seen[j][0]}의 관측이 동일 — 구분 불가"
+                )
+
+
+def test_extra_obs_stays_in_unit_range_and_flags_block():
     ed = _load_ed()
     env = SchedulingRLEnv(ed, record_history=False, record_event_log=False)
     obs, _ = env.reset()
