@@ -562,7 +562,6 @@ class RLConfig:
     # 예산에서 업데이트 횟수가 4배가 된다.
     n_steps:         int   = 512
     batch_size:      int   = 64
-    n_epochs:        int   = 10
     gamma:           float = 0.99
     # 엔트로피 보너스: 0.0(기본 SB3 값)이면 대칭 케이스(예: SYM_5x5)에서 정책이
     # 조기에 하나의 순열로 굳어져(collapse) 전환 0회 최적해를 못 찾고 국소 최적에
@@ -599,9 +598,9 @@ class RLConfig:
     # BC로 얻어둔 좋은 정책이 한 번의 큰 업데이트로 무너지는 걸 막는 안전장치.
     # None이면 비활성.
     target_kl:       Optional[float] = 0.03
-    # n_epochs=10은 같은 롤아웃을 10번 재사용해 off-policy drift가 커진다.
+    # 예전 기본값 10은 같은 롤아웃을 10번 재사용해 off-policy drift가 컸다.
     # 4로 낮추고 target_kl과 함께 쓰면 업데이트당 이동량이 훨씬 안정적이다.
-    n_epochs_stable: int = 4
+    n_epochs:        int   = 4
     lr_schedule:     str  = "linear"        # "linear"(3e-4→0) | "constant"
     # 관측 936차원(대부분 0)에 [64,64]는 표현력이 부족했다.
     policy_net_arch: tuple = (256, 256)

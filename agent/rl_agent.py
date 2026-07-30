@@ -441,7 +441,7 @@ class SchedulingAgent:
             learning_rate=learning_rate,
             n_steps=cfg.n_steps,
             batch_size=effective_batch,
-            n_epochs=cfg.n_epochs_stable,
+            n_epochs=cfg.n_epochs,
             gamma=cfg.gamma,
             gae_lambda=cfg.gae_lambda,
             clip_range=cfg.clip_range,
@@ -470,7 +470,7 @@ class SchedulingAgent:
         log(
             f"하이퍼파라미터: {budget_label}, lr={cfg.learning_rate}({cfg.lr_schedule}), "
             f"n_steps={cfg.n_steps}, batch={effective_batch}(base={cfg.batch_size}×{total_envs}envs), "
-            f"n_epochs={cfg.n_epochs_stable}, gamma={cfg.gamma}, target_kl={cfg.target_kl}, "
+            f"n_epochs={cfg.n_epochs}, gamma={cfg.gamma}, target_kl={cfg.target_kl}, "
             f"net_arch={list(cfg.policy_net_arch)}, norm_reward={cfg.normalize_reward}, "
             f"eval_freq={cfg.eval_freq}, device={cfg.device}, n_envs={n_envs}"
         )
