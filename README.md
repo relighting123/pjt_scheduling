@@ -254,7 +254,7 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 "Dedication 시연으로 모방학습한 뒤 PPO로 개선한다"는 구조 자체는 맞지만, 초기
 구현은 **RL을 돌릴수록 성적이 나빠지고 학습 곡선이 x축과 평행**한 문제가 있었다
 (BENCH_SUITE 8종 실측: Dedication 점수 77.0 → RL 23.0). 원인은 하나가 아니라
-아래 6가지가 겹친 것이고, 각각을 개별적으로 고쳤다.
+아래 8가지가 겹친 것이고, 각각을 개별적으로 고쳤다.
 
 | # | 원인 | 대응 | 위치 |
 |---|------|------|------|
@@ -279,9 +279,12 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 - **Dedication 기준선 자동 측정** (`RLConfig.kpi_baseline_enabled`): 학습 시작 시
   같은 환경에서 `DedicationAgent` KPI를 재고, 매 eval마다 기준선 대비 격차를
   로그·차트에 남긴다. 최종 모델이 기준선에 못 미치면 경고한다.
-- **학습/추론 환경 일치** (`RLConfig.align_train_env_with_inference`): 학습은
-  simulator 기본값(`termination_mode="all_wip"`, `enable_wip_inflow=True`)으로,
-  추론은 `"current_wip_assigned"` + `inflow=False`로 돌고 있었다 — 학습한 MDP와
+- **학습/추론 환경 일치** (`RLConfig.align_train_env_with_inference`,
+  `RLConfig.train_truncate_on_time`): 학습은
+  simulator 기본값(`termination_mode="all_wip"`, `enable_wip_inflow=True`,
+  `truncate_on_time=True`)으로,
+  추론은 `"current_wip_assigned"` + `inflow=False` + `truncate_on_time=False`로
+  돌고 있었다 — 학습한 MDP와
   평가받는 MDP가 다른 train/serve skew. 이제 학습용 데이터셋 복사본에 추론과 같은
   플래그를 채워 넣는다.
 - **PPO 안정화**: `n_epochs` 10 → 4, `target_kl=0.03`, lr 선형 감쇠,
@@ -294,7 +297,9 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 **수렴 차트**: KPI 평가를 쓰면 `EvalCallback`이 돌지 않아 `evaluations.npz`가 없다.
 대신 `models/{...}/logs/kpi_evaluations.json`에 KPI 곡선이 남고,
 `agent/training_report.py`가 이걸 읽어 **KPI 점수 · 생산량 · 전환수 + Dedication
-기준선**을 한 패널로 그린다. shaping 보상 곡선과 달리 이 곡선은 해석 가능하다.
+기준선**을 한 패널로 그린다. 점수(수십 규모)와 생산량(수백 규모)은 축을 분리한다
+— 한 축에 그리면 축 범위가 생산량에 끌려가 점수 곡선이 다시 '평평해 보인다'.
+`verdict`도 shaping 보상이 아니라 이 KPI 곡선 기준으로 판정한다.
 
 **시연자 선택 (`agent/experts.py`)**: 후보는 `dedication` / `minprogress` /
 `earliest_st`(RL env의 버킷 단위로 재구현한 버전)이고, 기본 후보군은
