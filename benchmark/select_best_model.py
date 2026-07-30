@@ -14,6 +14,7 @@ BENCH_SUITE(목표)와 HOLDOUT_SUITE(일반화)로 다시 채점하고 하나를
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -29,12 +30,23 @@ RL = "scheduling_rl"
 
 
 def candidate_zips(run_dir: Path) -> list[Path]:
-    """실행 디렉터리에서 평가할 모델 zip 후보 (best 우선)."""
-    out = []
+    """실행 디렉터리에서 평가할 모델 zip 후보 (best 우선).
+
+    restore_best=True로 학습하면 `{model_name}.zip`은 `best/best_model.zip`을
+    복원해 저장한 것이라 내용이 같다 — 같은 모델을 두 번 채점하지 않도록
+    해시로 중복을 거른다.
+    """
+    out: list[Path] = []
+    seen: set[str] = set()
     for rel in ("best/best_model.zip", f"{CONFIG.rl.model_name}.zip"):
         path = run_dir / rel
-        if path.exists():
-            out.append(path)
+        if not path.exists():
+            continue
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest in seen:
+            continue
+        seen.add(digest)
+        out.append(path)
     return out
 
 
