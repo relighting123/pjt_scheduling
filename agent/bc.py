@@ -1,5 +1,5 @@
 """
-agent/bc.py – DedicationAgent 시연 기반 모방학습(Behavior Cloning) 워밍스타트
+agent/bc.py – 휴리스틱 시연 기반 모방학습(Behavior Cloning) 워밍스타트
 
 기존 `rl_agent._behavior_clone_pretrain()`의 한계와 이 모듈의 대응
 --------------------------------------------------------------------
@@ -27,6 +27,12 @@ agent/bc.py – DedicationAgent 시연 기반 모방학습(Behavior Cloning) 워
    → `ExpertAnchorCallback`이 롤아웃마다 BC 그래디언트를 소량 섞고, 그 비중을
    학습 진행에 따라 0으로 감쇠시킨다. 초반엔 전담 정책을 붙잡고, 후반엔 RL이
    자유롭게 그 위를 개선한다.
+
+⑤ **전담이 항상 최선은 아님**: 시연자를 `DedicationAgent`로 고정하면 정책의
+   출발점 상한이 전담 휴리스틱이 된다. 그런데 처리시간이 이질적인 시나리오
+   (LOAD_stmix)에서는 Earliest-ST 계열이 전담의 2배 점수를 냈다.
+   → `agent/experts.py`의 후보들을 시나리오마다 실제로 굴려보고 KPI가 가장
+   좋은 전문가를 그 시나리오의 시연자로 삼는다.
 """
 from __future__ import annotations
 
@@ -37,7 +43,12 @@ import numpy as np
 import torch
 from stable_baselines3.common.callbacks import BaseCallback
 
-from agent.dedication_agent import DedicationAgent, HOLD_ACTION
+from agent.experts import (
+    DEFAULT_EXPERT_CANDIDATES,
+    ExpertPolicy,
+    make_expert,
+    select_best_expert,
+)
 from env.scheduling_rl_env import build_env
 
 LogFn = Callable[[str], None]
@@ -65,46 +76,6 @@ class ExpertDataset:
         return len(self) == 0
 
 
-def _expert_bucket_choice(
-    expert: DedicationAgent,
-    sim,
-    eqp_id: Optional[str],
-    mask: np.ndarray,
-    n_bucket: int,
-) -> int:
-    """DedicationAgent 결정을 SchedulingRLEnv 버킷 인덱스로 변환.
-
-    HOLD(-1)은 이 env에 진짜 보류가 없으므로 직전 커밋 버킷 → 없으면 feasible
-    첫 버킷으로 대체한다(기존 `_collect_expert_transitions`와 동일 규칙).
-    """
-    if eqp_id is None:
-        choice = 0
-    else:
-        choice = int(expert.predict(sim)[0])
-    if choice == HOLD_ACTION:
-        committed = expert._committed.get(eqp_id) if eqp_id is not None else None
-        if committed is not None:
-            choice = committed
-        else:
-            feasible = np.flatnonzero(mask[:n_bucket])
-            choice = int(feasible[0]) if feasible.size else 0
-    if not (0 <= choice < n_bucket) or not mask[choice]:
-        feasible = np.flatnonzero(mask[:n_bucket])
-        choice = int(feasible[0]) if feasible.size else 0
-    return choice
-
-
-def _expert_size_level(mask: np.ndarray, n_bucket: int) -> int:
-    """그 시점 size_mask에서 허용된 가장 큰 레벨.
-
-    전담은 "가능한 한 큰 블록"이 목표라 최대 레벨을 쓰되, 블록 진행 중인
-    스텝은 env가 레벨 0만 허용하므로 자동으로 0이 된다(마스크 밖 라벨을 주면
-    로그확률이 −inf에 가까워져 BC가 폭주한다).
-    """
-    allowed = np.flatnonzero(mask[n_bucket:])
-    return int(allowed[-1]) if allowed.size else 0
-
-
 def _rollout_expert_episode(
     data: dict,
     env_cls: type,
@@ -112,6 +83,7 @@ def _rollout_expert_episode(
     max_steps: int,
     noise_eps: float,
     gamma: float,
+    expert_name: str = "dedication",
 ) -> Tuple[List[np.ndarray], List[Tuple[int, int]], List[np.ndarray], List[float], dict]:
     """전문가 1 에피소드(ε 교란 포함) 수집.
 
@@ -119,7 +91,7 @@ def _rollout_expert_episode(
     이다 — 교란은 상태분포를 넓히는 용도이고 학습 타깃은 언제나 전문가다.
     """
     env = build_env(env_cls, data)
-    expert = DedicationAgent(data)
+    expert: ExpertPolicy = make_expert(expert_name, data)
 
     obs_list: List[np.ndarray] = []
     action_list: List[Tuple[int, int]] = []
@@ -134,8 +106,8 @@ def _rollout_expert_episode(
         mask = env.action_masks()
         eqp_id = env.sim.current_idle_eqp()
 
-        expert_bucket = _expert_bucket_choice(expert, env.sim, eqp_id, mask, n_bucket)
-        expert_level = _expert_size_level(mask, n_bucket)
+        expert_bucket = expert.resolve(env.sim, eqp_id, mask, n_bucket)
+        expert_level = expert.size_level(mask, n_bucket)
 
         obs_list.append(obs)
         action_list.append((expert_bucket, expert_level))
@@ -178,18 +150,39 @@ def collect_expert_dataset(
     gamma: float = 0.99,
     max_steps: int = 4000,
     seed: int = 0,
+    expert_candidates: Optional[List[str]] = None,
     log: LogFn = _noop,
 ) -> ExpertDataset:
-    """DedicationAgent 시연을 여러 에피소드 모아 하나의 데이터셋으로.
+    """전문가 시연을 여러 에피소드 모아 하나의 데이터셋으로.
 
-    DedicationAgent는 결정적이므로 ε 교란(noise_eps)이 0이면 에피소드를 몇 번
-    굴려도 같은 궤적이 나온다 → 그 경우 데이터셋당 1회만 수집한다.
+    expert_candidates: 후보가 2개 이상이면 **시나리오마다 후보를 실제로 굴려
+        KPI가 가장 좋은 전문가**를 그 시나리오의 시연자로 쓴다. 전담이 항상
+        최선은 아니기 때문 — 처리시간이 이질적인 시나리오에서는 Earliest-ST
+        계열이 전담의 2배 점수를 내기도 한다. 후보가 1개면 그 전문가로 고정.
+        None이면 `agent.experts.DEFAULT_EXPERT_CANDIDATES`.
+
+    전문가는 결정적이므로 ε 교란(noise_eps)이 0이면 에피소드를 몇 번 굴려도
+    같은 궤적이 나온다 → 그 경우 데이터셋당 1회만 수집한다.
     """
     rng = np.random.default_rng(seed)
+    candidates = list(expert_candidates or DEFAULT_EXPERT_CANDIDATES)
     obs_parts, act_parts, mask_parts, ret_parts = [], [], [], []
     n_eps = 0
+    chosen: dict = {}
 
     for di, data in enumerate(datasets):
+        if len(candidates) > 1:
+            expert_name, scores = select_best_expert(
+                data,
+                env_factory=lambda d: build_env(env_cls, d),
+                candidates=candidates,
+                max_steps=max_steps,
+            )
+            chosen[expert_name] = chosen.get(expert_name, 0) + 1
+        else:
+            expert_name = candidates[0]
+            scores = None
+
         # 교란이 없으면 반복해봐야 동일 궤적 — 1회로 충분(불필요한 시뮬 비용 제거)
         reps = 1 if noise_eps <= 0 else max(int(episodes_per_dataset), 1)
         for rep in range(reps):
@@ -197,7 +190,7 @@ def collect_expert_dataset(
             # 데이터에 반드시 포함되도록.
             eps = 0.0 if rep == 0 else noise_eps
             o, a, m, r, _info = _rollout_expert_episode(
-                data, env_cls, rng, max_steps, eps, gamma,
+                data, env_cls, rng, max_steps, eps, gamma, expert_name,
             )
             if not o:
                 continue
@@ -206,7 +199,15 @@ def collect_expert_dataset(
             mask_parts.append(np.asarray(m, dtype=bool))
             ret_parts.append(np.asarray(r, dtype=np.float32))
             n_eps += 1
-        log(f"[bc] 시연 수집 dataset {di + 1}/{len(datasets)} — 누적 {sum(len(x) for x in obs_parts):,} 스텝")
+        detail = f" (expert={expert_name})" if scores is not None else ""
+        log(
+            f"[bc] 시연 수집 dataset {di + 1}/{len(datasets)}{detail} — "
+            f"누적 {sum(len(x) for x in obs_parts):,} 스텝"
+        )
+
+    if chosen:
+        summary = ", ".join(f"{k} {v}개" for k, v in sorted(chosen.items()))
+        log(f"[bc] 시나리오별 최적 시연자 선택 결과 — {summary}")
 
     if not obs_parts:
         return ExpertDataset(

@@ -264,6 +264,8 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 | ④ | **파국적 망각** — 워밍스타트만으로는 RL 잡음에 전문가 정책에서 이탈 | 롤아웃마다 BC 보조 그래디언트를 섞고 계수를 감쇠 | `agent/bc.py: ExpertAnchorCallback` |
 | ⑤ | **보상 스케일** — step reward ±20 × 수백 스텝 → return 수백 규모, value loss 폭주, `explained_variance≈0` → advantage가 잡음 → **곡선이 평평** | `VecNormalize(norm_reward=True)` | `RLConfig.normalize_reward` |
 | ⑥ | **업데이트 횟수 부족** — `n_steps=2048` × 데이터셋 8개 = 롤아웃 16,384 → 200k 예산에서 PPO 업데이트가 **12번** | `n_steps` 2048 → 512 | `RLConfig.n_steps` |
+| ⑦ | **시연자가 전담 하나로 고정** — 정책의 출발점 상한이 전담 휴리스틱이었다. 전담이 늘 최선은 아니다(LOAD_stmix에서 Earliest-ST가 2배 점수) | 시나리오마다 후보 전문가를 굴려 KPI 최고를 시연자로 선택 | `agent/experts.py`, `RLConfig.bc_expert_candidates` |
+| ⑧ | **시나리오 암기** — 8종만 co-train하니 그 8종에선 이기고 학습에 안 쓴 6종에선 졌다 | 에피소드마다 시나리오 풀에서 뽑는 도메인 랜덤화 | `RandomizedSchedulingRLEnv`, `RLConfig.dataset_sampling` |
 
 추가로:
 
@@ -294,10 +296,37 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 `agent/training_report.py`가 이걸 읽어 **KPI 점수 · 생산량 · 전환수 + Dedication
 기준선**을 한 패널로 그린다. shaping 보상 곡선과 달리 이 곡선은 해석 가능하다.
 
-**벤치마크**: `python benchmark/compare_vs_dedication.py` 가 BENCH_SUITE 8종에서
-`dedication` 기준선 대비 승/무/패와 점수 격차를 출력한다.
-`python benchmark/train_bench_suite.py --timesteps 400000` 은 8종 co-train 후
-곧바로 이 비교를 실행한다.
+**시연자 선택 (`agent/experts.py`)**: 후보는 `dedication` / `minprogress` /
+`earliest_st`(RL env의 버킷 단위로 재구현한 버전)이고, 기본 후보군은
+`("dedication", "earliest_st")`. 시나리오마다 후보를 실제로 굴려
+`생산량 − 전환수`가 가장 높은 쪽을 그 시나리오의 시연자로 쓴다. BENCH_SUITE
+실측으로는 대칭·제품과잉·전환과중 6종은 `dedication`, 부하 불균등 2종
+(LOAD_skew·LOAD_stmix)은 `earliest_st`가 선택된다 — 이 조합의 오라클 점수는
+**85.0**(전담 단독 77.0)이라, BC 출발점 자체가 8점 올라간다.
+
+### 벤치마크 / 일반화 검증
+
+| 스위트 | 생성 | 용도 | Dedication 기준선 |
+|--------|------|------|-------------------|
+| BENCH_SUITE (8종) | `benchmark/gen_bench_suite.py` | 학습 + 평가(co-train) | 생산 161/208, 전환 84, **점수 77.0** |
+| HOLDOUT_SUITE (6종) | `benchmark/gen_holdout_suite.py` | **학습에 쓰지 않음** — 일반화 검증 | 생산 139/180, 전환 67, **점수 72.0** |
+| TRAIN_POOL (48종) | `benchmark/gen_train_pool.py` | 도메인 랜덤화 학습 전용 | — |
+
+```bash
+python benchmark/gen_bench_suite.py            # 평가 스위트
+python benchmark/gen_holdout_suite.py          # 일반화 검증 스위트
+python benchmark/gen_train_pool.py --count 48  # 학습 시나리오 풀
+
+# 학습 + 벤치마크 + 일반화 검증
+python benchmark/train_bench_suite.py --timesteps 900000 --train-pool --holdout
+
+# 저장된 모델만 채점
+python benchmark/compare_vs_dedication.py --suite bench
+python benchmark/compare_vs_dedication.py --suite holdout
+```
+
+`compare_vs_dedication.py`는 `dedication` 기준선 대비 승/무/패와 점수 격차를
+데이터셋별로 출력한다.
 
 ### FAC_ID별 모델 관리
 
