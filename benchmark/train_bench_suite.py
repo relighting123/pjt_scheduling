@@ -40,6 +40,11 @@ def main() -> None:
     ap.add_argument("--bc-episodes", type=int, default=None,
                     help="데이터셋당 전문가 시연 에피소드 수 (풀이 크면 낮춘다)")
     ap.add_argument("--pool-envs", type=int, default=None)
+    ap.add_argument("--sampling", default=None, choices=["per_env", "random_reset"])
+    ap.add_argument("--model-dir", default=None,
+                    help="모델 저장 경로(병렬 실험 시 실행별로 분리)")
+    ap.add_argument("--experts", default=None,
+                    help="BC 시연자 후보 (쉼표 구분, 예: dedication,earliest_st)")
     ap.add_argument("--anchor-coef", type=float, default=None)
     ap.add_argument("--ent-coef", type=float, default=None)
     ap.add_argument("--terminal-throughput", type=float, default=None)
@@ -78,6 +83,15 @@ def main() -> None:
         cfg.bc_episodes_per_dataset = args.bc_episodes
     if args.pool_envs is not None:
         cfg.dataset_pool_envs = args.pool_envs
+    if args.sampling is not None:
+        cfg.dataset_sampling = args.sampling
+    if args.experts is not None:
+        cfg.bc_expert_candidates = tuple(
+            n.strip() for n in args.experts.split(",") if n.strip()
+        )
+    if args.model_dir is not None:
+        CONFIG.path.model_dir = Path(args.model_dir)
+        CONFIG.path.model_dir.mkdir(parents=True, exist_ok=True)
     if args.anchor_coef is not None:
         cfg.expert_anchor_coef = args.anchor_coef
     if args.ent_coef is not None:

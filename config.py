@@ -641,6 +641,11 @@ class RLConfig:
     bc_entropy_coef:    float = 0.01        # 결정적 붕괴 방지
     bc_value_coef:      float = 0.5         # 크리틱 동시 학습 가중치
     bc_early_stop_patience: int = 8
+    # BC 시연자 후보. 2개 이상이면 시나리오마다 실제로 굴려보고 KPI가 가장
+    # 좋은 전문가를 그 시나리오의 시연자로 쓴다(agent/experts.py). 전담이 늘
+    # 최선은 아니라서 — 처리시간이 이질적인 시나리오에서는 Earliest-ST 계열이
+    # 전담의 2배 점수를 냈다. ["dedication"]으로 두면 기존처럼 전담 고정.
+    bc_expert_candidates: tuple = ("dedication", "earliest_st")
 
     # --- 전문가 앵커(PPO 중 BC 보조손실) -------------------------------------
     # PPO 롤아웃마다 전문가 시연에 대해 BC 그래디언트를 몇 스텝 섞어, 정책이

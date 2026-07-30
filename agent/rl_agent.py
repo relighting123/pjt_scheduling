@@ -115,6 +115,7 @@ def _behavior_clone_pretrain(
         noise_eps=cfg.bc_noise_eps,
         gamma=cfg.gamma,
         seed=cfg.seed or 0,
+        expert_candidates=list(cfg.bc_expert_candidates),
         log=log,
     )
     behavior_clone(
@@ -469,6 +470,7 @@ class SchedulingAgent:
                 noise_eps=cfg.bc_noise_eps,
                 gamma=cfg.gamma,
                 seed=cfg.seed or 0,
+                expert_candidates=list(cfg.bc_expert_candidates),
                 log=log,
             )
 
