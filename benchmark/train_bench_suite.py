@@ -59,6 +59,10 @@ def main() -> None:
     )
     ap.add_argument("--holdout", action="store_true",
                     help="학습 후 HOLDOUT_SUITE(일반화 검증)도 함께 평가")
+    ap.add_argument("--bench-weight", type=int, default=1,
+                    help="--train-pool 사용 시 BENCH 8종을 풀에 몇 배로 넣을지. "
+                         "1이면 풀 전체에서 BENCH 비중이 1/7로 낮아 벤치 점수가 "
+                         "느리게 오른다. 높이면 벤치 쪽으로 치우친다(일반화와 trade-off).")
     args = ap.parse_args()
 
     bench_meta = load_meta("bench")
@@ -66,8 +70,9 @@ def main() -> None:
 
     if args.train_pool:
         pool_meta = load_meta("train_pool")
-        eds = bench_eds + [load_ed(m) for m in pool_meta]
-        print(f"학습 시나리오: BENCH {len(bench_eds)}종 + TRAIN_POOL "
+        weight = max(args.bench_weight, 1)
+        eds = bench_eds * weight + [load_ed(m) for m in pool_meta]
+        print(f"학습 시나리오: BENCH {len(bench_eds)}종 ×{weight} + TRAIN_POOL "
               f"{len(pool_meta)}종 = {len(eds)}종", flush=True)
     else:
         eds = bench_eds
