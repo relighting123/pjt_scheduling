@@ -337,6 +337,11 @@ export interface TrainMetrics {
   mean_prod_sw: number;
   mean_idle: number;
   mean_completion: number;
+  mean_conversions: number;
+  /** sim_end 안에 완료된 carrier 수 — 벤치마크 '생산량'과 같은 정의. */
+  mean_produced_carriers: number;
+  /** 생산량 − kpi_conversion_weight × 전환수. 벤치마크 점수와 직접 비교 가능. */
+  mean_kpi_score: number;
 }
 
 export interface TrainLogEntry {
