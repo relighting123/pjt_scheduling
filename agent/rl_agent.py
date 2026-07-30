@@ -489,11 +489,15 @@ class SchedulingAgent:
                 log=log,
             )
             if not summary.get("skipped"):
+                nll = summary.get("train_nll")
+                ent = summary.get("entropy")
                 log(
                     f"[bc] 워밍스타트 완료 — {summary['epochs_run']} epoch, "
-                    f"train_nll={summary['train_nll']:.4f}, "
-                    f"entropy={summary['entropy']:.3f}"
+                    f"train_nll={nll:.4f}" if nll is not None else
+                    f"[bc] 워밍스타트 완료 — {summary['epochs_run']} epoch"
                 )
+                if ent is not None:
+                    log(f"[bc] 최종 정책 엔트로피 {ent:.3f} (0에 가까우면 결정적 붕괴)")
 
         if (
             expert_data is not None

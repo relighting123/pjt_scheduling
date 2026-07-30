@@ -48,6 +48,9 @@ def main() -> None:
     ap.add_argument("--anchor-coef", type=float, default=None)
     ap.add_argument("--ent-coef", type=float, default=None)
     ap.add_argument("--terminal-throughput", type=float, default=None)
+    ap.add_argument("--reward", action="append", default=[], metavar="KEY=VALUE",
+                    help="RewardConfig 항목 덮어쓰기 (여러 번 지정 가능). "
+                         "예: --reward w_redundant_cover=0 --reward w_bulk_block_bonus=0")
     ap.add_argument("--no-benchmark", action="store_true")
     ap.add_argument(
         "--train-pool", action="store_true",
@@ -98,6 +101,16 @@ def main() -> None:
         cfg.ent_coef = args.ent_coef
     if args.terminal_throughput is not None:
         CONFIG.reward.w_terminal_throughput = args.terminal_throughput
+    for item in args.reward:
+        key, _, raw = item.partition("=")
+        key = key.strip()
+        if not hasattr(CONFIG.reward, key):
+            raise SystemExit(f"알 수 없는 RewardConfig 항목: {key}")
+        current = getattr(CONFIG.reward, key)
+        setattr(CONFIG.reward, key,
+                (raw.strip().lower() in ("1", "true", "yes"))
+                if isinstance(current, bool) else float(raw))
+        print(f"  reward override: {key} = {getattr(CONFIG.reward, key)}", flush=True)
 
     from agent.rl_agent import SchedulingAgent
     from env.scheduling_rl_env import SchedulingRLEnv
