@@ -41,12 +41,18 @@ ALGOS = [
 BASELINE = "dedication"
 
 
-def load_meta() -> list:
-    path = SUITE_ROOT / "bench_suite_meta.json"
+SUITE_META = {
+    "bench": ("bench_suite_meta.json", "benchmark/gen_bench_suite.py"),
+    "holdout": ("holdout_suite_meta.json", "benchmark/gen_holdout_suite.py"),
+    "train_pool": ("train_pool_meta.json", "benchmark/gen_train_pool.py"),
+}
+
+
+def load_meta(suite: str = "bench") -> list:
+    filename, generator = SUITE_META.get(suite, SUITE_META["bench"])
+    path = SUITE_ROOT / filename
     if not path.exists():
-        raise SystemExit(
-            f"{path} 없음 — 먼저 `python benchmark/gen_bench_suite.py` 를 실행하세요."
-        )
+        raise SystemExit(f"{path} 없음 — 먼저 `python {generator}` 를 실행하세요.")
     return json.load(open(path, encoding="utf-8"))
 
 
@@ -95,8 +101,9 @@ def run_suite(
     model_path: str | None = None,
     conv_weight: float = 1.0,
     quiet: bool = False,
+    suite: str = "bench",
 ) -> dict:
-    meta = load_meta()
+    meta = load_meta(suite)
     eds = [load_ed(m) for m in meta]
 
     agent = None
@@ -170,8 +177,8 @@ def run_suite(
                 "conv_delta": summary[algo]["conv"] - summary[BASELINE]["conv"],
             }
 
-    out = {"datasets": rows, "summary": summary, "vs_dedication": versus,
-           "conv_weight": conv_weight}
+    out = {"suite": suite, "datasets": rows, "summary": summary,
+           "vs_dedication": versus, "conv_weight": conv_weight}
 
     if not quiet:
         print("\n" + "=" * 72)
@@ -197,10 +204,13 @@ def main() -> None:
     ap.add_argument("--model", default=None, help="RL 모델 zip 경로")
     ap.add_argument("--conv-weight", type=float, default=1.0)
     ap.add_argument("--json", default=None, help="결과 JSON 저장 경로")
+    ap.add_argument("--suite", default="bench", choices=sorted(SUITE_META),
+                    help="bench=학습에 쓰는 8종, holdout=학습에 안 쓰는 일반화 검증용")
     args = ap.parse_args()
 
     out = run_suite(
         use_rl=not args.no_rl, model_path=args.model, conv_weight=args.conv_weight,
+        suite=args.suite,
     )
     if args.json:
         path = Path(args.json)

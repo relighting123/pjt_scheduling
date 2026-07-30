@@ -19,7 +19,12 @@ from env.scheduling_env import (
     format_obs_dim_mismatch,
     validate_obs_shape,
 )
-from env.scheduling_rl_env import SchedulingRLEnv, build_env, rl_obs_dim
+from env.scheduling_rl_env import (
+    RandomizedSchedulingRLEnv,
+    SchedulingRLEnv,
+    build_env,
+    rl_obs_dim,
+)
 from agent.dedication_agent import DedicationAgent, HOLD_ACTION
 from agent.bc import (
     ExpertAnchorCallback,
@@ -185,6 +190,7 @@ def _load_compatible_model(
             env_data=env_data,
             source="모델 로드",
             model_files=model_files,
+            extra_dim=expected - compute_obs_dim(),
         )
         raise ValueError(msg)
     fac_note = f" (FAC_ID={fac_id})" if fac_id else ""
@@ -210,6 +216,7 @@ class SchedulingAgent:
         env_cls: type = SchedulingRLEnv,
         restore_best: bool = True,
         fac_id: Optional[str] = None,
+        eval_datasets: Optional[List[dict]] = None,
     ) -> "SchedulingAgent":
         """
         목적: 주어진 환경 데이터로 PPO 에이전트 학습
@@ -224,6 +231,11 @@ class SchedulingAgent:
             fac_id (str, optional): 지정하면 models/{FAC_ID}/ 아래에 체크포인트·
                 best·logs를 분리해서 저장한다(FAC_ID별 모델 관리). 미지정 시
                 기존처럼 공용 models/ 그대로 사용.
+            eval_datasets (list[dict], optional): KPI 평가·Dedication 기준선
+                측정에 쓸 데이터셋. 미지정이면 학습 데이터셋 전체를 쓴다.
+                학습 풀이 큰데(도메인 랜덤화) 평가는 대표 시나리오 몇 개로만
+                하고 싶을 때 지정한다 — 평가는 매 eval_freq마다 전 데이터셋을
+                굴리므로 풀이 크면 그대로 비용이 된다.
         Output:
             self (체이닝 가능)
         """
@@ -232,8 +244,10 @@ class SchedulingAgent:
         model_dir.mkdir(parents=True, exist_ok=True)
 
         datasets: List[dict] = env_data if isinstance(env_data, list) else [env_data]
+        eval_sets: List[dict] = list(eval_datasets) if eval_datasets else datasets
         if cfg.align_train_env_with_inference:
             datasets = align_datasets_with_inference(datasets)
+            eval_sets = align_datasets_with_inference(eval_sets)
         n_envs = max(cfg.n_envs, 1)
 
         def log(message: str) -> None:
@@ -251,9 +265,41 @@ class SchedulingAgent:
                 return Monitor(env)
             return _init
 
-        # n_envs > 1 이면 같은 데이터를 n_envs 개 프로세스에서 병렬 롤아웃
-        # 기간이 여러 개면 기간 × n_envs 조합으로 확장
-        train_fns = [make_env(d) for d in datasets for _ in range(n_envs)]
+        def make_pool_env(pool: List[dict], pool_seed: int):
+            def _init():
+                env = ActionMasker(
+                    build_env(
+                        RandomizedSchedulingRLEnv, pool, pool_seed=pool_seed,
+                    ),
+                    _mask_fn,
+                )
+                return Monitor(env)
+            return _init
+
+        # 데이터셋 샘플링 전략 (CONFIG.rl.dataset_sampling 주석 참고)
+        use_pool = (
+            cfg.dataset_sampling == "random_reset"
+            and env_cls is SchedulingRLEnv
+            and len(datasets) > cfg.dataset_sampling_min_pool
+        )
+        if use_pool:
+            n_pool_envs = max(cfg.dataset_pool_envs, 1)
+            train_fns = [
+                make_pool_env(datasets, (cfg.seed or 0) * 1000 + i)
+                for i in range(n_pool_envs)
+                for _ in range(n_envs)
+            ]
+            total_envs = n_pool_envs * n_envs
+            log(
+                f"데이터셋 샘플링: random_reset — 시나리오 풀 {len(datasets)}개를 "
+                f"env {total_envs}개가 에피소드마다 무작위로 돈다"
+            )
+        else:
+            # n_envs > 1 이면 같은 데이터를 n_envs 개 프로세스에서 병렬 롤아웃
+            # 기간이 여러 개면 기간 × n_envs 조합으로 확장
+            train_fns = [make_env(d) for d in datasets for _ in range(n_envs)]
+            total_envs = len(datasets) * n_envs
+
         if n_envs > 1:
             train_env = SubprocVecEnv(train_fns, start_method="fork")
         else:
@@ -268,7 +314,7 @@ class SchedulingAgent:
             train_env = VecNormalize(
                 train_env, norm_obs=False, norm_reward=True, gamma=cfg.gamma,
             )
-        eval_env = DummyVecEnv([make_env(datasets[0])])
+        eval_env = DummyVecEnv([make_env(eval_sets[0])])
 
         callbacks = []
         if cfg.ent_coef_final != cfg.ent_coef:
@@ -306,7 +352,7 @@ class SchedulingAgent:
         if cfg.kpi_eval_enabled:
             baseline = None
             if cfg.kpi_baseline_enabled:
-                baseline = dedication_baseline_kpi(env_cls, datasets)
+                baseline = dedication_baseline_kpi(env_cls, eval_sets)
                 log(
                     "[kpi] Dedication 기준선 — 생산 "
                     f"{baseline.produced}/{baseline.producible} · 전환 "
@@ -314,7 +360,7 @@ class SchedulingAgent:
                     f"{baseline.score(cfg.kpi_conversion_weight):.1f}"
                 )
             kpi_callback = KPIEvalCallback(
-                env_cls, datasets,
+                env_cls, eval_sets,
                 eval_freq=cfg.eval_freq,
                 best_model_save_path=str(model_dir / "best"),
                 history_path=str(model_dir / "logs" / "kpi_evaluations.json"),
@@ -358,8 +404,7 @@ class SchedulingAgent:
                 )
             )
 
-        # n_envs > 1이면 롤아웃 버퍼(n_steps × total_envs)가 커지므로 batch_size도 비례 확장
-        total_envs = len(datasets) * n_envs
+        # 롤아웃 버퍼(n_steps × total_envs)가 커지므로 batch_size도 비례 확장
         effective_batch = cfg.batch_size * max(total_envs, 1)
         # batch_size는 rollout buffer(n_steps × total_envs)의 약수여야 함
         rollout_size = cfg.n_steps * total_envs
@@ -392,12 +437,12 @@ class SchedulingAgent:
             device=cfg.device,
         )
 
-        n_total_envs = len(datasets) * n_envs
-        if n_total_envs > 1:
+        if total_envs > 1:
             log(
-                f"VecEnv {n_total_envs}개 "
+                f"VecEnv {total_envs}개 "
                 f"({'SubprocVecEnv' if n_envs > 1 else 'DummyVecEnv'}, "
-                f"기간 {len(datasets)}개 × n_envs {n_envs})"
+                f"시나리오 {len(datasets)}개, sampling="
+                f"{'random_reset' if use_pool else 'per_env'}, n_envs={n_envs})"
             )
         budget_label = (
             f"n_episodes={n_episodes:,}"
