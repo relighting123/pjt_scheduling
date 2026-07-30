@@ -218,6 +218,50 @@ def format_obs_dim_mismatch(
     return "\n".join(lines)
 
 
+def validate_axis_capacity(env_data: Optional[dict], *, source: str = "RL 환경") -> None:
+    """데이터의 공정·제품·모델 수가 config 축 상한(O/P/K)을 넘는지 검사.
+
+    넘으면 그 조합은 action/obs 공간에 자리가 없어 **정책이 영원히 선택할 수
+    없다**. 예: `max_oper_count=3`인데 데이터에 공정이 4종이면 4번째 공정의
+    버킷 flat 인덱스는 30~39가 되는데 action_space는 `MultiDiscrete([30, L])`
+    이라 도달 불가능하다 — 그 공정 재공이 통째로 빠진 스케줄이 조용히 나간다.
+
+    조용한 누락보다 즉시 실패가 낫다. 휴리스틱(SchedulingEnv)은 feasible 목록을
+    직접 읽고 `ppk_oper_from_flat`이 범위를 벗어난 flat도 정상 해석하므로 이
+    제약을 받지 않는다 — 이 검사는 RL 경로 전용이다.
+    """
+    if not env_data:
+        return
+    comp = obs_dim_components()
+    over = []
+    for label, key, cap, cfg_name in (
+        ("공정(OPER)", "oper_ids", comp["O"], "max_oper_count"),
+        ("제품(PPK)", "prod_keys", comp["P"], "max_prod_count"),
+        ("장비모델", "eqp_models", comp["K"], "max_model_count"),
+    ):
+        items = list(env_data.get(key, []))
+        if len(items) > cap:
+            over.append((label, len(items), cap, cfg_name, items))
+    if not over:
+        return
+
+    lines = [f"config 축 상한 초과 ({source})", ""]
+    for label, n, cap, cfg_name, items in over:
+        lines.append(f"  {label} {n}종 > config.env.{cfg_name}={cap}")
+        lines.append(f"    초과분: {items[cap:]}  ← 이 조합은 정책이 선택할 수 없습니다")
+    lines.append("")
+    lines.append("[조치]")
+    lines.append(
+        "  config.py의 EnvConfig에서 위 값을 데이터 실제 종류 수 이상으로 올린 뒤 "
+        "재학습하세요."
+    )
+    lines.append(
+        "  ※ 축을 바꾸면 obs_dim(6 + O×P×6 + O×P×K×5 + 결정 컨텍스트)도 바뀌므로 "
+        "기존 모델은 로드되지 않습니다."
+    )
+    raise ValueError("\n".join(lines))
+
+
 def validate_obs_shape(
     obs: np.ndarray,
     expected_dim: Optional[int] = None,

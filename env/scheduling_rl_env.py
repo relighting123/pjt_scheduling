@@ -26,7 +26,7 @@ from gymnasium import spaces
 from config import CONFIG
 from simulation.simulator import SchedulingSimulator
 from simulation.decision_log import build_step_decision_entry
-from env.scheduling_env import compute_obs_dim
+from env.scheduling_env import compute_obs_dim, validate_axis_capacity
 
 # 블록 크기 레벨 수 (action 두 번째 차원). level→takt 예산 분율.
 BULK_SIZE_LEVELS = 4
@@ -117,6 +117,9 @@ class SchedulingRLEnv(gym.Env):
         self._O = env_cfg.max_oper_count
         self._P = env_cfg.max_prod_count
         self._n_bucket = self._O * self._P
+        # 데이터 공정·제품·모델 수가 축 상한을 넘으면 그 버킷은 action 공간에
+        # 자리가 없어 정책이 영원히 못 고른다 — 조용히 빠진 스케줄 대신 즉시 실패.
+        validate_axis_capacity(env_data, source="SchedulingRLEnv")
 
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(rl_obs_dim(),), dtype=np.float32,
@@ -290,7 +293,7 @@ class SchedulingRLEnv(gym.Env):
             return np.concatenate([bucket_mask, size_mask])
 
         active = self._active_block_flat(eqp_id)
-        if active is not None:
+        if active is not None and 0 <= active < self._n_bucket:
             # 블록 진행 중 → 같은 버킷 강제, 크기 레벨 0 고정
             bucket_mask[active] = True
             size_mask[0] = True
@@ -333,7 +336,11 @@ class SchedulingRLEnv(gym.Env):
             else:
                 flat = bucket_idx % self._n_bucket
                 if flat not in feasible:
-                    flat = feasible[0] if feasible else None
+                    # feasible는 시뮬레이터가 주는 flat 목록이라 축 상한을 넘는
+                    # 값이 섞일 수 있다(공정 수 > max_oper_count). 그런 버킷은
+                    # 마스크에 표시조차 못 하므로 폴백 대상에서 제외한다.
+                    in_range = [f for f in feasible if 0 <= f < self._n_bucket]
+                    flat = in_range[0] if in_range else None
             resolved_flat = flat
 
             if flat is not None and self.sim.eqps[eqp_id].status == "idle":
