@@ -1,6 +1,8 @@
 """
-BENCH_SUITE 평가 — 10개 데이터셋 × 3 알고리즘 KPI 비교
+BENCH_SUITE 평가 — 8개 데이터셋 × 4 알고리즘 KPI 비교
 =========================================================
+dedication(전담 배분)이 RL이 넘어야 할 기준선이라 항상 포함한다.
+데이터셋별 승/무/패까지 보려면 benchmark/compare_vs_dedication.py 를 쓴다.
 실행
   python benchmark/bench_suite.py            # 휴리스틱만(빠름) — scheduling_rl은 저장 모델 사용
   TS=300000 python benchmark/bench_suite.py  # scheduling_rl 공동 학습 후 평가
@@ -68,13 +70,13 @@ def main():
     if TS > 0:
         from agent.rl_agent import SchedulingAgent
         from env.scheduling_rl_env import SchedulingRLEnv
-        cfg = CONFIG.reward
-        cfg.w_bulk_block_bonus = 3.0
-        cfg.w_dedication_misuse = -4.0
-        cfg.w_redundant_cover = -5.0
-        cfg.w_plan_hit = 1.0
+        # 예전에는 여기서 보상 가중치를 하드코딩으로 덮어썼다
+        # (w_bulk_block_bonus/w_dedication_misuse/w_redundant_cover는 이미
+        #  config.py 기본값으로 승격됐고, w_plan_hit=1.0은 "cover를 무시해
+        #  전담을 방해한다"는 이유로 기본값에서 0으로 내려간 값이라 여기서
+        #  되살리면 config의 결론을 되돌리는 셈이었다).
+        # 이제는 config.py 기본값을 그대로 쓴다 — 튜닝은 config에서만.
         CONFIG.rl.total_timesteps = TS
-        CONFIG.rl.n_steps = 2048
         CONFIG.rl.device = "cpu"
         CONFIG.rl.n_envs = 1
         print(f"=== scheduling_rl 공동 학습 (datasets={len(eds)}, TS={TS:,}) ===")
@@ -91,7 +93,9 @@ def main():
 
     results = []
     schedules = {}  # name -> {algo: {schedule, conversion_plans, sim, eqp_ids}}
-    algos = [("earliest_st", "Earliest-ST"), ("minprogress", "Min-Progress")]
+    # dedication은 RL이 넘어야 할 기준선이라 항상 포함한다.
+    algos = [("dedication", "Dedication"), ("minprogress", "Min-Progress"),
+             ("earliest_st", "Earliest-ST")]
     print(f"{'dataset':<20}{'algo':<14}{'prod':>9}{'conv':>6}{'util':>7}{'전담':>7}")
     for m, ed in zip(META, eds):
         row = {"name": m["id"], "cat": m["cat"], "n": m["n_eqp"], "n_ppk": m["n_ppk"],
@@ -139,7 +143,8 @@ def main():
             "n_sets": len(rows),
         }
 
-    summary = {a: agg(a) for a in ["earliest_st", "minprogress", "scheduling_rl"]}
+    summary = {a: agg(a) for a in
+               ["dedication", "minprogress", "earliest_st", "scheduling_rl"]}
     out = {"datasets": results, "summary": summary}
     out_path = SUITE_ROOT / "bench_suite_results.json"
     with open(out_path, "w", encoding="utf-8") as f:
@@ -147,7 +152,8 @@ def main():
 
     print("=" * 64)
     print(f"{'집계':<14}{'생산률':>10}{'총전환':>8}{'평균가동':>9}{'전담률':>9}{'최적달성':>9}")
-    for a, lbl in [("earliest_st", "Earliest-ST"), ("minprogress", "Min-Progress"), ("scheduling_rl", "Bulk-Fill")]:
+    for a, lbl in [("dedication", "Dedication"), ("minprogress", "Min-Progress"),
+                   ("earliest_st", "Earliest-ST"), ("scheduling_rl", "Bulk-Fill")]:
         s = summary[a]
         if not s:
             continue

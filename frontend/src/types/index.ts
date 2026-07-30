@@ -353,6 +353,18 @@ export interface TrainSeries {
   policy_loss: number[];
   value_loss: number[];
   explained_variance: number[];
+  /**
+   * KPI 평가 계열 (CONFIG.rl.kpi_eval_enabled=True일 때 채워진다).
+   * shaping 보상 곡선(ep_rew_mean/eval_reward)과 달리 벤치마크 목표
+   * (생산 carrier 수 − 전환수)에 직접 대응해 해석하기 쉽다.
+   * kpi_eval_enabled=False면 이쪽이 비고 eval_reward가 채워진다.
+   */
+  kpi_timesteps: number[];
+  kpi_score: number[];
+  kpi_produced: number[];
+  kpi_conversions: number[];
+  /** DedicationAgent 기준선 — 차트의 수평 기준선으로 쓴다. */
+  kpi_baseline_score: number[];
 }
 
 export interface TrainStatusResponse {
