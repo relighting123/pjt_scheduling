@@ -131,16 +131,19 @@ LOT의 현재 상태 코드로 `PROC` / `LOAD` / `SELE` / `RESV` / `WAIT` 중 �
 `PROC`/`LOAD`/`SELE`/`RESV`(강제 배정) LOT은 이 옵션과 무관하게 항상 discrete 그대로
 배정됩니다.
 
-#### 전환 그룹 제약 (`conversion_group.json`, 선택)
+#### 전환 그룹 제약 (`config.CONVERSION_GROUPS`, 선택)
 
-같은 그룹 안의 `(LOT_CD, TEMP)`로만 전환을 허용하고 **다른 그룹으로의 전환은 배정 후보에서 제외**합니다(행동 공간 축소 → 문제 단순화). 파일이 없으면 제약은 비활성(기존 동작).
+같은 그룹 안의 `(LOT_CD, TEMP)`로만 전환을 허용하고 **다른 그룹으로의 전환은 배정 후보에서 제외**합니다(행동 공간 축소 → 문제 단순화). `config.py`의 `CONVERSION_GROUPS` 딕셔너리에 `FAC_ID`별로 설정하며, 해당 FAC_ID 항목이 없으면 제약은 비활성(기존 동작) — train/test/infer 등 split·기간과 무관하게 fac 전체에 공통 적용됩니다.
 
-```json
-[
-  {"GROUP_ID": "G1", "LOT_CD": "LC_A", "TEMP": "T600"},
-  {"GROUP_ID": "G1", "LOT_CD": "LC_B", "TEMP": "T600"},
-  {"GROUP_ID": "G2", "LOT_CD": "LC_C", "TEMP": "T600"}
-]
+```python
+# config.py
+CONVERSION_GROUPS = {
+    "FAC001": [
+        {"GROUP_ID": "G1", "LOT_CD": "LC_A", "TEMP": "T600"},
+        {"GROUP_ID": "G1", "LOT_CD": "LC_B", "TEMP": "T600"},
+        {"GROUP_ID": "G2", "LOT_CD": "LC_C", "TEMP": "T600"},
+    ],
+}
 ```
 
 규칙:

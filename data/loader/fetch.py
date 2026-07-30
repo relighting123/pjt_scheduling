@@ -17,6 +17,7 @@ from config import (
     CONFIG,
     SQL_JSON_MAP,
     SQL_REQUIRED_KEYS,
+    conversion_group_rows_for,
     iter_rule_timekeys,
     normalize_rule_timekey,
     resolve_dataset_path,
@@ -113,6 +114,7 @@ def _read_json_file(path: Path) -> List[dict]:
 def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
     """dataset input 폴더 JSON 로드"""
     d = input_dir or CONFIG.path.input_dir
+    fac_id = CONFIG.path.fac_id if input_dir is None else None
 
     def _read(filename: str) -> List[dict]:
         path = d / filename
@@ -159,7 +161,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "tool_capacity":     tool_capacity,
         "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
         "batch_info":        _read_optional(CONFIG.path.batch_info_file),
-        "conversion_group":  _read_optional(CONFIG.path.conversion_group_file),
+        "conversion_group":  conversion_group_rows_for(fac_id),
         "eqp_conv_plan":     _read_optional(CONFIG.path.eqp_conv_plan_file),
         "eqp_down":          _read_optional(CONFIG.path.eqp_down_file),
     }
