@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
-import torch
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
@@ -25,7 +24,6 @@ from env.scheduling_rl_env import (
     build_env,
     rl_obs_dim,
 )
-from agent.dedication_agent import DedicationAgent, HOLD_ACTION
 from agent.bc import (
     ExpertAnchorCallback,
     ExpertDataset,
@@ -90,6 +88,7 @@ def _collect_expert_transitions(
     dataset = collect_expert_dataset(
         [data], env_cls,
         episodes_per_dataset=1, noise_eps=0.0, max_steps=max_steps,
+        expert_candidates=["dedication"],
     )
     return dataset.obs, dataset.actions, dataset.masks
 
