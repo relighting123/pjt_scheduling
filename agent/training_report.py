@@ -194,20 +194,33 @@ def _plot_png(
 
     for ax, kind in zip(axes, panels):
         if kind == "kpi":
+            # 점수와 생산량(수백 규모)을 한 축에 그리면 축 범위가 생산량에
+            # 끌려가 점수 곡선이 '평평해 보인다' — 정확히 이 리포트가 답해야
+            # 할 질문(학습이 되고 있나?)을 가려버린다. 점수/기준선은 주축에
+            # 붙여 자기 범위로 스케일하고, 생산량·전환수는 보조축으로 뺀다.
             ts = kpi_curve["timesteps"]
             ax.plot(ts, kpi_curve["score"], color="#1B3257", marker="o",
-                    markersize=3, label="KPI score (produced - conversions)")
+                    markersize=4, linewidth=2,
+                    label="KPI score (produced - conversions)")
             baseline = kpi_curve.get("baseline_score")
             if baseline is not None:
                 ax.axhline(baseline, color="#B33A3A", linestyle="--",
                            label=f"Dedication baseline ({baseline:.1f})")
-            ax.plot(ts, kpi_curve["produced"], color="#2E7D4F", alpha=0.6,
-                    label="produced carriers")
-            ax.plot(ts, kpi_curve["conversions"], color="#C8861E", alpha=0.6,
-                    label="conversions")
-            ax.set_title("Benchmark KPI vs Dedication baseline")
+            ax.set_ylabel("KPI score")
             ax.set_xlabel("timesteps")
-            ax.legend(fontsize=8)
+            ax.set_title("Benchmark KPI vs Dedication baseline")
+            ax.grid(alpha=0.25)
+
+            ax2 = ax.twinx()
+            ax2.plot(ts, kpi_curve["produced"], color="#2E7D4F", alpha=0.55,
+                     linestyle=":", label="produced carriers")
+            ax2.plot(ts, kpi_curve["conversions"], color="#C8861E", alpha=0.55,
+                     linestyle=":", label="conversions")
+            ax2.set_ylabel("carriers / conversions")
+
+            handles, labels = ax.get_legend_handles_labels()
+            h2, l2 = ax2.get_legend_handles_labels()
+            ax.legend(handles + h2, labels + l2, fontsize=8, loc="best")
         elif kind == "eval":
             ts = eval_curve["timesteps"]
             mean = eval_curve["mean_reward"]
