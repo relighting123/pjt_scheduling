@@ -16,8 +16,14 @@ data/sql/*
 !data/sql/.gitkeep
 
 # Trained models (large binary files – checkpoints/best 등 하위 경로 포함)
+# 단, 배포용 최종 모델 1개와 그 수렴 리포트는 추적한다 — 코드만 받아서는
+# 재현에 CPU 40분+가 걸려서, 바로 추론에 쓸 수 있는 기준 모델을 함께 둔다.
+# FAC별 모델(models/{FAC_ID}/)·체크포인트·best는 그대로 제외.
 models/**
 !models/.gitkeep
+!models/scheduling_rl.zip
+!models/training_convergence_scheduling_rl.png
+!models/training_history_scheduling_rl.json
 
 # IDE
 .vscode/

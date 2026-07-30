@@ -548,9 +548,13 @@ class EnvConfig:
 class RLConfig:
     algorithm:       str   = "PPO"
     learning_rate:   float = 3e-4
-    n_steps:         int   = 2048
+    # n_steps=2048은 이 문제의 에피소드 길이(수십~수백 스텝)에 비해 지나치게
+    # 길다. 데이터셋 8개를 co-train하면 롤아웃 1개가 8×2048=16,384 transition이
+    # 되어 total_timesteps=200k에서 PPO 업데이트가 **12번**밖에 일어나지 않는다
+    # (학습 곡선이 평평해 보이는 직접적 원인 중 하나). 512로 낮추면 같은
+    # 예산에서 업데이트 횟수가 4배가 된다.
+    n_steps:         int   = 512
     batch_size:      int   = 64
-    n_epochs:        int   = 10
     gamma:           float = 0.99
     # 엔트로피 보너스: 0.0(기본 SB3 값)이면 대칭 케이스(예: SYM_5x5)에서 정책이
     # 조기에 하나의 순열로 굳어져(collapse) 전환 0회 최적해를 못 찾고 국소 최적에
@@ -559,14 +563,17 @@ class RLConfig:
     # start(탐색)→final(착취)로 선형 감쇠시킨다(EntropyDecayCallback,
     # agent/train_progress.py). ent_coef_final을 ent_coef와 같은 값으로 두면
     # 감쇠 없이 기존처럼 고정값 그대로 동작한다.
-    ent_coef:        float = 0.05   # 학습 시작 시점 엔트로피 계수
-    ent_coef_final:  float = 0.0    # 학습 종료 시점 엔트로피 계수(선형 감쇠 목표)
-    # 감쇠를 전체 구간(1.0) 대신 초반 일부에서 끝낸다(예: 0.2=처음 20%).
-    # BC 워밍스타트와 같이 쓸 때 특히 중요 — 이미 좋은 정책 근처에서
-    # 시작했는데 감쇠를 느리게 끌면 후반까지 남은 탐색이 그 정책을 다시
-    # 흔들어버리는 게 실험으로 확인됨. bc_pretrain_epochs>0(기본값)이라
-    # 0.2로 짧게 잡는다 — BC를 끄면(0) 다시 1.0(전체 구간 감쇠)로 늘리는 걸 권장.
-    ent_coef_decay_fraction: float = 0.2
+    # BC 워밍스타트를 쓰는 경우(기본) 시작값을 크게 잡으면 안 된다 — PPO 첫
+    # 업데이트에서 advantage가 아직 신뢰할 수 없는 동안 엔트로피 항만 유효
+    # 그래디언트를 내면서 복제된 정책을 균등분포 쪽으로 되돌려버린다
+    # (= "학습할수록 나빠짐"의 주범 중 하나). 0.05 → 0.01로 낮췄다.
+    ent_coef:        float = 0.01   # 학습 시작 시점 엔트로피 계수
+    ent_coef_final:  float = 0.001  # 학습 종료 시점 엔트로피 계수(선형 감쇠 목표)
+    # 감쇠 구간. 과거에는 0.2(초반 20%에 0까지)로 짧게 잡았는데, 그건 "탐색이
+    # BC 정책을 흔들어 망가뜨린다"를 엔트로피를 죽여서 막으려던 대증요법이었다.
+    # 이제는 expert_anchor가 그 역할을 제대로 하므로(전문가에서 멀어지는 것만
+    # 직접 억제), 탐색은 오래 살려둬야 dedication '위'를 찾을 수 있다.
+    ent_coef_decay_fraction: float = 0.8
     total_timesteps: int   = 200_000
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
@@ -574,15 +581,117 @@ class RLConfig:
     # GPU / 병렬 환경 설정
     device:          str   = "auto"         # "auto" | "cuda" | "cpu"
     n_envs:          int   = 1              # SubprocVecEnv 병렬 환경 수 (1=DummyVecEnv)
-    # 모방학습(behavior cloning) 워밍스타트: DedicationAgent 시연으로 정책을
-    # 지도학습한 뒤 PPO를 이어서 돌린다. 0이면 비활성(무작위 초기화 그대로
-    # PPO 시작). epochs를 너무 크게 주면(예: 300) full-batch NLL이 거의
-    # 0까지 수렴하면서 정책이 결정적으로 붕괴(엔트로피≈0)해 PPO 학습 곡선이
-    # 평평해지는 현상이 확인됨 — 그 절충으로 epochs는 완전 수렴 전에서
-    # 멈추는 적당한 값, lr은 기본 PPO lr(3e-4)과 비슷한 수준으로 낮춰서
-    # 완전 결정적 붕괴를 피한다.
-    bc_pretrain_epochs: int   = 20
+
+    # --- PPO 안정화 하이퍼파라미터 -------------------------------------------
+    gae_lambda:      float = 0.95
+    clip_range:      float = 0.2
+    vf_coef:         float = 0.5
+    max_grad_norm:   float = 0.5
+    # 업데이트 1회가 정책을 너무 멀리 옮기면 그 epoch를 즉시 중단(SB3 내장).
+    # BC로 얻어둔 좋은 정책이 한 번의 큰 업데이트로 무너지는 걸 막는 안전장치.
+    # None이면 비활성.
+    target_kl:       Optional[float] = 0.03
+    # 예전 기본값 10은 같은 롤아웃을 10번 재사용해 off-policy drift가 컸다.
+    # 4로 낮추고 target_kl과 함께 쓰면 업데이트당 이동량이 훨씬 안정적이다.
+    n_epochs:        int   = 4
+    lr_schedule:     str  = "linear"        # "linear"(3e-4→0) | "constant"
+    # 관측 936차원(대부분 0)에 [64,64]는 표현력이 부족했다.
+    policy_net_arch: tuple = (256, 256)
+    seed:            Optional[int] = None
+    # 보상 정규화(VecNormalize(norm_reward=True)). step reward가 ±20이고
+    # 에피소드가 수백~수천 스텝이라 return이 수백~수천 규모가 되는데, 이걸
+    # 그대로 두면 value loss가 폭주해 explained_variance≈0 → advantage가 사실상
+    # 잡음이 되고 학습 곡선이 x축과 평행해진다. 관측은 이미 [0,1]로 정규화돼
+    # 있어 norm_obs는 끈다(추론 시 통계 없이도 동일 동작 보장).
+    normalize_reward: bool = True
+    # 종단 보상(w_terminal_*)까지 신호가 역전파되려면 유효 horizon이 에피소드
+    # 길이에 가까워야 한다. 0.99(유효 horizon≈100 스텝)로는 에피소드 끝의
+    # 생산량 신호가 초반 결정까지 전혀 도달하지 못한다.
+    gamma:           float = 0.997
+
+    # --- 모방학습(BC) 워밍스타트 ---------------------------------------------
+    # DedicationAgent 시연으로 정책을 지도학습한 뒤 PPO를 이어서 돌린다.
+    # 0이면 비활성(무작위 초기화 그대로 PPO 시작).
+    #
+    # 과거 구현의 문제와 대응:
+    #  · 시연이 데이터셋당 결정적 1 에피소드(=수십 스텝)뿐이라 표본이 절대적으로
+    #    부족했다 → bc_episodes_per_dataset / bc_noise_eps 로 DAgger식 상태분포
+    #    확장(무작위 교란 후 전문가 라벨 재부여)을 한다.
+    #  · 정책만 학습하고 크리틱(value head)은 무작위로 남겨둬서, PPO 첫
+    #    업데이트의 advantage가 순수 잡음이 되어 복제 정책을 즉시 파괴했다
+    #    → bc_value_coef 로 크리틱도 같이 회귀 학습한다(가장 중요한 수정).
+    #  · full-batch NLL을 오래 돌리면 엔트로피≈0으로 결정적 붕괴 →
+    #    미니배치 + 엔트로피 정규화(bc_entropy_coef) + 검증 조기종료로 막는다.
+    # epochs는 상한이고 실제 종료는 검증 NLL 조기종료가 정한다(과적합/결정적
+    # 붕괴 직전에서 멈춤) — 넉넉히 주고 조기종료에 맡기는 편이 안전하다.
+    bc_pretrain_epochs: int   = 200
     bc_pretrain_lr:     float = 3e-4
+    bc_batch_size:      int   = 256
+    bc_episodes_per_dataset: int = 16       # 데이터셋당 시연 에피소드 수
+    bc_noise_eps:       float = 0.15        # 교란(무작위 feasible 행동) 비율
+    bc_val_fraction:    float = 0.15        # 검증 분할 비율(조기종료 판정용)
+    bc_entropy_coef:    float = 0.01        # 결정적 붕괴 방지
+    bc_value_coef:      float = 0.5         # 크리틱 동시 학습 가중치
+    bc_early_stop_patience: int = 8
+    # BC 시연자 후보. 2개 이상이면 시나리오마다 실제로 굴려보고 KPI가 가장
+    # 좋은 전문가를 그 시나리오의 시연자로 쓴다(agent/experts.py). 전담이 늘
+    # 최선은 아니라서 — 처리시간이 이질적인 시나리오에서는 Earliest-ST 계열이
+    # 전담의 2배 점수를 냈다. ["dedication"]으로 두면 기존처럼 전담 고정.
+    bc_expert_candidates: tuple = ("dedication", "earliest_st")
+
+    # --- 전문가 앵커(PPO 중 BC 보조손실) -------------------------------------
+    # PPO 롤아웃마다 전문가 시연에 대해 BC 그래디언트를 몇 스텝 섞어, 정책이
+    # RL 잡음으로 전문가 정책에서 파국적으로 이탈(catastrophic forgetting)하는
+    # 걸 막는다. 계수는 학습 진행에 따라 start→final로 선형 감쇠 —
+    # 초반엔 전담 정책을 붙잡고, 후반엔 RL이 자유롭게 그 위를 개선한다.
+    # 0이면 비활성.
+    expert_anchor_coef:  float = 1.0
+    expert_anchor_final: float = 0.0
+    expert_anchor_decay_fraction: float = 0.6
+    expert_anchor_steps: int = 4            # 롤아웃당 BC 그래디언트 스텝 수
+    expert_anchor_batch: int = 256
+
+    # --- KPI 기반 best 모델 선택 ---------------------------------------------
+    # EvalCallback의 '평균 보상'은 shaping 항이 섞인 대리지표라, 보상이 가장
+    # 높은 체크포인트가 벤치마크 KPI(생산량·전환수) 최고와 일치하지 않는다.
+    # True면 eval 시점마다 실제 KPI로 채점해 best_model을 고른다.
+    kpi_eval_enabled: bool = True
+    # KPI 점수 = 생산량(sim_end 내 완료 carrier) − kpi_conversion_weight × 전환수
+    kpi_conversion_weight: float = 1.0
+    # 학습 시작 시 DedicationAgent 베이스라인 KPI를 측정해 로그·차트 기준선으로
+    # 남기고, 최종 모델이 베이스라인에 못 미치면 경고한다.
+    kpi_baseline_enabled: bool = True
+
+    # --- 학습/추론 환경 일치 --------------------------------------------------
+    # 학습 시뮬레이터는 지금까지 simulator 기본값(termination_mode="all_wip",
+    # enable_wip_inflow=True)으로 돌았는데, 추론(inference/runner.py)은
+    # termination_mode="current_wip_assigned" + enable_wip_inflow=False 로
+    # 돈다. 즉 정책이 학습한 MDP와 실제로 평가받는 MDP가 달랐다(train/serve
+    # skew) — 학습은 잘 되는데 벤치마크에서 무너지는 전형적 원인.
+    # True면 학습용 데이터셋 복사본에 추론과 같은 플래그를 채워 넣는다
+    # (데이터셋이 값을 명시했으면 그 값을 존중).
+    align_train_env_with_inference: bool = True
+    # 추론은 truncate_on_time=False(= sim_end를 지나서도 남은 재공을 계속 배정)로
+    # 도는데 학습 env는 True라 sim_end에서 잘렸다. 그래서 정책은 컷오프 이후
+    # 구간을 학습한 적이 없는데, 벤치마크는 그 구간에서 일어난 전환까지 전부
+    # 점수에 반영한다(실측: 같은 모델의 학습 KPI 전환 63회 ↔ 벤치마크 83회).
+    # False(기본)로 두면 학습·BC 시연·KPI 평가가 모두 추론과 같은 조건이 된다.
+    train_truncate_on_time: bool = False
+
+    # --- 데이터셋 샘플링 (도메인 랜덤화) ---------------------------------------
+    # "per_env": 데이터셋 1개당 env 1개 (기존 동작). 데이터셋이 많으면 롤아웃
+    #     크기가 데이터셋 수에 비례해 커져 PPO 업데이트 횟수가 줄고, 정책이
+    #     각 시나리오의 정답을 외우기 쉽다.
+    # "random_reset": env를 `dataset_pool_envs`개만 만들고 에피소드마다 풀에서
+    #     시나리오를 하나 뽑는다. 데이터셋이 아무리 많아도 롤아웃 크기가
+    #     일정하고, 같은 시나리오를 연속으로 보지 않아 일반화가 잘 된다.
+    #     (실측: per_env로 BENCH_SUITE 8종만 학습하면 그 8종에선 dedication을
+    #      상회하지만 학습에 안 쓴 HOLDOUT 6종에선 오히려 뒤졌다.)
+    dataset_sampling: str = "random_reset"
+    dataset_pool_envs: int = 4          # random_reset일 때 만들 env 수
+    # 데이터셋이 이 수 이하이면 random_reset이어도 per_env로 둔다
+    # (소수 데이터셋에서는 env를 나눠 쓰는 편이 롤아웃 다양성에 유리).
+    dataset_sampling_min_pool: int = 2
 
 
 @dataclass
@@ -631,6 +740,22 @@ class RewardConfig:
     # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
     use_achievable_target: bool = True
 
+    # --- 종단(terminal) KPI 정렬 보상 (SchedulingRLEnv 전용) -------------------
+    # 지금까지의 step reward는 전부 대리지표(전환 패널티, 같은 셋업 보너스,
+    # 블록 크기 보너스…)라서 "보상이 가장 높은 정책"과 "벤치마크 KPI가 가장
+    # 좋은 정책"이 일치한다는 보장이 없었다. 벤치마크가 실제로 재는 값
+    # (sim_end 안에 끝난 carrier 수, 전환 총횟수)을 에피소드 종료 시 직접
+    # 보상으로 준다 → 최적화 대상과 평가 대상을 일치시킨다.
+    #
+    # 이 항은 step reward clip 적용 이후에 더해진다(clip에 눌리면 의미 없음).
+    # 신호가 초반 결정까지 역전파되려면 RLConfig.gamma가 충분히 커야 한다
+    # (기본 0.997).
+    w_terminal_throughput: float = 30.0   # × (완료 carrier / 생산가능 carrier)
+    w_terminal_conversion: float = -1.0   # × 전환 총횟수
+    # 종단 보상 전체를 이 범위로 clip (한 스텝에 과도한 보상이 들어가 PPO
+    # advantage 분포를 망가뜨리는 걸 방지). 0이면 clip 없음.
+    terminal_reward_clip: float = 60.0
+
 
 def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
     """RewardConfig → API/UI 공유 dict."""
@@ -651,6 +776,9 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
         "reward_clip": r.reward_clip,
         "use_achievable_target": r.use_achievable_target,
+        "w_terminal_throughput": r.w_terminal_throughput,
+        "w_terminal_conversion": r.w_terminal_conversion,
+        "terminal_reward_clip": r.terminal_reward_clip,
     }
 
 
@@ -663,6 +791,7 @@ def apply_reward_params(params: dict) -> None:
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
         "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
+        "w_terminal_throughput", "w_terminal_conversion", "terminal_reward_clip",
     )
     for key in float_keys:
         if key in params and params[key] is not None:

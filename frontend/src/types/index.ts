@@ -337,6 +337,11 @@ export interface TrainMetrics {
   mean_prod_sw: number;
   mean_idle: number;
   mean_completion: number;
+  mean_conversions: number;
+  /** sim_end 안에 완료된 carrier 수 — 벤치마크 '생산량'과 같은 정의. */
+  mean_produced_carriers: number;
+  /** 생산량 − kpi_conversion_weight × 전환수. 벤치마크 점수와 직접 비교 가능. */
+  mean_kpi_score: number;
 }
 
 export interface TrainLogEntry {
@@ -353,6 +358,18 @@ export interface TrainSeries {
   policy_loss: number[];
   value_loss: number[];
   explained_variance: number[];
+  /**
+   * KPI 평가 계열 (CONFIG.rl.kpi_eval_enabled=True일 때 채워진다).
+   * shaping 보상 곡선(ep_rew_mean/eval_reward)과 달리 벤치마크 목표
+   * (생산 carrier 수 − 전환수)에 직접 대응해 해석하기 쉽다.
+   * kpi_eval_enabled=False면 이쪽이 비고 eval_reward가 채워진다.
+   */
+  kpi_timesteps: number[];
+  kpi_score: number[];
+  kpi_produced: number[];
+  kpi_conversions: number[];
+  /** DedicationAgent 기준선 — 차트의 수평 기준선으로 쓴다. */
+  kpi_baseline_score: number[];
 }
 
 export interface TrainStatusResponse {

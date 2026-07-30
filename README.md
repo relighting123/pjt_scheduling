@@ -205,12 +205,37 @@ run_inference(env_data, algorithm="earliest_st")
 
 | 항목 | 값 |
 |------|-----|
-| Action | `Discrete(O×P)` = `(OPER, PPK)` bucket |
-| Mask | 현재 idle EQP feasible bucket |
-| obs_dim | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
+| Action | `MultiDiscrete([O×P, L])` = `(OPER/PPK bucket, 블록 크기 레벨)` |
+| Mask | 현재 idle EQP feasible bucket ｜ 크기 레벨 |
+| obs_dim (기본 env) | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
+| obs_dim (`SchedulingRLEnv`) | 936 + **6**(결정 컨텍스트) = **942** |
 
 **Bucket feature (po 6ch + pom 5ch)**: WIP 비율, urgency, achievable_ratio, projected_cover_ratio, starve_time_norm / ST, conversion·tool 가용, avoidable_frac, setup_changed 등.
 prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설비 수(`n_eqp_per_oper`) 기반이라 설비 공유·실시간 배정 상태를 반영 못 했고, LOT_CD/TEMP는 범주형 ID를 순서 있는 스칼라로 인코딩해 신호 품질이 낮았음 (전환 관련 정보는 pom_feats에 이미 더 정확히 포함).
+
+**결정 컨텍스트 6채널** (`SchedulingRLEnv` 전용, 항상 활성):
+결정 장비 유무 / 범용성(model_breadth) / 첫 셋업 여부 / **블록 진행 여부** /
+**블록 잔여율** / idle 장비 비율.
+
+핵심은 **블록 상태(3·4번 채널)** 다. `self._block`(어느 버킷을 몇 carrier 남기고
+커밋 중인지)은 env 레이어에만 있고 시뮬레이터에는 없어서, "새 블록을 시작하는
+스텝"과 "블록이 3장 남은 스텝"의 관측이 같았다 — 행동 의미는 전혀 다른데도
+(블록 중이면 마스크가 같은 버킷을 강제하고 `size_level`은 무시된다). 크리틱
+입장에서 남은 커밋 길이에 따라 기대 return이 크게 다른데 구분할 수가 없어
+value 추정과 advantage가 같이 흐려진다.
+
+> ⚠️ **호기(장비 고유 번호)는 관측에 넣지 않는다.**
+> 한때 "같은 모델 설비가 여러 대면 대칭이라 구분이 안 된다"며
+> `(장비 순번)/(장비 수)` 채널을 넣었으나 근거가 틀렸다. 결정은 **순차적**이라
+> 앞 설비가 배정하면 WIP·cover가 바뀌어 다음 설비는 이미 다른 상태를 본다 —
+> SYM_5x5 실제 롤아웃 30개 결정에서 '다른 설비인데 관측이 동일한' 쌍은 **0개**였다
+> (동일하게 보였던 건 t=0 상태를 고정한 채 `_current_eqp`만 바꿔치기한 인위적
+> 테스트에서였다). 반대로 순번 채널의 해악은 분명하다: ① 정책이 "0.6번 설비는
+> 제품 3"을 외워서 설비가 다운·추가되면 인덱스가 밀려 매핑이 통째로 깨지고,
+> ② 명목형 ID를 순서형 축에 얹어 없는 순서 관계를 주입한다(설비 수가 바뀌면
+> 같은 호기의 값도 달라진다). 설비를 구분해야 한다면 식별자가 아니라
+> **성질**(범용성·셋업 상태·블록 상태)로 구분한다.
+> `tests/test_terminal_reward.py`가 이 두 가지를 회귀 테스트로 잡아둔다.
 
 ### Reward (`config.py` 기본값)
 
@@ -222,32 +247,198 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 | `w_bulk_block_bonus` | 3.0 | (Bulk-Fill 전용) 같은 제품군을 큰 블록으로 커밋할수록 보상 |
 | `w_dedication_misuse` | -4.0 | (Bulk-Fill 전용) 범용 장비가 더 전용적인 idle 장비 몫의 버킷을 잡으면 감점 |
 | `w_redundant_cover` | -5.0 | (Bulk-Fill 전용) 이미 다른 장비가 충분히 커버 중인 버킷을 또 잡으면 감점 |
-| `reward_clip` | ±10.0 | PPO 안정화 |
+| `reward_clip` | ±20.0 | step reward clip (PPO 안정화) |
+| `w_terminal_throughput` | 30.0 | **에피소드 종료 시** `완료 carrier / 생산가능 carrier` 비율 보상 |
+| `w_terminal_conversion` | -1.0 | **에피소드 종료 시** 전환 총횟수 패널티 |
+| `terminal_reward_clip` | ±60.0 | 종단 보상 clip |
 | `w_plan_hit` / `w_pacing` / `w_flow_balance` / `w_idle_per_min` | 0.0 | cover 무시·전담 방해로 판단되어 제거됨(주석 참고) |
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.
 
-`w_bulk_block_bonus`/`w_dedication_misuse`/`w_redundant_cover`(전담 셰이핑),
-`RLConfig.ent_coef`/`ent_coef_final`(0.05→0.0 선형 감쇠, `ent_coef_decay_fraction`으로
-감쇠를 초반 일부에서 끝낼 수도 있음), `reward_clip=20.0`(`w_conversion`+
-`w_avoidable_conversion`이 이전 clip=10에 눌려 회피 가능 전환 신호가 죽어있던 걸
-수정)은 모두 대칭 벤치마크(SYM_5x5 등, 설비=제품 전담 시 전환 0회가 최적)에서
-실험으로 검증된 값이다.
+**종단(terminal) KPI 보상**: 위 step reward는 전부 대리지표라 "보상이 가장 높은
+정책"이 "벤치마크 KPI가 가장 좋은 정책"이라는 보장이 없었다. `w_terminal_*`는
+벤치마크가 실제로 재는 값(sim_end 안에 끝난 carrier 수, 전환 총횟수)을 에피소드
+종료 시 그대로 보상으로 준다 → 최적화 대상과 평가 대상을 일치시킨다. 이 항은
+**step clip 이후**에 더해지고(clip에 눌리면 의미가 없음), 신호가 초반 결정까지
+역전파되도록 `RLConfig.gamma`를 0.997로 올렸다.
 
-이것만으로는 SYM_5x5에서 전환이 2회 수준까지만 줄고 정체됐는데, 다음 두 가지를
-추가로 확인했다:
-- **모방학습(behavior cloning) 워밍스타트** (`RLConfig.bc_pretrain_epochs`, 기본 0=비활성):
-  이미 전환 0회를 확정적으로 내는 `DedicationAgent` 시연으로 PPO 정책을 먼저 지도학습시킨
-  뒤 RL을 이어감. 켜면(`bc_pretrain_epochs=300` 등) 1만 스텝 만에 전환 0회에 도달.
-- **`restore_best`** (`SchedulingAgent.train()`, 기본 `True`): PPO는 이미 좋은 정책을
-  찾은 뒤에도 계속 학습하며 오히려 나빠질 수 있어서(SYM_5x5에서 실측: 1만~9만 스텝은
-  전환 0회를 유지하다 10만 스텝에 다시 나빠짐), 학습 종료 시점의 모델 대신
-  `EvalCallback`이 저장해둔 `best_model.zip`으로 자동 복원한다.
+---
 
-`bc_pretrain_epochs`를 켠 상태로 이 둘을 함께 쓰면 SYM_5x5에서 시드 2개(0, 1) 모두
-`agent.train()` → `agent.evaluate()` 표준 흐름만으로 전환 0회·생산 30/30에 재현
-확인됨. `bc_pretrain_epochs`는 아직 기본값이 꺼져 있으므로(opt-in), 켜려면
-학습 전에 `CONFIG.rl.bc_pretrain_epochs = 300` 등으로 설정한다.
+### 모방학습(BC) → 강화학습 파이프라인
+
+"Dedication 시연으로 모방학습한 뒤 PPO로 개선한다"는 구조 자체는 맞지만, 초기
+구현은 **RL을 돌릴수록 성적이 나빠지고 학습 곡선이 x축과 평행**한 문제가 있었다
+(BENCH_SUITE 8종 실측: Dedication 점수 77.0 → RL 23.0). 원인은 하나가 아니라
+아래 8가지가 겹친 것이고, 각각을 개별적으로 고쳤다.
+
+| # | 원인 | 대응 | 위치 |
+|---|------|------|------|
+| ① | **BC 표본 부족** — 데이터셋당 결정적 시연 1 에피소드(수십 스텝)뿐 | ε 교란 후 **전문가 라벨 재부여**(DAgger식)로 상태분포 확장 | `agent/bc.py: collect_expert_dataset()` |
+| ② | **크리틱 미학습** — value head가 무작위 → PPO 첫 업데이트의 advantage가 순수 잡음이 되어 복제 정책을 즉시 파괴 | 시연의 할인 return-to-go로 **value head도 동시 회귀** | `agent/bc.py: behavior_clone(value_coef)` |
+| ③ | **결정적 붕괴** — full-batch NLL을 오래 돌리면 엔트로피≈0 → 탐색·학습 불가 | 미니배치 + 엔트로피 정규화 + **검증 NLL 조기종료** | `agent/bc.py: behavior_clone()` |
+| ④ | **파국적 망각** — 워밍스타트만으로는 RL 잡음에 전문가 정책에서 이탈 | 롤아웃마다 BC 보조 그래디언트를 섞고 계수를 감쇠 | `agent/bc.py: ExpertAnchorCallback` |
+| ⑤ | **보상 스케일** — step reward ±20 × 수백 스텝 → return 수백 규모, value loss 폭주, `explained_variance≈0` → advantage가 잡음 → **곡선이 평평** | `VecNormalize(norm_reward=True)` | `RLConfig.normalize_reward` |
+| ⑥ | **업데이트 횟수 부족** — `n_steps=2048` × 데이터셋 8개 = 롤아웃 16,384 → 200k 예산에서 PPO 업데이트가 **12번** | `n_steps` 2048 → 512 | `RLConfig.n_steps` |
+| ⑦ | **시연자가 전담 하나로 고정** — 정책의 출발점 상한이 전담 휴리스틱이었다. 전담이 늘 최선은 아니다(LOAD_stmix에서 Earliest-ST가 2배 점수) | 시나리오마다 후보 전문가를 굴려 KPI 최고를 시연자로 선택 | `agent/experts.py`, `RLConfig.bc_expert_candidates` |
+| ⑧ | **시나리오 암기** — 8종만 co-train하니 그 8종에선 이기고 학습에 안 쓴 6종에선 졌다 | 에피소드마다 시나리오 풀에서 뽑는 도메인 랜덤화 | `RandomizedSchedulingRLEnv`, `RLConfig.dataset_sampling` |
+
+추가로:
+
+- **KPI 기반 best 모델 선택** (`RLConfig.kpi_eval_enabled`, 기본 `True`):
+  `EvalCallback`은 *평균 보상*이 최고인 체크포인트를 남기는데, shaping 보상 최고점이
+  벤치마크 KPI 최고점과 일치한다는 보장이 없다. 대신 eval 시점마다 실제 KPI
+  (`생산량 − kpi_conversion_weight × 전환수`)로 채점해 best를 고른다
+  (`agent/kpi_eval.py`). **워밍스타트 직후 성적도 후보에 포함**되므로, RL이 그보다
+  나아지지 못하면 `restore_best`가 BC 시점 모델을 되돌린다 — 즉 **"RL 때문에
+  나빠지는" 경우가 구조적으로 없다.**
+- **Dedication 기준선 자동 측정** (`RLConfig.kpi_baseline_enabled`): 학습 시작 시
+  같은 환경에서 `DedicationAgent` KPI를 재고, 매 eval마다 기준선 대비 격차를
+  로그·차트에 남긴다. 최종 모델이 기준선에 못 미치면 경고한다.
+- **학습/추론 환경 일치** (`RLConfig.align_train_env_with_inference`,
+  `RLConfig.train_truncate_on_time`): 학습은
+  simulator 기본값(`termination_mode="all_wip"`, `enable_wip_inflow=True`,
+  `truncate_on_time=True`)으로,
+  추론은 `"current_wip_assigned"` + `inflow=False` + `truncate_on_time=False`로
+  돌고 있었다 — 학습한 MDP와
+  평가받는 MDP가 다른 train/serve skew. 이제 학습용 데이터셋 복사본에 추론과 같은
+  플래그를 채워 넣는다.
+- **PPO 안정화**: `n_epochs` 10 → 4, `target_kl=0.03`, lr 선형 감쇠,
+  `net_arch=[256,256]`, `gamma` 0.99 → 0.997.
+- **엔트로피 스케줄**: 과거에는 `ent_coef` 0.05 → 0을 **초반 20%**에 끝냈는데,
+  이건 "탐색이 BC 정책을 망가뜨린다"를 탐색을 죽여서 막는 대증요법이었다. 이제
+  ④ 앵커가 그 역할을 제대로 하므로 0.01 → 0.001을 **80% 구간**에 걸쳐 감쇠시켜
+  Dedication '위'를 찾을 탐색 여지를 남긴다.
+
+**수렴 차트**: KPI 평가를 쓰면 `EvalCallback`이 돌지 않아 `evaluations.npz`가 없다.
+대신 `models/{...}/logs/kpi_evaluations.json`에 KPI 곡선이 남고,
+`agent/training_report.py`가 이걸 읽어 **KPI 점수 · 생산량 · 전환수 + Dedication
+기준선**을 한 패널로 그린다. 점수(수십 규모)와 생산량(수백 규모)은 축을 분리한다
+— 한 축에 그리면 축 범위가 생산량에 끌려가 점수 곡선이 다시 '평평해 보인다'.
+`verdict`도 shaping 보상이 아니라 이 KPI 곡선 기준으로 판정한다.
+
+**시연자 선택 (`agent/experts.py`)**: 후보는 `dedication` / `minprogress` /
+`earliest_st`(RL env의 버킷 단위로 재구현한 버전)이고, 기본 후보군은
+`("dedication", "earliest_st")`. 시나리오마다 후보를 실제로 굴려
+`생산량 − 전환수`가 가장 높은 쪽을 그 시나리오의 시연자로 쓴다. BENCH_SUITE
+실측으로는 대칭·제품과잉·전환과중 6종은 `dedication`, 부하 불균등 2종
+(LOAD_skew·LOAD_stmix)은 `earliest_st`가 선택된다 — 이 조합의 오라클 점수는
+**85.0**(전담 단독 77.0)이라, BC 출발점 자체가 8점 올라간다.
+
+### 벤치마크 / 일반화 검증
+
+| 스위트 | 생성 | 용도 | Dedication 기준선 |
+|--------|------|------|-------------------|
+| BENCH_SUITE (8종) | `benchmark/gen_bench_suite.py` | 학습 + 평가(co-train) | 생산 161/208, 전환 84, **점수 77.0** |
+| HOLDOUT_SUITE (6종) | `benchmark/gen_holdout_suite.py` | **학습에 쓰지 않음** — 일반화 검증 | 생산 139/180, 전환 67, **점수 72.0** |
+| TRAIN_POOL (96종) | `benchmark/gen_train_pool.py` | 도메인 랜덤화 학습 전용 | — |
+
+> **HOLDOUT이 왜 필요한가.** BENCH 8종은 학습에도 쓰는 "풀어본 문제집"이라, 그 점수만으로는
+> *정책을 배운 것*과 *그 8개의 정답을 외운 것*을 구분할 수 없다. HOLDOUT은 같은 4개
+> 카테고리를 유지하되 설비 수·제품 수·캐리어·ST·전환시간을 전부 다르게 만든 "처음 보는
+> 시험지"이고, **학습 파이프라인 어디에서도 로드하지 않는다**. 실제로 이 구분이 없었으면
+> 큰 문제를 놓칠 뻔했다 — BENCH 8종만 학습한 모델은 BENCH에서 +14.0인데 HOLDOUT에서
+> −25.0이었다(아래 경고 참고).
+
+#### 데이터셋별 스펙
+
+공통: **단일 공정(OPER001)·단일 장비모델(A)**. `mix`는 캐리어의 홈 설비 분산도
+(`discrete_arrange`가 어느 설비에 선언되는지) — 0이면 제품별로 한 설비에 몰리고,
+0.9면 여러 설비에 흩어진다. `sim`은 "최소 전환만 했을 때 전량 생산 가능한 길이"라,
+초과 전환이 그대로 생산 손실이 된다.
+
+**BENCH_SUITE — 학습 + 평가**
+
+| 데이터셋 | 카테고리 | 설비 | 제품 | 캐리어 | ST(분) | 전환(분) | sim | mix | 무엇을 보는가 |
+|----------|----------|-----:|-----:|-------:|--------|---------:|----:|----:|---------------|
+| `SYM_3x3` | 대칭 기준 | 3 | 3 | 24 | 60 | 60 | 480 | 0.0 | 설비=제품. 전담하면 전환 0이 최적 — 대조군 |
+| `SYM_5x5` | 대칭 기준 | 5 | 5 | 30 | 48 | 48 | 290 | 0.0 | 같은 구조를 5×5로 확대. 전담 유지가 되는가 |
+| `OVER_5p3` | 제품 과잉 | 3 | 5 | 20 | 60 | 60 | 520 | 0.9 | 제품 > 설비 → 전환 불가피. **어느 제품을** 전환할지 |
+| `OVER_7p4` | 제품 과잉 | 4 | 7 | 28 | 45 | 45 | 450 | 0.9 | 7제품을 4대에 분배. 난이도 최상 |
+| `LOAD_skew` | 부하 불균등 | 4 | 4 | 30 | 60 | 60 | 450 | 0.9 | 계획량 14·8·4·4로 편중. 균등 분배 ≠ 최적 |
+| `LOAD_stmix` | 부하 불균등 | 4 | 4 | 32 | **30·45·60·90** | 60 | 450 | 0.9 | 제품별 처리시간 이질 — 전담보다 빠른 ST 우선이 유리 |
+| `CONV_x2` | 전환 과중 | 4 | 4 | 24 | 45 | **90**(ST×2) | 270 | 0.9 | 전환 1회 = 캐리어 2장 손실 |
+| `CONV_x3` | 전환 과중 | 3 | 5 | 20 | 40 | **120**(ST×3) | 510 | 0.9 | 전환 과중 + 제품 과잉 복합 |
+
+**HOLDOUT_SUITE — 학습에 쓰지 않음(일반화 검증)**
+
+| 데이터셋 | 카테고리 | 설비 | 제품 | 캐리어 | ST(분) | 전환(분) | sim | mix | BENCH와 다른 점 |
+|----------|----------|-----:|-----:|-------:|--------|---------:|----:|----:|-----------------|
+| `H_SYM_4x4` | 대칭 기준 | 4 | 4 | 28 | 50 | 50 | 350 | 0.0 | BENCH에 없는 4×4 규모 |
+| `H_SYM_6x6` | 대칭 기준 | 6 | 6 | 30 | 42 | 42 | 210 | 0.0 | BENCH 최대(5×5)보다 큼 |
+| `H_OVER_6p4` | 제품 과잉 | 4 | 6 | 30 | 55 | 55 | 530 | 0.9 | 6제품/4설비 (BENCH는 5/3, 7/4) |
+| `H_LOAD_skew2` | 부하 불균등 | 5 | 5 | 40 | 55 | 55 | 440 | 0.9 | 계획량 16·10·6·4·4, 설비 5대 |
+| `H_LOAD_stmix2` | 부하 불균등 | 3 | 3 | 27 | **25·50·75** | 50 | 450 | 0.9 | 3×3 소규모 + ST 이질 |
+| `H_CONV_x25` | 전환 과중 | 5 | 5 | 25 | 40 | **100**(ST×2.5) | 200 | 0.9 | BENCH에 없는 2.5배 전환 |
+
+**TRAIN_POOL (96종)** — 위 4개 카테고리를 유지하되 설비 3~6대, 제품·캐리어·ST·전환시간을
+난수로 뽑은 학습 전용 시나리오다(`--seed 7` 고정 재현). 평가 스위트와 id 접두사(`TP_`)가
+달라 폴더가 겹치지 않는다.
+
+```bash
+python benchmark/gen_bench_suite.py            # 평가 스위트
+python benchmark/gen_holdout_suite.py          # 일반화 검증 스위트
+python benchmark/gen_train_pool.py --count 48  # 학습 시나리오 풀
+
+# 학습 + 벤치마크 + 일반화 검증
+python benchmark/train_bench_suite.py --timesteps 900000 --train-pool --holdout
+
+# 저장된 모델만 채점
+python benchmark/compare_vs_dedication.py --suite bench
+python benchmark/compare_vs_dedication.py --suite holdout
+```
+
+`compare_vs_dedication.py`는 `dedication` 기준선 대비 승/무/패와 점수 격차를
+데이터셋별로 출력한다.
+
+#### 저장소에 포함된 기준 모델
+
+`models/scheduling_rl.zip`(obs_dim 942)은 위 표의 성적을 내는 학습 완료 모델이다.
+코드만 받아서 재현하려면 CPU 40분+가 걸려서, 바로 추론에 쓸 수 있게 함께 둔다.
+`models/training_convergence_scheduling_rl.png`(수렴 차트)과
+`models/training_history_scheduling_rl.json`(KPI 곡선 38포인트 원자료)도 같이 있다.
+
+```bash
+python benchmark/compare_vs_dedication.py --suite bench     # 88.0 (+11.0)
+python benchmark/compare_vs_dedication.py --suite holdout   # 79.0 (+7.0)
+```
+
+FAC별 모델(`models/{FAC_ID}/`)·체크포인트는 여전히 `.gitignore` 대상이다 —
+운영은 각 FAC 데이터로 재학습해서 쓴다.
+
+#### 실측 결과 (CPU, 90만 스텝, `--train-pool --bench-weight 2`)
+
+점수 = `sim_end 안에 완료된 carrier − 전환 횟수`.
+
+| 알고리즘 | BENCH (8종) | vs Ded | HOLDOUT (6종) | vs Ded |
+|----------|------------:|-------:|--------------:|-------:|
+| Earliest-ST | 27.0 | −50.0 | 19.0 | −53.0 |
+| Min-Progress | 35.0 | −42.0 | 50.0 | −22.0 |
+| **Dedication (기준선)** | **77.0** | — | **72.0** | — |
+| 개선 전 RL (20만 스텝) | 26.0 | −51.0 | — | — |
+| **Bulk-Fill RL (개선 후)** | **88.0** | **+11.0** | **79.0** | **+7.0** |
+
+개선 전 RL은 기준선은 물론 **모든 휴리스틱보다 낮았다**(26.0 < Earliest-ST 27.0).
+개선 후 모델은 BENCH 3승 5무 0패, HOLDOUT 2승 4무 0패 — **14개 데이터셋 어디에서도
+dedication보다 나쁘지 않다.** 생산은 161→166(BENCH)·139→142(HOLDOUT),
+전환은 84→78·67→63으로 함께 개선된다.
+
+시드·설정을 바꾼 다른 실행은 BENCH를 더 올릴 수 있지만(최고 90.0, +13.0) HOLDOUT에서
+1패가 생겼다. `select_best_model.py --require-holdout`으로 후보를 걸러낸 뒤,
+**어느 데이터셋에서도 기준선에 지지 않는** 쪽을 최종 모델로 채택했다.
+
+> ⚠️ **평가 데이터로 학습하면 점수는 오르고 실력은 떨어진다.**
+> BENCH_SUITE 8종만으로 60만 스텝 co-train하면 그 8종에서는 dedication 대비
+> **+14점**(4승 4무 0패)이 나오지만, 학습에 쓰지 않은 HOLDOUT 6종에서는
+> **−25점**으로 뒤집힌다 — 전담만 하면 되는 대칭 케이스(H_SYM_6x6)조차
+> 전환 0회 → 17회로 무너진다. 정책이 아니라 그 8개의 정답 순열을 외운 것이다.
+> 그래서 실전 학습은 `--train-pool`(도메인 랜덤화)을 함께 쓰고, 결과는 반드시
+> `--suite holdout`으로 재검증한다. 학습 시나리오가 12개 이하이고 별도 평가셋도
+> 없으면 `SchedulingAgent.train()`이 이 위험을 로그로 경고한다.
+>
+> **운영 데이터에도 같은 이야기가 적용된다** — RULE_TIMEKEY 기간을 1~2개만
+> 써서 학습하면 그 기간을 외운다. 기간을 최대한 많이 모아
+> (`main.py train --all`) `dataset_sampling="random_reset"`(기본)으로 돌리는 걸
+> 권장한다.
 
 ### FAC_ID별 모델 관리
 

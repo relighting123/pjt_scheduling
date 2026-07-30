@@ -169,13 +169,27 @@ def format_obs_dim_mismatch(
     env_data: Optional[dict] = None,
     source: str = "",
     model_files: Optional[List[str]] = None,
+    extra_dim: int = 0,
 ) -> str:
-    """obs_dim 불일치 시 config·데이터·모델 정보를 포함한 진단 메시지."""
+    """obs_dim 불일치 시 config·데이터·모델 정보를 포함한 진단 메시지.
+
+    extra_dim: 표준 공식(6 + O×P×6 + O×P×K×5) 위에 얹힌 추가 채널 수.
+        `SchedulingRLEnv`는 결정 컨텍스트 채널을 덧붙이므로, 이 값을 넘겨야
+        "표준 공식과 맞지 않습니다" 같은 오해를 주는 설명이 나오지 않는다.
+    """
     header = "관측 차원(obs_dim) 불일치"
     if source:
         header += f" ({source})"
 
     lines = [header, ""]
+    if extra_dim:
+        lines.append(
+            f"※ SchedulingRLEnv는 표준 관측 위에 결정 컨텍스트 {extra_dim}채널을"
+            " 덧붙입니다. 아래 분해는 그 채널을 뺀 값 기준입니다."
+        )
+        lines.append("")
+        expected_dim = expected_dim - extra_dim
+        actual_dim = actual_dim - extra_dim
     lines.extend(
         _describe_obs_dim_side(expected_dim, title="현재 환경 (config 기준)", use_config_axes=True)
     )

@@ -126,6 +126,16 @@ class TrainProgressState:
                 "policy_loss": [],
                 "value_loss": [],
                 "explained_variance": [],
+                # KPI 평가 계열 (agent/kpi_eval.py; CONFIG.rl.kpi_eval_enabled).
+                # shaping 보상 곡선(ep_rew_mean/eval_reward)과 달리 벤치마크
+                # 목표에 직접 대응해서 해석이 쉽다 — UI 학습 차트는 이쪽을
+                # 주 지표로 쓰는 게 좋다. kpi_baseline_score는 DedicationAgent
+                # 기준선(수평 기준선)이다.
+                "kpi_timesteps": [],
+                "kpi_score": [],
+                "kpi_produced": [],
+                "kpi_conversions": [],
+                "kpi_baseline_score": [],
             }
             self.metrics: Optional[dict] = None
             self.error: Optional[str] = None
