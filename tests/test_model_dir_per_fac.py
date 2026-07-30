@@ -58,8 +58,12 @@ def test_save_and_load_are_isolated_per_fac_id(tmp_path, monkeypatch):
 
     ed = _load_ed()
 
+    # train()에도 fac_id를 넘긴다 — 넘기지 않으면 best/checkpoints 산출물이
+    # 공용 경로에 남아서 "공용 경로엔 아무것도 없다"는 이 테스트의 전제가
+    # 깨진다(학습 산출물이 공용 경로에 생기는 건 의도된 동작이다).
     agent_a = SchedulingAgent()
-    agent_a.train([ed], verbose=0, env_cls=SchedulingRLEnv, restore_best=False)
+    agent_a.train([ed], verbose=0, env_cls=SchedulingRLEnv, restore_best=False,
+                  fac_id="FAC001")
     agent_a.save(fac_id="FAC001")
 
     # FAC001 하위에만 저장되고, 공용 경로(models/ 바로 아래)에는 없어야 한다
@@ -77,7 +81,8 @@ def test_save_and_load_are_isolated_per_fac_id(tmp_path, monkeypatch):
 
     # FAC002에 별도로 저장하면 FAC001과 섞이지 않아야 한다
     agent_b = SchedulingAgent()
-    agent_b.train([ed], verbose=0, env_cls=SchedulingRLEnv, restore_best=False)
+    agent_b.train([ed], verbose=0, env_cls=SchedulingRLEnv, restore_best=False,
+                  fac_id="FAC002")
     agent_b.save(fac_id="FAC002")
     assert (tmp_path / "FAC002" / f"{CONFIG.rl.model_name}.zip").exists()
     assert agent_probe.model_exists(fac_id="FAC001") is True

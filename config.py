@@ -681,6 +681,21 @@ class RLConfig:
     # False(기본)로 두면 학습·BC 시연·KPI 평가가 모두 추론과 같은 조건이 된다.
     train_truncate_on_time: bool = False
 
+    # --- 데이터셋 샘플링 (도메인 랜덤화) ---------------------------------------
+    # "per_env": 데이터셋 1개당 env 1개 (기존 동작). 데이터셋이 많으면 롤아웃
+    #     크기가 데이터셋 수에 비례해 커져 PPO 업데이트 횟수가 줄고, 정책이
+    #     각 시나리오의 정답을 외우기 쉽다.
+    # "random_reset": env를 `dataset_pool_envs`개만 만들고 에피소드마다 풀에서
+    #     시나리오를 하나 뽑는다. 데이터셋이 아무리 많아도 롤아웃 크기가
+    #     일정하고, 같은 시나리오를 연속으로 보지 않아 일반화가 잘 된다.
+    #     (실측: per_env로 BENCH_SUITE 8종만 학습하면 그 8종에선 dedication을
+    #      상회하지만 학습에 안 쓴 HOLDOUT 6종에선 오히려 뒤졌다.)
+    dataset_sampling: str = "random_reset"
+    dataset_pool_envs: int = 4          # random_reset일 때 만들 env 수
+    # 데이터셋이 이 수 이하이면 random_reset이어도 per_env로 둔다
+    # (소수 데이터셋에서는 env를 나눠 쓰는 편이 롤아웃 다양성에 유리).
+    dataset_sampling_min_pool: int = 2
+
 
 @dataclass
 class RewardConfig:

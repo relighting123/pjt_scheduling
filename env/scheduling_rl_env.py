@@ -460,3 +460,37 @@ class SchedulingRLEnv(gym.Env):
 
     def get_decision_log(self) -> list:
         return list(self._decision_log)
+
+
+class RandomizedSchedulingRLEnv(SchedulingRLEnv):
+    """에피소드마다 데이터셋 풀에서 하나를 무작위로 골라 도는 env (도메인 랜덤화).
+
+    왜 필요한가: 데이터셋 하나당 env 하나를 만들어 co-train하면, 정책이
+    "전담이라는 규칙"이 아니라 "이 8개 시나리오의 정답 순열"을 외워버린다
+    (실측: 학습에 쓴 BENCH_SUITE 8종에서는 dedication을 +5점 상회하는데,
+    학습에 쓰지 않은 HOLDOUT 6종에서는 −7점으로 뒤집혔다 — 대칭
+    케이스 H_SYM_6x6에서조차 전환 4회).
+
+    같은 관측/행동 공간을 쓰는 시나리오들을 한 env가 번갈아 돌면
+      · 정책이 시나리오 고유 패턴을 외울 수 없어 일반화되고,
+      · env 수를 늘리지 않아도 되므로 롤아웃 크기가 커지지 않아
+        같은 예산에서 PPO 업데이트 횟수가 유지된다.
+
+    관측/행동 공간은 CONFIG.env의 고정 축(O, P, K)으로 정해지므로 풀 안의
+    시나리오끼리 규모가 달라도 공간은 동일하다.
+    """
+
+    def __init__(self, datasets: List[dict], *, pool_seed: Optional[int] = None, **kwargs):
+        pool = list(datasets)
+        if not pool:
+            raise ValueError("데이터셋 풀이 비어 있습니다.")
+        super().__init__(pool[0], **kwargs)
+        self._pool = pool
+        self._pool_rng = np.random.default_rng(pool_seed)
+        self.current_dataset_index: int = 0
+
+    def reset(self, *, seed=None, options=None) -> Tuple[np.ndarray, dict]:
+        idx = int(self._pool_rng.integers(len(self._pool)))
+        self.current_dataset_index = idx
+        self._env_data = self._pool[idx]
+        return super().reset(seed=seed, options=options)
