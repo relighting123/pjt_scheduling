@@ -3,7 +3,7 @@ utils/helpers.py – 공통 유틸리티
 범주형 인코딩, 검증 등 프로젝트 전반에서 재사용되는 함수 모음.
 """
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 
 def minutes_to_str(minutes: int, base: datetime) -> str:
@@ -70,10 +70,100 @@ def _pick_record_field(record: dict, *names: str):
     return None
 
 
+def _lot_cd_to_models(
+    discrete_arrange: List[dict],
+    lot_master: Optional[List[dict]] = None,
+) -> Dict[str, Set[str]]:
+    """LOT_CD별 discrete_arrange에 등장하는 EQP_MODEL_CD 집합."""
+    lot_id_to_cd: Dict[str, str] = {}
+    for row in lot_master or []:
+        lot_id = _pick_record_field(row, "LOT_ID")
+        lot_cd = _pick_record_field(row, "LOT_CD")
+        if lot_id is None or lot_cd is None:
+            continue
+        lot_id_to_cd[str(lot_id).strip()] = str(lot_cd).strip()
+
+    lot_cd_models: Dict[str, Set[str]] = {}
+    for row in discrete_arrange or []:
+        model = _pick_record_field(row, "EQP_MODEL_CD")
+        if model is None:
+            model = _pick_record_field(row, "EQP_MODEL")
+        if model is None or not str(model).strip():
+            continue
+        model_s = str(model).strip().upper()
+        lot_id = _pick_record_field(row, "LOT_ID")
+        lot_cd = lot_id_to_cd.get(str(lot_id).strip()) if lot_id is not None else None
+        if not lot_cd:
+            continue
+        lot_cd_models.setdefault(lot_cd, set()).add(model_s)
+    return lot_cd_models
+
+
+def backfill_tool_capacity_rows(
+    records: List[dict],
+    discrete_arrange: List[dict],
+    lot_master: Optional[List[dict]] = None,
+) -> Tuple[List[dict], List[str]]:
+    """EQP_MODEL_CD가 비어 있는 tool_capacity 행을 discrete_arrange에서 보정.
+
+    Returns:
+        (보정된 원본 형태 레코드 목록, 경고 메시지 목록)
+    """
+    if not records:
+        return [], []
+
+    lot_cd_models = _lot_cd_to_models(discrete_arrange, lot_master)
+    out: List[dict] = []
+    warnings: List[str] = []
+
+    for idx, record in enumerate(records, start=1):
+        lot_cd = _pick_record_field(record, "LOT_CD")
+        model = _pick_record_field(record, "EQP_MODEL_CD")
+        if model is None:
+            model = _pick_record_field(record, "EQP_MODEL")
+        max_tool = _pick_record_field(record, "MAX_TOOL")
+        lot_cd_s = str(lot_cd).strip() if lot_cd is not None else ""
+        model_s = str(model).strip().upper() if model is not None else ""
+
+        if not lot_cd_s:
+            warnings.append(f"tool_capacity[{idx}]: LOT_CD 없음 — 행 제외")
+            continue
+
+        if model_s:
+            out.append({
+                "LOT_CD": lot_cd_s,
+                "EQP_MODEL_CD": model_s,
+                "MAX_TOOL": max_tool,
+            })
+            continue
+
+        models = sorted(lot_cd_models.get(lot_cd_s, set()))
+        if not models:
+            warnings.append(
+                f"tool_capacity[{idx}]: EQP_MODEL_CD 없음, discrete_arrange에서 "
+                f"LOT_CD={lot_cd_s!r} 모델을 찾지 못함 — 행 제외"
+            )
+            continue
+
+        warnings.append(
+            f"tool_capacity[{idx}]: EQP_MODEL_CD 없음 — discrete_arrange 기준 "
+            f"{len(models)}개 모델로 보정 ({lot_cd_s})"
+        )
+        for model_code in models:
+            out.append({
+                "LOT_CD": lot_cd_s,
+                "EQP_MODEL_CD": model_code,
+                "MAX_TOOL": max_tool,
+            })
+
+    return out, warnings
+
+
 def normalize_tool_capacity_rows(records: List[dict]) -> List[dict]:
     """
     tool_capacity.json 정규화.
     split/discrete와 동일하게 EQP_MODEL_CD 사용 (구형 EQP_MODEL 키는 호환).
+    LOT_CD·EQP_MODEL_CD·MAX_TOOL이 비어 있는 행은 제외한다.
     """
     out: List[dict] = []
     for record in records:
@@ -82,9 +172,15 @@ def normalize_tool_capacity_rows(records: List[dict]) -> List[dict]:
         if model is None:
             model = _pick_record_field(record, "EQP_MODEL")
         max_tool = _pick_record_field(record, "MAX_TOOL")
+        lot_cd_s = str(lot_cd).strip() if lot_cd is not None else ""
+        model_s = str(model).strip().upper() if model is not None else ""
+        if not lot_cd_s or not model_s:
+            continue
+        if max_tool is None or (isinstance(max_tool, str) and not str(max_tool).strip()):
+            continue
         out.append({
-            "LOT_CD": str(lot_cd).strip() if lot_cd is not None else "",
-            "EQP_MODEL_CD": str(model).strip().upper() if model is not None else "",
+            "LOT_CD": lot_cd_s,
+            "EQP_MODEL_CD": model_s,
             "MAX_TOOL": max_tool,
         })
     return out
@@ -92,13 +188,12 @@ def normalize_tool_capacity_rows(records: List[dict]) -> List[dict]:
 
 def validate_tool_capacity_records(records: List[dict]) -> List[str]:
     """tool_capacity 전용 검증 – EQP_MODEL_CD 사용."""
-    errors: List[str] = []
     if not records:
-        errors.append("tool_capacity: 데이터가 비어 있습니다.")
-        return errors
+        return []
     normalized = normalize_tool_capacity_rows(records)
-    errors += validate_records(normalized, REQUIRED_TOOL_CAPACITY_FIELDS, "tool_capacity")
-    return errors
+    if not normalized:
+        return []
+    return validate_records(normalized, REQUIRED_TOOL_CAPACITY_FIELDS, "tool_capacity")
 
 
 def effective_proc_time(st_per_wafer: int, wf_qty: int) -> int:
