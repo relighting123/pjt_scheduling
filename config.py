@@ -258,6 +258,14 @@ def list_fac_ids(split: str = "train") -> List[str]:
     return found
 
 
+def list_all_split_folders(split: str = "train") -> List[str]:
+    """모든 FAC의 split 입력 폴더 키 목록 (정렬)."""
+    folders: List[str] = []
+    for fac_id in list_fac_ids(split):
+        folders.extend(list_split_folders(fac_id, split))
+    return folders
+
+
 def folders_in_period_range(
     fac_id: str,
     split: str,
