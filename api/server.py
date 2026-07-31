@@ -43,6 +43,7 @@ from api.test_benchmark_store import (
 from api.train_service import train_progress, start_training, stop_training, is_training
 from benchmark.optimal.runner import run_optimal_benchmark
 from benchmark.tool_change_bench import run_detailed_benchmark
+from benchmark.compare_vs_dedication import ensure_suite, run_suite
 
 app = FastAPI(title="Scheduling RL API", version="1.0.0")
 
@@ -464,6 +465,13 @@ class InputFolderRequest(BaseModel):
     input_folder: str = Field(description="사용할 입력 폴더명")
 
 
+class ModelReloadRequest(BaseModel):
+    fac_id: Optional[str] = Field(
+        default=None,
+        description="다시 로드할 모델의 FAC_ID (기본: 현재 설정)",
+    )
+
+
 class CompareRequest(InferFetchOptions):
     algorithms: list[str] = Field(
         min_length=1,
@@ -803,6 +811,35 @@ def model_status(fac_id: Optional[str] = None):
     agent = SchedulingAgent()
     resolved = fac_id or CONFIG.path.fac_id
     return {"exists": agent.model_exists(fac_id=resolved), "fac_id": resolved}
+
+
+@app.post("/api/model/reload")
+def reload_model(req: ModelReloadRequest):
+    """세션 캐시된 FAC_ID별 벤치마크 에이전트를 버려 다음 실행 때
+    models/{FAC_ID}/ 의 최신 zip을 새로 로드하게 한다.
+
+    UI에서 FAC_ID를 바꾸면(또는 같은 FAC_ID의 모델을 다시 학습하면) 이전에
+    캐시된 에이전트가 그대로 쓰여 새 모델이 반영되지 않는다 — 이 엔드포인트가
+    캐시를 비워 "모델 다시 로딩"을 가능하게 한다. 실제 zip 로드는 다음
+    벤치마크/테스트 실행 시점에 일어난다(요청마다 수 MB zip을 읽지 않기 위해).
+    """
+    fac = validate_path_segment(req.fac_id or CONFIG.path.fac_id, "FAC_ID")
+    # 캐시 값이 None("모델 없음"으로 판정해 둔 상태)이어도 제거 대상이다 —
+    # pop 반환값이 아니라 키 존재 여부로 판단해야 None 항목을 놓치지 않는다.
+    had_cached = fac in _benchmark_rl_agent
+    _benchmark_rl_agent.pop(fac, None)
+    agent = SchedulingAgent()
+    exists = agent.model_exists(fac_id=fac)
+    return {
+        "fac_id": fac,
+        "exists": exists,
+        "model_dir": str(model_dir_for(fac)),
+        "cache_cleared": had_cached,
+        "message": (
+            f"models/{fac}/ 모델을 다음 실행 때 새로 불러옵니다."
+            if exists else f"models/{fac}/ 에 호환되는 모델이 없습니다."
+        ),
+    }
 
 
 @app.post("/api/train/start")
@@ -1498,6 +1535,57 @@ def get_tool_change_bench(algorithms: Optional[str] = None, fac_id: Optional[str
             for c in report["cases"]
         ],
     }
+
+
+BENCH_SUITE_CHOICES = ("bench", "holdout")
+
+
+@app.get("/api/benchmark/suite")
+def get_suite_bench(
+    suite: str = "bench",
+    algorithms: Optional[str] = None,
+    fac_id: Optional[str] = None,
+):
+    """BENCH_SUITE(8종)·HOLDOUT_SUITE(6종) 전체 테스트 케이스 평가.
+
+    CLI `benchmark/compare_vs_dedication.py --suite bench|holdout`와 같은
+    평가를 UI에서 실행한다 — bench는 학습에 쓰는 8종, holdout은 학습에 쓰지
+    않는 일반화 검증 6종으로, 두 스위트의 모든 케이스를 반환한다. 스위트
+    데이터셋이 아직 생성돼 있지 않으면(data/dataset은 gitignore 대상) 요청
+    시점에 온디맨드로 생성한다. scheduling_rl 모델은 fac_id별로 선택해
+    로드한다(models/{FAC_ID}/).
+    """
+    if suite not in BENCH_SUITE_CHOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"suite는 {BENCH_SUITE_CHOICES} 중 하나여야 합니다: {suite!r}",
+        )
+    algo_list = [a for a in algorithms.split(",") if a] if algorithms else None
+    if algo_list:
+        _validate_algorithms(algo_list)
+    fac = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
+    try:
+        ensure_suite(suite)
+    except SystemExit as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    rl_agent = None
+    if algo_list is None or "scheduling_rl" in algo_list:
+        rl_agent = _get_benchmark_rl_agent(fac_id=fac)
+    report = run_suite(
+        use_rl=rl_agent is not None,
+        agent=rl_agent,
+        quiet=True,
+        suite=suite,
+        algorithms=algo_list,
+        fac_id=fac,
+    )
+    if not report["algorithms"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"실행 가능한 알고리즘이 없습니다 (FAC_ID={fac} 모델 없음).",
+        )
+    report["fac_id"] = fac
+    return report
 
 
 @app.post("/api/test/benchmark")

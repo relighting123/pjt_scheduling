@@ -170,7 +170,7 @@ export default function DashboardPage({ onNavigate }: Props) {
             </div>
           </div>
           <div className="dash-card-footer">
-            <span className="dash-meta">10개 시나리오</span>
+            <span className="dash-meta">10개 시나리오 + BENCH/HOLDOUT 스위트</span>
             <button type="button" className="btn btn-accent btn-sm" onClick={() => onNavigate("benchmark")}>자세히 →</button>
           </div>
         </div>

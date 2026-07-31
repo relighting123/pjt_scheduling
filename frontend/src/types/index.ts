@@ -510,4 +510,69 @@ export interface ToolChangeBenchResponse {
   summary: Record<string, ToolChangeBenchSummary>;
 }
 
+export type BenchSuiteId = "bench" | "holdout";
+
+export interface SuiteBenchKpi {
+  prod: number;
+  max: number;
+  conv: number;
+  loss: number;
+  ded: number;
+  n_eqp: number;
+  util: number;
+  score: number;
+}
+
+export interface SuiteBenchDataset {
+  name: string;
+  cat: string;
+  desc: string;
+  tests: string;
+  sim: number;
+  total: number;
+  min_conv: number;
+  n_eqp: number;
+  n_ppk: number;
+  algos: Partial<Record<AlgorithmId, SuiteBenchKpi>>;
+}
+
+export interface SuiteBenchSummary {
+  prod: number;
+  max: number;
+  conv: number;
+  score: number;
+  ded: number;
+  n_eqp: number;
+  optimal: number;
+  n_sets: number;
+  prod_pct: number;
+}
+
+export interface SuiteBenchVs {
+  win: number;
+  tie: number;
+  loss: number;
+  score_delta: number;
+  prod_delta: number;
+  conv_delta: number;
+}
+
+export interface SuiteBenchResponse {
+  suite: BenchSuiteId;
+  fac_id: string;
+  algorithms: AlgorithmId[];
+  datasets: SuiteBenchDataset[];
+  summary: Partial<Record<AlgorithmId, SuiteBenchSummary>>;
+  vs_dedication: Partial<Record<AlgorithmId, SuiteBenchVs>>;
+  conv_weight: number;
+}
+
+export interface ModelReloadResponse {
+  fac_id: string;
+  exists: boolean;
+  model_dir: string;
+  cache_cleared: boolean;
+  message: string;
+}
+
 export type AppMode = "dashboard" | "benchmark" | "test" | "inference" | "dataset";
