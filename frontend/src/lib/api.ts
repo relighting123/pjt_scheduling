@@ -114,7 +114,15 @@ export const api = {
       }),
     }),
   getDataSummary: () => request<DataSummary>("/api/data/summary"),
-  getModelStatus: () => request<{ exists: boolean }>("/api/model/status"),
+  getModelStatus: (fac_id?: string) =>
+    request<{ exists: boolean; fac_id: string }>(
+      `/api/model/status${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
+    ),
+  reloadModel: (fac_id?: string) =>
+    request<{ exists: boolean; fac_id: string; reloaded: boolean }>(
+      `/api/model/reload${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
+      { method: "POST" },
+    ),
   getAlgorithms: () =>
     request<{ algorithms: AlgorithmInfo[] }>("/api/algorithms"),
   train: (body: TrainRequestBody) =>
@@ -286,8 +294,13 @@ export const api = {
     request<OptimalBenchResponse>(
       `/api/test/optimal-bench${algorithms?.length ? `?algorithms=${encodeURIComponent(algorithms.join(","))}` : ""}`,
     ),
-  getToolChangeBench: (algorithms?: AlgorithmId[]) =>
-    request<ToolChangeBenchResponse>(
-      `/api/benchmark/tool-change${algorithms?.length ? `?algorithms=${encodeURIComponent(algorithms.join(","))}` : ""}`,
-    ),
+  getToolChangeBench: (algorithms?: AlgorithmId[], fac_id?: string) => {
+    const params = new URLSearchParams();
+    if (algorithms?.length) params.set("algorithms", algorithms.join(","));
+    if (fac_id) params.set("fac_id", fac_id);
+    const qs = params.toString();
+    return request<ToolChangeBenchResponse>(
+      `/api/benchmark/tool-change${qs ? `?${qs}` : ""}`,
+    );
+  },
 };

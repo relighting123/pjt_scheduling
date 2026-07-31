@@ -785,8 +785,17 @@ def select_input_folder(req: InputFolderRequest):
 @app.get("/api/model/status")
 def model_status(fac_id: Optional[str] = None):
     agent = SchedulingAgent()
-    resolved = fac_id or CONFIG.path.fac_id
+    resolved = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
     return {"exists": agent.model_exists(fac_id=resolved), "fac_id": resolved}
+
+
+@app.post("/api/model/reload")
+def reload_model(fac_id: Optional[str] = None):
+    """FAC_ID별 벤치마크 모델 캐시를 비우고 디스크에서 다시 로드한다."""
+    resolved = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
+    _benchmark_rl_agent.pop(resolved, None)
+    agent = _get_benchmark_rl_agent(fac_id=resolved)
+    return {"exists": agent is not None, "fac_id": resolved, "reloaded": True}
 
 
 @app.post("/api/train/start")
@@ -1449,7 +1458,10 @@ def get_optimal_bench(algorithms: Optional[str] = None):
 
 
 @app.get("/api/benchmark/tool-change")
-def get_tool_change_bench(algorithms: Optional[str] = None):
+def get_tool_change_bench(
+    algorithms: Optional[str] = None,
+    fac_id: Optional[str] = None,
+):
     """전환(conversion) 벤치마크(benchmark/tool_change_bench) 실행 — 케이스별
     정답지(오라클) 스케줄 + 알고리즘별 스케줄을 함께 반환해 프런트에서
     간트/KPI 비교에 바로 쓸 수 있게 한다. 실제 test 데이터셋과 무관하게
@@ -1457,9 +1469,18 @@ def get_tool_change_bench(algorithms: Optional[str] = None):
     algo_list = [a for a in algorithms.split(",") if a] if algorithms else None
     if algo_list:
         _validate_algorithms(algo_list)
-    rl_agent = _get_benchmark_rl_agent() if (algo_list and "scheduling_rl" in algo_list) else None
+    resolved_fac_id = validate_path_segment(fac_id or CONFIG.path.fac_id, "FAC_ID")
+    rl_agent = None
+    if algo_list and "scheduling_rl" in algo_list:
+        rl_agent = _get_benchmark_rl_agent(fac_id=resolved_fac_id)
+        if rl_agent is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"학습된 모델이 없습니다 (FAC_ID={resolved_fac_id}).",
+            )
     report = run_detailed_benchmark(algorithms=algo_list, rl_agent=rl_agent)
     return {
+        "fac_id": resolved_fac_id,
         "algorithms": report["algorithms"],
         "summary": report["summary"],
         "cases": [

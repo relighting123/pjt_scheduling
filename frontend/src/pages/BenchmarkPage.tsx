@@ -5,10 +5,13 @@ import ExpandableErrorBanner from "../components/ExpandableErrorBanner";
 import { api } from "../lib/api";
 import { ALGO_CHART_COLORS, buildAlgorithmGantt, type AlgoCompareEntry } from "../lib/charts";
 import type {
-  AlgorithmId, AlgorithmInfo, ToolChangeBenchCase, ToolChangeBenchResponse,
+  AlgorithmId, AlgorithmInfo, AppConfig, ToolChangeBenchCase, ToolChangeBenchResponse,
 } from "../types";
 
-interface Props { modelExists: boolean; }
+interface Props {
+  config: AppConfig | null;
+  modelExists: boolean;
+}
 
 type ViewMode = "summary" | "gantt";
 
@@ -20,18 +23,22 @@ function passClass(actual: number, opt: number, better: "eq" | "lte"): string {
   return ok ? "var(--ok)" : "var(--err)";
 }
 
-export default function BenchmarkPage({ modelExists }: Props) {
+export default function BenchmarkPage({ config, modelExists }: Props) {
   const [algorithms, setAlgorithms] = useState<AlgorithmInfo[]>([]);
   const [selectedAlgos, setSelectedAlgos] = useState<Set<AlgorithmId>>(new Set());
   const [report, setReport] = useState<ToolChangeBenchResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [facModelExists, setFacModelExists] = useState(modelExists);
+  const [facIdOverride, setFacIdOverride] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("summary");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const facId = facIdOverride.trim() || config?.fac_id || "FAC001";
 
   const available = useMemo(
-    () => algorithms.filter(a => !a.requires_model || modelExists),
-    [algorithms, modelExists],
+    () => algorithms.filter(a => !a.requires_model || facModelExists),
+    [algorithms, facModelExists],
   );
   const algoLabels = useMemo(() => {
     const m: Record<string, string> = {};
@@ -41,13 +48,44 @@ export default function BenchmarkPage({ modelExists }: Props) {
 
   useEffect(() => { api.getAlgorithms().then(r => setAlgorithms(r.algorithms)).catch(() => {}); }, []);
   useEffect(() => { setSelectedAlgos(new Set(available.map(a => a.id))); }, [available]);
+  useEffect(() => {
+    let active = true;
+    setModelLoading(true);
+    setReport(null);
+    api.getModelStatus(facId)
+      .then(status => {
+        if (active) setFacModelExists(status.exists);
+      })
+      .catch(() => {
+        if (active) setFacModelExists(false);
+      })
+      .finally(() => {
+        if (active) setModelLoading(false);
+      });
+    return () => { active = false; };
+  }, [facId]);
+
+  const reloadModel = useCallback(async () => {
+    setModelLoading(true);
+    setError(null);
+    try {
+      const status = await api.reloadModel(facId);
+      setFacModelExists(status.exists);
+      setReport(null);
+      if (!status.exists) setError(`학습된 모델이 없습니다 (FAC_ID=${facId}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "모델 리로드 실패");
+    } finally {
+      setModelLoading(false);
+    }
+  }, [facId]);
 
   const run = useCallback(async () => {
     const ids = [...selectedAlgos].filter(id => available.some(a => a.id === id));
     if (!ids.length) { setError("알고리즘을 선택하세요."); return; }
     setLoading(true); setError(null);
     try {
-      const r = await api.getToolChangeBench(ids as AlgorithmId[]);
+      const r = await api.getToolChangeBench(ids as AlgorithmId[], facId);
       setReport(r);
       setSelectedCaseId(prev => prev && r.cases.some(c => c.id === prev) ? prev : (r.cases[0]?.id ?? null));
     } catch (e) {
@@ -55,7 +93,7 @@ export default function BenchmarkPage({ modelExists }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [selectedAlgos, available]);
+  }, [selectedAlgos, available, facId]);
 
   const hasData = !!report?.cases?.length;
   const displayAlgos = report?.algorithms ?? [];
@@ -107,10 +145,39 @@ export default function BenchmarkPage({ modelExists }: Props) {
         </div>
 
         <div className="card">
+          <div className="card-title">모델 설정</div>
+          <label className="field-label" htmlFor="benchmark-fac-id">FAC_ID</label>
+          <input
+            id="benchmark-fac-id"
+            className="input"
+            type="text"
+            placeholder={config?.fac_id ?? "FAC001"}
+            value={facIdOverride}
+            onChange={e => setFacIdOverride(e.target.value)}
+            disabled={loading || modelLoading}
+          />
+          <p className="hint mt-1">
+            {modelLoading
+              ? `${facId} 모델 확인 중…`
+              : facModelExists
+                ? `${facId} 모델 사용 가능`
+                : `${facId} 모델 없음`}
+          </p>
+          <button
+            type="button"
+            className={`btn btn-secondary mt-2${modelLoading ? " loading" : ""}`}
+            onClick={reloadModel}
+            disabled={loading || modelLoading}
+          >
+            {modelLoading ? "" : "모델 리로드"}
+          </button>
+        </div>
+
+        <div className="card">
           <div className="card-title">알고리즘</div>
           <div className="algo-list mb-2">
             {algorithms.map(a => {
-              const dis = a.requires_model && !modelExists;
+              const dis = a.requires_model && !facModelExists;
               return (
                 <label key={a.id} className={`algo-option${selectedAlgos.has(a.id) ? " selected" : ""}`}>
                   <input
