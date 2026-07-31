@@ -186,11 +186,14 @@ class SchedulingRLEnv(gym.Env):
             return np.concatenate([bucket_mask, size_mask])
 
         active = self._active_block_flat(eqp_id)
-        if active is not None:
+        if active is not None and 0 <= active < self._n_bucket:
             # 블록 진행 중 → 같은 버킷 강제, 크기 레벨 0 고정
             bucket_mask[active] = True
             size_mask[0] = True
         else:
+            if active is not None:
+                # config O×P 밖 버킷은 블록 종료 후 일반 마스크로 폴백
+                self._block.pop(eqp_id, None)
             for flat in self.sim.get_feasible_ppk_oper(eqp_id):
                 if 0 <= flat < self._n_bucket:
                     bucket_mask[flat] = True
