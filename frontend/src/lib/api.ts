@@ -3,9 +3,12 @@ import type {
   AlgorithmId,
   AlgorithmInfo,
   AppConfig,
+  BenchSuiteId,
   DataSummary,
   InferenceResult,
+  ModelReloadResponse,
   OptimalBenchResponse,
+  SuiteBenchResponse,
   TestBenchmarkResponse,
   TestDatasetsResponse,
   ToolChangeBenchResponse,
@@ -114,7 +117,16 @@ export const api = {
       }),
     }),
   getDataSummary: () => request<DataSummary>("/api/data/summary"),
-  getModelStatus: () => request<{ exists: boolean }>("/api/model/status"),
+  getModelStatus: (fac_id?: string) =>
+    request<{ exists: boolean; fac_id?: string }>(
+      `/api/model/status${fac_id ? `?fac_id=${encodeURIComponent(fac_id)}` : ""}`,
+    ),
+  reloadModel: (fac_id?: string) =>
+    request<ModelReloadResponse>("/api/model/reload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fac_id ? { fac_id } : {}),
+    }),
   getAlgorithms: () =>
     request<{ algorithms: AlgorithmInfo[] }>("/api/algorithms"),
   train: (body: TrainRequestBody) =>
@@ -292,5 +304,12 @@ export const api = {
     if (fac_id) params.set("fac_id", fac_id);
     const qs = params.toString();
     return request<ToolChangeBenchResponse>(`/api/benchmark/tool-change${qs ? `?${qs}` : ""}`);
+  },
+  getSuiteBench: (suite: BenchSuiteId, algorithms?: AlgorithmId[], fac_id?: string) => {
+    const params = new URLSearchParams();
+    params.set("suite", suite);
+    if (algorithms?.length) params.set("algorithms", algorithms.join(","));
+    if (fac_id) params.set("fac_id", fac_id);
+    return request<SuiteBenchResponse>(`/api/benchmark/suite?${params.toString()}`);
   },
 };
