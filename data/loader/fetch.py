@@ -29,7 +29,6 @@ from utils.helpers import (
     validate_records,
     validate_tool_capacity_records,
     normalize_tool_capacity_rows,
-    backfill_tool_capacity_rows,
     REQUIRED_DISCRETE_ARRANGE_FIELDS,
     REQUIRED_ABSTRACT_ARRANGE_FIELDS,
     REQUIRED_PLAN_FIELDS,
@@ -136,7 +135,6 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
 
     discrete_arrange = _read_discrete()
     flow = _read(CONFIG.path.flow_file)
-    lot_master = _read_optional(CONFIG.path.lot_master_file)
 
     abstract_arrange = _read_optional(CONFIG.path.abstract_arrange_file)
     if not abstract_arrange and all(
@@ -148,11 +146,6 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
 
     tool_capacity = _read_optional(CONFIG.path.tool_capacity_file)
     if tool_capacity:
-        tool_capacity, cap_warnings = backfill_tool_capacity_rows(
-            tool_capacity, discrete_arrange, lot_master,
-        )
-        for msg in cap_warnings:
-            print(f"  [경고] {msg}", flush=True)
         tool_capacity = normalize_tool_capacity_rows(tool_capacity)
 
     return {
@@ -161,7 +154,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "plan":              _read(CONFIG.path.plan_file),
         "flow":              flow,
         "split":             _read_optional(CONFIG.path.split_file),
-        "lot_master":        lot_master,
+        "lot_master":        _read_optional(CONFIG.path.lot_master_file),
         "tool_capacity":     tool_capacity,
         "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
         "batch_info":        _read_optional(CONFIG.path.batch_info_file),

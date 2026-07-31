@@ -245,6 +245,44 @@ def cmd_train(
     run_validation(fac_id, agent=agent, refresh_sql=False)
 
 
+def cmd_fix_dataset_tool_capacity(
+    fac_id: Optional[str] = None,
+    *,
+    split: str = "train",
+    all_folders: bool = False,
+    folder_keys: Optional[List[str]] = None,
+):
+    from data.dataset_fix import run_tool_capacity_repair
+
+    print("=" * 60)
+    print("[fix-dataset] tool_capacity.json 수리 (discrete_arrange 기준 EQP_MODEL_CD 채움)")
+    try:
+        results = run_tool_capacity_repair(
+            fac_id=fac_id,
+            split=split,
+            all_folders=all_folders,
+            folder_keys=folder_keys,
+        )
+    except FileNotFoundError as exc:
+        print(f"[오류] {exc}")
+        sys.exit(1)
+
+    fixed = 0
+    for item in results:
+        print(f"\n· {item['folder']} — {item['status']}")
+        if item.get("reason"):
+            print(f"  {item['reason']}")
+            continue
+        if item["status"] == "fixed":
+            fixed += 1
+            print(f"  행 {item['rows_before']} → {item['rows_after']}")
+        for note in item.get("notes", []):
+            print(f"  {note}")
+
+    print("\n" + "=" * 60)
+    print(f"[fix-dataset] 완료 — 수정 {fixed}개 / 전체 {len(results)}개")
+
+
 def cmd_test(
     fac_id: str,
     prevcnt: int = None,
@@ -905,6 +943,32 @@ def parse_args():
         help="설정된 train/test 기간 수만큼 연속 생성",
     )
 
+    fix_p = sub.add_parser(
+        "fix-dataset",
+        help="dataset JSON 직접 수리 (로드 시 자동 보정 없음)",
+    )
+    fix_sub = fix_p.add_subparsers(dest="fix_target", required=True)
+    fix_tc = fix_sub.add_parser(
+        "tool-capacity",
+        help="tool_capacity.json 의 EQP_MODEL_CD 를 discrete_arrange 기준으로 채움",
+    )
+    fix_tc.add_argument(
+        "--facid", "--fac-id", "--fac_id", dest="facid", default=None,
+        help="공장 ID (생략 시 train 데이터가 있는 전체 FAC)",
+    )
+    fix_tc.add_argument(
+        "--folder", action="append", default=None,
+        help="dataset 폴더 키 (예: FAC001/train/20260621070000). 여러 번 지정 가능",
+    )
+    fix_tc.add_argument(
+        "--split", default="train", choices=("train", "test", "infer"),
+        help="수리 대상 split (기본: train)",
+    )
+    fix_tc.add_argument(
+        "--all", dest="all_folders", action="store_true",
+        help="해당 FAC의 split 폴더 전체 수리",
+    )
+
     return parser.parse_args()
 
 
@@ -926,6 +990,15 @@ def main():
                 rule_timekey=args.ruletimekey,
                 all_folders=args.all_folders or train_all_facs,
             )
+
+        elif args.command == "fix-dataset":
+            if args.fix_target == "tool-capacity":
+                cmd_fix_dataset_tool_capacity(
+                    fac_id=args.facid,
+                    split=args.split,
+                    all_folders=args.all_folders or not args.facid,
+                    folder_keys=args.folder,
+                )
 
         elif args.command == "test":
             _validate_period_selectors(args)
