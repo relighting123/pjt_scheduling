@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))

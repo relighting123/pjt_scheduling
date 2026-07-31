@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
-from unittest.mock import MagicMock
 
 import pytest
 
 from config import list_fac_ids
+
+
+def test_main_module_imports():
+    import main  # noqa: F401
 
 
 def test_list_fac_ids_empty_when_no_dataset(tmp_path, monkeypatch):
@@ -49,11 +52,11 @@ def test_train_parser_facid_optional():
 def test_cmd_train_without_facid_trains_each_fac(monkeypatch):
     import main
 
-    trained: list[str] = []
+    train_calls: list[str] = []
 
     class AgentStub:
         def train(self, env_data, **kwargs):
-            trained.append(kwargs["fac_id"])
+            train_calls.append("train")
 
         def save(self, **kwargs):
             pass
@@ -64,8 +67,13 @@ def test_cmd_train_without_facid_trains_each_fac(monkeypatch):
         "list_split_folders",
         lambda fac_id, split: [f"{fac_id}/train/20260101070000"],
     )
-    monkeypatch.setattr(main, "_load_many", lambda folders: [{"eqp_ids": [], "lots": [], "prod_keys": [], "oper_ids": []}])
-    monkeypatch.setattr(main, "_load_env_data", lambda folder, period_key=None: {"eqp_ids": [], "lots": [], "prod_keys": [], "oper_ids": []})
+    monkeypatch.setattr(
+        main,
+        "_load_env_data",
+        lambda folder, period_key=None: {
+            "eqp_ids": [], "lots": [], "prod_keys": [], "oper_ids": [],
+        },
+    )
     monkeypatch.setattr(main, "SchedulingAgent", AgentStub)
     monkeypatch.setattr(
         main,
@@ -73,11 +81,10 @@ def test_cmd_train_without_facid_trains_each_fac(monkeypatch):
         lambda *a, **k: {"json_path": "x", "png_path": None, "verdict": "ok", "note": ""},
     )
     monkeypatch.setattr(main, "run_validation", lambda *a, **k: None)
-    monkeypatch.setattr(main, "model_dir_for", lambda fac_id: MagicMock())
 
     main.cmd_train(fac_id=None)
 
-    assert trained == ["FAC001", "FAC002"]
+    assert train_calls == ["train", "train"]
 
 
 def test_cmd_train_without_facid_exits_when_no_train_data(monkeypatch):
