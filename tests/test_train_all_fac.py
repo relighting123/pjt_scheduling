@@ -49,42 +49,51 @@ def test_train_parser_facid_optional():
     assert args.facid == "FAC001"
 
 
-def test_cmd_train_without_facid_trains_each_fac(monkeypatch):
+def test_cmd_train_without_facid_trains_once_on_all_folders(monkeypatch):
     import main
 
-    train_calls: list[str] = []
+    train_calls: list = []
+    loaded_folders: list[str] = []
 
     class AgentStub:
         def train(self, env_data, **kwargs):
-            train_calls.append("train")
+            train_calls.append(env_data)
 
         def save(self, **kwargs):
             pass
 
+    def fake_load_many(folders):
+        loaded_folders.extend(folders)
+        return [{"eqp_ids": [], "lots": [], "prod_keys": [], "oper_ids": []} for _ in folders]
+
     monkeypatch.setattr(main, "list_fac_ids", lambda split: ["FAC001", "FAC002"])
     monkeypatch.setattr(
         main,
-        "list_split_folders",
-        lambda fac_id, split: [f"{fac_id}/train/20260101070000"],
+        "list_all_split_folders",
+        lambda split: [
+            "FAC001/train/20260101070000",
+            "FAC002/train/20260102070000",
+        ],
     )
-    monkeypatch.setattr(
-        main,
-        "_load_env_data",
-        lambda folder, period_key=None: {
-            "eqp_ids": [], "lots": [], "prod_keys": [], "oper_ids": [],
-        },
-    )
+    monkeypatch.setattr(main, "_load_many", fake_load_many)
     monkeypatch.setattr(main, "SchedulingAgent", AgentStub)
     monkeypatch.setattr(
         main,
         "save_training_convergence_report",
         lambda *a, **k: {"json_path": "x", "png_path": None, "verdict": "ok", "note": ""},
     )
-    monkeypatch.setattr(main, "run_validation", lambda *a, **k: None)
+    validations: list[str] = []
+    monkeypatch.setattr(main, "run_validation", lambda fac_id, **k: validations.append(fac_id))
 
     main.cmd_train(fac_id=None)
 
-    assert train_calls == ["train", "train"]
+    assert len(train_calls) == 1
+    assert len(train_calls[0]) == 2
+    assert loaded_folders == [
+        "FAC001/train/20260101070000",
+        "FAC002/train/20260102070000",
+    ]
+    assert validations == ["FAC001", "FAC002"]
 
 
 def test_cmd_train_without_facid_exits_when_no_train_data(monkeypatch):
