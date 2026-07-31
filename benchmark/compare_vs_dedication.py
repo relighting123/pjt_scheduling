@@ -56,6 +56,32 @@ def load_meta(suite: str = "bench") -> list:
     return json.load(open(path, encoding="utf-8"))
 
 
+def ensure_suite(suite: str = "bench") -> Path:
+    """스위트 데이터셋+메타가 없으면 생성기를 돌려 그 자리에서 만든다.
+
+    data/dataset/은 gitignore 대상이라 새로 clone한 환경(UI 서버 최초 기동 등)엔
+    파일이 없다. CLI의 load_meta()는 친절한 오류를 내지만, API/UI에서는 요청
+    시점에 온디맨드로 생성해 바로 평가할 수 있어야 한다
+    (benchmark/tool_change_bench.py의 import-time 생성과 같은 패턴).
+    train_pool은 학습용 풀이라 평가 스위트가 아니므로 지원하지 않는다.
+    """
+    filename, generator = SUITE_META.get(suite, SUITE_META["bench"])
+    path = SUITE_ROOT / filename
+    if path.exists():
+        return path
+    if suite == "bench":
+        from benchmark import gen_bench_suite
+        gen_bench_suite.main()
+    elif suite == "holdout":
+        from benchmark import gen_holdout_suite
+        gen_holdout_suite.main()
+    else:
+        raise SystemExit(f"{path} 없음 — 먼저 `python {generator}` 를 실행하세요.")
+    if not path.exists():
+        raise SystemExit(f"{path} 생성 실패")
+    return path
+
+
 def load_ed(m: dict) -> dict:
     ed = preprocess(load_data(Path(m["dir"])))
     ed["eqp_selection"] = "order"
@@ -102,19 +128,26 @@ def run_suite(
     conv_weight: float = 1.0,
     quiet: bool = False,
     suite: str = "bench",
+    algorithms: list[str] | None = None,
+    fac_id: str | None = None,
+    agent=None,
 ) -> dict:
     meta = load_meta(suite)
     eds = [load_ed(m) for m in meta]
 
-    agent = None
-    if use_rl:
+    want_rl = use_rl and (algorithms is None or "scheduling_rl" in algorithms)
+    if agent is None and want_rl:
         try:
             from agent.rl_agent import SchedulingAgent
-            agent = SchedulingAgent.load(model_path, env_data=eds[0])
+            agent = SchedulingAgent.load(model_path, env_data=eds[0], fac_id=fac_id)
         except Exception as exc:            # 모델 없음/obs_dim 불일치 등
             print(f"[경고] RL 모델 로드 실패 → scheduling_rl 생략 ({exc})")
 
-    algos = [(a, l) for a, l in ALGOS if a != "scheduling_rl" or agent is not None]
+    algos = [
+        (a, l) for a, l in ALGOS
+        if (algorithms is None or a in algorithms)
+        and (a != "scheduling_rl" or agent is not None)
+    ]
 
     rows = []
     if not quiet:
@@ -123,7 +156,13 @@ def run_suite(
         print("-" * len(header))
 
     for m, ed in zip(meta, eds):
-        row = {"name": m["id"], "cat": m["cat"], "algos": {}}
+        row = {
+            "name": m["id"], "cat": m["cat"],
+            "desc": m.get("desc", ""), "tests": m.get("tests", ""),
+            "sim": m["sim"], "total": m["total"], "min_conv": m["min_conv"],
+            "n_eqp": m["n_eqp"], "n_ppk": m["n_ppk"],
+            "algos": {},
+        }
         for algo, _label in algos:
             res = run_inference(
                 ed, algorithm=algo,
@@ -177,7 +216,8 @@ def run_suite(
                 "conv_delta": summary[algo]["conv"] - summary[BASELINE]["conv"],
             }
 
-    out = {"suite": suite, "datasets": rows, "summary": summary,
+    out = {"suite": suite, "algorithms": [a for a, _ in algos],
+           "datasets": rows, "summary": summary,
            "vs_dedication": versus, "conv_weight": conv_weight}
 
     if not quiet:
