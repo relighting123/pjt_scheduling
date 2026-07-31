@@ -582,6 +582,7 @@ DB 적재)에 남습니다. 두 로그 모두 자정에 자동 회전되고 백�
 | `python main.py train --facid FAC001 --from 20260621070000 --to 20260623070000` | RULE_TIMEKEY 구간 지정 학습 |
 | `python main.py train --facid FAC001 --ruletimekey 20260621070000` | 단일 RULE_TIMEKEY로 학습 |
 | `python main.py train --facid FAC001 --all` | train 폴더 전체로 학습 |
+| `python main.py train` | train 데이터가 있는 **전체 FAC**를 FAC별 train 폴더 전체로 학습 (`--facid` 생략) |
 
 ### 3. 테스트 / 검증 (test)
 
