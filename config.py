@@ -242,6 +242,22 @@ def list_split_folders(fac_id: str, split: str) -> List[str]:
     )
 
 
+def list_fac_ids(split: str = "train") -> List[str]:
+    """dataset 아래 split 입력 데이터가 있는 FAC_ID 목록 (정렬)."""
+    if split not in DATASET_SPLITS:
+        raise ValueError(f"split은 {DATASET_SPLITS} 중 하나여야 합니다 (받은 값: {split!r})")
+    if not DATASET_DIR.is_dir():
+        return []
+    found: List[str] = []
+    for fac_path in sorted(DATASET_DIR.iterdir()):
+        if not fac_path.is_dir():
+            continue
+        fac_id = fac_path.name
+        if list_split_folders(fac_id, split):
+            found.append(fac_id)
+    return found
+
+
 def folders_in_period_range(
     fac_id: str,
     split: str,
