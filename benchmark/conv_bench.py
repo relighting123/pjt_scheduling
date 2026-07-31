@@ -112,6 +112,7 @@ def main() -> None:
         cfg.w_bulk_block_bonus  =  3.0
         cfg.w_dedication_misuse = -4.0
         cfg.w_redundant_cover   = -5.0
+        cfg.w_plan_hit          =  1.0
         CONFIG.rl.total_timesteps = TS
         CONFIG.rl.n_steps = 2048
         CONFIG.rl.device  = "cpu"

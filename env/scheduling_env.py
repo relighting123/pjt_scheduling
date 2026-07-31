@@ -18,7 +18,7 @@ from config import CONFIG
 from simulation.simulator import SchedulingSimulator
 from simulation.decision_log import build_step_decision_entry
 
-_OBS_GLOBAL_DIM = 5
+_OBS_GLOBAL_DIM = 6
 _OBS_FIXED_DIM = _OBS_GLOBAL_DIM
 
 
@@ -43,7 +43,7 @@ def obs_dim_components() -> dict:
 
 
 def compute_obs_dim() -> int:
-    """Global(5) + Bucket(O×P×6 + O×P×K×5)"""
+    """Global(6) + Bucket(O×P×6 + O×P×K×5)"""
     return obs_dim_components()["total"]
 
 
@@ -94,7 +94,7 @@ def _describe_obs_dim_side(
     opk = _opk_product_from_obs_dim(dim)
     if opk is None:
         lines.append(
-            f"  ※ {dim}은 표준 공식({_OBS_GLOBAL_DIM} + O×P×6 + O×P×K×5)과 맞지 않습니다."
+            f"  ※ {dim}은 표준 공식(6 + O×P×6 + O×P×K×5)과 맞지 않습니다."
         )
         return lines
 

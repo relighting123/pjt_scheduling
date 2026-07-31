@@ -138,8 +138,8 @@ def _build_conversion_group_map(
 ) -> Dict[Tuple[str, str], str]:
     """(LOT_CD, TEMP) → GROUP_ID. 같은 그룹끼리만 전환 허용(시뮬레이터에서 사용).
 
-    입력 conversion_group.json 행: {GROUP_ID, LOT_CD, TEMP}.
-    파일이 없거나 비면 빈 dict → 전환 그룹 제약 비활성(기존 동작 유지).
+    입력 행: {GROUP_ID, LOT_CD, TEMP} (config.CONVERSION_GROUPS[FAC_ID]).
+    설정이 없거나 비면 빈 dict → 전환 그룹 제약 비활성(기존 동작 유지).
     """
     out: Dict[Tuple[str, str], str] = {}
     for r in conv_group_raw:

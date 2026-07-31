@@ -14,7 +14,7 @@ EQP가 idle이 될 때마다 **투입할 (PPK, OPER)** 를 선택합니다. LOT�
 | 재공이 계획 대비 충분 | **takt time**에 맞춰 공정별로 꾸준히 생산 |
 | 재공 부족·특정 공정 편중 | 몰린 공정에 장비 투입 → 후공정 재공 축적 → flow 밸런스 회복 |
 
-RL 보상(`w_same_setup`, `w_flow_balance`, `w_redundant_cover`, `w_dedication_misuse`, `use_achievable_target`)은 위 목표를 반영하도록 설계되어 있습니다.
+RL 보상(`w_pacing`, `w_plan_hit`, `w_flow_balance`, `use_achievable_target`)은 위 목표를 반영하도록 설계되어 있습니다.
 다만 RL action은 **(PPK, OPER) 버킷**만 선택하고, EQP·LOT은 simulator 규칙이 처리합니다.
 
 ---
@@ -47,12 +47,48 @@ pjt_scheduling/
 
 | 레이어 | 단위 | 설명 |
 |--------|------|------|
-| `discrete_arrange` | `(EQP, LOT, OPER)` | 실제 EQP×carrier 조합, ST, WF_QTY, `LOT_STAT_CD` |
-| `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿 |
+| `discrete_arrange` | `(EQP, LOT, OPER)` | 이 carrier가 이 EQP에 투입 가능하다는 선언(ST, WF_QTY, `LOT_STAT_CD` 포함) |
+| `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿(모델 단위, 더 성긴 단위) |
 | Runtime WIP | `(PPK, OPER)` + LOT list | 현재/유입 재공, `oper_in_time` |
 
 부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`,
 `eqp_conv_plan`(외부 확정 EQP 전환 계획), `eqp_down`(EQP 다운타임)
+
+#### `discrete_arrange`는 "실적"이 아니라 투입 가능 관계(M:N)다
+
+`discrete_arrange`의 `(EQP, LOT)` 행은 "이 EQP가 과거에 이 LOT/제품을 만든 적 있다"는
+이력·실적 데이터가 **아니다**. "이 carrier가 이 EQP에 물리적으로 투입 가능하다"는 선언이며,
+같은 LOT이 여러 EQP에 대해 동시에 선언될 수도 있는 **M:N 관계**다(한 carrier가 여러 대에
+투입 가능, 한 EQP가 여러 carrier를 받을 수 있음). `abstract_arrange`가 더 성긴
+(PPK, OPER, EQP_MODEL) 단위의 투입 가능 템플릿이라면, `discrete_arrange`는 그보다 세밀한
+(EQP, carrier) 단위의 투입 가능 템플릿이라고 보면 된다 — 둘 다 "가능 여부" 선언이지 실적 기록이 아니다.
+
+**discrete vs abstract, 언제 어느 쪽을 신뢰하는가 (`_lot_conv_discrete_eligible`)**
+
+같은 PPK·같은 장비 모델이라도, 실제로는 LOT/EQP_ID 조합마다 투입 가능 여부가 다를 수 있다
+(설비 점검·챔버 상태 등 모델 단위로는 잡히지 않는 실제 제약). 그래서 시뮬레이터는 상황에
+따라 두 정보 중 하나를 골라 신뢰한다:
+
+- **전환 불필요 + 현재 공정에 이미 존재하는(초기 스냅샷) 재공**: 지금 당장 확정적으로 알 수
+  있는 상태이므로, `discrete_arrange`에 선언된 (EQP, LOT) 조합만 투입 가능한 것으로 본다.
+  abstract(모델만 일치)만으로는 이 세밀한 제약을 대신할 수 없다.
+- **전환이 필요하거나(EQP의 현재 셋업과 달라 전환 발생) / 이전 공정에서 아직 넘어오지 않은
+  (유입 예정) 재공**: 둘 다 "지금은 확정할 수 없고 앞으로 벌어질 일"이라는 예측의 영역이다.
+  전환 후 상태는 아직 discrete로 정밀 검증된 적 없는 새 셋업이고, 유입 재공은 아직 이
+  공정에 도착하지도 않았기 때문에, 이때는 discrete를 참조하지 않고 PPK×모델 단위로
+  추상화된 `abstract_arrange` 기준으로만 판단한다.
+- **전환 후 원래 tool로 복귀**: 장비가 A→B로 전환했다가 다시 B→A로 돌아오면, 그 시점부터는
+  A가 다시 "이미 확정된 현재 셋업"이 되므로 discrete 정보를 다시 사용한다(더 이상 예측이
+  아니라 현재 상태이므로).
+
+이 규칙은 `discrete_wait_enabled=True`(기본값)에서만 적용되고, `LOT_STAT_CD!=WAIT`(강제
+배정)이거나 `discrete_wait_enabled=False`이면 이 구분 없이 항상 abstract 폴백을 허용한다.
+
+따라서 입력 데이터가 실제로는 여러 EQP에 대해 M:N으로 투입 가능한 carrier를, 편의상 EQP
+1대에 대해서만 1:1로 좁혀 선언해 두면(예: 벤치마크 데이터 생성기가 라운드로빈으로 EQP
+하나씩만 배정), 그 데이터는 "전환 불필요 + 현재 공정 재공"에 해당하므로 시뮬레이터는 그
+좁은 선언을 그대로 신뢰해 나머지 EQP에서는 그 LOT을 투입 불가로 취급한다 — 모델이 같아
+실제로는 전부 처리 가능해야 하는 조합이라도, declared 관계가 좁으면 결과도 좁게 나온다.
 
 #### 외부 확정 EQP 전환 계획 (`eqp_conv_plan.json`, 선택)
 
@@ -95,16 +131,19 @@ LOT의 현재 상태 코드로 `PROC` / `LOAD` / `SELE` / `RESV` / `WAIT` 중 �
 `PROC`/`LOAD`/`SELE`/`RESV`(강제 배정) LOT은 이 옵션과 무관하게 항상 discrete 그대로
 배정됩니다.
 
-#### 전환 그룹 제약 (`conversion_group.json`, 선택)
+#### 전환 그룹 제약 (`config.CONVERSION_GROUPS`, 선택)
 
-같은 그룹 안의 `(LOT_CD, TEMP)`로만 전환을 허용하고 **다른 그룹으로의 전환은 배정 후보에서 제외**합니다(행동 공간 축소 → 문제 단순화). 파일이 없으면 제약은 비활성(기존 동작).
+같은 그룹 안의 `(LOT_CD, TEMP)`로만 전환을 허용하고 **다른 그룹으로의 전환은 배정 후보에서 제외**합니다(행동 공간 축소 → 문제 단순화). `config.py`의 `CONVERSION_GROUPS` 딕셔너리에 `FAC_ID`별로 설정하며, 해당 FAC_ID 항목이 없으면 제약은 비활성(기존 동작) — train/test/infer 등 split·기간과 무관하게 fac 전체에 공통 적용됩니다.
 
-```json
-[
-  {"GROUP_ID": "G1", "LOT_CD": "LC_A", "TEMP": "T600"},
-  {"GROUP_ID": "G1", "LOT_CD": "LC_B", "TEMP": "T600"},
-  {"GROUP_ID": "G2", "LOT_CD": "LC_C", "TEMP": "T600"}
-]
+```python
+# config.py
+CONVERSION_GROUPS = {
+    "FAC001": [
+        {"GROUP_ID": "G1", "LOT_CD": "LC_A", "TEMP": "T600"},
+        {"GROUP_ID": "G1", "LOT_CD": "LC_B", "TEMP": "T600"},
+        {"GROUP_ID": "G2", "LOT_CD": "LC_C", "TEMP": "T600"},
+    ],
+}
 ```
 
 규칙:
@@ -168,7 +207,7 @@ run_inference(env_data, algorithm="earliest_st")
 |------|-----|
 | Action | `Discrete(O×P)` = `(OPER, PPK)` bucket |
 | Mask | 현재 idle EQP feasible bucket |
-| obs_dim | `5 + O×P×6 + O×P×K×5` = **935** (O=3, P=10, K=5) |
+| obs_dim | `6 + O×P×6 + O×P×K×5` = **936** (O=3, P=10, K=5) |
 
 **Bucket feature (po 6ch + pom 5ch)**: WIP 비율, urgency, achievable_ratio, projected_cover_ratio, starve_time_norm / ST, conversion·tool 가용, avoidable_frac, setup_changed 등.
 prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설비 수(`n_eqp_per_oper`) 기반이라 설비 공유·실시간 배정 상태를 반영 못 했고, LOT_CD/TEMP는 범주형 ID를 순서 있는 스칼라로 인코딩해 신호 품질이 낮았음 (전환 관련 정보는 pom_feats에 이미 더 정확히 포함).
@@ -177,17 +216,47 @@ prev/post takt·LOT_CD/TEMP 인코딩 채널은 제거됨 — takt는 정적 설
 
 | 항목 | 가중치 | 역할 |
 |------|--------|------|
-| `w_same_setup` | 1.0 | 직전과 (PPK, OPER) 모두 동일할 때만 연속 보너스 (전환 회피) |
-| `w_flow_balance` | 1.0 | WIP 편중(계획 비중 대비 적체) 공정 배정·후공정 feeding. `_bucket_projected_cover`로 이미 다른 장비가 커버 중인 만큼은 적체에서 제외(coverage-aware) |
-| `flow_balance_starving_cover_min` | 120 | 후속 ready WIP÷순감소율(분) ≤ 이 값일 때만 feeding 보너스 |
-| `w_redundant_cover` | -5.0 | 다른 셋업 장비가 horizon 내 이미 충분히 덮는 버킷을 또 잡으면 감점(다른 제품으로 전환할 '용기') |
-| `w_dedication_misuse` | -4.0 | 범용 장비가 더 전용적인 idle 장비도 가능한 버킷을 잡으면 감점(전용 장비가 놀지 않게) |
-| `w_bulk_block_bonus` | 0.0 | 큰 블록 커밋 보너스 (기본 비활성) |
-| `w_conversion` | -10.0 | LOT_CD/TEMP 전환 1회 패널티 |
-| `w_avoidable_conversion` | -8.0 | 회피 가능한 전환(다른 무전환 설비가 커버 가능)에 대한 추가 패널티 |
+| `w_same_setup` | 1.0 | 직전과 제품·공정 모두 동일할 때 연속 생산 보너스 |
+| `w_conversion` | -10.0 | LOT_CD/TEMP 전환 |
+| `w_avoidable_conversion` | -8.0 | 회피 가능한 전환(이미 같은 셋업의 다른 장비가 커버 가능) 추가 패널티 |
+| `w_bulk_block_bonus` | 3.0 | (Bulk-Fill 전용) 같은 제품군을 큰 블록으로 커밋할수록 보상 |
+| `w_dedication_misuse` | -4.0 | (Bulk-Fill 전용) 범용 장비가 더 전용적인 idle 장비 몫의 버킷을 잡으면 감점 |
+| `w_redundant_cover` | -5.0 | (Bulk-Fill 전용) 이미 다른 장비가 충분히 커버 중인 버킷을 또 잡으면 감점 |
 | `reward_clip` | ±10.0 | PPO 안정화 |
+| `w_plan_hit` / `w_pacing` / `w_flow_balance` / `w_idle_per_min` | 0.0 | cover 무시·전담 방해로 판단되어 제거됨(주석 참고) |
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.
+
+`w_bulk_block_bonus`/`w_dedication_misuse`/`w_redundant_cover`(전담 셰이핑),
+`RLConfig.ent_coef`/`ent_coef_final`(0.05→0.0 선형 감쇠, `ent_coef_decay_fraction`으로
+감쇠를 초반 일부에서 끝낼 수도 있음), `reward_clip=20.0`(`w_conversion`+
+`w_avoidable_conversion`이 이전 clip=10에 눌려 회피 가능 전환 신호가 죽어있던 걸
+수정)은 모두 대칭 벤치마크(SYM_5x5 등, 설비=제품 전담 시 전환 0회가 최적)에서
+실험으로 검증된 값이다.
+
+이것만으로는 SYM_5x5에서 전환이 2회 수준까지만 줄고 정체됐는데, 다음 두 가지를
+추가로 확인했다:
+- **모방학습(behavior cloning) 워밍스타트** (`RLConfig.bc_pretrain_epochs`, 기본 0=비활성):
+  이미 전환 0회를 확정적으로 내는 `DedicationAgent` 시연으로 PPO 정책을 먼저 지도학습시킨
+  뒤 RL을 이어감. 켜면(`bc_pretrain_epochs=300` 등) 1만 스텝 만에 전환 0회에 도달.
+- **`restore_best`** (`SchedulingAgent.train()`, 기본 `True`): PPO는 이미 좋은 정책을
+  찾은 뒤에도 계속 학습하며 오히려 나빠질 수 있어서(SYM_5x5에서 실측: 1만~9만 스텝은
+  전환 0회를 유지하다 10만 스텝에 다시 나빠짐), 학습 종료 시점의 모델 대신
+  `EvalCallback`이 저장해둔 `best_model.zip`으로 자동 복원한다.
+
+`bc_pretrain_epochs`를 켠 상태로 이 둘을 함께 쓰면 SYM_5x5에서 시드 2개(0, 1) 모두
+`agent.train()` → `agent.evaluate()` 표준 흐름만으로 전환 0회·생산 30/30에 재현
+확인됨. `bc_pretrain_epochs`는 아직 기본값이 꺼져 있으므로(opt-in), 켜려면
+학습 전에 `CONFIG.rl.bc_pretrain_epochs = 300` 등으로 설정한다.
+
+### FAC_ID별 모델 관리
+
+RL 모델은 `models/{FAC_ID}/`(체크포인트·best·logs 포함) 아래에 FAC_ID별로 분리해서
+저장·로드된다. `SchedulingAgent.train()/save()/load()/model_exists()`에 `fac_id`를
+넘기면 그 FAC_ID 전용 경로를 쓰고, 넘기지 않으면 기존 공용 경로(`models/` 바로 아래)를
+그대로 써서 이전에 학습된 모델과 호환된다. `main.py train`/`infer`, API의
+`/api/train`·`/api/train/start`·`/api/inference`·`/api/inference/compare`는
+전달된(또는 현재 선택된) FAC_ID로 자동 라우팅한다.
 
 ---
 
@@ -237,6 +306,17 @@ python main.py db-load --ddl --facid FAC001 --split infer
 `main.py infer`와 `POST /api/inference`는 추론 후 **항상** output/sql을 Oracle RTS 테이블에 적재합니다
 (별도 옵션 아님). `--db`/`db_alias`로 대상 DB alias를, `--no-history`/`no_history`로 HIS 테이블 적재
 여부를 조정할 수 있습니다.
+
+**테이블별로 다른 DB에 적재**하고 싶으면(예: `RTS_RSLT_MAS`/`RTS_RSLT_HIS`는 운영 DB, `RTS_PERFMON_HIS`는
+개발/집계 DB) `config/output_db_routing.yaml.example`을 `config/output_db_routing.yaml`로 복사해
+다르게 보낼 테이블만 적으세요(스키마 DDL과는 별개의 선택 파일):
+
+```yaml
+RTS_PERFMON_HIS: Dev
+RTS_VALIDATION: Dev
+```
+
+여기 없는 테이블(또는 파일 자체가 없는 경우)은 그대로 `--db`/`db_alias` 인자 하나로 적재됩니다.
 
 `RTS_EQPCONVPLAN_INF`/`RTS_EQPCONVPLAN_HIS` 저장 자체는 `CONFIG.env.conv_output_enabled`(기본 `True`)
 옵션으로 켜고 끌 수 있습니다. 켜져 있으면 RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`
@@ -311,7 +391,6 @@ DB 적재)에 남습니다. 두 로그 모두 자정에 자동 회전되고 백�
 | `python main.py train --facid FAC001 --from 20260621070000 --to 20260623070000` | RULE_TIMEKEY 구간 지정 학습 |
 | `python main.py train --facid FAC001 --ruletimekey 20260621070000` | 단일 RULE_TIMEKEY로 학습 |
 | `python main.py train --facid FAC001 --all` | train 폴더 전체로 학습 |
-| `python main.py train` | train 데이터가 있는 **전체 FAC**의 train 폴더를 **한 번에** 통합 학습 (`--facid` 생략) |
 
 ### 3. 테스트 / 검증 (test)
 
@@ -397,6 +476,26 @@ npm run dev
 ```
 
 헬스 체크: `curl http://localhost:8001/api/health` (자세한 배포 절차는 `docs/DEPLOYMENT.md` 참고)
+
+### 주기 추론 스케줄러 (선택)
+
+API 서버 기동 시 `python main.py infer`와 동일한 추론+DB 적재를 일정 주기로 자동 반복할 수 있습니다.
+기본은 **비활성**(opt-in) — 운영 DB에 의도치 않게 자동 적재되는 사고를 막기 위해, 아래 두 값을 모두
+명시해야 켜집니다.
+
+```bash
+# .env
+SCHEDULER_ENABLED=true
+SCHEDULER_FAC_ID=FAC001
+SCHEDULER_INTERVAL_SECONDS=3600   # 기본 3600(1시간)
+SCHEDULER_ALGORITHM=scheduling_rl # 기본값, minprogress/earliest_st/dedication도 가능
+SCHEDULER_DB_ALIAS=Prd            # 미지정 시 databases.yaml default
+SCHEDULER_NO_HISTORY=false
+```
+
+서버 기동 직후 1회 즉시 실행하고, 이후 `SCHEDULER_INTERVAL_SECONDS`마다 반복합니다. 한 회차가
+실패해도(DB 오류 등) 다음 주기에 다시 시도하며 서버 자체는 죽지 않습니다. 현재 상태는
+`GET /api/scheduler/status`(활성 여부, 누적 실행 횟수, 마지막 실행 시각/결과)로 확인할 수 있습니다.
 
 ---
 

@@ -9,6 +9,7 @@ SQL 템플릿: data/sql/{name}.sql  →  data/dataset/.../input/{name}.json
 """
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +17,7 @@ from config import (
     CONFIG,
     SQL_JSON_MAP,
     SQL_REQUIRED_KEYS,
+    conversion_group_rows_for,
     iter_rule_timekeys,
     normalize_rule_timekey,
     resolve_dataset_path,
@@ -112,6 +114,7 @@ def _read_json_file(path: Path) -> List[dict]:
 def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
     """dataset input 폴더 JSON 로드"""
     d = input_dir or CONFIG.path.input_dir
+    fac_id = CONFIG.path.fac_id if input_dir is None else None
 
     def _read(filename: str) -> List[dict]:
         path = d / filename
@@ -158,7 +161,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "tool_capacity":     tool_capacity,
         "eqp_initial_state": _read_optional(CONFIG.path.eqp_initial_state_file),
         "batch_info":        _read_optional(CONFIG.path.batch_info_file),
-        "conversion_group":  _read_optional(CONFIG.path.conversion_group_file),
+        "conversion_group":  conversion_group_rows_for(fac_id),
         "eqp_conv_plan":     _read_optional(CONFIG.path.eqp_conv_plan_file),
         "eqp_down":          _read_optional(CONFIG.path.eqp_down_file),
     }
@@ -247,11 +250,17 @@ def fetch_from_db(
     verbose: bool = False,
     dry_run: bool = False,
 ) -> Path:
-    """data/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용)."""
+    """data/sql/*.sql 실행 → JSON 저장 (쿼리별 @db alias 사용).
+
+    수집 완료 후 필수 테이블 누락(0건)·필수 필드 누락을 검사해, 불완전한
+    수집 결과가 정상 수집인 것처럼 폴더에 남지 않도록 한다(검증 실패 시
+    이번에 새로 만든 출력 폴더를 정리하고 예외를 던져 collect 를 실패 처리).
+    """
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     per = period or snapshot
     if output_dir is None:
         output_dir, _ = resolve_dataset_path(fac_id, split, per)
+    dir_preexisted = output_dir.exists()
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -259,6 +268,8 @@ def fetch_from_db(
 
     own_registry = db_registry is None
     registry = db_registry or DbRegistry()
+
+    collected: Dict[str, List[dict]] = {}
 
     if verbose:
         print(
@@ -298,6 +309,7 @@ def fetch_from_db(
                 _log_sql_execute(sql_file, alias, per, binds, sql, len(rows))
                 with open(out_path, "w", encoding="utf-8") as f:
                     json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
+                collected[key] = rows
                 row_warn = " ⚠ 0건" if not rows else ""
                 print(
                     f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows{row_warn})",
@@ -322,11 +334,37 @@ def fetch_from_db(
                         cause=exc,
                     ),
                 ) from exc
+
+        if not dry_run:
+            errors = _missing_data_errors(collected)
+            if errors:
+                if not dir_preexisted:
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                raise RuntimeError(
+                    "수집 데이터 누락/불완전 → collect 실패 처리"
+                    f" (fac={fac_id} split={split} period={per}):\n  - "
+                    + "\n  - ".join(errors)
+                )
     finally:
         if own_registry:
             registry.close_all()
 
     return output_dir
+
+
+def _missing_data_errors(collected: Dict[str, List[dict]]) -> List[str]:
+    """필수 테이블 0건 + 필수 필드 누락을 함께 검사해 오류 메시지 목록 반환."""
+    errors: List[str] = [
+        f"필수 테이블 0건: {key} ({SQL_JSON_MAP[key][1]})"
+        for key in SQL_REQUIRED_KEYS
+        if not collected.get(key)
+    ]
+    # validate_data()는 필수 키를 raw[key]로 직접 인덱싱하므로, 키 자체가 없는
+    # 경우(위 0건 체크와 별개로 이미 오류 목록에 반영됨)에도 KeyError 없이
+    # 안전하게 돌 수 있도록 빈 리스트로 채워서 넘긴다.
+    safe_raw = {key: collected.get(key, []) for key in SQL_JSON_MAP}
+    errors += validate_data(safe_raw)
+    return errors
 
 
 def fetch_period_range(
@@ -366,22 +404,35 @@ def fetch_period_range(
             print(f"[loader] dry-run: {range_label} 중 1일만 검증")
 
     paths: List[Path] = []
+    failed: List[tuple[str, str]] = []
     with DbRegistry() as registry:
         for period in keys:
             day_binds = {"RULE_TIMEKEY": period, **(extra_binds or {})}
-            path = fetch_from_db(
-                fac_id=fac_id,
-                split=split,
-                period=period,
-                extra_binds=day_binds,
-                lot_cd=lot_cd,
-                db_registry=registry,
-                verbose=verbose,
-                dry_run=dry_run,
-            )
+            try:
+                path = fetch_from_db(
+                    fac_id=fac_id,
+                    split=split,
+                    period=period,
+                    extra_binds=day_binds,
+                    lot_cd=lot_cd,
+                    db_registry=registry,
+                    verbose=verbose,
+                    dry_run=dry_run,
+                )
+            except Exception as exc:
+                # 한 기간의 누락/오류가 나머지 기간 수집까지 막지 않도록, 이
+                # period 만 건너뛰고 계속 진행한다(해당 period 의 출력 폴더는
+                # fetch_from_db 가 이미 정리했거나 애초에 생성되지 않았다).
+                print(f"[loader] {period} 수집 실패 → 건너뜀: {exc}")
+                failed.append((period, str(exc)))
+                continue
             paths.append(path)
     if dry_run:
         print(f"[loader] dry-run 완료 – {len(paths)}개 폴더 계획 확인")
     else:
-        print(f"[loader] {split} RULE_TIMEKEY {range_label} → {len(paths)}개 폴더 생성")
+        print(
+            f"[loader] {split} RULE_TIMEKEY {range_label} → "
+            f"{len(paths)}/{len(keys)}개 폴더 생성"
+            + (f" ({len(failed)}건 실패: {', '.join(p for p, _ in failed)})" if failed else "")
+        )
     return paths

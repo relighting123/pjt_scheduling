@@ -9,8 +9,17 @@
   ③ 부하 불균등 (LOAD) : 제품별 계획량·처리시간 상이 → 진행률 균형이 곧 최적이 아님
   ④ 전환 과중 (CONV)   : 전환시간 ≫ 처리시간 → 전환 1회 손실이 커 신중한 블록 점유가 유리
 
-공통: 단일 공정(OPER001), 단일 모델(A). 캐리어를 여러 설비에 분산 배치(home assign).
+공통: 단일 공정(OPER001), 단일 모델(A). 캐리어를 여러 설비에 분산 배치(home assign, mix).
 시뮬 시간 = 최소 전환만 했을 때 전량 생산 가능한 길이 → 초과 전환은 생산 손실로 직결.
+
+SYM 카테고리만 mix=0.0(분산 없음, 캐리어별 discrete_arrange 홈이 곧 담당 설비)으로
+고정한다: simulation/simulator.py의 _lot_conv_discrete_eligible()이 '전환 불필요한
+배정도 discrete(EQP×carrier 실측 조합)로 등록된 홈 설비가 아니면 배정 불가'로 막기
+때문에, mix>0로 캐리어 홈을 다른 설비에 흩어두면 한 설비가 그 제품 전량을 맡을 방법이
+없어져 "전담하면 전환 0" 이라는 대조군 전제 자체가 성립하지 않는다(실제로 mix=0.85/0.9였을
+때는 전담을 그대로 구현한 DedicationAgent 오라클조차 SYM_5x5에서 전환 17회가 나왔다 —
+정책 품질과 무관한 데이터 생성 버그). OVER/LOAD/CONV 카테고리는 애초에 전환이 불가피하거나
+전담이 곧 최적이 아니므로 이 제약이 KPI 변별력에 문제가 되지 않아 mix를 그대로 둔다.
 """
 import json
 import math
@@ -27,10 +36,10 @@ TEMP = "T600"
 # 각 벤치마크 스펙
 #  id, category, n_eqp, n_ppk, carriers(int|list), st(int|list), conv, mix, max_tool, desc, tests
 SPECS = [
-    dict(id="SYM_3x3", cat="대칭 기준", n_eqp=3, n_ppk=3, carriers=8, st=60, conv=60, mix=0.9,
+    dict(id="SYM_3x3", cat="대칭 기준", n_eqp=3, n_ppk=3, carriers=8, st=60, conv=60, mix=0.0,
          tool=99, desc="3설비·3제품·각 8캐리어. 설비당 1제품 전담 시 전환 0으로 최적.",
          tests="기본 전담 최적해 도달 (대조군)"),
-    dict(id="SYM_5x5", cat="대칭 기준", n_eqp=5, n_ppk=5, carriers=6, st=48, conv=48, mix=0.85,
+    dict(id="SYM_5x5", cat="대칭 기준", n_eqp=5, n_ppk=5, carriers=6, st=48, conv=48, mix=0.0,
          tool=99, desc="5설비·5제품·각 6캐리어. 규모를 키운 대칭 케이스.",
          tests="규모 확장 시 전담 유지"),
     dict(id="OVER_5p3", cat="제품 과잉", n_eqp=3, n_ppk=5, carriers=4, st=60, conv=60, mix=0.9,

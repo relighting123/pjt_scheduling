@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import PlotChart from "../components/PlotChart";
 import { api } from "../lib/api";
-import type { AlgoCompareEntry } from "../lib/charts";
+import { buildAlgorithmKpiComparison, type AlgoCompareEntry } from "../lib/charts";
 import { buildEqpModelMap, computeInferenceKpi } from "../lib/metrics";
 import type { AppMode, InferenceResult, TestBenchmarkResponse } from "../types";
 
@@ -33,6 +34,11 @@ export default function DashboardPage({ onNavigate }: Props) {
     const labels: Record<string, string> = { scheduling_rl: "PPO", minprogress: "MinProgress", earliest_st: "Earliest-ST" };
     return Object.entries(map).map(([algo, result]) => ({ algorithm: algo, label: labels[algo] ?? algo, result }));
   }, [testData]);
+
+  const testChart = useMemo(
+    () => (testEntries.length ? buildAlgorithmKpiComparison(testEntries) : null),
+    [testEntries],
+  );
 
   const now = new Date().toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -123,19 +129,22 @@ export default function DashboardPage({ onNavigate }: Props) {
                 <button type="button" className="btn btn-accent btn-sm" onClick={() => onNavigate("test")}>테스트 실행 →</button>
               </div>
             )}
-            {!testLoading && testEntries.length > 0 && (
-              <div className="dash-kpis dash-kpis-4">
-                {testEntries.slice(0, 4).map((e) => {
-                  const s = e.result.schedule;
-                  const ms = s.length ? Math.max(...s.map((r) => r.END_TM)) : 0;
-                  return (
-                    <div key={e.algorithm} className="dash-kpi">
-                      <div className="dash-kpi-label">{e.label}</div>
-                      <div className="dash-kpi-value">{ms.toLocaleString()}<small className="dash-kpi-unit">분</small></div>
-                    </div>
-                  );
-                })}
-              </div>
+            {!testLoading && testChart && (
+              <>
+                <PlotChart {...testChart} />
+                <div className="dash-kpis">
+                  {testEntries.slice(0, 4).map((e) => {
+                    const s = e.result.schedule;
+                    const ms = s.length ? Math.max(...s.map((r) => r.END_TM)) : 0;
+                    return (
+                      <div key={e.algorithm} className="dash-kpi">
+                        <div className="dash-kpi-label">{e.label}</div>
+                        <div className="dash-kpi-value">{ms.toLocaleString()}<small className="dash-kpi-unit">분</small></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
           <div className="dash-card-footer">

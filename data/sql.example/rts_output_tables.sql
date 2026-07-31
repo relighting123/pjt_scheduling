@@ -3,6 +3,7 @@
 -- (RTS_RSLT_MAS: 매 회차 동일 FAC_ID 전체 교체(최신 결과만 유지), RTS_EQPCONVPLAN_INF/HIS: 누적, HIS: 이력 누적)
 -- 최초 1회: python main.py db-load --ddl-only
 -- 또는:     python main.py db-load --ddl --facid FAC001 --split infer
+-- 테이블별로 다른 DB에 적재하고 싶으면 config/output_db_routing.yaml.example 참고.
 
 -- ── 스케줄 결과 (가공 계획) ────────────────────────────────────────────────
 CREATE TABLE RTS_RSLT_MAS (

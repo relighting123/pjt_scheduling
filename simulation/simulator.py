@@ -311,10 +311,10 @@ class SchedulingSimulator:
     def _build_eqps_by_om(self) -> Dict[tuple, List[str]]:
         """(oper, eqp_model) → EQP 목록. reset 시 1회 계산 (정적 구조).
 
-        eqp_oper_cap(discrete 실적) 뿐 아니라 abstract_arrange_map(모델 매칭)도
+        eqp_oper_cap(discrete 투입 가능 선언) 뿐 아니라 abstract_arrange_map(모델 매칭)도
         반영한다 — _eqp_can_process()와 동일한 두 경로(OR)를 써야 한다.
-        discrete_wait_enabled=False에서는 eqp_oper_cap이 WAIT lot 실적을
-        의도적으로 제외해 거의 비므로(_rebuild_eqp_oper_cap 참고), 이것만
+        discrete_wait_enabled=False에서는 eqp_oper_cap이 WAIT lot의 discrete
+        투입 가능 관계를 의도적으로 제외해 거의 비므로(_rebuild_eqp_oper_cap 참고), 이것만
         보면 get_bucket_features()의 pom_feats(ST/needs_conv/avoidable_frac/
         setup_changed 등)가 사실상 전부 0이 되어 RL이 전환 관련 신호를 전혀
         못 받는다."""
@@ -726,7 +726,7 @@ class SchedulingSimulator:
     def _conversion_group_blocks(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
         """전환 그룹 제약: 현재 셋업과 '다른 그룹'으로의 전환이면 배정 차단.
 
-        규칙(conversion_group.json이 있을 때만 활성):
+        규칙(config.CONVERSION_GROUPS[FAC_ID]에 설정이 있을 때만 활성):
           - 전환이 필요 없으면(동일 셋업) 절대 차단하지 않음
           - 첫 배정(prev_lot_cd=None)은 _would_need_conversion=False → 차단 안 함
           - from·to 둘 다 그룹에 속할 때만, 두 그룹이 다르면 차단
@@ -1176,10 +1176,12 @@ class SchedulingSimulator:
         return attrs.get("lot_cd", "LC01"), attrs.get("temp", "T650")
 
     def _accumulate_idle(self, eqp: Equipment, reward: float, until: int) -> float:
+        cfg = self._reward_cfg
         idle_duration = max(until - eqp.free_at, 0)
         if idle_duration > 0:
             eqp.idle_accum += idle_duration
             self.stats["idle_total"] += idle_duration
+            reward += cfg.w_idle_per_min * idle_duration
         return reward
 
     def _apply_conversion_start(
@@ -1525,6 +1527,29 @@ class SchedulingSimulator:
             prev = self._flow_prev(ppk, prev)
         return min(plan_qty, done + reachable)
 
+    def _plan_hit_reward(self, ppk: str, oper_id: str, wf_qty: int, end_time: int) -> float:
+        """계획 달성 진척 보너스.
+
+        식: gap = max(target - done, 0)   # achievable_qty 기준 잔여 목표
+            reward = w_plan_hit * (gap_before - gap_after) / target
+            → gap이 줄수록(목표에 가까워질수록) +. 이미 달성(gap=0)이면 추가 보상 없음.
+        """
+        reward = 0.0
+        if end_time > self.soft_cutoff or not self._has_plan(ppk, oper_id):
+            return reward
+        cfg = self._reward_cfg
+        if cfg.w_plan_hit <= 0:
+            return reward
+        key = (ppk, oper_id)
+        done_before = self.stats["completed_qty"].get(key, 0)
+        # Step C: 고정 계획 대신 달성가능 상한 기준으로 진척 보상
+        target = max(self._achievable_qty(ppk, oper_id), 1)
+        gap_before = max(target - done_before, 0)
+        done_after = done_before + wf_qty
+        gap_after = max(target - done_after, 0)
+        reward += cfg.w_plan_hit * (gap_before - gap_after) / target
+        return reward
+
     def _bucket_projected_cover(
         self, ppk: str, oper_id: str, exclude_eqp: Optional[str],
     ) -> float:
@@ -1548,6 +1573,41 @@ class SchedulingSimulator:
             if st and st > 0:
                 total += remaining / st
         return total
+
+    def _pacing_shaping_reward(
+        self, ppk: str, oper_id: str, wf_qty: int,
+        at_time: Optional[int] = None, eqp_id: Optional[str] = None,
+    ) -> float:
+        """계획이 있는 (PPK, OPER)만 페이싱 shaping.
+
+        진척 기준을 'done'이 아니라 'done + 다른 장비의 투영 커버(pacing_coverage_scale)'
+        로 봐서, 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주(lockstep 억제).
+        식: ideal = target * (t/horizon)   # 선형 takt 목표선
+            eff   = done + coverage_scale * 다른장비_투영커버
+            reward = w_pacing * (|ideal-eff_before| - |ideal-eff_after|) / target
+            → 오차가 줄면 +, 늘면 -(이미 앞선 제품을 더 만들면 감점)
+        """
+        cfg = self._reward_cfg
+        if cfg.w_pacing <= 0 or not self._has_plan(ppk, oper_id):
+            return 0.0
+        # Step C: 선형 takt ideal을 달성가능 상한 기준으로 (재공 한계까지만 추종)
+        target = max(self._achievable_qty(ppk, oper_id), 1)
+        horizon = max(self.soft_cutoff, 1)
+        t = self.current_time if at_time is None else at_time
+        ideal = target * min(max(t, 0), horizon) / horizon
+        key = (ppk, oper_id)
+        done_before = self.stats["completed_qty"].get(key, 0)
+        # 다른 장비(본인 제외)의 투영 커버를 진척에 가산 → coverage-aware pacing
+        cover = 0.0
+        if cfg.pacing_coverage_scale > 0:
+            cover = cfg.pacing_coverage_scale * self._bucket_projected_cover(
+                ppk, oper_id, exclude_eqp=eqp_id,
+            )
+        eff_before = done_before + cover
+        eff_after = eff_before + wf_qty
+        err_before = abs(ideal - eff_before)
+        err_after = abs(ideal - eff_after)
+        return cfg.w_pacing * (err_before - err_after) / target
 
     def _ppk_has_feasible_assignment(self, ppk: str) -> bool:
         """현재 시점에 해당 PPK로 투입 가능한 (OPER, EQP) 조합이 있는지."""
@@ -1580,19 +1640,12 @@ class SchedulingSimulator:
             return 0.0
         return cfg.w_same_setup
 
-    def _flow_balance_reward(
-        self, ppk: str, oper_id: str, eqp_id: Optional[str] = None,
-    ) -> float:
+    def _flow_balance_reward(self, ppk: str, oper_id: str) -> float:
         """
-        Step B (coverage-aware): flow-balance shaping.
-        기준을 균등(1/n)이 아닌 계획 비중(plan_qty 기준)으로 비교하되, 이미 다른
-        장비가 하루 끝까지 커버 가능한 만큼은 '적체'에서 빼고 본다(pacing/
-        redundant_cover와 동일하게 _bucket_projected_cover 사용). 예전 버전은
-        순수 WIP 비중만 봐서 이미 다른 전담 장비가 처리 중인 공정에도 "적체"로
-        보상을 줘 엉뚱한 장비를 끌어들였다(전담 방해 원인) — cover를 빼면 순수
-        미해결 잔량만 적체로 잡는다.
-        - (WIP - 타 장비 투영 커버) 비중 > 계획 비중 → 이 공정에 순 적체 → +
-        - 그 반대(이미 충분히 커버됨) → 다른 공정 우선 → -
+        Step B: flow-balance shaping.
+        기준을 균등(1/n)이 아닌 계획 비중(plan_qty 기준)으로 비교.
+        - WIP 비중 > 계획 비중 → 이 공정에 적체, 더 돌려야 함 → +
+        - WIP 비중 < 계획 비중 → 이 공정은 충분, 다른 공정 우선 → -
         - 후속 공정 starving 시 추가 +
         """
         cfg = self._reward_cfg
@@ -1603,9 +1656,7 @@ class SchedulingSimulator:
         if total_wip <= 0:
             return 0.0
         here = wips.get(f"{ppk}|{oper_id}", 0)
-        cover = self._bucket_projected_cover(ppk, oper_id, exclude_eqp=eqp_id)
-        here_net = max(here - cover, 0.0)
-        wip_share = here_net / total_wip
+        wip_share = here / total_wip
 
         # 계획 비중: 현재 WIP가 있는 (ppk, oper) 중 plan_qty 합 대비 이 공정의 비중
         plan_meta = self._env_data.get("plan_meta", {})
@@ -1622,54 +1673,6 @@ class SchedulingSimulator:
         if self._downstream_is_starving(ppk, oper_id):
             score += 0.5
         return cfg.w_flow_balance * score
-
-    def _product_balance_reward(self, ppk: str, oper_id: str) -> float:
-        """
-        제품 간 생산 균형 shaping — flow_balance(공정 간 재공 편중)의 제품판.
-
-        재공이 부족해 achievable_qty가 계획에 못 미치는 구간(이 버킷 자신이든,
-        비교 대상 버킷이든)에는 개입하지 않는다 — 그 구간은 flow_balance/
-        redundant_cover가 '후속 굶주림 해소·앞공정 몰아치기'를 우선한다.
-        재공이 넉넉해 계획을 그대로 달성 가능한 버킷들 사이에서만, 이 버킷의
-        진척률(achievable 상한 대비 완료 비율)이 같은 조건의 다른 제품·공정
-        평균보다 뒤처져 있으면 그만큼 +. 평균 이상이면 0(빨리 끝내는 제품에
-        페널티는 주지 않음) — 장비가 하나의 제품에 쏠려 다른 제품이 방치되는
-        것을 막고, 재공이 허락하는 한 제품별로 고르게 생산되도록 한다.
-        """
-        cfg = self._reward_cfg
-        if cfg.w_product_balance <= 0:
-            return 0.0
-        if not self._has_plan(ppk, oper_id):
-            return 0.0
-
-        plan_meta = self._env_data.get("plan_meta", {})
-        pm = plan_meta.get((ppk, oper_id))
-        plan_qty = max(pm["d0_plan_qty"], 1) if pm else 1
-        target = max(self._achievable_qty(ppk, oper_id), 1)
-        if target / plan_qty < cfg.product_balance_achievable_min:
-            return 0.0  # 이 버킷 자체가 재공 부족 구간
-
-        done = self.stats["completed_qty"].get((ppk, oper_id), 0)
-        progress = done / target
-
-        others: List[float] = []
-        for (p, o), pm2 in plan_meta.items():
-            if (p, o) == (ppk, oper_id):
-                continue
-            plan_qty2 = pm2.get("d0_plan_qty", 0)
-            if plan_qty2 <= 0:
-                continue
-            target2 = max(self._achievable_qty(p, o), 1)
-            if target2 / plan_qty2 < cfg.product_balance_achievable_min:
-                continue  # 비교 대상도 재공 부족하면 제외
-            done2 = self.stats["completed_qty"].get((p, o), 0)
-            others.append(done2 / target2)
-
-        if not others:
-            return 0.0
-        avg_other = sum(others) / len(others)
-        lag = max(avg_other - progress, 0.0)
-        return cfg.w_product_balance * min(lag, 1.0)
 
     def _logical_lot_id(
         self,
@@ -2168,7 +2171,14 @@ class SchedulingSimulator:
         lot_stat_cd = pending.get("lot_stat_cd", "WAIT")
 
         end_time = start_time + proc_time
-        reward = proc_reward
+        plan_hit = self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
+        reward = proc_reward + plan_hit
+        # plan_hit를 직전 결정의 리워드 분해에 추가(같은 LOT일 때만)
+        if plan_hit:
+            lb = self._last_decision_assignment
+            if lb is not None and lb.get("lot_id") == lot_id:
+                lb.setdefault("reward_breakdown", {})["plan_hit"] = round(float(plan_hit), 4)
+                self._last_reward_breakdown["plan_hit"] = round(float(plan_hit), 4)
 
         from_lot_cd = eqp.prev_lot_cd
         from_temp = eqp.prev_temp
@@ -2283,11 +2293,11 @@ class SchedulingSimulator:
         t = self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
         if t: terms["same_setup"] = round(float(t), 4)
         reward += t
-        t = self._flow_balance_reward(ppk, oper_id, eqp_id=eqp_id)
-        if t: terms["flow_balance"] = round(float(t), 4)
+        t = self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
+        if t: terms["pacing"] = round(float(t), 4)
         reward += t
-        t = self._product_balance_reward(ppk, oper_id)
-        if t: terms["product_balance"] = round(float(t), 4)
+        t = self._flow_balance_reward(ppk, oper_id)                  # Step B
+        if t: terms["flow_balance"] = round(float(t), 4)
         reward += t
 
         self._emit_event(
@@ -2749,23 +2759,12 @@ class SchedulingSimulator:
     # --- 관측 벡터 생성 (Global + Bucket) ---
 
     def get_observation(self) -> np.ndarray:
-        """관측: Global(5) + Bucket(O×P×K×F).
+        """관측: Global(6) + Bucket(O×P×K×F).
 
         EQP local(prev_prod/prev_oper)과 Context(last_ppk/oper/eqp/lot_cd)는
         bucket의 pom_feats(needs_conversion/avoidable_frac 등)와 정보가 겹치거나
         전역 마지막 배정 스칼라로 뭉개져 있어 제거 — bucket 채널이 이미 더
         세밀한 정보를 제공한다.
-
-        takt_margin(soft_cutoff까지 남은 시간 비율)은 제거됨 — 이 프로젝트의
-        horizon 설정상 time_norm(경과시간/전체)과 거의 선형종속이라 사실상
-        같은 '경과 시간' 신호를 두 번 주는 것과 같았다. "여러 설비가 동시에
-        idle이 되면 이미 커버된 버킷을 피해 흩어져라" 같은, 원래 시간과
-        무관해야 할 판단(same_setup/redundant_cover/dedication_misuse 기반)이
-        중복된 시간 신호에 조건화되어 시각(t)마다 다르게 학습되고 서로
-        일반화되지 않는 문제가 있었다 — 중복 신호를 줄여 이 노출 면적을
-        낮춘다. 남은 time_norm 하나는 block 크기 산정(_takt_budget_carriers가
-        soft_cutoff-현재시각을 직접 쓰므로) 등 실제로 시간이 필요한 판단을
-        위해 유지한다.
         """
         data = self._env_data
         initial_lot_count = max(len(data["lots"]), 1)
@@ -2776,21 +2775,24 @@ class SchedulingSimulator:
 
         bucket = self.get_bucket_features().flatten()
 
-        group_global = np.zeros(5, dtype=np.float32)
+        group_global = np.zeros(6, dtype=np.float32)
         group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)
-        group_global[1] = min(len(self.lot_pool) / initial_lot_count, 1.0)
+        group_global[1] = min(
+            max(self.soft_cutoff - self.current_time, 0) / max(self.soft_cutoff, 1), 1.0,
+        )
+        group_global[2] = min(len(self.lot_pool) / initial_lot_count, 1.0)
         produced = sum(self.stats["completed_qty"].values())
         if total_plan > 0:
-            group_global[2] = min(produced / total_plan, 1.0)
+            group_global[3] = min(produced / total_plan, 1.0)
         else:
-            group_global[2] = min(produced / max(self._initial_wip_total, 1), 1.0)
+            group_global[3] = min(produced / max(self._initial_wip_total, 1), 1.0)
         conv_eqps = 0
         for eqp_id, eqp in self.eqps.items():
             rem = max(eqp.free_at - self.current_time, 0)
             if rem > 0 and eqp.status == "idle" and eqp.prev_lot_cd is not None:
                 conv_eqps += 1
-        group_global[3] = conv_eqps / max(len(self.eqps), 1)
-        group_global[4] = min(self._tool_tracker.utilization(), 1.0)
+        group_global[4] = conv_eqps / max(len(self.eqps), 1)
+        group_global[5] = min(self._tool_tracker.utilization(), 1.0)
 
         obs = np.concatenate([
             group_global,

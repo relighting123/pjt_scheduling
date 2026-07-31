@@ -46,7 +46,6 @@ class SchedulingRLEnv(gym.Env):
         truncate_on_time: bool = True,
         size_levels: int = BULK_SIZE_LEVELS,
         record_decision_log: bool = False,
-        random_start_max_steps: int = 0,
     ):
         super().__init__()
         self._env_data = env_data
@@ -56,13 +55,6 @@ class SchedulingRLEnv(gym.Env):
         self._decision_log: list = []
         self._truncate_on_time = truncate_on_time
         self._L = max(int(size_levels), 1)
-        # 다양한 시작 시점 커리큘럼(학습 전용, 기본 0=비활성): reset()마다
-        # 0~random_start_max_steps개의 '전담 배정' 워밍업 결정을 미리 재생해,
-        # 동시 다발 idle 시 겹치지 않게 분산하는 판단을 t=0 뿐 아니라 다양한
-        # 절대 시각에서도 겪게 한다. 워밍업은 reset() 안에서만 재생되고 끝나면
-        # 스텝 카운트·보상 누계·decision_log를 초기화하므로, SB3는 이 내부
-        # step() 호출들을 전혀 보지 못한다(on-policy 무결성 유지).
-        self._random_start_max_steps = max(int(random_start_max_steps), 0)
 
         env_cfg = CONFIG.env
         self._O = env_cfg.max_oper_count
@@ -98,42 +90,7 @@ class SchedulingRLEnv(gym.Env):
         sim_end = int(self._env_data.get("sim_end_minutes", CONFIG.env.hard_horizon_minutes))
         self._max_episode_steps = sim_end + 500
         self._block = {}
-
-        if self._random_start_max_steps > 0:
-            self._apply_random_warm_start()
-            # 워밍업 분량은 학습 신호에서 제외 — 실제 에피소드는 여기서부터.
-            self._total_reward = 0.0
-            self._episode_steps = 0
-            self._decision_log = []
-
         return self.sim.get_observation(), {}
-
-    def _apply_random_warm_start(self) -> None:
-        """0~random_start_max_steps개의 '전담 배정'(EQP i번째 → PPK i번째,
-        최대 블록) 워밍업을 미리 재생해 다양한 절대 시각에서 에피소드가
-        시작되도록 한다. 목표 제품이 그 설비에 feasible하지 않으면(모델
-        불일치 등) 아무 feasible 버킷으로 대체한다."""
-        eqp_ids = list(self._env_data.get("eqp_ids", []))
-        prod_keys = list(self._env_data.get("prod_keys", []))
-        if not eqp_ids or not prod_keys:
-            return
-        n_warmup = int(self.np_random.integers(0, self._random_start_max_steps + 1))
-        for _ in range(n_warmup):
-            if self.sim.is_done():
-                break
-            eqp_id = self._ensure_decision_eqp()
-            if eqp_id is None:
-                break
-            ei = eqp_ids.index(eqp_id) if eqp_id in eqp_ids else 0
-            target_ppk = prod_keys[ei % len(prod_keys)]
-            feasible = self.sim.get_feasible_ppk_oper(eqp_id)
-            if not feasible:
-                break
-            flat = next(
-                (f for f in feasible if self.sim.ppk_oper_from_flat(f)[0] == target_ppk),
-                feasible[0],
-            )
-            self.step(np.array([flat, self._L - 1], dtype=np.int64))
 
     def _ensure_decision_eqp(self) -> Optional[str]:
         if self.sim.current_idle_eqp() is not None:

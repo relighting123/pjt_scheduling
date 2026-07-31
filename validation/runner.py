@@ -54,9 +54,9 @@ def run_validation(
 
     if agent is None:
         agent = SchedulingAgent()
-        if not agent.model_exists():
+        if not agent.model_exists(fac_id=fac_id):
             raise ValueError("학습된 모델이 없습니다. 먼저 train을 실행하세요.")
-        agent = SchedulingAgent.load()
+        agent = SchedulingAgent.load(fac_id=fac_id)
 
     results: List[dict] = []
     errors: List[dict] = []

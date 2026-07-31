@@ -242,30 +242,6 @@ def list_split_folders(fac_id: str, split: str) -> List[str]:
     )
 
 
-def list_fac_ids(split: str = "train") -> List[str]:
-    """dataset 아래 split 입력 데이터가 있는 FAC_ID 목록 (정렬)."""
-    if split not in DATASET_SPLITS:
-        raise ValueError(f"split은 {DATASET_SPLITS} 중 하나여야 합니다 (받은 값: {split!r})")
-    if not DATASET_DIR.is_dir():
-        return []
-    found: List[str] = []
-    for fac_path in sorted(DATASET_DIR.iterdir()):
-        if not fac_path.is_dir():
-            continue
-        fac_id = fac_path.name
-        if list_split_folders(fac_id, split):
-            found.append(fac_id)
-    return found
-
-
-def list_all_split_folders(split: str = "train") -> List[str]:
-    """모든 FAC의 split 입력 폴더 키 목록 (정렬)."""
-    folders: List[str] = []
-    for fac_id in list_fac_ids(split):
-        folders.extend(list_split_folders(fac_id, split))
-    return folders
-
-
 def folders_in_period_range(
     fac_id: str,
     split: str,
@@ -363,6 +339,38 @@ def resolve_dataset_path(
     return root / "input", root / "output"
 
 
+# ── 전환 그룹(conversion group) ────────────────────────────────────────────────
+# FAC_ID별 하드코딩 설정. (LOT_CD, TEMP)를 GROUP_ID로 묶어, 같은 그룹끼리만
+# 장비 전환을 허용한다(simulation/simulator.py:_conversion_group_blocks).
+# split/period(train/test/infer)와 무관하게 fac 전체에 공통 적용된다.
+# 행 포맷: {"GROUP_ID": str, "LOT_CD": str, "TEMP": str}
+CONVERSION_GROUPS: dict = {
+    # "FAC001": [
+    #     {"GROUP_ID": "G1", "LOT_CD": "LOTCODE_A", "TEMP": "T1"},
+    #     {"GROUP_ID": "G1", "LOT_CD": "LOTCODE_B", "TEMP": "T1"},
+    #     {"GROUP_ID": "G2", "LOT_CD": "LOTCODE_C", "TEMP": ""},
+    # ],
+}
+
+
+def conversion_group_rows_for(fac_id: str) -> List[dict]:
+    """FAC_ID에 해당하는 전환 그룹 행 목록(CONVERSION_GROUPS). 미설정이면 빈 리스트
+    → 전환 그룹 제약 비활성(기존 동작 유지)."""
+    return CONVERSION_GROUPS.get(fac_id, [])
+
+
+def model_dir_for(fac_id: Optional[str] = None) -> Path:
+    """FAC_ID별 RL 모델 저장 경로: models/{FAC_ID}/.
+
+    fac_id 미지정(None/빈 문자열)이면 기존 공용 경로(CONFIG.path.model_dir,
+    models/ 바로 아래)를 그대로 반환해 이전에 학습된 모델과 호환된다 —
+    FAC_ID별 분리는 호출부가 명시적으로 fac_id를 넘길 때만 적용된다.
+    """
+    if not fac_id:
+        return CONFIG.path.model_dir
+    return CONFIG.path.model_dir / validate_path_segment(fac_id, "FAC_ID")
+
+
 def infer_paths(fac_id: str) -> Tuple[Path, Path]:
     """추론 전용 dataset/{FAC_ID}/infer/input|output"""
     return resolve_dataset_path(fac_id, "infer")
@@ -442,7 +450,6 @@ class PathConfig:
     tool_capacity_file: str = "tool_capacity.json"
     eqp_initial_state_file: str = "eqp_initial_state.json"
     batch_info_file:   str = "batch_info.json"
-    conversion_group_file: str = "conversion_group.json"
     eqp_conv_plan_file: str = "eqp_conv_plan.json"
     eqp_down_file:     str = "eqp_down.json"
     output_file:       str = "output.json"
@@ -545,6 +552,21 @@ class RLConfig:
     batch_size:      int   = 64
     n_epochs:        int   = 10
     gamma:           float = 0.99
+    # 엔트로피 보너스: 0.0(기본 SB3 값)이면 대칭 케이스(예: SYM_5x5)에서 정책이
+    # 조기에 하나의 순열로 굳어져(collapse) 전환 0회 최적해를 못 찾고 국소 최적에
+    # 갇히는 경향이 실험으로 확인됨. ent_coef를 고정값으로만 주면(과거 0.02) 학습
+    # 후반(21만 스텝 이후)에도 여전히 전환 2회에서 정체되는 것도 확인됨 — 그래서
+    # start(탐색)→final(착취)로 선형 감쇠시킨다(EntropyDecayCallback,
+    # agent/train_progress.py). ent_coef_final을 ent_coef와 같은 값으로 두면
+    # 감쇠 없이 기존처럼 고정값 그대로 동작한다.
+    ent_coef:        float = 0.05   # 학습 시작 시점 엔트로피 계수
+    ent_coef_final:  float = 0.0    # 학습 종료 시점 엔트로피 계수(선형 감쇠 목표)
+    # 감쇠를 전체 구간(1.0) 대신 초반 일부에서 끝낸다(예: 0.2=처음 20%).
+    # BC 워밍스타트와 같이 쓸 때 특히 중요 — 이미 좋은 정책 근처에서
+    # 시작했는데 감쇠를 느리게 끌면 후반까지 남은 탐색이 그 정책을 다시
+    # 흔들어버리는 게 실험으로 확인됨. bc_pretrain_epochs>0(기본값)이라
+    # 0.2로 짧게 잡는다 — BC를 끄면(0) 다시 1.0(전체 구간 감쇠)로 늘리는 걸 권장.
+    ent_coef_decay_fraction: float = 0.2
     total_timesteps: int   = 200_000
     default_n_episodes:   int   = 100       # UI 에피소드 학습 기본값
     model_name:      str   = "scheduling_rl"
@@ -552,12 +574,29 @@ class RLConfig:
     # GPU / 병렬 환경 설정
     device:          str   = "auto"         # "auto" | "cuda" | "cpu"
     n_envs:          int   = 1              # SubprocVecEnv 병렬 환경 수 (1=DummyVecEnv)
+    # 모방학습(behavior cloning) 워밍스타트: DedicationAgent 시연으로 정책을
+    # 지도학습한 뒤 PPO를 이어서 돌린다. 0이면 비활성(무작위 초기화 그대로
+    # PPO 시작). epochs를 너무 크게 주면(예: 300) full-batch NLL이 거의
+    # 0까지 수렴하면서 정책이 결정적으로 붕괴(엔트로피≈0)해 PPO 학습 곡선이
+    # 평평해지는 현상이 확인됨 — 그 절충으로 epochs는 완전 수렴 전에서
+    # 멈추는 적당한 값, lr은 기본 PPO lr(3e-4)과 비슷한 수준으로 낮춰서
+    # 완전 결정적 붕괴를 피한다.
+    bc_pretrain_epochs: int   = 20
+    bc_pretrain_lr:     float = 3e-4
 
 
 @dataclass
 class RewardConfig:
+    # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
     # 제품·공정이 '모두' 직전과 동일할 때만 주는 연속 보너스 (전환 회피와 정렬).
     w_same_setup:      float = 1.0
+    w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
+    w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
+    w_pacing:          float = 0.0       # [제거] 선형 takt 추종 (achievable 기준; Step C)
+    # pacing 진척을 'done'이 아니라 'done + 다른 장비(본인 제외)의 잔여 horizon 투영
+    # 생산(coverage)'으로 봄 → 이미 다른 장비가 충분히 덮는 제품은 pace 충족으로 간주해
+    # 추가 몰림(lockstep)을 억제. 0이면 done-only(기존 동작). 작게 시작 권장.
+    pacing_coverage_scale: float = 1.0
     w_conversion:      float = -10.0     # LOT_CD/TEMP 전환 1회 패널티
     # 회피 가능한 conversion(이미 같은 LOT_CD/TEMP로 세팅된 다른 장비가 시간 내
     # 재공을 커버 가능)일 때 w_conversion에 더해지는 추가 패널티. 0이면 비활성.
@@ -566,29 +605,30 @@ class RewardConfig:
     # 변환을 정당한 것으로 보고 회피 패널티를 면제. 짧으면 패널티↑.
     conversion_amortize_factor: float = 1.0
     # --- 벌크 점유(Bulk-Fill) 전용 보상항 (SchedulingRLEnv에서만 사용; 0이면 비활성) ---
+    # SYM_5x5(대칭 5x5, 전담 시 전환 0회가 최적) 학습 실험에서 이 세 항을 꺼둔
+    # 기본값(0.0)으로는 200k 스텝을 학습해도 전환이 15회 안팎에서 정체됐다.
+    # 아래 값(bench_suite.py의 co-train 전용 오버라이드였던 값과 동일)으로 켜면
+    # 같은 스텝 수에서 전환이 2회까지 줄어드는 걸 확인해 기본값으로 승격했다.
     # ① 블록 크기 보너스: 같은 제품군을 큰 블록으로 커밋할수록 보상(전담 커밋 유도).
-    w_bulk_block_bonus:   float = 0.0
+    w_bulk_block_bonus:   float = 3.0
     # ② 전용 오용 페널티(<0): 범용 장비가 더 전용적인 idle 장비도 가능한 버킷을
     #    잡을 때 감점 → 전용 장비가 놀지 않게.
     w_dedication_misuse:  float = -4.0
     # ③ 중복 커버 페널티(<0): 이미 다른 셋업 장비가 horizon 내 충분히 덮는 버킷을
     #    잡으면 감점 → 다른 제품으로 전환할 '용기'.
     w_redundant_cover:    float = -5.0
-    # --- flow-balance shaping (WIP 비중 vs 계획 비중 기준, cover 반영) ---
-    w_flow_balance:    float = 1.0       # 재활성화: _bucket_projected_cover로 cover 반영(전담 방해 수정)
+    # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
+    w_flow_balance:    float = 0.0       # [제거] cover 무시 → 전담 방해 2위라 제거
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
     flow_balance_starving_cover_min: float = 120.0
-    # --- 제품 간 생산 균형 (flow_balance의 제품판; 재공 넉넉한 구간에서만 작동) ---
-    # 뒤처진 제품·공정의 achievable 상한 대비 진척률이 다른(역시 재공 넉넉한) 제품
-    # 평균보다 낮으면 그 격차만큼 +. 재공 부족 구간(achievable_ratio 낮음)엔 관여하지
-    # 않음 — 그건 flow_balance/redundant_cover가 담당(앞공정 몰아치기와 충돌 방지).
-    w_product_balance: float = 1.0
-    # achievable_qty / plan_qty가 이 값 이상인 버킷만 '재공 넉넉'으로 보고 비교 대상에 포함.
-    product_balance_achievable_min: float = 0.85
-    # step reward clip 범위 (PPO advantage 안정화)
-    reward_clip:       float = 10.0
-    # achievable target 사용 여부 (재공 한계까지만 계획 추종) — redundant_cover/flow_balance의
-    # need 계산에도 쓰임
+    # --- Step A: step reward clip 범위 (PPO advantage 안정화) ---
+    # w_conversion(-10.0) 하나만으로 이미 옛 clip(10.0)을 다 써버려서, 그 위에
+    # 붙는 w_avoidable_conversion(-8.0)이 항상 clip에 눌려 아무 효과가 없었다
+    # (회피 가능한 전환과 불가피한 전환이 똑같이 -10.0으로만 보임). |w_conversion|
+    # + |w_avoidable_conversion| = 18.0 을 clip 안에 넣어 그 차이가 실제로
+    # 보상에 반영되게 한다.
+    reward_clip:       float = 20.0
+    # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
     use_achievable_target: bool = True
 
 
@@ -597,6 +637,10 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
     r = reward or CONFIG.reward
     return {
         "w_same_setup": r.w_same_setup,
+        "w_idle_per_min": r.w_idle_per_min,
+        "w_plan_hit": r.w_plan_hit,
+        "w_pacing": r.w_pacing,
+        "pacing_coverage_scale": r.pacing_coverage_scale,
         "w_conversion": r.w_conversion,
         "w_avoidable_conversion": r.w_avoidable_conversion,
         "conversion_amortize_factor": r.conversion_amortize_factor,
@@ -605,8 +649,6 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_redundant_cover": r.w_redundant_cover,
         "w_flow_balance": r.w_flow_balance,
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
-        "w_product_balance": r.w_product_balance,
-        "product_balance_achievable_min": r.product_balance_achievable_min,
         "reward_clip": r.reward_clip,
         "use_achievable_target": r.use_achievable_target,
     }
@@ -616,11 +658,11 @@ def apply_reward_params(params: dict) -> None:
     """학습 요청 파라미터 → CONFIG.reward 반영."""
     r = CONFIG.reward
     float_keys = (
-        "w_same_setup", "w_conversion",
+        "w_same_setup", "w_idle_per_min",
+        "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
-        "w_flow_balance", "flow_balance_starving_cover_min",
-        "w_product_balance", "product_balance_achievable_min", "reward_clip",
+        "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
     )
     for key in float_keys:
         if key in params and params[key] is not None:
@@ -629,13 +671,37 @@ def apply_reward_params(params: dict) -> None:
         r.use_achievable_target = bool(params["use_achievable_target"])
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+@dataclass
+class SchedulerConfig:
+    """API 서버(main.py ui / uvicorn) 기동 시 주기적으로 infer 를 자동 실행하는 옵션.
+
+    기본은 비활성(enabled=False) — 명시적으로 켜야 동작한다. fac_id 없이
+    enabled=True 만 켜면 시작하지 않고 경고만 남긴다(운영 DB에 의도치 않게
+    자동 적재되는 사고를 막기 위한 opt-in 설계).
+    """
+    enabled:          bool  = field(default_factory=lambda: _env_bool("SCHEDULER_ENABLED"))
+    interval_seconds: int   = field(default_factory=lambda: int(os.environ.get("SCHEDULER_INTERVAL_SECONDS", "3600") or 3600))
+    fac_id:           str   = field(default_factory=lambda: os.environ.get("SCHEDULER_FAC_ID", "").strip())
+    algorithm:        str   = field(default_factory=lambda: os.environ.get("SCHEDULER_ALGORITHM", "scheduling_rl").strip())
+    db_alias:         Optional[str] = field(default_factory=lambda: os.environ.get("SCHEDULER_DB_ALIAS", "").strip() or None)
+    no_history:       bool  = field(default_factory=lambda: _env_bool("SCHEDULER_NO_HISTORY"))
+
+
 @dataclass
 class Config:
-    path:   PathConfig   = field(default_factory=PathConfig)
-    oracle: OracleConfig = field(default_factory=OracleConfig)
-    env:    EnvConfig    = field(default_factory=EnvConfig)
-    rl:     RLConfig     = field(default_factory=RLConfig)
-    reward: RewardConfig = field(default_factory=RewardConfig)
+    path:      PathConfig      = field(default_factory=PathConfig)
+    oracle:    OracleConfig    = field(default_factory=OracleConfig)
+    env:       EnvConfig       = field(default_factory=EnvConfig)
+    rl:        RLConfig        = field(default_factory=RLConfig)
+    reward:    RewardConfig    = field(default_factory=RewardConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 
 CONFIG = Config()

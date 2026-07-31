@@ -732,52 +732,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         </div>
 
         <div className="card">
-          <div className="card-title">알고리즘</div>
-          <div className="algo-list mb-2">
-            {algoList.map(a => {
-              const dis = a.requires_model && !modelExists;
-              return (
-                <label key={a.id} className={`algo-option${algorithm === a.id ? " selected" : ""}${dis ? "" : ""}`}>
-                  <input type="radio" name="algo" disabled={dis} checked={algorithm === a.id} onChange={() => setAlgorithm(a.id)} />
-                  <span className="algo-dot" style={{ background: ALGO_CHART_COLORS[a.id] ?? "#555" }} />
-                  <span className={`algo-name${dis ? " algo-name-dim" : ""}`}>{a.name}{dis ? " (모델 없음)" : ""}</span>
-                </label>
-              );
-            })}
-          </div>
-
-          <label className="check-label">
-            <input type="checkbox" checked={decisionLog} onChange={e => setDecisionLog(e.target.checked)} disabled={loading} />
-            결정 로그 포함
-          </label>
-          <p className="hint" style={{ marginTop: "-0.25rem", marginBottom: "0.5rem" }}>
-            스텝 디버거에서 스텝별 배정·차단 사유를 보려면 켜고 추론을 실행하세요.
-          </p>
-
-          <div className="gap-row mt-2">
-            <button type="button" className={`btn btn-primary${loading ? " loading" : ""}`}
-              onClick={runInference} disabled={loading || !canRun || folderLoading || !selectedFolder}>
-              {loading ? "" : "▶ 추론 실행"}
-            </button>
-            <button type="button" className={`btn btn-ghost btn-sm${loading ? " loading" : ""}`}
-              onClick={loadSaved} disabled={loading || folderLoading || !selectedFolder}>
-              저장 로드
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm"
-              onClick={() => fileRef.current?.click()} disabled={loading}>
-              파일 열기
-            </button>
-            <input ref={fileRef} type="file" accept=".json" style={{ display:"none" }}
-              onChange={e => { const f = e.target.files?.[0]; e.target.value=""; if(f) void loadFile(f); }} />
-          </div>
-          {fileSource && <p className="hint mt-1">파일: <code>{fileSource}</code></p>}
-          {needsModel && !modelExists && <p className="hint mt-1" style={{ color:"var(--warn)" }}>⚠ PPO는 모델이 필요합니다</p>}
-        </div>
-
-        <details className="card">
-          <summary className="card-title">고급 설정</summary>
-
-          <div className="card-section-label first">컨버전 설정</div>
+          <div className="card-title">컨버전 설정</div>
           <p className="hint mb-2">
             LOT_CD/TEMP 전환 횟수·소요 시간을 제한합니다. 비우면 무제한(시간은 기본 {defaultConversionMinutes}분).
           </p>
@@ -831,8 +786,53 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
             켜면 전환 불필요한 WAIT 재공도 EQP×carrier 실측(discrete) 조합이 있어야만 배정됩니다.
             끄면 실측 조합이 없어도 abstract(모델 평균 ST)로 배정을 허용합니다.
           </p>
+        </div>
 
-          <div className="card-section-label mt-3">저장 옵션</div>
+        <div className="card">
+          <div className="card-title">알고리즘</div>
+          <div className="algo-list mb-2">
+            {algoList.map(a => {
+              const dis = a.requires_model && !modelExists;
+              return (
+                <label key={a.id} className={`algo-option${algorithm === a.id ? " selected" : ""}${dis ? "" : ""}`}>
+                  <input type="radio" name="algo" disabled={dis} checked={algorithm === a.id} onChange={() => setAlgorithm(a.id)} />
+                  <span className="algo-dot" style={{ background: ALGO_CHART_COLORS[a.id] ?? "#555" }} />
+                  <span className={`algo-name${dis ? " algo-name-dim" : ""}`}>{a.name}{dis ? " (모델 없음)" : ""}</span>
+                </label>
+              );
+            })}
+          </div>
+
+          <label className="check-label">
+            <input type="checkbox" checked={decisionLog} onChange={e => setDecisionLog(e.target.checked)} disabled={loading} />
+            결정 로그 포함
+          </label>
+          <p className="hint" style={{ marginTop: "-0.25rem", marginBottom: "0.5rem" }}>
+            스텝 디버거에서 스텝별 배정·차단 사유를 보려면 켜고 추론을 실행하세요.
+          </p>
+
+          <div className="gap-row mt-2">
+            <button type="button" className={`btn btn-primary${loading ? " loading" : ""}`}
+              onClick={runInference} disabled={loading || !canRun || folderLoading || !selectedFolder}>
+              {loading ? "" : "▶ 추론 실행"}
+            </button>
+            <button type="button" className={`btn btn-ghost btn-sm${loading ? " loading" : ""}`}
+              onClick={loadSaved} disabled={loading || folderLoading || !selectedFolder}>
+              저장 로드
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm"
+              onClick={() => fileRef.current?.click()} disabled={loading}>
+              파일 열기
+            </button>
+            <input ref={fileRef} type="file" accept=".json" style={{ display:"none" }}
+              onChange={e => { const f = e.target.files?.[0]; e.target.value=""; if(f) void loadFile(f); }} />
+          </div>
+          {fileSource && <p className="hint mt-1">파일: <code>{fileSource}</code></p>}
+          {needsModel && !modelExists && <p className="hint mt-1" style={{ color:"var(--warn)" }}>⚠ PPO는 모델이 필요합니다</p>}
+        </div>
+
+        <div className="card">
+          <div className="card-title">저장 옵션</div>
           <p className="hint mb-2">추론 후 결과는 항상 Oracle RTS 테이블에 적재됩니다.</p>
           <label className="field-label" htmlFor="infer-db-alias">DB alias</label>
           <input
@@ -867,7 +867,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           {lastInferMeta && (
             <p className="hint mt-2">최근 실행: {lastInferMeta}</p>
           )}
-        </details>
+        </div>
         </>
         )}
       </aside>
@@ -970,7 +970,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 {ganttChart && (
                   <FullscreenPanel title="간트 차트" className="gantt-chart-panel-wrap" actions={ganttZoomActions}>
                     <div className="chart-wrap gantt-chart-panel">
-                      <PlotChart {...ganttChart} scrollable onBarClick={onGanttBarClick} hoverTooltip={ganttHoverTooltip} suppressHover={!!ganttBar} />
+                      <PlotChart {...ganttChart} scrollable onBarClick={onGanttBarClick} hoverTooltip={ganttHoverTooltip} />
                     </div>
                   </FullscreenPanel>
                 )}
@@ -1091,7 +1091,7 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                         className="stepdbg-gantt-wrap chart-wrap gantt-chart-panel"
                         actions={ganttZoomActions}
                       >
-                        <PlotChart {...debugGanttChart} scrollable onBarClick={onGanttBarClick} hoverTooltip={ganttHoverTooltip} suppressHover={!!ganttBar} />
+                        <PlotChart {...debugGanttChart} scrollable onBarClick={onGanttBarClick} hoverTooltip={ganttHoverTooltip} />
                       </FullscreenPanel>
                     )}
                     <StepDebugger entries={result.decision_log} onStepChange={setDebugStep} prodCodeMap={prodCodeMap} operCodeMap={operCodeMap} />

@@ -356,6 +356,40 @@ class EvalProgressCallback(EvalCallback):
         return continue_training
 
 
+class EntropyDecayCallback(BaseCallback):
+    """학습 진행률에 따라 model.ent_coef 를 start→end 로 선형 감쇠.
+
+    SB3 PPO의 ent_coef는 learning_rate와 달리 Schedule(callable)을 받지
+    않는 단순 float라, on_step마다 모델 속성을 직접 덮어써 감쇠를 흉내낸다.
+    초반엔 탐색을 넉넉히 주고(국소 최적 탈출) 후반엔 0에 가깝게 낮춰
+    정책을 굳히는 용도(SYM_5x5 실험에서 고정 ent_coef가 전환 2회에서
+    정체되는 걸 완화하기 위해 도입).
+
+    decay_fraction(기본 1.0=전체 구간)로 감쇠를 학습 초반 일부에서 끝낼 수
+    있다 — BC 워밍스타트와 같이 쓸 때, 전체 구간에 걸쳐 천천히 감쇠시키면
+    이미 찾은 좋은 정책(예: SYM_5x5 전환 0회)에서 후반까지 계속 미세한
+    탐색이 남아 있어 오히려 거기서 벗어나 나빠지는 현상이 실험으로
+    확인됨(10k~70k 스텝에서 전환 0회 유지하다가 80k에서 급격히 무너짐).
+    decay_fraction을 작게(예: 0.2) 주면 학습 초반 20%에서 end까지 다
+    낮추고 그 뒤로는 end 고정 → 찾은 정책을 이후 구간에서 안정적으로
+    유지하는 데 도움이 된다.
+    """
+
+    def __init__(self, start: float, end: float, decay_fraction: float = 1.0, verbose: int = 0):
+        super().__init__(verbose)
+        self._start = start
+        self._end = end
+        self._decay_fraction = min(max(decay_fraction, 1e-6), 1.0)
+
+    def _on_step(self) -> bool:
+        progress_remaining = getattr(self.model, "_current_progress_remaining", 1.0)
+        progress_remaining = min(max(progress_remaining, 0.0), 1.0)
+        elapsed = 1.0 - progress_remaining
+        decay_progress = min(elapsed / self._decay_fraction, 1.0)
+        self.model.ent_coef = self._start + (self._end - self._start) * decay_progress
+        return True
+
+
 class EpisodeBudgetCallback(BaseCallback):
     """목표 에피소드 수 도달 시 학습 종료."""
 

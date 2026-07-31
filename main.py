@@ -5,7 +5,6 @@ main.py - 운영 CLI
     python main.py train --facid FAC001 --prevcnt 3
     python main.py train --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
-    python main.py train                              # 전체 FAC train 폴더 통합 학습 (--facid 생략)
     python main.py test --facid FAC001
     python main.py test --facid FAC001 --prevcnt 3
     python main.py infer --facid FAC001
@@ -31,7 +30,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
@@ -43,9 +42,8 @@ from config import (
     normalize_rule_timekey,
     resolve_train_period_range,
     resolve_infer_rule_timekey,
-    list_all_split_folders,
-    list_fac_ids,
     list_split_folders,
+    model_dir_for,
 )
 from data.collector import (
     add_debug_arguments,
@@ -138,7 +136,7 @@ def _validate_period_selectors(
 
 
 def cmd_train(
-    fac_id: Optional[str] = None,
+    fac_id: str,
     prevcnt: int = None,
     from_key: str = None,
     to_key: str = None,
@@ -147,70 +145,46 @@ def cmd_train(
     all_folders: bool = False,
     algorithm: str = "scheduling_rl",
 ):
-    validation_fac_ids: List[str] = []
+    fac_id = validate_path_segment(fac_id, "FAC_ID")
     start_key = end_key = None
 
-    if fac_id is None:
-        fac_ids = list_fac_ids("train")
-        if not fac_ids:
-            print("[오류] train 데이터가 있는 FAC_ID가 없습니다. collect 로 데이터를 먼저 수집하세요.")
-            sys.exit(1)
-        if not all_folders and any((prevcnt is not None, from_key, to_key, rule_timekey)):
-            print(
-                "[경고] --facid 없이 전체 FAC 학습 시 --prevcnt/--from/--to/--ruletimekey는 "
-                "무시하고 모든 FAC의 train 폴더 전체를 한 번에 학습합니다."
-            )
-        train_folders = list_all_split_folders("train")
-        if not train_folders:
-            print("[오류] train 데이터가 있는 폴더가 없습니다. collect 로 데이터를 먼저 수집하세요.")
-            sys.exit(1)
-        validation_fac_ids = fac_ids
+    if all_folders:
+        train_folders = list_split_folders(fac_id, "train")
         print("=" * 60)
-        print(
-            f"[train] 전체 FAC 통합 학습 — FAC {len(fac_ids)}개 "
-            f"({', '.join(fac_ids)}), 시나리오 {len(train_folders)}개"
-        )
-    else:
-        fac_id = validate_path_segment(fac_id, "FAC_ID")
-        validation_fac_ids = [fac_id]
-
-        if all_folders:
-            train_folders = list_split_folders(fac_id, "train")
-            print("=" * 60)
-            print(f"[train] FAC={fac_id}  --all: train 폴더 전체 {len(train_folders)}개")
-            if not train_folders:
-                print("[오류] train 폴더가 없습니다. collect 로 데이터를 먼저 수집하세요.")
-                sys.exit(1)
-        else:
-            print("=" * 60)
-            if rule_timekey:
-                start_key = end_key = normalize_rule_timekey(rule_timekey)
-                print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)")
-            elif from_key and to_key:
-                start_key, end_key = resolve_train_period_range(from_key=from_key, to_key=to_key)
-                print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)")
-            else:
-                print(f"[train] FAC={fac_id}  최근 train 폴더 {prevcnt}개 사용 (dataset JSON)")
-
-            train_folders = ensure_train_folders(
-                fac_id,
-                prevcnt=prevcnt,
-                from_key=from_key,
-                to_key=to_key,
-                period=rule_timekey,
-                nodb=True,
-            )
-
+        print(f"[train] FAC={fac_id}  --all: train 폴더 전체 {len(train_folders)}개")
         if not train_folders:
-            available = list_split_folders(fac_id, "train")
-            print("[오류] 학습용 train 폴더가 없습니다.")
-            if not all_folders and start_key and end_key:
-                print(f"  요청 구간: {start_key} ~ {end_key}")
-            if available:
-                print(f"  사용 가능한 train 폴더: {', '.join(available)}")
-            else:
-                print("  collect 로 train 데이터를 먼저 수집하세요.")
+            print("[오류] train 폴더가 없습니다. collect 로 데이터를 먼저 수집하세요.")
             sys.exit(1)
+    else:
+        print("=" * 60)
+        if rule_timekey:
+            start_key = end_key = normalize_rule_timekey(rule_timekey)
+            print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)")
+        elif from_key and to_key:
+            start_key, end_key = resolve_train_period_range(from_key=from_key, to_key=to_key)
+            print(f"[train] FAC={fac_id}  RULE_TIMEKEY {start_key} ~ {end_key} (dataset JSON)")
+        else:
+            # --prevcnt: 오늘 기준 날짜 구간이 아니라, 이미 존재하는 train 폴더 중 최근 N개
+            print(f"[train] FAC={fac_id}  최근 train 폴더 {prevcnt}개 사용 (dataset JSON)")
+
+        train_folders = ensure_train_folders(
+            fac_id,
+            prevcnt=prevcnt,
+            from_key=from_key,
+            to_key=to_key,
+            period=rule_timekey,
+            nodb=True,
+        )
+    if not train_folders:
+        available = list_split_folders(fac_id, "train")
+        print("[오류] 학습용 train 폴더가 없습니다.")
+        if not all_folders and start_key and end_key:
+            print(f"  요청 구간: {start_key} ~ {end_key}")
+        if available:
+            print(f"  사용 가능한 train 폴더: {', '.join(available)}")
+        else:
+            print("  collect 로 train 데이터를 먼저 수집하세요.")
+        sys.exit(1)
 
     print(f"[train] train 폴더 {len(train_folders)}개 사용")
     for f in train_folders:
@@ -232,11 +206,11 @@ def cmd_train(
     print("  알고리즘: scheduling_rl (SchedulingRLEnv)")
 
     agent = SchedulingAgent()
-    agent.train(env_data, verbose=1, env_cls=env_cls)
-    agent.save()
-    print(f"  모델 저장: {CONFIG.path.model_dir / CONFIG.rl.model_name}.zip")
+    agent.train(env_data, verbose=1, env_cls=env_cls, fac_id=fac_id)
+    agent.save(fac_id=fac_id)
+    print(f"  모델 저장: {model_dir_for(fac_id) / CONFIG.rl.model_name}.zip")
 
-    report = save_training_convergence_report(CONFIG.path.model_dir, algorithm=algorithm)
+    report = save_training_convergence_report(model_dir_for(fac_id), algorithm=algorithm)
     print(f"  수렴 리포트: {report['json_path']}")
     if report["png_path"]:
         print(f"  수렴 차트: {report['png_path']}")
@@ -244,9 +218,7 @@ def cmd_train(
 
     print("=" * 60)
     print("[train] validation (test 전체, dataset JSON)")
-    for vf in validation_fac_ids:
-        print(f"  · FAC={vf}")
-        run_validation(vf, agent=agent, refresh_sql=False)
+    run_validation(fac_id, agent=agent, refresh_sql=False)
 
 
 def cmd_test(
@@ -411,7 +383,7 @@ def cmd_inference(
         # 휴리스틱(dedication/earliest_st/minprogress)은 모델 파일이 필요 없다
         # — RL일 때만 로드하고, 없으면 종료.
         try:
-            agent = SchedulingAgent.load()
+            agent = SchedulingAgent.load(fac_id=fac_id)
         except (FileNotFoundError, ValueError) as exc:
             print(f"[오류] {exc}")
             sys.exit(1)
@@ -677,10 +649,7 @@ def parse_args():
     sub = parser.add_subparsers(dest="command", required=True)
 
     train_p = sub.add_parser("train", help="dataset train JSON 로드 → 학습 → validation")
-    train_p.add_argument(
-        "--facid", "--fac-id", "--fac_id", dest="facid", default=None,
-        help="공장 ID (생략 시 train 데이터가 있는 전체 FAC를 FAC별 train 폴더 전체로 학습)",
-    )
+    train_p.add_argument("--facid", required=True, help="공장 ID")
     train_p.add_argument(
         "--prevcnt", type=int, default=None,
         help="이미 수집된 train 폴더 중 최근 N개 사용",
@@ -916,8 +885,7 @@ def main():
     args = parse_args()
     try:
         if args.command == "train":
-            train_all_facs = not args.facid
-            if not train_all_facs and not args.all_folders:
+            if not args.all_folders:
                 _validate_period_selectors(
                     args, has_ruletimekey=True, require_one=True,
                     one_of_label="--ruletimekey, --prevcnt, --from/--to, --all",
@@ -928,7 +896,7 @@ def main():
                 from_key=args.from_key,
                 to_key=args.to_key,
                 rule_timekey=args.ruletimekey,
-                all_folders=args.all_folders or train_all_facs,
+                all_folders=args.all_folders,
             )
 
         elif args.command == "test":
