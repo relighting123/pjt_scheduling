@@ -298,6 +298,22 @@ class SchedulingSimulator:
         self._wip_waiting_version: int = -1
         self._bucket_feats_cache: Optional[np.ndarray] = None
         self._bucket_feats_state: tuple = (-1, None)         # (version, current_eqp)
+        # {eqp_id: (version, current_time, lots)} — 시각도 키에 포함한다:
+        # WAIT lot의 투입 가능 시각(oper_in_time) 도달은 상태 변경 없이 시각만
+        # 전진해 생기므로, 버전만으로는 그 전이를 못 잡는다.
+        self._available_lots_cache: Dict[str, tuple] = {}
+        # flat 인덱스 축: config 고정 축(O/P)과 데이터 실제 종류 수 중 큰 쪽.
+        # 데이터가 축 안이면 기존과 완전히 동일(고정 O×P — RL action 공간과
+        # 일치). 넘으면(휴리스틱 전용 — RL은 SchedulingRLEnv 생성 시
+        # validate_axis_capacity가 즉시 실패) 버킷마다 고유 flat을 부여해
+        # 인덱스 충돌(flat%P 복호 시 다른 버킷으로 오역)로 일부 제품/공정이
+        # 영영 선택 불가능해져 시뮬이 max_steps까지 공회전하는 사고를 막는다.
+        self._flat_O: int = max(
+            CONFIG.env.max_oper_count, len(data.get("oper_ids", [])) or 1,
+        )
+        self._flat_P: int = max(
+            CONFIG.env.max_prod_count, len(data.get("prod_keys", [])) or 1,
+        )
         self._eqps_by_om: Dict[tuple, List[str]] = self._build_eqps_by_om()
 
         self._apply_eqp_initial_state(data.get("eqp_initial_state", []))
@@ -835,17 +851,23 @@ class SchedulingSimulator:
 
     def _pick_next_idle_eqp(self) -> Optional[str]:
         """다음 결정 EQP. min_st: EQP×carrier 조합 점수 최소 설비."""
-        candidates = self._idle_eqps_with_work()
-        if not candidates:
-            return None
         if self._eqp_selection == "min_st":
+            candidates = self._idle_eqps_with_work()
+            if not candidates:
+                return None
             pick = self.pick_earliest_st_assignment()
             if pick:
                 eqp_id, lot_id, _ = pick
                 self._earliest_st_pick = (eqp_id, lot_id)
                 return eqp_id
             return candidates[0]
-        return candidates[0]
+        # order 모드는 첫 작업 가능 idle EQP만 필요 — 전원의 feasible을 계산하는
+        # 리스트 컴프리헨션(_idle_eqps_with_work)으로 매 결정마다 EQP 수×버킷
+        # 스캔을 하지 않고 첫 hit에서 멈춘다(반환값은 candidates[0]과 동일).
+        for eqp_id in self._env_data["eqp_ids"]:
+            if self.eqps[eqp_id].status == "idle" and self.get_feasible_ppk_oper(eqp_id):
+                return eqp_id
+        return None
 
     def _next_wip_ready_time(self, after: int) -> Optional[int]:
         """WIP 풀에서 after 이후 투입 가능해지는 가장 이른 oper_in_time."""
@@ -1313,16 +1335,38 @@ class SchedulingSimulator:
                 l for l in lots
                 if l["PLAN_PROD_ATTR_VAL"] == bucket_ppk and l["oper_id"] == bucket_oper
             ]
-            lot_id = self._auto_select_lot(eqp_id, bucket_lots)
-            if lot_id is None:
+            # 빠른 경로: eligible lot의 (lot_cd, temp, stat)이 전부 같으면
+            # _assign_blocked 판정도 어느 lot을 골라도 동일하므로(판정 인자가
+            # (lot_cd, temp, stat)뿐) _auto_select_lot의 전체 sort_key 계산을
+            # 건너뛴다 — feasible 재계산은 스텝마다 EQP 수만큼 일어나고 그
+            # 비용 대부분이 이 sort(후보 수 × earliest_st_combo_score)였다.
+            eligible = [
+                l for l in bucket_lots if self._lot_conv_discrete_eligible(eqp_id, l)
+            ]
+            if not eligible:
                 continue
-            lot_cd, temp = self._lot_cd_temp(
-                lot_id, self.lot_pool.get(lot_id), ppk=bucket_ppk, oper_id=bucket_oper,
-            )
-            lot_stat_cd = next(
-                (l.get("lot_stat_cd", "WAIT") for l in bucket_lots if l["lot_id"] == lot_id),
-                "WAIT",
-            )
+            signatures = {
+                (l.get("lot_cd", ""), l.get("temp", ""), l.get("lot_stat_cd", "WAIT"))
+                for l in eligible
+            }
+            if len(signatures) == 1:
+                lot_cd, temp, lot_stat_cd = next(iter(signatures))
+                if not lot_cd:
+                    lot_cd, temp = self._lot_cd_temp(
+                        eligible[0]["lot_id"], self.lot_pool.get(eligible[0]["lot_id"]),
+                        ppk=bucket_ppk, oper_id=bucket_oper,
+                    )
+            else:
+                lot_id = self._auto_select_lot(eqp_id, bucket_lots)
+                if lot_id is None:
+                    continue
+                lot_cd, temp = self._lot_cd_temp(
+                    lot_id, self.lot_pool.get(lot_id), ppk=bucket_ppk, oper_id=bucket_oper,
+                )
+                lot_stat_cd = next(
+                    (l.get("lot_stat_cd", "WAIT") for l in bucket_lots if l["lot_id"] == lot_id),
+                    "WAIT",
+                )
             if self._assign_blocked(eqp_id, lot_cd, temp, lot_stat_cd):
                 continue
             feasible.add((bucket_ppk, bucket_oper))
@@ -1972,17 +2016,15 @@ class SchedulingSimulator:
 
     def ppk_oper_flat_index(self, oper_id: str, ppk: str) -> int:
         data = self._env_data
-        O = CONFIG.env.max_oper_count
-        P = CONFIG.env.max_prod_count
         oi = data["oper_idx"].get(oper_id, -1)
         pi = data["prod_idx"].get(ppk, -1)
         if oi < 0 or pi < 0:
             return 0
-        return oi * P + pi
+        return oi * self._flat_P + pi
 
     def ppk_oper_from_flat(self, flat_idx: int) -> tuple:
         data = self._env_data
-        P = CONFIG.env.max_prod_count
+        P = self._flat_P
         oi = flat_idx // P
         pi = flat_idx % P
         oper_ids = data["oper_ids"]
@@ -2116,7 +2158,18 @@ class SchedulingSimulator:
 
         LOT_STAT_CD!=WAIT LOT은 지정된 EQP에서만, 입력 순서대로 한 번에 하나씩만 노출된다
         (다른 EQP·다른 순번에서는 후보에서 완전히 제외되어 알고리즘이 자유 배정할 수 없다).
+
+        (state_version, current_time)이 같으면 결과가 동일하므로 캐시한다 —
+        호출마다 abstract 행×WIP 전체를 다시 훑는 비용이 지배적인 hotspot이다
+        (배정 실패/HOLD가 반복되는 구간에서는 수천 번 중복 계산되던 것이 1회로 줄어든다).
+        반환 리스트는 공유되므로 호출부는 내용을 변경하지 않아야 한다(기존
+        호출부들은 전부 읽기 전용 필터/정렬만 한다).
         """
+        cached = self._available_lots_cache.get(eqp_id)
+        if (cached is not None
+                and cached[0] == self._state_version
+                and cached[1] == self.current_time):
+            return cached[2]
         lots = self._lot_candidates_for_eqp(eqp_id)
         forced_lot_id = self._forced_lot_pending(eqp_id)
         lots = [
@@ -2134,6 +2187,7 @@ class SchedulingSimulator:
                 )
                 item["lot_cd"] = lot_cd
                 item["temp"] = temp
+        self._available_lots_cache[eqp_id] = (self._state_version, self.current_time, lots)
         return lots
 
     def _has_pending_processing(self) -> bool:
