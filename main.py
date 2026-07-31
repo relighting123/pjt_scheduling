@@ -5,6 +5,7 @@ main.py - 운영 CLI
     python main.py train --facid FAC001 --prevcnt 3
     python main.py train --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
+    python main.py train                              # train 데이터가 있는 전체 FAC (--all)
     python main.py test --facid FAC001
     python main.py test --facid FAC001 --prevcnt 3
     python main.py infer --facid FAC001
@@ -42,6 +43,7 @@ from config import (
     normalize_rule_timekey,
     resolve_train_period_range,
     resolve_infer_rule_timekey,
+    list_fac_ids,
     list_split_folders,
     model_dir_for,
 )
@@ -136,7 +138,7 @@ def _validate_period_selectors(
 
 
 def cmd_train(
-    fac_id: str,
+    fac_id: Optional[str] = None,
     prevcnt: int = None,
     from_key: str = None,
     to_key: str = None,
@@ -145,6 +147,29 @@ def cmd_train(
     all_folders: bool = False,
     algorithm: str = "scheduling_rl",
 ):
+    if fac_id is None:
+        fac_ids = list_fac_ids("train")
+        if not fac_ids:
+            print("[오류] train 데이터가 있는 FAC_ID가 없습니다. collect 로 데이터를 먼저 수집하세요.")
+            sys.exit(1)
+        if not all_folders and any((prevcnt is not None, from_key, to_key, rule_timekey)):
+            print(
+                "[경고] --facid 없이 전체 FAC 학습 시 --prevcnt/--from/--to/--ruletimekey는 "
+                "무시하고 FAC별 train 폴더 전체를 씁니다."
+            )
+        print("=" * 60)
+        print(f"[train] 전체 FAC ({len(fac_ids)}개): {', '.join(fac_ids)}")
+        for i, fid in enumerate(fac_ids, 1):
+            print("\n" + "#" * 60)
+            print(f"# FAC {i}/{len(fac_ids)}: {fid}")
+            print("#" * 60)
+            cmd_train(
+                fac_id=fid,
+                all_folders=True,
+                algorithm=algorithm,
+            )
+        return
+
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     start_key = end_key = None
 
@@ -672,7 +697,10 @@ def parse_args():
     sub = parser.add_subparsers(dest="command", required=True)
 
     train_p = sub.add_parser("train", help="dataset train JSON 로드 → 학습 → validation")
-    train_p.add_argument("--facid", required=True, help="공장 ID")
+    train_p.add_argument(
+        "--facid", "--fac-id", "--fac_id", dest="facid", default=None,
+        help="공장 ID (생략 시 train 데이터가 있는 전체 FAC를 FAC별 train 폴더 전체로 학습)",
+    )
     train_p.add_argument(
         "--prevcnt", type=int, default=None,
         help="이미 수집된 train 폴더 중 최근 N개 사용",
@@ -908,7 +936,8 @@ def main():
     args = parse_args()
     try:
         if args.command == "train":
-            if not args.all_folders:
+            train_all_facs = not args.facid
+            if not train_all_facs and not args.all_folders:
                 _validate_period_selectors(
                     args, has_ruletimekey=True, require_one=True,
                     one_of_label="--ruletimekey, --prevcnt, --from/--to, --all",
@@ -919,7 +948,7 @@ def main():
                 from_key=args.from_key,
                 to_key=args.to_key,
                 rule_timekey=args.ruletimekey,
-                all_folders=args.all_folders,
+                all_folders=args.all_folders or train_all_facs,
             )
 
         elif args.command == "test":
