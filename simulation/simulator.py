@@ -26,10 +26,6 @@ from simulation.events import (
 )
 from utils.helpers import effective_proc_time
 
-# 강제 배정(PROC/LOAD/RESV/SELE) LOT에 abstract_arrange row도, discrete(실측) ST도
-# 전혀 없는 극단적 데이터 누락 상황에서만 쓰이는 최후 폴백 처리시간(분).
-FORCED_ASSIGNMENT_FALLBACK_ST_MINUTES = 60
-
 
 @dataclass(order=True)
 class SimEvent:
@@ -109,7 +105,6 @@ class Lot:
     logical_lot_id:  str   = ""
     lot_cd:          str   = ""
     temp:            str   = ""
-    lot_stat_cd:     str   = "WAIT"
 
 
 @dataclass
@@ -219,16 +214,14 @@ class SchedulingSimulator:
                 logical_lot_id=ld.get("logical_lot_id", ld["lot_id"]),
                 lot_cd=ld.get("lot_cd", ""),
                 temp=ld.get("temp", ""),
-                lot_stat_cd=ld.get("lot_stat_cd", "WAIT"),
             )
 
-        # LOT_STAT_CD != WAIT LOT: 지정 EQP_ID에 입력 순서대로 강제 배정(자유 스케줄링 불가)
-        self._eqp_forced_queue: Dict[str, List[str]] = {
-            eid: list(lot_ids)
-            for eid, lot_ids in data.get("eqp_forced_queue", {}).items()
+        # eqp_queue_init: 이미 투입 확정된 EQP별 큐(SEQ_NO 순, AI가 배정 결정하지
+        # 않음). _on_idle_decision → _apply_due_fixed_queue()가 소비한다.
+        self._fixed_queue: Dict[str, List[dict]] = {
+            eid: list(rows)
+            for eid, rows in data.get("eqp_fixed_queue", {}).items()
         }
-        # LOAD/RESV/SELE 등 가공 슬롯 대기 — reset 시 장비에 선부착, idle 시 자동 투입
-        self._eqp_staged_forced: Dict[str, List[str]] = {}
 
         self.eqp_queues: Dict[str, List[str]] = {
             eid: list(lots)
@@ -301,7 +294,6 @@ class SchedulingSimulator:
         self._eqps_by_om: Dict[tuple, List[str]] = self._build_eqps_by_om()
 
         self._apply_eqp_initial_state(data.get("eqp_initial_state", []))
-        self._prebind_forced_carriers()
         self._advance_to_next_decision()
         if self._record_history:
             self._append_initial_history()
@@ -398,13 +390,13 @@ class SchedulingSimulator:
         eqp.current_prod = None
         eqp.free_at = self.current_time
         self._invalidate_caches()
-        if self._try_assign_staged_forced(eqp_id):
-            return
 
     def _on_idle_decision(self, eqp_id: str) -> None:
         """idle EQP → 에이전트 배정 결정 시점 (event_log: IDLE)."""
         eqp = self.eqps.get(eqp_id)
         if not eqp or eqp.status != "idle":
+            return
+        if self._apply_due_fixed_queue(eqp_id):
             return
         if self._apply_due_down(eqp_id):
             return
@@ -608,84 +600,135 @@ class SchedulingSimulator:
             if row.get("oper_id"):
                 eqp.prev_oper = row["oper_id"]
 
-    def _forced_lot_stat_cd(self, lot_id: str) -> str:
-        lot = self.lot_pool.get(lot_id)
-        meta = self._wip_lot_meta.get(lot_id, {})
-        if lot is not None:
-            return lot.lot_stat_cd
-        return meta.get("lot_stat_cd", "WAIT")
+    def _apply_due_fixed_queue(self, eqp_id: str) -> bool:
+        """eqp_queue_init 입력 반영. SEQ_NO 순서대로, 시작 시각이 되면 즉시 활성화한다.
 
-    def _try_assign_staged_forced(self, eqp_id: str) -> bool:
-        """선부착(staged) 강제 carrier를 가공 슬롯이 비면 즉시 배정.
-
-        맨 앞 항목만 시도하면, 그 항목이 어떤 이유로든 배정 실패할 때 뒤에 대기
-        중인 다른 강제 carrier까지 영원히 막혀버린다. 큐 순서대로 하나씩 시도해
-        먼저 성공하는 것을 배정한다(실패한 항목은 staged에 그대로 남아 다음
-        idle 시점에 다시 시도된다).
+        eqp_down/eqp_conv_plan과 동일한 "지연 확인" 패턴: 아직 시작 전이면 정확한
+        시각(start_min)에 재확인 이벤트만 예약하고, 그 사이(gap)에는 자유배정을
+        막지 않는다. 이미 확정된 사실이므로 tool/전환/WIP 가용성 판정을 전혀
+        타지 않고 즉시 반영한다 — reset() 때 EQP마다 개별 순회·판정하는 대신,
+        이미 SEQ_NO순으로 그룹핑된 큐(_normalize_eqp_queue_init)를 그대로 소비만
+        하므로 LOT 건수가 많아도 배정 가능성 판정 비용이 들지 않는다.
         """
-        staged = self._eqp_staged_forced.get(eqp_id)
-        if not staged:
+        queue = self._fixed_queue.get(eqp_id)
+        if not queue:
             return False
-        eqp = self.eqps.get(eqp_id)
-        if eqp is None or eqp.status != "idle":
+        row = queue[0]
+        if row["start_min"] > self.current_time:
+            if not row.get("_wake_scheduled"):
+                row["_wake_scheduled"] = True
+                self._push_event(row["start_min"], EVENT_IDLE_DECISION, eqp_id)
             return False
-        saved_eqp = self._current_eqp
-        self._current_eqp = None
-        ok = False
-        for lot_id in list(staged):
-            if self.assign_lot(eqp_id, lot_id) != -1.0:
-                ok = True
-                break
-        self._current_eqp = saved_eqp
-        return ok
+        queue.pop(0)
+        self._activate_fixed_queue_row(eqp_id, row)
+        return True
 
-    def _consume_forced_placement(self, eqp_id: str, lot_id: str) -> None:
-        """강제 carrier 배정 완료 시 queue/staged에서 제거."""
-        staged = self._eqp_staged_forced.get(eqp_id)
-        if staged and staged[0] == lot_id:
-            staged.pop(0)
-            if not staged:
-                self._eqp_staged_forced.pop(eqp_id, None)
-            return
-        forced_queue = self._eqp_forced_queue.get(eqp_id)
-        if forced_queue and forced_queue[0] == lot_id:
-            forced_queue.pop(0)
+    def _activate_fixed_queue_row(self, eqp_id: str, row: dict) -> None:
+        """eqp_queue_init 1건을 EQP에 직접 반영.
 
-    def _prebind_forced_carriers(self) -> None:
-        """LOT_STAT_CD!=WAIT carrier 전건을 t=0에 장비에 선반영.
-
-        - PROC: 가공 슬롯이 비어 있으면 즉시 가공 시작
-        - LOAD/RESV/SELE(및 대기 중인 PROC): 장비에 선부착(staged) — 슬롯이 비면
-          자동 배정(_try_assign_staged_forced), RL step 불필요
+        물리적으로 이미 그 상태로 진행 중인 확정 사실이므로 tool 동시성/전환그룹/
+        전환횟수/WIP 가용성 제약을 전부 우회한다(과거 PROC/LOAD/RESV/SELE 강제
+        배정과 동일 철학). ST로 소요시간을 역산하지 않고 입력된 START_TM/END_TM을
+        그대로 스케줄에 남긴다.
         """
-        from utils.helpers import FORCED_LOT_STAT_CDS
+        eqp = self.eqps[eqp_id]
+        lot_id = row["lot_id"]
+        ppk = row["PLAN_PROD_ATTR_VAL"]
+        oper_id = row["oper_id"]
+        wf_qty = row["wf_qty"]
+        carrier_id = row["carrier_id"]
+        logical_lot_id = row["logical_lot_id"]
+        start_time = row["start_min"]
+        end_time = row["end_min"]
 
-        self._eqp_staged_forced = {}
-        self._current_eqp = None
-        for eqp_id in self._env_data.get("eqp_ids", []):
-            queue = list(self._eqp_forced_queue.get(eqp_id, []))
-            if not queue:
-                continue
-            self._eqp_forced_queue[eqp_id] = []
-            staged: List[str] = []
-            for lot_id in queue:
-                lot_stat_cd = self._forced_lot_stat_cd(lot_id)
-                if lot_stat_cd not in FORCED_LOT_STAT_CDS:
-                    continue
-                eqp = self.eqps.get(eqp_id)
-                if (
-                    lot_stat_cd == "PROC"
-                    and eqp is not None
-                    and eqp.status == "idle"
-                ):
-                    if self.assign_lot(eqp_id, lot_id) != -1.0:
-                        continue
-                staged.append(lot_id)
-            if staged:
-                self._eqp_staged_forced[eqp_id] = staged
-            while self._try_assign_staged_forced(eqp_id):
-                pass
-        self._current_eqp = None
+        lot_cd, temp = self._lot_cd_temp(lot_id, ppk=ppk, oper_id=oper_id)
+        from_lot_cd = eqp.prev_lot_cd
+        had_conv = from_lot_cd is not None and (
+            from_lot_cd != lot_cd or (eqp.prev_temp or "") != (temp or "")
+        )
+
+        eqp.status = "busy"
+        eqp.current_lot = lot_id
+        eqp.current_oper = oper_id
+        eqp.current_prod = ppk
+        eqp.free_at = end_time
+        eqp.prev_oper = oper_id
+        eqp.prev_prod = ppk
+        eqp.prev_lot_id = lot_id
+        eqp.prev_lot_cd = lot_cd
+        eqp.prev_temp = temp
+        self._invalidate_caches()
+
+        # EQP_MODEL_CD는 discrete_arrange에서만 나온다 — eqp_queue_init만으로
+        # 등록된 장비(자유배정 후보가 전혀 없는 장비)는 모델을 알 수 없어
+        # tool 동시성 추적 대상에서 제외한다(ToolTracker가 모델 미상 EQP에
+        # 대해 예외를 던지므로 사전에 가드).
+        if not had_conv and from_lot_cd is None and lot_cd and eqp_id in self._eqp_model_map:
+            self._tool_tracker.occupy(lot_cd, eqp_id)
+
+        self._consume_wip(ppk, oper_id, lot_id)
+
+        self._in_flight[lot_id] = {
+            "PLAN_PROD_ATTR_VAL": ppk,
+            "oper_id":       oper_id,
+            "seq":           row["seq"],
+            "wf_qty":        wf_qty,
+            "carrier_id":    carrier_id,
+            "logical_lot_id": logical_lot_id,
+            "end_time":      end_time,
+            "lot_cd":        lot_cd,
+            "eqp_id":        eqp_id,
+        }
+
+        self.stats["completed_qty"][(ppk, oper_id)] = (
+            self.stats["completed_qty"].get((ppk, oper_id), 0) + wf_qty
+        )
+
+        self._emit_event(
+            EVENT_JOB_ASSIGNED, eqp_id,
+            lot_id=lot_id, lot_cd=lot_cd, PLAN_PROD_ATTR_VAL=ppk, oper_id=oper_id,
+        )
+
+        proc_time = max(end_time - start_time, 0)
+        st_per_wafer = proc_time // wf_qty if wf_qty > 0 else proc_time
+        self.schedule.append({
+            "EQP_ID":        eqp_id,
+            "LOT_ID":        logical_lot_id,
+            "CARRIER_ID":    carrier_id,
+            "PLAN_PROD_ATTR_VAL": ppk,
+            "OPER_ID":       oper_id,
+            "ST":            st_per_wafer,
+            "EQP_MODEL":     self._eqp_model_map.get(eqp_id, ""),
+            "SEQ":           row["seq"],
+            "START_TM":      start_time,
+            "END_TM":        end_time,
+            "PROC_TIME":     proc_time,
+            "WF_QTY":        wf_qty,
+            "LOT_CD":        lot_cd,
+            "TEMP":          temp,
+            "CONVERSION":    had_conv,
+            "ABSTRACT":      False,
+            "OPER_IN_TIME":  0,
+            "LOT_STAT_CD":   "FIXED",
+        })
+        self._last_assigned = {
+            "kind":          "actual",
+            "eqp_id":        eqp_id,
+            "lot_id":        lot_id,
+            "oper_id":       oper_id,
+            "PLAN_PROD_ATTR_VAL": ppk,
+            "eqp_model":     self._eqp_model_map.get(eqp_id, ""),
+            "st":            st_per_wafer,
+            "wf_qty":        wf_qty,
+            "lot_cd":        lot_cd,
+            "temp":          temp,
+            "lot_stat_cd":   "FIXED",
+            "conversion":    had_conv,
+            "start_tm":      start_time,
+            "oper_in_time":  0,
+            "abs_key":       None,
+        }
+        self._push_event(end_time, EVENT_PROCESS_END, eqp_id)
 
     def _bucket_lot_cd_temp(self, ppk: str, oper_id: str) -> Tuple[str, str]:
         """(PPK, OPER) WIP 풀의 LOT_CD/TEMP. batch_info 우선."""
@@ -757,14 +800,8 @@ class SchedulingSimulator:
                 return True
         return False
 
-    def _assign_blocked(self, eqp_id: str, lot_cd: str, temp: str, lot_stat_cd: str = "WAIT") -> bool:
-        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 + 전환 횟수 제약.
-
-        강제 배정(PROC/LOAD/RESV/SELE)은 물리적으로 이미 그 상태로 진행 중이므로
-        이 자유 스케줄링 제약들을 전부 우회하고 항상 배정 가능으로 본다.
-        """
-        if lot_stat_cd != "WAIT":
-            return False
+    def _assign_blocked(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
+        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 + 전환 횟수 제약."""
         return (
             self._tool_cap_blocks(eqp_id, lot_cd, temp)
             or self._conversion_group_blocks(eqp_id, lot_cd, temp)
@@ -807,7 +844,7 @@ class SchedulingSimulator:
                     continue
                 lot_cd = lot.get("lot_cd", "")
                 temp = lot.get("temp", "")
-                if self._assign_blocked(eqp_id, lot_cd, temp, lot.get("lot_stat_cd", "WAIT")):
+                if self._assign_blocked(eqp_id, lot_cd, temp):
                     continue
                 score = self.earliest_st_combo_score(eqp_id, lot)
                 if score < best_score:
@@ -1082,8 +1119,8 @@ class SchedulingSimulator:
         반대로 discrete를 참조하지 않고 abstract 기준으로만 판단한다(전환 시
         기존 셋업 기준 discrete 조합이 더는 유효하지 않으므로).
 
-        강제 배정 LOT(PROC/LOAD/RESV/SELE)과 discrete_wait_enabled=False인
-        경우는 이 제약과 무관하게 항상 통과한다(기존 abstract 폴백 유지).
+        discrete_wait_enabled=False인 경우는 이 제약과 무관하게 항상 통과한다
+        (기존 abstract 폴백 유지).
 
         유입 재공(현재 (LOT, PPK, OPER) 조합이 RULE_TIMEKEY 시점 초기 스냅샷에
         없음 — 시뮬 도중 다음 공정으로 흘러들어온 carrier)도 이 제약에서
@@ -1094,8 +1131,6 @@ class SchedulingSimulator:
         데이터가 구조적으로 있을 수 없기 때문 — 이 요건을 그대로 적용하면
         이미 맞는 셋업의 EQP는 후보에서 배제되고, 셋업이 다른 EQP가 불필요한
         전환까지 해가며 대신 가져가는 결과가 된다."""
-        if lot.get("lot_stat_cd", "WAIT") != "WAIT":
-            return True
         if not CONFIG.env.discrete_wait_enabled:
             return True
         wip_key = (lot.get("lot_id"), lot.get("PLAN_PROD_ATTR_VAL"), lot.get("oper_id"))
@@ -1319,11 +1354,7 @@ class SchedulingSimulator:
             lot_cd, temp = self._lot_cd_temp(
                 lot_id, self.lot_pool.get(lot_id), ppk=bucket_ppk, oper_id=bucket_oper,
             )
-            lot_stat_cd = next(
-                (l.get("lot_stat_cd", "WAIT") for l in bucket_lots if l["lot_id"] == lot_id),
-                "WAIT",
-            )
-            if self._assign_blocked(eqp_id, lot_cd, temp, lot_stat_cd):
+            if self._assign_blocked(eqp_id, lot_cd, temp):
                 continue
             feasible.add((bucket_ppk, bucket_oper))
         return feasible
@@ -1705,22 +1736,10 @@ class SchedulingSimulator:
                 and inflight.get("oper_id") == oper_id
             ):
                 active.add(self._logical_lot_id(lot_id=lid, meta=inflight))
-        for queue in self._eqp_forced_queue.values():
-            for lid in queue:
-                meta = self._wip_lot_meta.get(lid, {})
-                lot = self.lot_pool.get(lid)
-                m_ppk = meta.get("PLAN_PROD_ATTR_VAL") or (lot.PLAN_PROD_ATTR_VAL if lot else "")
-                m_oper = meta.get("oper_id") or (lot.oper_id if lot else "")
-                if m_ppk == ppk and m_oper == oper_id:
-                    active.add(self._logical_lot_id(lot_id=lid, meta=meta))
-        for staged in self._eqp_staged_forced.values():
-            for lid in staged:
-                meta = self._wip_lot_meta.get(lid, {})
-                lot = self.lot_pool.get(lid)
-                m_ppk = meta.get("PLAN_PROD_ATTR_VAL") or (lot.PLAN_PROD_ATTR_VAL if lot else "")
-                m_oper = meta.get("oper_id") or (lot.oper_id if lot else "")
-                if m_ppk == ppk and m_oper == oper_id:
-                    active.add(self._logical_lot_id(lot_id=lid, meta=meta))
+        for queue in self._fixed_queue.values():
+            for row in queue:
+                if row["PLAN_PROD_ATTR_VAL"] == ppk and row["oper_id"] == oper_id:
+                    active.add(row["logical_lot_id"])
         for pending in self._eqp_pending_assign.values():
             if pending.get("ppk") == ppk and pending.get("oper_id") == oper_id:
                 active.add(self._logical_lot_id(lot_id=pending["lot_id"], meta=pending))
@@ -1780,11 +1799,7 @@ class SchedulingSimulator:
         lot_cd, temp = self._lot_cd_temp(
             lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
         )
-        lot_stat_cd = next(
-            (l.get("lot_stat_cd", "WAIT") for l in lots if l["lot_id"] == lot_id),
-            "WAIT",
-        )
-        if self._assign_blocked(eqp_id, lot_cd, temp, lot_stat_cd):
+        if self._assign_blocked(eqp_id, lot_cd, temp):
             return -1.0
         return self.assign_lot(eqp_id, lot_id)
 
@@ -2093,38 +2108,18 @@ class SchedulingSimulator:
                     "is_abstract":     not has_discrete,
                     "is_initial_wip":  lid in self._initial_lot_ids,
                     "oper_in_time":    oper_in_time,
-                    "lot_stat_cd":     (
-                        lot.lot_stat_cd if lot else meta.get("lot_stat_cd", "WAIT")
-                    ),
                 })
         return lots
-
-    def _forced_lot_pending(self, eqp_id: str) -> Optional[str]:
-        """LOT_STAT_CD!=WAIT carrier 중 이 EQP에서 다음에 강제 배정할 carrier."""
-        eqp = self.eqps.get(eqp_id)
-        if eqp is not None and eqp.status == "idle":
-            staged = self._eqp_staged_forced.get(eqp_id)
-            if staged:
-                return staged[0]
-        queue = self._eqp_forced_queue.get(eqp_id)
-        return queue[0] if queue else None
 
     def available_lots(self, eqp_id: str) -> List[dict]:
         """
         목적: 에이전트 선택을 위한 LOT 상세 정보 리스트 반환.
         abstract WIP 풀 + MODEL arrange 기준 (discrete eqp 없어도 가능).
 
-        LOT_STAT_CD!=WAIT LOT은 지정된 EQP에서만, 입력 순서대로 한 번에 하나씩만 노출된다
-        (다른 EQP·다른 순번에서는 후보에서 완전히 제외되어 알고리즘이 자유 배정할 수 없다).
+        eqp_queue_init으로 들어온, 이미 투입 확정된 LOT은 abstract WIP 풀에
+        아예 들어가지 않으므로 여기 후보로 나타나지 않는다(AI가 배정하지 않음).
         """
         lots = self._lot_candidates_for_eqp(eqp_id)
-        forced_lot_id = self._forced_lot_pending(eqp_id)
-        lots = [
-            l for l in lots
-            if l.get("lot_stat_cd", "WAIT") == "WAIT" or l["lot_id"] == forced_lot_id
-        ]
-        if forced_lot_id is not None:
-            lots = [l for l in lots if l["lot_id"] == forced_lot_id]
         for item in lots:
             if not item.get("lot_cd"):
                 lot_cd, temp = self._lot_cd_temp(
@@ -2168,7 +2163,6 @@ class SchedulingSimulator:
         is_abstract = pending["is_abstract"]
         lot_cd = pending["lot_cd"]
         temp = pending["temp"]
-        lot_stat_cd = pending.get("lot_stat_cd", "WAIT")
 
         end_time = start_time + proc_time
         plan_hit = self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
@@ -2234,7 +2228,7 @@ class SchedulingSimulator:
             "CONVERSION":    had_conv,
             "ABSTRACT":      is_abstract,
             "OPER_IN_TIME":  oper_in_time,
-            "LOT_STAT_CD":   lot_stat_cd,
+            "LOT_STAT_CD":   "WAIT",
         })
 
         self._last_assigned = {
@@ -2248,7 +2242,7 @@ class SchedulingSimulator:
             "wf_qty":        wf_qty,
             "lot_cd":        lot_cd,
             "temp":          temp,
-            "lot_stat_cd":   lot_stat_cd,
+            "lot_stat_cd":   "WAIT",
             "conversion":    had_conv,
             "start_tm":      start_time,
             "oper_in_time":  oper_in_time,
@@ -2270,7 +2264,6 @@ class SchedulingSimulator:
         row: dict,
         oper_in_time: int,
         is_abstract: bool,
-        lot_stat_cd: str = "WAIT",
     ) -> float:
         """공통 배정: conversion + tool + WIP -1."""
         eqp = self.eqps[eqp_id]
@@ -2279,13 +2272,11 @@ class SchedulingSimulator:
         proc_time = effective_proc_time(st_per_wafer, wf_qty)
 
         lot_cd, temp = self._lot_cd_temp(lot_id, ppk=ppk, oper_id=oper_id)
-        if self._assign_blocked(eqp_id, lot_cd, temp, lot_stat_cd):
+        if self._assign_blocked(eqp_id, lot_cd, temp):
             return -1.0
 
-        # 강제 배정(PROC/LOAD/RESV/SELE)은 물리적으로 이미 그 상태로 진행 중이므로
-        # abstract WIP 풀 카운트와 무관하게 항상 배정한다.
         wip = self._wip_for(ppk, oper_id)
-        if lot_stat_cd == "WAIT" and (not wip or wip["wip_qty"] <= 0):
+        if not wip or wip["wip_qty"] <= 0:
             return -1.0
 
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
@@ -2316,9 +2307,6 @@ class SchedulingSimulator:
         self._last_reward_breakdown = terms
         self._consume_wip(ppk, oper_id, lot_id)
 
-        # LOT_STAT_CD 강제 큐/선부착 소진
-        self._consume_forced_placement(eqp_id, lot_id)
-
         pending = {
             "lot_id": lot_id,
             "ppk": ppk,
@@ -2337,7 +2325,6 @@ class SchedulingSimulator:
             "from_lot_cd": eqp.prev_lot_cd,
             "had_conversion": needs_conv,
             "proc_reward": reward,
-            "lot_stat_cd": lot_stat_cd,
         }
         self._last_decision_assignment = {
             "eqp_id":        eqp_id,
@@ -2381,30 +2368,18 @@ class SchedulingSimulator:
             seq = meta.get("seq", 1)
             wf_qty = meta.get("wf_qty", 25)
             carrier_id = meta.get("carrier_id", "")
-            lot_stat_cd = lot.lot_stat_cd if lot else meta.get("lot_stat_cd", "WAIT")
         else:
             ppk, oper_id = lot.PLAN_PROD_ATTR_VAL, lot.oper_id
             seq, wf_qty, carrier_id = lot.seq, lot.wf_qty, lot.carrier_id
-            lot_stat_cd = lot.lot_stat_cd
 
         proc_time_matrix = self._env_data.get("proc_time_matrix", {})
         has_discrete = self._has_discrete_combo(eqp_id, lot_id, oper_id)
 
         row = self._abstract_row_for(eqp_id, ppk, oper_id)
         if row is None:
-            if lot_stat_cd == "WAIT":
-                return -1.0
-            # 강제 배정(PROC/LOAD/RESV/SELE)은 물리적으로 이미 그 상태로 진행 중이므로
-            # abstract_arrange에 (PPK,OPER,EQP_MODEL_CD) 조합이 없어도 배정을 막지 않는다
-            # — 실측(discrete) ST가 있으면 그걸 쓰고, 없으면 기본값으로 폴백한다.
-            row = {
-                "eqp_model": self._eqp_model_map.get(eqp_id, ""),
-                "proc_time": proc_time_matrix.get(
-                    (lot_id, eqp_id, oper_id), FORCED_ASSIGNMENT_FALLBACK_ST_MINUTES,
-                ),
-            }
+            return -1.0
 
-        if lot_stat_cd == "WAIT" and CONFIG.env.discrete_wait_enabled:
+        if CONFIG.env.discrete_wait_enabled:
             lot_cd, temp = self._lot_cd_temp(lot_id, lot, ppk=ppk, oper_id=oper_id)
             eqp = self.eqps.get(eqp_id)
             needs_conv = self._would_need_conversion(eqp_id, lot_cd, temp)
@@ -2431,7 +2406,7 @@ class SchedulingSimulator:
         oper_in_time = meta.get("oper_in_time", 0)
         reward = self._execute_assignment(
             eqp_id, lot_id, ppk, oper_id, seq, wf_qty, st_per_wafer,
-            carrier_id, row, oper_in_time, is_abstract, lot_stat_cd,
+            carrier_id, row, oper_in_time, is_abstract,
         )
         if reward < 0:
             return reward

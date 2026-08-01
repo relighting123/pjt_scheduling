@@ -2,13 +2,13 @@
 tests/test_output_checks_internal_lot_id.py
 
 validation/output_checks.py는 schedule의 row["LOT_ID"]를 논리(비즈니스) LOT_ID로,
-env_data["lots"]/proc_time_matrix/eqp_forced_queue는 여전히 내부 carrier 단위
+env_data["lots"]/proc_time_matrix/eqp_fixed_queue는 여전히 내부 carrier 단위
 lot_id로 색인한다. CARRIER_ID가 LOT_ID와 다른(1:N) 정상적인 경우에도
 처리시간불일치/미배정으로 잘못 잡히면 안 된다.
 """
 from validation.output_checks import (
     check_completeness,
-    check_forced_placement,
+    check_fixed_queue_placement,
     check_processing_time,
     validate_schedule_output,
 )
@@ -28,7 +28,7 @@ def _env_data(**overrides):
         "abstract_arrange_map": {(PPK, OPER, "A"): 99},
         "eqp_model_map": {"EQP001": "A"},
         "eqp_oper_cap": {},
-        "eqp_forced_queue": {},
+        "eqp_fixed_queue": {},
     }
     data.update(overrides)
     return data
@@ -77,10 +77,10 @@ def test_completeness_reports_real_gap_with_business_lot_id():
     assert missing[0]["carrier_id"] == "CAR001"
 
 
-def test_forced_placement_matches_by_carrier_id():
+def test_fixed_queue_placement_matches_by_carrier_id():
     schedule = [_schedule_row()]
-    env_data = _env_data(eqp_forced_queue={"EQP001": ["CAR001"]})
-    violations = check_forced_placement(schedule, env_data)
+    env_data = _env_data(eqp_fixed_queue={"EQP001": [{"lot_id": "CAR001"}]})
+    violations = check_fixed_queue_placement(schedule, env_data)
     assert violations == []
 
 

@@ -1,11 +1,12 @@
 """
 tests/test_discrete_wait_enabled.py
 
-CONFIG.env.discrete_wait_enabled(기본 True)이 False면 LOT_STAT_CD=WAIT인
-discrete_arrange 행의 discrete 정보(특정 EQP 고정, 실측 ST)를 배정 로직에서
+CONFIG.env.discrete_wait_enabled(기본 True)이 False면 discrete_arrange 행
+(전건 자유배정 후보)의 discrete 정보(특정 EQP 고정, 실측 ST)를 배정 로직에서
 쓰지 않고 abstract 매칭 경로(모델 평균 ST, 모델이 맞는 아무 장비)만 태운다.
-LOT의 수량/제품/공정 정체성(WIP 카운트)은 그대로 유지되고, PROC/LOAD/RESV/SELE
-(강제 배정) LOT은 이 옵션과 무관하게 항상 discrete 그대로 유지된다.
+LOT의 수량/제품/공정 정체성(WIP 카운트)은 그대로 유지된다. 이미 확정된 재공
+(eqp_queue_init)은 discrete_arrange와 별개 입력이라 이 옵션의 영향을 받지 않는다
+— 그 쪽 커버리지는 tests/test_eqp_queue_init.py 참고.
 
 이 과정에서 발견된 별도 버그도 함께 고정한다: _rebuild_eqp_oper_cap()이
 r["LOT_ID"](논리 LOT_ID)로 lot_info(내부 carrier 키로 색인)를 조회해서,
@@ -31,10 +32,10 @@ def _base_inputs():
     discrete = [
         {"EQP_ID": "EQP001", "LOT_ID": "LOT001", "CARRIER_ID": "CAR001",
          "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "ST": 60,
-         "EQP_MODEL_CD": "A", "WF_QTY": 25, "SEQ": 1, "LOT_STAT_CD": "WAIT"},
+         "EQP_MODEL_CD": "A", "WF_QTY": 25, "SEQ": 1},
         {"EQP_ID": "EQP002", "LOT_ID": "LOT002", "CARRIER_ID": "CAR002",
          "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "ST": 90,
-         "EQP_MODEL_CD": "A", "WF_QTY": 25, "SEQ": 1, "LOT_STAT_CD": "PROC"},
+         "EQP_MODEL_CD": "A", "WF_QTY": 25, "SEQ": 1},
     ]
     plan = [
         {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
@@ -65,18 +66,15 @@ def test_eqp_oper_cap_includes_carrier_distinct_wait_lot_by_default():
     assert data["proc_time_matrix"][("CAR001", "EQP001", "OPER001")] == 60
 
 
-def test_discrete_wait_disabled_strips_discrete_info_for_wait_lot_only():
+def test_discrete_wait_disabled_strips_all_discrete_info():
     CONFIG.env.discrete_wait_enabled = False
     data = preprocess(_base_inputs(), period_key=RULE_TIMEKEY)
 
-    # WAIT(CAR001): discrete 정보(EQP 고정, ST, eqp_oper_cap 기여)가 전부 빠져야 함.
+    # 두 LOT 모두 discrete 정보(EQP 고정, ST, eqp_oper_cap 기여)가 전부 빠져야 함.
     assert ("CAR001", "EQP001", "OPER001") not in data["proc_time_matrix"]
-    assert "CAR001" not in data["eqp_lot_map"].get("EQP001", [])
-    assert data["eqp_oper_cap"] == {"EQP002": ["OPER001"]}
-
-    # PROC(CAR002, 강제 배정): 옵션과 무관하게 discrete 정보 그대로 유지.
-    assert data["proc_time_matrix"][("CAR002", "EQP002", "OPER001")] == 90
-    assert "CAR002" in data["eqp_lot_map"]["EQP002"]
+    assert ("CAR002", "EQP002", "OPER001") not in data["proc_time_matrix"]
+    assert data["eqp_lot_map"] == {}
+    assert data["eqp_oper_cap"] == {}
 
 
 def test_discrete_wait_disabled_preserves_lot_identity_and_wip_count():
@@ -99,7 +97,6 @@ def test_discrete_wait_disabled_schedules_wait_lot_via_abstract_average_st():
 
     CONFIG.env.discrete_wait_enabled = False
     raw = _base_inputs()
-    # PROC(CAR002)이 자기 EQP를 곧바로 점유하니, WAIT(CAR001)만 남기고 단순화한다.
     raw["discrete_arrange"] = [raw["discrete_arrange"][0]]
     data = preprocess(raw, period_key=RULE_TIMEKEY)
 
