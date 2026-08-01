@@ -18,6 +18,7 @@ BENCH_SUITE 8종만으로 co-train하면 정책이 "전담이라는 규칙"이 �
 """
 import argparse
 import json
+import math
 import random
 import sys
 from pathlib import Path
@@ -25,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from benchmark import gen_bench_suite as base  # noqa: E402
+from benchmark import gen_tool_change_bench as multistage  # noqa: E402
 
 CATEGORIES = ["대칭 기준", "제품 과잉", "부하 불균등", "전환 과중"]
 
@@ -76,9 +78,84 @@ def sample_spec(rng: random.Random, idx: int) -> dict:
     )
 
 
+def sample_multistage_spec(rng: random.Random, idx: int) -> dict:
+    """평가용 Tool-Change와 겹치지 않는 2공정 랜덤 학습 스펙."""
+    n_ppk = rng.randint(2, 6)
+    n_eqp_1 = rng.randint(2, 4)
+    n_eqp_2 = rng.randint(2, 4)
+    conv = rng.choice([30, 45, 60, 90, 120])
+    ppks = [f"PPK{i + 1:03d}" for i in range(n_ppk)]
+    carriers = [rng.randint(3, 9) for _ in ppks]
+    st_1 = [rng.choice([20, 30, 40, 45, 60, 75]) for _ in ppks]
+    st_2 = [rng.choice([20, 30, 40, 45, 60, 75, 90]) for _ in ppks]
+
+    def products(st_values: list[int]) -> list[dict]:
+        return [
+            {"ppk": ppk, "carriers": qty, "st": st}
+            for ppk, qty, st in zip(ppks, carriers, st_values)
+        ]
+
+    return {
+        "id": f"TP_MS_{idx:03d}",
+        "n_ppk": n_ppk,
+        "carriers": carriers,
+        "conv": conv,
+        "stage1": {
+            "oper": "OPER001", "n_eqp": n_eqp_1,
+            "ppks": products(st_1), "conv": conv, "scramble": True,
+        },
+        "stage2": {
+            "oper": "OPER002", "n_eqp": n_eqp_2,
+            "ppks": products(st_2), "conv": conv, "scramble": True,
+        },
+    }
+
+
+def generate_multistage(spec: dict) -> dict:
+    """2공정 장비공유 데이터를 생성하고 공통 suite 메타 형식으로 반환."""
+    multistage.gen_multi_stage(spec["id"], spec["stage1"], spec["stage2"])
+    stage_horizons = []
+    for stage in (spec["stage1"], spec["stage2"]):
+        work = sum(p["carriers"] * p["st"] for p in stage["ppks"])
+        unavoidable = max(spec["n_ppk"] - stage["n_eqp"], 0)
+        stage_horizons.append(math.ceil(work / stage["n_eqp"]) + unavoidable * spec["conv"])
+    sim = int(math.ceil(max(stage_horizons) / 10.0) * 10)
+    out = multistage.SUITE_ROOT / spec["id"] / "train" / multistage.TIMEKEY / "input"
+    return {
+        "id": spec["id"],
+        "cat": "다공정 랜덤",
+        "n_eqp": spec["stage1"]["n_eqp"] + spec["stage2"]["n_eqp"],
+        "n_ppk": spec["n_ppk"],
+        "carriers": spec["carriers"],
+        "st": [
+            [p["st"] for p in spec["stage1"]["ppks"]],
+            [p["st"] for p in spec["stage2"]["ppks"]],
+        ],
+        "conv": spec["conv"],
+        "sim": sim,
+        "total": 2 * sum(spec["carriers"]),
+        "min_conv": sum(
+            max(spec["n_ppk"] - stage["n_eqp"], 0)
+            for stage in (spec["stage1"], spec["stage2"])
+        ),
+        "mix": 1.0,
+        "tool": multistage.TOOL_MAX,
+        "desc": (
+            f"[train pool] 2공정 랜덤 장비공유 "
+            f"{spec['stage1']['n_eqp']}+{spec['stage2']['n_eqp']}설비×{spec['n_ppk']}제품"
+        ),
+        "tests": "[train pool] 미학습 다공정 일반화",
+        "dir": str(out),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--count", type=int, default=48)
+    ap.add_argument(
+        "--multi-stage-count", type=int, default=12,
+        help="별도로 추가할 2공정 랜덤 장비공유 시나리오 수",
+    )
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
 
@@ -87,6 +164,8 @@ def main() -> None:
     for i in range(args.count):
         m = base.gen_one(sample_spec(rng, i))
         meta.append(m)
+    for i in range(max(args.multi_stage_count, 0)):
+        meta.append(generate_multistage(sample_multistage_spec(rng, i)))
 
     out = base.SUITE_ROOT / "train_pool_meta.json"
     with open(out, "w", encoding="utf-8") as f:
