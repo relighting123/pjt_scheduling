@@ -176,10 +176,23 @@ def _load_compatible_model(
     expected = rl_obs_dim()
     mismatches: List[tuple[str, int]] = []
 
+    # lr_schedule="linear"(기본값)로 학습한 모델은 학습률 스케줄이 cloudpickle로
+    # "값"째 저장된다(agent.rl_agent._linear_schedule 내부 클로저 — 모듈 참조가
+    # 아니라 바이트코드 자체가 저장됨). 저장 시점과 다른 Python 마이너 버전(예:
+    # 학습 3.12 / 서빙 3.11)에서 그 바이트코드를 그대로 실행하면 세그폴트로
+    # 죽는다(SB3 issue와 별개로, 클로저를 값으로 피클링하는 cloudpickle 특성 +
+    # CPython 버전 간 바이트코드 비호환이 겹친 문제). 추론에는 학습률이 쓰이지
+    # 않으므로 안전한 상수로 대체해서 로드한다.
+    custom_objects = {
+        "learning_rate": CONFIG.rl.learning_rate,
+        "lr_schedule": (lambda _progress_remaining: CONFIG.rl.learning_rate),
+        "clip_range": (lambda _progress_remaining: CONFIG.rl.clip_range),
+    }
+
     for candidate in _model_zip_candidates(explicit, fac_id=fac_id):
         if not candidate.exists():
             continue
-        model = MaskablePPO.load(str(candidate))
+        model = MaskablePPO.load(str(candidate), custom_objects=custom_objects)
         dim = _model_obs_dim(model)
         if dim == expected:
             return model, candidate
