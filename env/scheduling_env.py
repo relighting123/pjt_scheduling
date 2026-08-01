@@ -226,9 +226,12 @@ def validate_axis_capacity(env_data: Optional[dict], *, source: str = "RL 환경
     버킷 flat 인덱스는 30~39가 되는데 action_space는 `MultiDiscrete([30, L])`
     이라 도달 불가능하다 — 그 공정 재공이 통째로 빠진 스케줄이 조용히 나간다.
 
-    조용한 누락보다 즉시 실패가 낫다. 휴리스틱(SchedulingEnv)은 feasible 목록을
-    직접 읽고 `ppk_oper_from_flat`이 범위를 벗어난 flat도 정상 해석하므로 이
-    제약을 받지 않는다 — 이 검사는 RL 경로 전용이다.
+    조용한 누락보다 즉시 실패가 낫다 — 이 검사는 RL 경로 전용이다.
+    휴리스틱(SchedulingEnv)은 flat 인덱스 축을 config 고정값과 데이터 실제
+    종류 수 중 큰 쪽으로 잡으므로(simulation/simulator.py의 _flat_O/_flat_P)
+    축 초과 데이터도 버킷 충돌 없이 정상 스케줄된다. 예전에는 flat%P 복호가
+    다른 버킷으로 오역돼 초과분 제품의 재공이 영영 배정되지 않았다(시뮬이
+    끝나지 않아 max_steps까지 공회전).
     """
     if not env_data:
         return
@@ -304,6 +307,7 @@ class SchedulingEnv(gym.Env):
         record_event_log: bool = True,
         max_episode_steps: Optional[int] = None,
         truncate_on_time: bool = True,
+        compute_obs: bool = True,
     ):
         super().__init__()
         self._env_data = env_data
@@ -315,10 +319,22 @@ class SchedulingEnv(gym.Env):
         self._max_episode_steps = 0
         self._episode_steps = 0
         self._truncate_on_time = truncate_on_time
+        # 휴리스틱(dedication/minprogress/earliest_st 및 벤치마크 오라클)은
+        # step()의 obs를 절대 읽지 않는다 — 매 스텝 obs_dim 벡터를 만드는
+        # 비용(실측 전체 실행의 ~15%, 그 안의 _oper_capacity_per_min 류가
+        # 특히 무겁다)을 통째로 건너뛰기 위한 스위치. obs가 필요한 호출부는
+        # 기본값(True) 그대로 두면 된다.
+        self._compute_obs = compute_obs
+        self._empty_obs = np.zeros(0, dtype=np.float32)
 
         env_cfg = CONFIG.env
-        O = env_cfg.max_oper_count
-        P = env_cfg.max_prod_count
+        # action(flat) 공간 축: simulator와 같은 규칙으로 config 고정 축과
+        # 데이터 실제 종류 수 중 큰 쪽을 쓴다. 축 안 데이터면 기존과 동일하고,
+        # 축을 넘는 데이터(휴리스틱 전용 — RL은 SchedulingRLEnv 생성 시
+        # validate_axis_capacity가 즉시 실패)도 버킷마다 고유 flat이 생겨
+        # 정상 스케줄된다.
+        O = max(env_cfg.max_oper_count, len(env_data.get("oper_ids", [])) or 1)
+        P = max(env_cfg.max_prod_count, len(env_data.get("prod_keys", [])) or 1)
 
         obs_dim = compute_obs_dim()
         self.observation_space = spaces.Box(
@@ -351,7 +367,7 @@ class SchedulingEnv(gym.Env):
         # HOLD 라운드로빈: 같은 시각에 이미 보류한 EQP 집합 (시각 바뀌면 리셋)
         self._held_eqps: set = set()
         self._held_time: int = -1
-        obs = self.sim.get_observation()
+        obs = self.sim.get_observation() if self._compute_obs else self._empty_obs
         return obs, {}
 
     def _ensure_decision_eqp(self) -> Optional[str]:
@@ -501,7 +517,7 @@ class SchedulingEnv(gym.Env):
             reward = float(np.clip(reward, -clip, clip))
         self._total_reward += reward
 
-        obs = self.sim.get_observation()
+        obs = self.sim.get_observation() if self._compute_obs else self._empty_obs
         info = {
             "total_reward":  self._total_reward,
             "oper_switches": self.sim.stats["oper_switches"],

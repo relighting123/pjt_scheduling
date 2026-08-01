@@ -153,6 +153,9 @@ def run_inference_with_agent(
         record_decision_log=record_decision_log,
         max_episode_steps=max_steps,
         truncate_on_time=False,
+        # 휴리스틱/오라클은 step() 반환 obs를 읽지 않으므로 매 스텝의
+        # obs_dim 벡터 생성 비용을 건너뛴다(추론 시간 단축).
+        compute_obs=False,
     )
     sched_env: SchedulingEnv = env
     env.reset()
