@@ -149,12 +149,63 @@ def generate_multistage(spec: dict) -> dict:
     }
 
 
+def sample_safety_spec(rng: random.Random, idx: int) -> dict:
+    """하류 초기 WIP가 없고 상류 완료분만 유입되는 랜덤 2공정 스펙."""
+    n_eqp = rng.randint(1, 4)
+    qty = rng.randint(12, 40)
+    up_st = rng.choice([10, 15, 20, 30, 40])
+    down_st = rng.choice([10, 15, 20, 30, 40])
+    conv = rng.choice([30, 45, 60, 90])
+    return {
+        "id": f"TP_SAFE_{idx:03d}",
+        "n_eqp": n_eqp,
+        "conv": conv,
+        "up": {"oper": "OPER001", "st": up_st, "wip": qty, "plan": qty},
+        "down": {"oper": "OPER002", "st": down_st, "wip": 0, "plan": qty},
+    }
+
+
+def generate_safety(spec: dict) -> dict:
+    """안전재공 랜덤 데이터를 생성하고 suite 메타 형식으로 반환."""
+    multistage.gen_safety_switch(
+        spec["id"], spec["n_eqp"], spec["up"], spec["down"], spec["conv"],
+    )
+    work = spec["up"]["plan"] * spec["up"]["st"] + spec["down"]["plan"] * spec["down"]["st"]
+    sim = int(math.ceil((math.ceil(work / spec["n_eqp"]) + spec["conv"]) * 1.2 / 10.0) * 10)
+    out = multistage.SUITE_ROOT / spec["id"] / "train" / multistage.TIMEKEY / "input"
+    return {
+        "id": spec["id"],
+        "cat": "안전재공 랜덤",
+        "n_eqp": spec["n_eqp"],
+        "n_ppk": 1,
+        "carriers": [spec["up"]["plan"], spec["down"]["plan"]],
+        "st": [spec["up"]["st"], spec["down"]["st"]],
+        "conv": spec["conv"],
+        "sim": sim,
+        "total": spec["up"]["plan"] + spec["down"]["plan"],
+        "min_conv": 1,
+        "mix": 1.0,
+        "tool": multistage.TOOL_MAX,
+        "enable_wip_inflow": True,
+        "desc": (
+            f"[train pool] 안전재공 2공정 {spec['n_eqp']}설비 "
+            f"상류/하류={spec['up']['plan']}/{spec['down']['plan']}"
+        ),
+        "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
+        "dir": str(out),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--count", type=int, default=48)
     ap.add_argument(
         "--multi-stage-count", type=int, default=12,
         help="별도로 추가할 2공정 랜덤 장비공유 시나리오 수",
+    )
+    ap.add_argument(
+        "--safety-count", type=int, default=8,
+        help="별도로 추가할 하류 초기 WIP=0 안전재공 시나리오 수",
     )
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
@@ -166,6 +217,8 @@ def main() -> None:
         meta.append(m)
     for i in range(max(args.multi_stage_count, 0)):
         meta.append(generate_multistage(sample_multistage_spec(rng, i)))
+    for i in range(max(args.safety_count, 0)):
+        meta.append(generate_safety(sample_safety_spec(rng, i)))
 
     out = base.SUITE_ROOT / "train_pool_meta.json"
     with open(out, "w", encoding="utf-8") as f:

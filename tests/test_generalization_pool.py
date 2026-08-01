@@ -6,7 +6,9 @@ from pathlib import Path
 from benchmark import gen_tool_change_bench as multistage
 from benchmark.gen_train_pool import (
     generate_multistage,
+    generate_safety,
     sample_multistage_spec,
+    sample_safety_spec,
     sample_spec,
 )
 from config import CONFIG
@@ -28,6 +30,12 @@ def test_train_specs_are_seed_reproducible_and_use_distinct_ids():
     assert all(s["id"].startswith("TP_MS_") for s in specs_a)
     assert all(s["stage1"]["oper"] != s["stage2"]["oper"] for s in specs_a)
 
+    a = random.Random(17)
+    b = random.Random(17)
+    assert [sample_safety_spec(a, i) for i in range(4)] == [
+        sample_safety_spec(b, i) for i in range(4)
+    ]
+
 
 def test_multistage_pool_case_builds_valid_rl_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(multistage, "SUITE_ROOT", tmp_path)
@@ -46,4 +54,27 @@ def test_multistage_pool_case_builds_valid_rl_environment(tmp_path, monkeypatch)
     obs, _ = env.reset(seed=0)
     assert obs.shape == env.observation_space.shape
     assert env.action_masks().any()
+    env.close()
+
+
+def test_safety_pool_case_enables_downstream_wip_inflow(tmp_path, monkeypatch):
+    monkeypatch.setattr(multistage, "SUITE_ROOT", tmp_path)
+    spec = sample_safety_spec(random.Random(5), 0)
+    meta = generate_safety(spec)
+
+    raw = load_data(Path(meta["dir"]))
+    env_data = preprocess(raw)
+    env_data["sim_end_minutes"] = meta["sim"]
+    env_data["conversion_minutes"] = meta["conv"]
+    env_data["enable_wip_inflow"] = meta["enable_wip_inflow"]
+
+    assert meta["enable_wip_inflow"] is True
+    assert len(env_data["oper_ids"]) == 2
+    assert all(
+        row["OPER_ID"] == "OPER001"
+        for row in raw["discrete_arrange"]
+    )
+    env = SchedulingRLEnv(env_data, record_history=False, record_event_log=False)
+    env.reset(seed=0)
+    assert env.sim._enable_wip_inflow is True
     env.close()

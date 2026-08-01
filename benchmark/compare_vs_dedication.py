@@ -61,6 +61,7 @@ def load_ed(m: dict) -> dict:
     ed["eqp_selection"] = "order"
     ed["sim_end_minutes"] = m["sim"]
     ed["conversion_minutes"] = m["conv"]
+    ed["enable_wip_inflow"] = bool(m.get("enable_wip_inflow", False))
     return ed
 
 
@@ -129,6 +130,7 @@ def run_suite(
                 ed, algorithm=algo,
                 agent=agent if algo == "scheduling_rl" else None,
                 record_history=False,
+                enable_wip_inflow=bool(ed.get("enable_wip_inflow", False)),
             )
             row["algos"][algo] = kpi(res, m, conv_weight)
         rows.append(row)
