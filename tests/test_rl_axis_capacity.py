@@ -2,8 +2,7 @@
 
 from benchmark.tool_change_bench import META, load_ed
 from config import CONFIG
-from env.scheduling_env import compute_obs_dim
-from env.scheduling_rl_env import SchedulingRLEnv
+from env.scheduling_rl_env import SchedulingRLEnv, rl_obs_dim
 
 
 def test_default_axes_cover_all_tool_change_cases():
@@ -13,7 +12,7 @@ def test_default_axes_cover_all_tool_change_cases():
 
     for meta in META:
         env = SchedulingRLEnv(load_ed(meta), record_history=False, record_event_log=False)
-        assert env.observation_space.shape == (compute_obs_dim(),)
+        assert env.observation_space.shape == (rl_obs_dim(),)
         assert env.action_space.nvec.tolist() == [
             CONFIG.env.max_oper_count * CONFIG.env.max_prod_count,
             env._L,
