@@ -28,7 +28,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from benchmark import gen_bench_suite as base  # noqa: E402
 from benchmark import gen_tool_change_bench as multistage  # noqa: E402
 
-CATEGORIES = ["대칭 기준", "제품 과잉", "부하 불균등", "전환 과중"]
+# "부하 불균등"을 두 슬롯에 넣어 다른 세 카테고리 대비 2배로 뽑는다.
+# HOLDOUT_SUITE 평가에서 RL이 유일하게 Earliest-ST에게 진 카테고리가 바로
+# 이것(H_LOAD_skew2/H_LOAD_stmix2 — 물량 편중·처리시간 이질)이었다. 이 스크립트
+# 자체 주석에 이미 나와 있듯 "학습 풀에 없는 패턴은 정책이 배우지 못한다"가
+# 원인이므로, 새 카테고리를 만드는 대신 이미 있는 카테고리의 학습 노출을
+# 늘리는 쪽이 가장 직접적인 대응이다.
+CATEGORIES = ["대칭 기준", "제품 과잉", "부하 불균등", "전환 과중", "부하 불균등"]
 
 
 def sample_spec(rng: random.Random, idx: int) -> dict:
@@ -198,7 +204,9 @@ def generate_safety(spec: dict) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--count", type=int, default=48)
+    # 5개 카테고리 슬롯(부하 불균등 2슬롯 포함)에 고르게 나누어떨어지도록 60
+    # (기존 48 → 슬롯당 12개 유지, 부하 불균등만 24개로 2배).
+    ap.add_argument("--count", type=int, default=60)
     ap.add_argument(
         "--multi-stage-count", type=int, default=12,
         help="별도로 추가할 2공정 랜덤 장비공유 시나리오 수",
