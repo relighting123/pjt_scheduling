@@ -133,6 +133,15 @@ AI 스케줄러가 배정을 결정하지 않는, 이미 투입이 확정된 EQP
   `discrete_arrange`에서만 나오므로, 그런 EQP는 tool 동시성 추적 대상에서는 제외됩니다.
 - `CONFIG.env.discrete_wait_enabled`와 무관하게 항상 그대로 반영됩니다.
 
+예시 SQL은 다른 입력들과 달리 `data/sql.example/eqp_queue_init/eqp_queue_init.sql`처럼
+별도 하위 폴더에 둡니다. 선택 입력이라 모든 배포에 EQP_QUEUE_INIT 원천 테이블이 있는
+것은 아니므로, 전체 입력을 한 번에 내려받는 `cp data/sql.example/*.sql data/sql/`에는
+딸려가지 않고 필요할 때만 아래처럼 별도로 opt-in합니다:
+
+```bash
+cp data/sql.example/eqp_queue_init/eqp_queue_init.sql data/sql/
+```
+
 #### 전환 그룹 제약 (`config.CONVERSION_GROUPS`, 선택)
 
 같은 그룹 안의 `(LOT_CD, TEMP)`로만 전환을 허용하고 **다른 그룹으로의 전환은 배정 후보에서 제외**합니다(행동 공간 축소 → 문제 단순화). `config.py`의 `CONVERSION_GROUPS` 딕셔너리에 `FAC_ID`별로 설정하며, 해당 FAC_ID 항목이 없으면 제약은 비활성(기존 동작) — train/test/infer 등 split·기간과 무관하게 fac 전체에 공통 적용됩니다.
