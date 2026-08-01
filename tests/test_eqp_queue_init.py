@@ -139,6 +139,39 @@ def test_fixed_queue_lot_not_split_even_when_split_rule_matches():
     assert queue[0]["wf_qty"] == 30
 
 
+def test_completion_flows_into_next_operation():
+    # PPK001: OPER001 -> OPER002. eqp_queue_init 항목이 OPER001에서 끝나면
+    # _on_process_end -> _inject_wip_after_complete 경로로 다음 공정(OPER002)
+    # WIP 풀에 +1 유입돼야 한다(일반 WAIT LOT 완료와 동일한 공용 경로).
+    raw = _base_raw(
+        flow=[
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 2, "OPER_ID": "OPER002"},
+        ],
+        plan=[
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+             "D0_PLAN_QTY": 50, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER002",
+             "D0_PLAN_QTY": 50, "D1_PLAN_QTY": 50, "PLAN_PRIORITY": 1},
+        ],
+        abstract_arrange=[
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 60},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER002", "EQP_MODEL_CD": "A", "ST": 60},
+        ],
+        eqp_queue_init=[
+            _queue_row("EQP001", 1, "LOT_A", "CAR_A", "20260712070000", "20260712074500"),
+        ],
+    )
+    data = preprocess(raw, period_key=RULE_TIMEKEY)
+    sim = SchedulingSimulator(data, record_history=False, record_event_log=False)
+
+    assert len(sim.schedule) == 1  # OPER001 완료 기록
+    wip = sim._wip_pool.get(("PPK001", "OPER002"))
+    assert wip is not None
+    assert wip["wip_qty"] == 1
+    assert "CAR_A" in wip["lot_ids"]
+
+
 def test_discrete_wait_enabled_false_does_not_affect_fixed_queue():
     original = CONFIG.env.discrete_wait_enabled
     CONFIG.env.discrete_wait_enabled = False
