@@ -521,9 +521,13 @@ class OracleConfig:
 
 @dataclass
 class EnvConfig:
-    max_oper_count:   int = 3          # RL action/obs 고정 축 O
-    max_prod_count:   int = 10          # RL action/obs 고정 축 P
-    max_model_count:  int = 5           # bucket = (ppk, model, oper)의 model 축 K
+    # 운영/일반화 벤치의 최대치(현재 4공정·7제품·6모델)에 여유를 둔 고정 축.
+    # 이 값 변경은 observation/action shape를 바꾸므로 기존 RL checkpoint와
+    # 호환되지 않는다. SchedulingRLEnv.validate_axis_capacity()가 초과 데이터를
+    # 조용히 누락하지 않고 생성 시점에 명확히 거부한다.
+    max_oper_count:   int = 6           # RL action/obs 고정 축 O
+    max_prod_count:   int = 12          # RL action/obs 고정 축 P
+    max_model_count:  int = 8           # bucket = (ppk, model, oper)의 model 축 K
     hard_horizon_minutes: int = 1440    # 07:00 → 익일 07:00
     soft_cutoff_minutes:  int = 1320    # 익일 05:00
     conversion_minutes:   int = 60      # LOT_CD/TEMP 변경 시 setup
