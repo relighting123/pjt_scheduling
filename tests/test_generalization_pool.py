@@ -1,6 +1,7 @@
 """TRAIN_POOL의 seed 재현성과 다공정 데이터 분리를 검증."""
 
 import random
+from pathlib import Path
 
 from benchmark import gen_tool_change_bench as multistage
 from benchmark.gen_train_pool import (
@@ -33,7 +34,7 @@ def test_multistage_pool_case_builds_valid_rl_environment(tmp_path, monkeypatch)
     spec = sample_multistage_spec(random.Random(3), 0)
     meta = generate_multistage(spec)
 
-    raw = load_data(meta["dir"])
+    raw = load_data(Path(meta["dir"]))
     env_data = preprocess(raw)
     env_data["sim_end_minutes"] = meta["sim"]
     env_data["conversion_minutes"] = meta["conv"]
