@@ -53,9 +53,9 @@ def test_function_nm_is_always_test():
 
 
 def test_lot_stat_cd_flow_id_wf_qty_st_passthrough():
-    payload = _build([_schedule_row(LOT_STAT_CD="PROC", WF_QTY=30, ST=45)], _env_data())
+    payload = _build([_schedule_row(LOT_STAT_CD="FIXED", WF_QTY=30, ST=45)], _env_data())
     row = payload["RTS_RSLT_MAS"][0]
-    assert row["LOT_STAT_CD"] == "PROC"
+    assert row["LOT_STAT_CD"] == "FIXED"
     assert row["FLOW_ID"] == "PPK001"
     assert row["WF_QTY"] == 30
     assert row["ST"] == 45

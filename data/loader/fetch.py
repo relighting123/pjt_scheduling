@@ -164,6 +164,7 @@ def load_data(input_dir: Path = None) -> Dict[str, List[dict]]:
         "conversion_group":  conversion_group_rows_for(fac_id),
         "eqp_conv_plan":     _read_optional(CONFIG.path.eqp_conv_plan_file),
         "eqp_down":          _read_optional(CONFIG.path.eqp_down_file),
+        "eqp_queue_init":    _read_optional(CONFIG.path.eqp_queue_init_file),
     }
 
 

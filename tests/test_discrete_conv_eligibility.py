@@ -12,7 +12,7 @@ WAIT LOT의 EQP 배정 자격은 "전환(conversion) 필요 여부"로 갈린다
     전환 후엔 더 이상 유효하지 않으므로 discrete를 참조하지 않고 abstract
     (모델 평균 ST)만으로 판단한다.
 
-강제 배정 LOT(PROC/LOAD/RESV/SELE)과 CONFIG.env.discrete_wait_enabled=False는
+이미 확정된 재공(eqp_queue_init)과 CONFIG.env.discrete_wait_enabled=False는
 이 제약과 무관하게 기존 동작(abstract 폴백)을 그대로 유지한다. 또한 EQP가
 아직 한 번도 셋업된 적이 없는 "첫 배정"(prev_lot_cd=None)은 비교 대상이
 없으므로 이 제약에서 제외된다(부트스트랩 케이스).
@@ -37,12 +37,20 @@ def _restore_discrete_wait_enabled():
     CONFIG.env.discrete_wait_enabled = original
 
 
-def _discrete_row(eqp_id, lot_id, carrier_id, wf_qty=25, st=60, model="A", lot_stat_cd="WAIT"):
+def _discrete_row(eqp_id, lot_id, carrier_id, wf_qty=25, st=60, model="A"):
     return {
         "EQP_ID": eqp_id, "LOT_ID": lot_id, "CARRIER_ID": carrier_id,
         "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "ST": st,
         "EQP_MODEL_CD": model, "WF_QTY": wf_qty, "SEQ": 1,
-        "LOT_STAT_CD": lot_stat_cd,
+    }
+
+
+def _queue_init_row(eqp_id, lot_id, carrier_id, wf_qty=25, seq_no=1,
+                     start_tm="20260712070000", end_tm="20260712083000"):
+    return {
+        "EQP_ID": eqp_id, "SEQ_NO": seq_no, "LOT_ID": lot_id, "CARRIER_ID": carrier_id,
+        "OPER_ID": "OPER001", "START_TM": start_tm, "END_TM": end_tm,
+        "PLAN_PROD_ATTR_VAL": "PPK001", "WF_QTY": wf_qty,
     }
 
 
@@ -77,7 +85,7 @@ def _extra_registration_row(eqp_id, tag):
     return {
         "EQP_ID": eqp_id, "LOT_ID": f"LOT_{tag}", "CARRIER_ID": f"CAR_{tag}",
         "PLAN_PROD_ATTR_VAL": "PPK002", "OPER_ID": "OPER002", "ST": 50,
-        "EQP_MODEL_CD": "A", "WF_QTY": 25, "SEQ": 1, "LOT_STAT_CD": "WAIT",
+        "EQP_MODEL_CD": "A", "WF_QTY": 25, "SEQ": 1,
     }
 
 
@@ -174,16 +182,18 @@ def test_discrete_wait_enabled_false_bypasses_new_gate():
     assert row["ST"] == 75
 
 
-def test_forced_lot_ignores_new_gate():
-    # PROC(강제 배정) LOT은 discrete 조합이 없고 전환도 필요 없는 상태라도
-    # 항상 배정된다(자유 스케줄링 대상이 아니므로).
-    discrete = [_discrete_row("EQP002", "LOT002", "CAR002", st=90, lot_stat_cd="PROC")]
-    raw = _base_raw(discrete)
+def test_fixed_queue_lot_ignores_new_gate():
+    # eqp_queue_init(이미 확정된 재공) LOT은 discrete 조합이 없고 전환도
+    # 필요 없는 상태라도 항상 배정된다(자유 스케줄링 대상이 아니므로).
+    # discrete_arrange가 EQP 전체 목록/EQP_MODEL_CD의 유일한 출처라, PPK001/
+    # OPER001과 무관한 등록용 더미 행으로 EQP002를 등록만 시킨다.
+    raw = _base_raw([_extra_registration_row("EQP002", "reg4")])
+    raw["eqp_queue_init"] = [_queue_init_row("EQP002", "LOT002", "CAR002")]
     raw["eqp_initial_state"] = _no_conv_eqp_initial_state("EQP002")
     data = preprocess(raw, period_key=RULE_TIMEKEY)
 
     sim = SchedulingSimulator(data)
-    # 강제 배정이라 reset() 중 t=0에 즉시 커밋돼야 한다 — discrete 조합 없음/
+    # 이미 확정된 큐라 reset() 중 t=0에 즉시 커밋돼야 한다 — discrete 조합 없음/
     # 전환 불필요 여부와 무관하게 새 게이트에 막히지 않아야 한다.
     assert len(sim.schedule) == 1
     assert sim.schedule[0]["CARRIER_ID"] == "CAR002"

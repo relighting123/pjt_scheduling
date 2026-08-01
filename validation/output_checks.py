@@ -8,7 +8,8 @@ run_inference() 결과의 schedule이 입력 데이터(env_data)와 정합한지
   2. 처리시간 일치 – (END_TM - START_TM)이 입력 데이터(ST × WF_QTY) 기대값과 일치하는지
   3. 배정 완전성 – 입력에 존재하는 모든 LOT이 결과에 배정되었거나, 남은 재공 통계로
      설명되는지 (설명되지 않으면 배정 누락으로 간주)
-  4. 강제 배정 – LOT_STAT_CD!=WAIT LOT이 지정된 EQP에, 입력 순서대로 배정됐는지
+  4. 고정 큐 배정 – eqp_queue_init(AI가 배정 결정하지 않는 확정 큐) LOT이 지정된 EQP에,
+     SEQ_NO 순서대로 배정됐는지
 
 `validation/runner.py::run_validation()`(test 데이터셋 기준 모델 성능 검증)과는 별개의 기능이다.
 """
@@ -22,7 +23,7 @@ def _internal_lot_id(row: dict) -> str:
 
     schedule의 row["LOT_ID"]는 논리(비즈니스) LOT_ID다(LOT_ID:CARRIER_ID = 1:N을
     구분하기 위한 출력 스키마 수정 이후). proc_time_matrix/env_data["lots"]/
-    eqp_forced_queue는 여전히 내부 carrier 단위 키로 색인돼 있으므로, 이 값들과
+    eqp_fixed_queue는 여전히 내부 carrier 단위 키로 색인돼 있으므로, 이 값들과
     매칭하려면 CARRIER_ID를 우선 사용해 내부 키를 다시 구해야 한다
     (preprocess._carrier_instance_id와 동일 규칙: CARRIER_ID가 있으면 그것,
     없으면 LOT_ID).
@@ -98,15 +99,15 @@ def check_processing_time(
     return mismatches
 
 
-def check_forced_placement(schedule: List[dict], env_data: dict) -> List[dict]:
-    """LOT_STAT_CD!=WAIT LOT이 지정된 EQP에, 지정된 순서대로 배정됐는지 확인."""
+def check_fixed_queue_placement(schedule: List[dict], env_data: dict) -> List[dict]:
+    """eqp_queue_init LOT이 지정된 EQP에, SEQ_NO 순서대로 배정됐는지 확인."""
     violations = []
-    forced_queue = env_data.get("eqp_forced_queue", {})
-    if not forced_queue:
+    fixed_queue = env_data.get("eqp_fixed_queue", {})
+    if not fixed_queue:
         return violations
 
     home_eqp_by_lot = {
-        lot_id: eqp_id for eqp_id, lot_ids in forced_queue.items() for lot_id in lot_ids
+        row["lot_id"]: eqp_id for eqp_id, rows in fixed_queue.items() for row in rows
     }
     actual_eqp_by_lot = {_internal_lot_id(row): row["EQP_ID"] for row in schedule}
     for lot_id, home_eqp in home_eqp_by_lot.items():
@@ -116,10 +117,11 @@ def check_forced_placement(schedule: List[dict], env_data: dict) -> List[dict]:
                 "lot_id":      lot_id,
                 "expected_eqp": home_eqp,
                 "actual_eqp":  actual_eqp,
-                "reason":      "LOT_STAT_CD 강제 LOT이 지정된 EQP가 아닌 곳에 배정됨",
+                "reason":      "eqp_queue_init LOT이 지정된 EQP가 아닌 곳에 배정됨",
             })
 
-    for eqp_id, expected_order in forced_queue.items():
+    for eqp_id, rows in fixed_queue.items():
+        expected_order = [row["lot_id"] for row in rows]
         eqp_rows = sorted(
             (r for r in schedule if r["EQP_ID"] == eqp_id),
             key=lambda r: r["START_TM"],
@@ -132,7 +134,7 @@ def check_forced_placement(schedule: List[dict], env_data: dict) -> List[dict]:
                 "eqp_id":         eqp_id,
                 "expected_order": expected_order,
                 "actual_order":   actual_order,
-                "reason":         "LOT_STAT_CD 강제 배정 순서가 입력 순서와 다름",
+                "reason":         "eqp_queue_init 배정 순서가 SEQ_NO 순서와 다름",
             })
     return violations
 
@@ -190,22 +192,22 @@ def validate_schedule_output(
         schedule, env_data, tolerance_minutes=tolerance_minutes,
     )
     unassigned_lots = check_completeness(schedule, env_data, stats)
-    forced_placement_violations = check_forced_placement(schedule, env_data)
+    fixed_queue_violations = check_fixed_queue_placement(schedule, env_data)
 
     return {
         "ok": not (
             eligibility_violations or proc_time_mismatches or unassigned_lots
-            or forced_placement_violations
+            or fixed_queue_violations
         ),
         "eligibility_violations": eligibility_violations,
         "proc_time_mismatches":   proc_time_mismatches,
         "unassigned_lots":        unassigned_lots,
-        "forced_placement_violations": forced_placement_violations,
+        "fixed_queue_violations": fixed_queue_violations,
         "summary": {
             "total_scheduled":            len(schedule),
             "eligibility_violation_count": len(eligibility_violations),
             "proc_time_mismatch_count":    len(proc_time_mismatches),
             "unassigned_lot_count":        len(unassigned_lots),
-            "forced_placement_violation_count": len(forced_placement_violations),
+            "fixed_queue_violation_count": len(fixed_queue_violations),
         },
     }

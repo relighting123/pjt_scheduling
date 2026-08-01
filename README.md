@@ -47,12 +47,12 @@ pjt_scheduling/
 
 | 레이어 | 단위 | 설명 |
 |--------|------|------|
-| `discrete_arrange` | `(EQP, LOT, OPER)` | 이 carrier가 이 EQP에 투입 가능하다는 선언(ST, WF_QTY, `LOT_STAT_CD` 포함) |
+| `discrete_arrange` | `(EQP, LOT, OPER)` | 이 carrier가 이 EQP에 투입 가능하다는 선언(ST, WF_QTY 포함, 전건 자유배정 후보) |
 | `abstract_arrange` | `(PPK, OPER, EQP_MODEL)` | **arrange** = 장비 재공 투입 가능 여부 템플릿(모델 단위, 더 성긴 단위) |
 | Runtime WIP | `(PPK, OPER)` + LOT list | 현재/유입 재공, `oper_in_time` |
 
 부가 입력: `flow`, `batch_info`(LOT_CD/TEMP), `tool_capacity`, `eqp_initial_state`, `split`, `conversion_group`,
-`eqp_conv_plan`(외부 확정 EQP 전환 계획), `eqp_down`(EQP 다운타임)
+`eqp_conv_plan`(외부 확정 EQP 전환 계획), `eqp_down`(EQP 다운타임), `eqp_queue_init`(이미 투입 확정된 EQP별 큐)
 
 #### `discrete_arrange`는 "실적"이 아니라 투입 가능 관계(M:N)다
 
@@ -81,8 +81,8 @@ pjt_scheduling/
   A가 다시 "이미 확정된 현재 셋업"이 되므로 discrete 정보를 다시 사용한다(더 이상 예측이
   아니라 현재 상태이므로).
 
-이 규칙은 `discrete_wait_enabled=True`(기본값)에서만 적용되고, `LOT_STAT_CD!=WAIT`(강제
-배정)이거나 `discrete_wait_enabled=False`이면 이 구분 없이 항상 abstract 폴백을 허용한다.
+이 규칙은 `discrete_wait_enabled=True`(기본값)에서만 적용되고, `discrete_wait_enabled=False`면
+이 구분 없이 항상 abstract 폴백을 허용한다.
 
 따라서 입력 데이터가 실제로는 여러 EQP에 대해 M:N으로 투입 가능한 carrier를, 편의상 EQP
 1대에 대해서만 1:1로 좁혀 선언해 두면(예: 벤치마크 데이터 생성기가 라운드로빈으로 EQP
@@ -112,24 +112,26 @@ RULE_TIMEKEY 형식).
 - 다운 적용도 진행 중이던 가공을 선점하지 않는다(종료 후 다음 idle 시점에 적용).
 - Gantt에는 `DOWN` 바로 표시된다(`down_windows`, UI 전용 — RTS 출력에는 포함되지 않음).
 
-#### LOT_STAT_CD (`discrete_arrange`, 선택 – 미지정 시 `WAIT`)
+#### 이미 투입 확정된 큐 (`eqp_queue_init.json`, 선택)
 
-LOT의 현재 상태 코드로 `PROC` / `LOAD` / `SELE` / `RESV` / `WAIT` 중 하나입니다.
+AI 스케줄러가 배정을 결정하지 않는, 이미 투입이 확정된 EQP별 가공 큐(초기 상태)입니다.
+`discrete_arrange`의 옛 `LOT_STAT_CD`(PROC/LOAD/SELE/RESV) 강제배정을 대체합니다 —
+`discrete_arrange`는 이제 전건 자유배정(WAIT) 후보만 나타냅니다.
 
-- `WAIT`: 알고리즘이 자유롭게 스케줄링(장비·순서 결정)할 수 있는 재공(기존 동작과 동일).
-- `PROC`/`LOAD`/`SELE`/`RESV`: 이미 확정된 재공. 반드시 해당 행의 `EQP_ID`에만 배정되며,
-  같은 장비에 여러 건이 있으면 **PROC → LOAD → RESV → SELE** 순으로 강제 배정됩니다(동일 상태는 입력 순).
-  시뮬 시작(`reset`) 시 강제 carrier **전건**을 장비에 선반영한다.
-  `PROC`은 즉시 가공 시작, `LOAD`/`RESV`/`SELE`는 장비에 선부착(staged) 후
-  가공 슬롯이 비면 자동 투입(RL step 없음).
-  이 LOT들은 다른 장비의 배정 후보로는 전혀 노출되지 않고, 자신의 순번이 될 때까지는
-  자기 장비에서도 다른 어떤 재공보다 우선 처리되어야 합니다.
+행: `EQP_ID`, `SEQ_NO`(같은 EQP 안에서의 처리 순서), `LOT_ID`, `CARRIER_ID`(선택),
+`OPER_ID`, `START_TM`, `END_TM`(둘 다 RULE_TIMEKEY 형식), `PLAN_PROD_ATTR_VAL`, `WF_QTY`.
 
-`CONFIG.env.discrete_wait_enabled`(기본 `True`)를 `False`로 두면 `WAIT` LOT의 discrete
-정보(특정 EQP 고정, 실측 ST)를 배정 로직에서 쓰지 않고 abstract 매칭 경로(모델 평균 ST,
-모델이 맞는 아무 장비)만 태웁니다 — 수량/제품/공정 정체성(WIP 카운트)은 그대로 유지됩니다.
-`PROC`/`LOAD`/`SELE`/`RESV`(강제 배정) LOT은 이 옵션과 무관하게 항상 discrete 그대로
-배정됩니다.
+- ST로 소요시간을 역산하지 않고 입력된 `START_TM`/`END_TM`을 그대로 스케줄에 남깁니다.
+- 같은 EQP의 여러 건은 `SEQ_NO` 오름차순으로 처리되며, 앞 건이 끝나면(`_on_process_end`)
+  곧바로 다음 건이 이어서 활성화됩니다. `START_TM`이 아직 미래면 그 시각까지는 EQP가
+  자유배정(WAIT LOT) 후보로 열려 있습니다 — 두 항목 사이 시간 간격은 AI가 채울 수 있습니다.
+- tool 동시성/전환그룹/전환횟수/WIP 가용성 등 자유 스케줄링 제약을 전부 우회하고 항상
+  그대로 반영됩니다(물리적으로 이미 그 상태로 진행 중인 확정 사실이므로).
+- 이 LOT들은 자유배정 후보(`available_lots`)로 전혀 노출되지 않습니다.
+- `discrete_arrange`에 전혀 등장하지 않는(자유배정 후보가 전혀 없을 만큼 이미 확정 큐로
+  꽉 찬) EQP도 `eqp_queue_init`만으로 EQP 목록에 등록됩니다. 단 `EQP_MODEL_CD`는
+  `discrete_arrange`에서만 나오므로, 그런 EQP는 tool 동시성 추적 대상에서는 제외됩니다.
+- `CONFIG.env.discrete_wait_enabled`와 무관하게 항상 그대로 반영됩니다.
 
 #### 전환 그룹 제약 (`config.CONVERSION_GROUPS`, 선택)
 
@@ -165,8 +167,9 @@ CONVERSION_GROUPS = {
   (`ABSTRACT=True`).
 - **첫 배정**(EQP가 아직 한 번도 셋업된 적 없음, `prev_lot_cd` 미지정)은 비교 대상이
   없어 위 제약에서 제외되고 항상 abstract로 허용됩니다.
-- `PROC`/`LOAD`/`SELE`/`RESV`(강제 배정) LOT과 `discrete_wait_enabled=False`는 이
-  구분과 무관하게 항상 abstract 폴백을 허용합니다(기존 동작 유지).
+- `discrete_wait_enabled=False`는 이 구분과 무관하게 항상 abstract 폴백을
+  허용합니다(기존 동작 유지). 이미 투입 확정된 큐(`eqp_queue_init`)는 이 판단 자체를
+  타지 않고 항상 그대로 반영됩니다.
 - 위 자격 조건을 만족하는 carrier가 하나도 없는 `(PPK,OPER)` 버킷은 해당 EQP의
   액션 마스크(`get_feasible_ppk_oper`)에서 제외됩니다.
 
