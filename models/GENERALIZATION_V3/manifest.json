@@ -1,0 +1,65 @@
+{
+  "model_file": "scheduling_rl.zip",
+  "sha256": "c651fa4388078681a344e947f3e36c8c82113ae0f6fb92c78a9bdbcf68e0f42d",
+  "fac_id": "GENERALIZATION_V3",
+  "algorithm": "MaskablePPO",
+  "selected_checkpoint_timesteps": 180000,
+  "configured_training_timesteps": 400000,
+  "actual_training_timesteps": 401408,
+  "observation_dim": 3324,
+  "action_space": "MultiDiscrete([72, 4])",
+  "axes": {
+    "max_operations": 6,
+    "max_products": 12,
+    "max_equipment_models": 8
+  },
+  "training": {
+    "seed": 0,
+    "n_steps": 512,
+    "gamma": 0.997,
+    "network": [256, 256],
+    "reward_normalization": true,
+    "bc_epochs_max": 200,
+    "bc_episodes_per_dataset": 16,
+    "bc_noise_epsilon": 0.15,
+    "expert_candidates": ["dedication", "earliest_st"],
+    "expert_anchor_start": 1.0,
+    "expert_anchor_final": 0.0,
+    "train_pool": {
+      "random_single_stage": 48,
+      "random_multi_stage": 12,
+      "random_safety_wip": 8,
+      "bench_scenarios": 8,
+      "bench_weight": 4
+    }
+  },
+  "evaluation": {
+    "bench": {
+      "rl_score": 82.0,
+      "dedication_score": 69.0,
+      "rl_production": 163,
+      "dedication_production": 158,
+      "rl_conversions": 81,
+      "dedication_conversions": 89,
+      "win_tie_loss": [2, 6, 0]
+    },
+    "holdout": {
+      "rl_score": 78.0,
+      "dedication_score": 71.0,
+      "rl_production": 141,
+      "dedication_production": 136,
+      "rl_conversions": 63,
+      "dedication_conversions": 65,
+      "win_tie_loss": [3, 3, 0]
+    },
+    "tool_change": {
+      "rl_production": 763,
+      "optimal_production": 792,
+      "rl_conversions": 52,
+      "optimal_conversions": 11,
+      "optimal_cases": 3,
+      "total_cases": 10
+    }
+  },
+  "training_command": "PYTHONHASHSEED=0 python3 benchmark/train_bench_suite.py --train-pool --holdout --timesteps 400000 --tag generalization-v3 --seed 0 --model-dir models/GENERALIZATION_V3 --bench-weight 4 --device cpu"
+}
