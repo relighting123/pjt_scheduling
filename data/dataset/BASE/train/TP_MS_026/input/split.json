@@ -1,0 +1,26 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "EQP_MODEL_CD": "S1",
+    "SPLIT_QTY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK002",
+    "OPER_ID": "OPER001",
+    "EQP_MODEL_CD": "S1",
+    "SPLIT_QTY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER002",
+    "EQP_MODEL_CD": "S2",
+    "SPLIT_QTY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK002",
+    "OPER_ID": "OPER002",
+    "EQP_MODEL_CD": "S2",
+    "SPLIT_QTY": 1
+  }
+]

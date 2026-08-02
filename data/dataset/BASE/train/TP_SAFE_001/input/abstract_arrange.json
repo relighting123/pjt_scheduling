@@ -3,12 +3,12 @@
     "PLAN_PROD_ATTR_VAL": "PPK001",
     "OPER_ID": "OPER001",
     "EQP_MODEL_CD": "A",
-    "ST": 30
+    "ST": 15
   },
   {
     "PLAN_PROD_ATTR_VAL": "PPK001",
     "OPER_ID": "OPER002",
     "EQP_MODEL_CD": "A",
-    "ST": 20
+    "ST": 30
   }
 ]

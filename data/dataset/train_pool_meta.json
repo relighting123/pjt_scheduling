@@ -2155,26 +2155,662 @@
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_011/input"
   },
   {
-    "id": "TP_SAFE_000",
-    "cat": "안전재공 랜덤",
-    "n_eqp": 1,
-    "n_ppk": 1,
+    "id": "TP_MS_012",
+    "cat": "다공정 랜덤",
+    "n_eqp": 5,
+    "n_ppk": 2,
     "carriers": [
-      20,
-      20
+      3,
+      5
     ],
     "st": [
-      10,
-      30
+      [
+        60,
+        45
+      ],
+      [
+        40,
+        60
+      ]
+    ],
+    "conv": 90,
+    "sim": 210,
+    "total": 16,
+    "min_conv": 0,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 3+2설비×2제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_012/input"
+  },
+  {
+    "id": "TP_MS_013",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 3,
+    "carriers": [
+      3,
+      4,
+      5
+    ],
+    "st": [
+      [
+        20,
+        30,
+        30
+      ],
+      [
+        40,
+        75,
+        40
+      ]
+    ],
+    "conv": 45,
+    "sim": 210,
+    "total": 24,
+    "min_conv": 1,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+4설비×3제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_013/input"
+  },
+  {
+    "id": "TP_MS_014",
+    "cat": "다공정 랜덤",
+    "n_eqp": 5,
+    "n_ppk": 6,
+    "carriers": [
+      7,
+      8,
+      4,
+      5,
+      5,
+      9
+    ],
+    "st": [
+      [
+        20,
+        40,
+        20,
+        20,
+        20,
+        75
+      ],
+      [
+        60,
+        60,
+        30,
+        60,
+        45,
+        30
+      ]
+    ],
+    "conv": 90,
+    "sim": 1070,
+    "total": 76,
+    "min_conv": 7,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+3설비×6제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_014/input"
+  },
+  {
+    "id": "TP_MS_015",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 5,
+    "carriers": [
+      8,
+      6,
+      7,
+      9,
+      6
+    ],
+    "st": [
+      [
+        60,
+        40,
+        75,
+        30,
+        30
+      ],
+      [
+        40,
+        30,
+        90,
+        75,
+        75
+      ]
+    ],
+    "conv": 90,
+    "sim": 1120,
+    "total": 72,
+    "min_conv": 4,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+4설비×5제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_015/input"
+  },
+  {
+    "id": "TP_MS_016",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 3,
+    "carriers": [
+      9,
+      4,
+      3
+    ],
+    "st": [
+      [
+        20,
+        75,
+        75
+      ],
+      [
+        40,
+        45,
+        30
+      ]
     ],
     "conv": 30,
-    "sim": 1000,
-    "total": 40,
+    "sim": 240,
+    "total": 32,
+    "min_conv": 0,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 3+3설비×3제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_016/input"
+  },
+  {
+    "id": "TP_MS_017",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 2,
+    "carriers": [
+      9,
+      7
+    ],
+    "st": [
+      [
+        75,
+        40
+      ],
+      [
+        60,
+        30
+      ]
+    ],
+    "conv": 90,
+    "sim": 480,
+    "total": 32,
+    "min_conv": 0,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+4설비×2제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_017/input"
+  },
+  {
+    "id": "TP_MS_018",
+    "cat": "다공정 랜덤",
+    "n_eqp": 5,
+    "n_ppk": 4,
+    "carriers": [
+      4,
+      5,
+      6,
+      3
+    ],
+    "st": [
+      [
+        40,
+        40,
+        40,
+        60
+      ],
+      [
+        40,
+        30,
+        20,
+        40
+      ]
+    ],
+    "conv": 45,
+    "sim": 480,
+    "total": 36,
+    "min_conv": 3,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+3설비×4제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_018/input"
+  },
+  {
+    "id": "TP_MS_019",
+    "cat": "다공정 랜덤",
+    "n_eqp": 5,
+    "n_ppk": 3,
+    "carriers": [
+      5,
+      6,
+      3
+    ],
+    "st": [
+      [
+        45,
+        40,
+        60
+      ],
+      [
+        75,
+        30,
+        30
+      ]
+    ],
+    "conv": 30,
+    "sim": 360,
+    "total": 28,
+    "min_conv": 1,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 3+2설비×3제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_019/input"
+  },
+  {
+    "id": "TP_MS_020",
+    "cat": "다공정 랜덤",
+    "n_eqp": 4,
+    "n_ppk": 6,
+    "carriers": [
+      9,
+      3,
+      4,
+      6,
+      7,
+      3
+    ],
+    "st": [
+      [
+        45,
+        20,
+        40,
+        40,
+        75,
+        30
+      ],
+      [
+        20,
+        60,
+        60,
+        90,
+        90,
+        30
+      ]
+    ],
+    "conv": 60,
+    "sim": 1170,
+    "total": 64,
+    "min_conv": 8,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+2설비×6제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_020/input"
+  },
+  {
+    "id": "TP_MS_021",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 6,
+    "carriers": [
+      4,
+      5,
+      8,
+      7,
+      8,
+      4
+    ],
+    "st": [
+      [
+        20,
+        75,
+        60,
+        75,
+        45,
+        75
+      ],
+      [
+        75,
+        90,
+        60,
+        30,
+        60,
+        90
+      ]
+    ],
+    "conv": 90,
+    "sim": 1030,
+    "total": 72,
+    "min_conv": 6,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 3+3설비×6제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_021/input"
+  },
+  {
+    "id": "TP_MS_022",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 6,
+    "carriers": [
+      9,
+      8,
+      8,
+      8,
+      8,
+      4
+    ],
+    "st": [
+      [
+        20,
+        20,
+        20,
+        30,
+        75,
+        40
+      ],
+      [
+        20,
+        45,
+        90,
+        45,
+        60,
+        20
+      ]
+    ],
+    "conv": 120,
+    "sim": 1570,
+    "total": 90,
+    "min_conv": 6,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 4+2설비×6제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_022/input"
+  },
+  {
+    "id": "TP_MS_023",
+    "cat": "다공정 랜덤",
+    "n_eqp": 8,
+    "n_ppk": 2,
+    "carriers": [
+      6,
+      5
+    ],
+    "st": [
+      [
+        20,
+        45
+      ],
+      [
+        90,
+        20
+      ]
+    ],
+    "conv": 45,
+    "sim": 160,
+    "total": 22,
+    "min_conv": 0,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 4+4설비×2제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_023/input"
+  },
+  {
+    "id": "TP_MS_024",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 6,
+    "carriers": [
+      3,
+      8,
+      8,
+      6,
+      5,
+      9
+    ],
+    "st": [
+      [
+        20,
+        40,
+        30,
+        75,
+        30,
+        30
+      ],
+      [
+        75,
+        75,
+        45,
+        45,
+        90,
+        45
+      ]
+    ],
+    "conv": 120,
+    "sim": 1640,
+    "total": 78,
+    "min_conv": 6,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 4+2설비×6제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_024/input"
+  },
+  {
+    "id": "TP_MS_025",
+    "cat": "다공정 랜덤",
+    "n_eqp": 7,
+    "n_ppk": 2,
+    "carriers": [
+      9,
+      3
+    ],
+    "st": [
+      [
+        60,
+        75
+      ],
+      [
+        75,
+        30
+      ]
+    ],
+    "conv": 60,
+    "sim": 260,
+    "total": 24,
+    "min_conv": 0,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 3+4설비×2제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_025/input"
+  },
+  {
+    "id": "TP_MS_026",
+    "cat": "다공정 랜덤",
+    "n_eqp": 6,
+    "n_ppk": 2,
+    "carriers": [
+      5,
+      8
+    ],
+    "st": [
+      [
+        75,
+        75
+      ],
+      [
+        40,
+        60
+      ]
+    ],
+    "conv": 60,
+    "sim": 340,
+    "total": 26,
+    "min_conv": 0,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 4+2설비×2제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_026/input"
+  },
+  {
+    "id": "TP_MS_027",
+    "cat": "다공정 랜덤",
+    "n_eqp": 4,
+    "n_ppk": 6,
+    "carriers": [
+      3,
+      6,
+      5,
+      8,
+      3,
+      8
+    ],
+    "st": [
+      [
+        30,
+        75,
+        45,
+        40,
+        75,
+        60
+      ],
+      [
+        40,
+        45,
+        45,
+        45,
+        90,
+        20
+      ]
+    ],
+    "conv": 90,
+    "sim": 1260,
+    "total": 66,
+    "min_conv": 8,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+2설비×6제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_027/input"
+  },
+  {
+    "id": "TP_MS_028",
+    "cat": "다공정 랜덤",
+    "n_eqp": 5,
+    "n_ppk": 6,
+    "carriers": [
+      6,
+      3,
+      5,
+      6,
+      3,
+      9
+    ],
+    "st": [
+      [
+        60,
+        45,
+        40,
+        45,
+        30,
+        30
+      ],
+      [
+        20,
+        60,
+        20,
+        30,
+        75,
+        60
+      ]
+    ],
+    "conv": 30,
+    "sim": 790,
+    "total": 64,
+    "min_conv": 7,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 2+3설비×6제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_028/input"
+  },
+  {
+    "id": "TP_MS_029",
+    "cat": "다공정 랜덤",
+    "n_eqp": 5,
+    "n_ppk": 4,
+    "carriers": [
+      9,
+      8,
+      7,
+      5
+    ],
+    "st": [
+      [
+        20,
+        75,
+        40,
+        30
+      ],
+      [
+        45,
+        45,
+        45,
+        20
+      ]
+    ],
+    "conv": 120,
+    "sim": 830,
+    "total": 58,
+    "min_conv": 3,
+    "mix": 1.0,
+    "tool": 99,
+    "desc": "[train pool] 2공정 랜덤 장비공유 3+2설비×4제품",
+    "tests": "[train pool] 미학습 다공정 일반화",
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_029/input"
+  },
+  {
+    "id": "TP_SAFE_000",
+    "cat": "안전재공 랜덤",
+    "n_eqp": 2,
+    "n_ppk": 1,
+    "carriers": [
+      12,
+      12
+    ],
+    "st": [
+      30,
+      30
+    ],
+    "conv": 90,
+    "sim": 540,
+    "total": 24,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 1설비 상류/하류=20/20",
+    "desc": "[train pool] 안전재공 2공정 2설비 상류/하류=12/12",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_000/input"
   },
@@ -2184,45 +2820,45 @@
     "n_eqp": 3,
     "n_ppk": 1,
     "carriers": [
-      29,
-      29
+      35,
+      35
     ],
     "st": [
-      30,
-      20
+      15,
+      30
     ],
-    "conv": 45,
-    "sim": 640,
-    "total": 58,
+    "conv": 60,
+    "sim": 710,
+    "total": 70,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=29/29",
+    "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=35/35",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_001/input"
   },
   {
     "id": "TP_SAFE_002",
     "cat": "안전재공 랜덤",
-    "n_eqp": 1,
+    "n_eqp": 4,
     "n_ppk": 1,
     "carriers": [
-      28,
-      28
+      22,
+      22
     ],
     "st": [
-      15,
-      10
+      10,
+      20
     ],
-    "conv": 45,
-    "sim": 900,
-    "total": 56,
+    "conv": 30,
+    "sim": 240,
+    "total": 44,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 1설비 상류/하류=28/28",
+    "desc": "[train pool] 안전재공 2공정 4설비 상류/하류=22/22",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_002/input"
   },
@@ -2232,117 +2868,117 @@
     "n_eqp": 3,
     "n_ppk": 1,
     "carriers": [
-      13,
-      13
+      36,
+      36
     ],
     "st": [
-      15,
-      15
+      20,
+      30
     ],
-    "conv": 60,
-    "sim": 230,
-    "total": 26,
+    "conv": 30,
+    "sim": 760,
+    "total": 72,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=13/13",
+    "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=36/36",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_003/input"
   },
   {
     "id": "TP_SAFE_004",
     "cat": "안전재공 랜덤",
-    "n_eqp": 3,
+    "n_eqp": 2,
     "n_ppk": 1,
     "carriers": [
-      28,
-      28
+      34,
+      34
     ],
     "st": [
-      15,
+      10,
       20
     ],
-    "conv": 90,
-    "sim": 510,
-    "total": 56,
+    "conv": 60,
+    "sim": 690,
+    "total": 68,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=28/28",
+    "desc": "[train pool] 안전재공 2공정 2설비 상류/하류=34/34",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_004/input"
   },
   {
     "id": "TP_SAFE_005",
     "cat": "안전재공 랜덤",
-    "n_eqp": 2,
+    "n_eqp": 3,
     "n_ppk": 1,
     "carriers": [
-      20,
-      20
+      14,
+      14
     ],
     "st": [
-      20,
-      10
+      30,
+      30
     ],
-    "conv": 60,
-    "sim": 440,
-    "total": 40,
+    "conv": 30,
+    "sim": 380,
+    "total": 28,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 2설비 상류/하류=20/20",
+    "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=14/14",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_005/input"
   },
   {
     "id": "TP_SAFE_006",
     "cat": "안전재공 랜덤",
-    "n_eqp": 1,
+    "n_eqp": 3,
     "n_ppk": 1,
     "carriers": [
-      12,
-      12
+      25,
+      25
     ],
     "st": [
-      10,
-      40
+      20,
+      10
     ],
-    "conv": 45,
-    "sim": 780,
-    "total": 24,
+    "conv": 60,
+    "sim": 380,
+    "total": 50,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 1설비 상류/하류=12/12",
+    "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=25/25",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_006/input"
   },
   {
     "id": "TP_SAFE_007",
     "cat": "안전재공 랜덤",
-    "n_eqp": 4,
+    "n_eqp": 1,
     "n_ppk": 1,
     "carriers": [
-      19,
-      19
+      13,
+      13
     ],
     "st": [
-      30,
-      10
+      20,
+      15
     ],
-    "conv": 90,
-    "sim": 340,
-    "total": 38,
+    "conv": 45,
+    "sim": 600,
+    "total": 26,
     "min_conv": 1,
     "mix": 1.0,
     "tool": 99,
     "enable_wip_inflow": true,
-    "desc": "[train pool] 안전재공 2공정 4설비 상류/하류=19/19",
+    "desc": "[train pool] 안전재공 2공정 1설비 상류/하류=13/13",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
     "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_007/input"
   }
