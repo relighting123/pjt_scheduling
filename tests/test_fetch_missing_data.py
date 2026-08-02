@@ -117,6 +117,47 @@ class _FakeDbRegistryCtx:
         return False
 
 
+def test_fetch_from_db_skips_optional_table_query_failure_and_keeps_going(tmp_path, monkeypatch):
+    """선택 SQL(예: eqp_queue_init) 파일은 존재하지만 쿼리 자체가 실패하는 경우
+    (전형적으로 그 배포 DB에 원천 테이블이 아직 없을 때) — 그 항목만 skip하고
+    나머지 필수/선택 테이블 수집은 정상적으로 끝까지 진행돼야 한다."""
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    from config import SQL_JSON_MAP
+
+    valid_rows = _valid_collected()
+    valid_rows["lot_master"] = [{"LOT_ID": "LOT001", "LOT_CD": "LC_A", "TEMP": "T600"}]
+    valid_rows["tool_capacity"] = [{"LOT_CD": "LC_A", "TEMP": "T600", "EQP_MODEL_CD": "A", "MAX_TOOL": 1}]
+    for key, (sql_file, _json_file) in SQL_JSON_MAP.items():
+        # 쿼리 텍스트에 key 이름을 실어 fake_execute_query가 어떤 테이블인지
+        # 구분할 수 있게 한다 (실제 SQL 파싱과 무관, 테스트용 마커).
+        (sql_dir / sql_file).write_text(f"-- KEY:{key}\nSELECT 1 FROM DUAL", encoding="utf-8")
+
+    monkeypatch.setattr("config.SQL_DIR", sql_dir)
+
+    output_dir = tmp_path / "out"
+
+    def fake_execute_query(conn, sql, binds):
+        key = sql.splitlines()[0].removeprefix("-- KEY:")
+        if key == "eqp_queue_init":
+            raise RuntimeError("ORA-00942: table or view does not exist")
+        return valid_rows.get(key, [{"DUMMY": 1}])
+
+    with patch("data.loader.fetch._execute_query", side_effect=fake_execute_query), \
+         patch("data.loader.fetch.parse_sql_db_alias", return_value="main"):
+        result = fetch_from_db(
+            fac_id="FAC001",
+            output_dir=output_dir,
+            split="train",
+            period="20260101070000",
+            db_registry=_FakeRegistry({}),
+        )
+
+    assert result == output_dir
+    assert not (output_dir / "eqp_queue_init.json").exists()
+    assert (output_dir / "plan.json").exists()
+
+
 def test_fetch_period_range_skips_failed_period_and_keeps_the_rest(monkeypatch):
     periods = ["20260101070000", "20260102070000", "20260103070000"]
     ok_paths = {p: Path(f"/tmp/{p}") for p in periods}

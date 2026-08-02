@@ -316,6 +316,13 @@ def fetch_from_db(
                     f"[loader] @{alias} {sql_file} → {out_path} ({len(rows)} rows{row_warn})",
                 )
             except Exception as exc:
+                if key not in SQL_REQUIRED_KEYS:
+                    # 선택 입력은 파일이 없으면 위에서 이미 skip한다 — 이 분기는
+                    # 파일은 있지만 쿼리 자체가 실패한 경우(전형적으로 그
+                    # 배포 DB에 원천 테이블이 아직 없을 때)다. 필수 테이블과
+                    # 달리 수집 전체를 실패시키지 않고 이 항목만 skip한다.
+                    print(f"[loader] ⚠ 선택 SQL 실패 – skip {sql_file}: {exc}")
+                    continue
                 alias_guess = registry.default_alias
                 if sql_path.exists():
                     try:
