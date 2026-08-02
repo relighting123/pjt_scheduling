@@ -34,6 +34,8 @@ def load_ed(m):
     ed["eqp_selection"] = "order"
     ed["sim_end_minutes"] = m["sim"]
     ed["conversion_minutes"] = m["conv"]
+    if m.get("discrete_wait_enabled") is not None:
+        ed["discrete_wait_enabled"] = bool(m["discrete_wait_enabled"])
     return ed
 
 

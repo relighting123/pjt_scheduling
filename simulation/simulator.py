@@ -267,6 +267,14 @@ class SchedulingSimulator:
         self._eqp_selection: str = data.get("eqp_selection", "order")
         self._termination_mode: str = data.get("termination_mode", "all_wip")
         self._enable_wip_inflow: bool = bool(data.get("enable_wip_inflow", True))
+        # 시나리오별 오버라이드(미지정 시 CONFIG.env.discrete_wait_enabled 기본값
+        # 따름) — enable_wip_inflow와 같은 패턴. 홈배정이 스크램블된 학습
+        # 시나리오가 abstract 경로로 전담을 학습하려면 이걸 꺼야 하는데, 전역
+        # CONFIG를 직접 건드리면 같은 풀 안의 다른 시나리오(홈배정 그대로 유지가
+        # 맞는 케이스)에도 새어나간다 — 인스턴스 속성으로 격리한다.
+        self._discrete_wait_enabled: bool = bool(
+            data.get("discrete_wait_enabled", CONFIG.env.discrete_wait_enabled)
+        )
         self._initial_wip_lot_keys: set = {
             (lid, meta.get("PLAN_PROD_ATTR_VAL"), meta.get("oper_id"))
             for lid, meta in data.get("abstract_lot_meta", {}).items()
@@ -1153,7 +1161,7 @@ class SchedulingSimulator:
         데이터가 구조적으로 있을 수 없기 때문 — 이 요건을 그대로 적용하면
         이미 맞는 셋업의 EQP는 후보에서 배제되고, 셋업이 다른 EQP가 불필요한
         전환까지 해가며 대신 가져가는 결과가 된다."""
-        if not CONFIG.env.discrete_wait_enabled:
+        if not self._discrete_wait_enabled:
             return True
         wip_key = (lot.get("lot_id"), lot.get("PLAN_PROD_ATTR_VAL"), lot.get("oper_id"))
         if wip_key not in self._initial_wip_lot_keys:
@@ -2411,7 +2419,7 @@ class SchedulingSimulator:
         if row is None:
             return -1.0
 
-        if CONFIG.env.discrete_wait_enabled:
+        if self._discrete_wait_enabled:
             lot_cd, temp = self._lot_cd_temp(lot_id, lot, ppk=ppk, oper_id=oper_id)
             eqp = self.eqps.get(eqp_id)
             needs_conv = self._would_need_conversion(eqp_id, lot_cd, temp)
