@@ -143,7 +143,7 @@
     "CARRIER_ID": "CAR013"
   },
   {
-    "EQP_ID": "EQP001",
+    "EQP_ID": "EQP003",
     "LOT_ID": "LOT014",
     "PLAN_PROD_ATTR_VAL": "PPK003",
     "OPER_ID": "OPER001",
@@ -253,7 +253,7 @@
     "CARRIER_ID": "CAR023"
   },
   {
-    "EQP_ID": "EQP005",
+    "EQP_ID": "EQP003",
     "LOT_ID": "LOT024",
     "PLAN_PROD_ATTR_VAL": "PPK005",
     "OPER_ID": "OPER001",

@@ -33,6 +33,7 @@ SYM 카테고리만 mix=0.0(분산 없음, 캐리어별 discrete_arrange 홈이 
 import json
 import math
 import random
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -101,7 +102,13 @@ def gen_one(spec):
                              lot_cd=lot_cd_by_ppk[ppk], car_id=f"CAR{num:03d}", st=sts[pi]))
 
     # home 배정: mix 높을수록 분산
-    rng = random.Random(abs(hash(bid)) & 0xFFFF)
+    # bid로부터 결정적 시드를 뽑아야 재생성해도 같은 데이터가 나온다.
+    # 파이썬 내장 hash()는 문자열에 대해 프로세스마다 무작위로 솔트가
+    # 들어가므로(PYTHONHASHSEED 보안 랜덤화) bid가 같아도 실행할 때마다
+    # 다른 값이 나와, 이 함수를 재실행하면 carrier의 home 배정(따라서
+    # 전환 횟수·정답 스케줄)이 매번 바뀌는 버그가 있었다. zlib.crc32는
+    # 프로세스와 무관하게 항상 같은 값을 낸다.
+    rng = random.Random(zlib.crc32(bid.encode()) & 0xFFFF)
     discrete = []
     by_ppk = {ppk: [l for l in lots if l["ppk"] == ppk] for ppk in ppks}
     for pi, ppk in enumerate(ppks):

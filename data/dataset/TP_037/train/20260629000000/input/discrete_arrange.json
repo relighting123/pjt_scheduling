@@ -143,7 +143,7 @@
     "CARRIER_ID": "CAR013"
   },
   {
-    "EQP_ID": "EQP002",
+    "EQP_ID": "EQP003",
     "LOT_ID": "LOT014",
     "PLAN_PROD_ATTR_VAL": "PPK002",
     "OPER_ID": "OPER001",
@@ -187,7 +187,7 @@
     "CARRIER_ID": "CAR017"
   },
   {
-    "EQP_ID": "EQP002",
+    "EQP_ID": "EQP003",
     "LOT_ID": "LOT018",
     "PLAN_PROD_ATTR_VAL": "PPK002",
     "OPER_ID": "OPER001",
@@ -385,7 +385,7 @@
     "CARRIER_ID": "CAR035"
   },
   {
-    "EQP_ID": "EQP001",
+    "EQP_ID": "EQP004",
     "LOT_ID": "LOT036",
     "PLAN_PROD_ATTR_VAL": "PPK004",
     "OPER_ID": "OPER001",
