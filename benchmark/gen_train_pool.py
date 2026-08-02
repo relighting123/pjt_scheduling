@@ -59,7 +59,12 @@ def sample_spec(rng: random.Random, idx: int) -> dict:
         mix = 0.9
     elif cat == "부하 불균등":
         n_ppk = n_eqp
-        if rng.random() < 0.5:                      # 물량 편중
+        # 물량 편중 65% / 처리시간 이질 35%. HOLDOUT_SUITE 트레이스 결과
+        # 처리시간 이질(H_LOAD_stmix2)은 카테고리 비중을 2배로만 늘려도
+        # Earliest-ST와 동점까지 개선됐지만, 물량 편중(H_LOAD_skew2)은 그대로
+        # 남았다(컷오프 직전 장비 1대의 전환 타이밍 tie-break 문제) — 노출을
+        # 더 늘려 이 서브타입 쪽으로 기울인다.
+        if rng.random() < 0.65:                      # 물량 편중
             carriers = sorted(
                 (rng.randint(3, 16) for _ in range(n_ppk)), reverse=True,
             )
