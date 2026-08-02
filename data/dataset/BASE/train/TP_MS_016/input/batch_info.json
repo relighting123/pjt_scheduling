@@ -1,0 +1,38 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "LOT_CD": "LC_OPER001_PPK001",
+    "TEMP": "T600"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK002",
+    "OPER_ID": "OPER001",
+    "LOT_CD": "LC_OPER001_PPK002",
+    "TEMP": "T600"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK003",
+    "OPER_ID": "OPER001",
+    "LOT_CD": "LC_OPER001_PPK003",
+    "TEMP": "T600"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER002",
+    "LOT_CD": "LC_OPER002_PPK001",
+    "TEMP": "T600"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK002",
+    "OPER_ID": "OPER002",
+    "LOT_CD": "LC_OPER002_PPK002",
+    "TEMP": "T600"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK003",
+    "OPER_ID": "OPER002",
+    "LOT_CD": "LC_OPER002_PPK003",
+    "TEMP": "T600"
+  }
+]

@@ -213,7 +213,11 @@ def main() -> None:
     # (기존 48 → 슬롯당 12개 유지, 부하 불균등만 24개로 2배).
     ap.add_argument("--count", type=int, default=60)
     ap.add_argument(
-        "--multi-stage-count", type=int, default=12,
+        # TOOL_CHANGE_BENCH(TCB04/06 — 2공정·장비공유·홈배정 스크램블)에서
+        # V6가 불필요한 전환을 크게 냈다(정답 0회 vs 12/23회). 이 패턴을
+        # 스스로 찾는 학습 노출이 풀의 ~11%(12/112)뿐이었던 게 원인으로
+        # 보여 12→30으로 늘린다.
+        "--multi-stage-count", type=int, default=30,
         help="별도로 추가할 2공정 랜덤 장비공유 시나리오 수",
     )
     ap.add_argument(
