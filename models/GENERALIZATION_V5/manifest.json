@@ -1,0 +1,72 @@
+{
+  "model_file": "scheduling_rl.zip",
+  "sha256": "1e4738b0f2b9ddad690d3617b9d8a2b76b8c9df34ced3b34649cd457a8aaadf4",
+  "fac_id": "GENERALIZATION_V5",
+  "algorithm": "MaskablePPO",
+  "selected_checkpoint_timesteps": 320000,
+  "configured_training_timesteps": 600000,
+  "actual_training_timesteps": 600064,
+  "observation_dim": 3324,
+  "action_space": "MultiDiscrete([72, 4])",
+  "axes": {
+    "max_operations": 6,
+    "max_products": 12,
+    "max_equipment_models": 8
+  },
+  "supersedes": "GENERALIZATION_V4",
+  "change_from_v4": "TRAIN_POOL의 '부하 불균등' 카테고리 내부 서브타입 비중을 물량 편중(quantity-skew) 65% / 처리시간 이질 35%로 조정(기존 50/50)하고 total_timesteps을 400k→600k로 늘려 재학습. HOLDOUT_SUITE 트레이스 결과 처리시간 이질(H_LOAD_stmix2)은 V4에서 이미 Earliest-ST와 동점이었고, 물량 편중(H_LOAD_skew2)만 남은 격차였는데, 이번 재학습 후에도 H_LOAD_skew2 수치는 V4와 완전히 동일(30/40, 전환18, 점수12)했다 — 즉 이 격차는 학습 노출 부족이 아니라 컷오프 직전 장비 1대(EQP002)의 전환 타이밍 tie-break 정밀도 문제로 확인됨(README 분석 참고). 대신 총점은 개선됐고(79→80) H_OVER_6p4가 동점→단독 승리로 바뀌었다.",
+  "training": {
+    "seed": 0,
+    "n_steps": 512,
+    "gamma": 0.997,
+    "network": [256, 256],
+    "reward_normalization": true,
+    "bc_epochs_max": 200,
+    "bc_episodes_per_dataset": 16,
+    "bc_noise_epsilon": 0.15,
+    "expert_candidates": ["dedication", "earliest_st"],
+    "expert_anchor_start": 1.0,
+    "expert_anchor_final": 0.0,
+    "train_pool": {
+      "random_single_stage": 60,
+      "load_imbalance_share": "24/60 (2x weight vs other 3 categories), quantity-skew:heterogeneous-ST subtype split 65:35 (was 50:50 in V4)",
+      "random_multi_stage": 12,
+      "random_safety_wip": 8,
+      "bench_scenarios": 8,
+      "bench_weight": 4
+    }
+  },
+  "evaluation": {
+    "bench": {
+      "rl_score": 88.0,
+      "dedication_score": 80.0,
+      "rl_production": 166,
+      "dedication_production": 162,
+      "rl_conversions": 78,
+      "dedication_conversions": 82,
+      "win_tie_loss_vs_dedication": [3, 5, 0]
+    },
+    "holdout": {
+      "rl_score": 80.0,
+      "dedication_score": 69.0,
+      "minprogress_score": 53.0,
+      "earliest_st_score": 21.0,
+      "rl_production": 141,
+      "dedication_production": 138,
+      "rl_conversions": 61,
+      "dedication_conversions": 69,
+      "win_tie_loss_vs_dedication": [3, 3, 0],
+      "per_dataset_vs_best_heuristic": {
+        "H_SYM_4x4": "tie (28)",
+        "H_SYM_6x6": "tie (30)",
+        "H_OVER_6p4": "win (3, RL beats dedication's 2) -- improved from tie in V4",
+        "H_LOAD_skew2": "loss (RL 12 vs Earliest-ST 14) -- unchanged from V4 despite more pool exposure + timesteps",
+        "H_LOAD_stmix2": "tie (15, Earliest-ST)",
+        "H_CONV_x25": "tie (-8)"
+      }
+    }
+  },
+  "known_remaining_gap": "H_LOAD_skew2에서 Earliest-ST(14점)에 RL(12점)이 여전히 뒤짐. 실측 트레이스: RL의 EQP002가 PPK002를 3장 연속 생산(220~385분) 후 PPK003으로 전환하는데 그 첫 PPK003 웨이퍼(440~495분)가 시뮬 컷오프(440분)를 살짝 넘긴다. Earliest-ST는 같은 상황에서 PPK002를 2장만 하고 더 일찍(330분) 전환해 첫 PPK003 웨이퍼(385~440분)가 컷오프 안에 든다. 관측에는 이미 컷오프까지 남은 시간 채널(group_global[1], simulation/simulator.py get_observation())이 있어 정보 부족이 원인은 아니며, 학습 풀 비중을 조정하고(V4) 그 서브타입 비중을 추가로 높이고 timesteps을 늘려도(V5) 이 특정 시나리오의 수치가 전혀 변하지 않았다 — 컷오프 근접 시 '어느 장비가 공유 버킷의 마지막 1장을 맡을지'에 대한 미세한 tie-break로, 데이터 노출 확대로는 해결되지 않는 종류의 격차로 판단된다. 추가로 시도해볼 만한 방향: 보상 함수의 avoidable-conversion 판정(config.py RewardConfig.w_avoidable_conversion)이 '전환 후 첫 생산이 컷오프를 넘기는지'까지 내다보도록 확장하거나, 관측에 '이 전환을 하면 첫 생산이 컷오프 전에 끝나는지' 여부를 직접적인 채널로 추가하는 것.",
+  "training_command": "PYTHONHASHSEED=0 python3 benchmark/train_bench_suite.py --train-pool --holdout --timesteps 600000 --tag generalization-v5 --seed 0 --model-dir models/GENERALIZATION_V5 --bench-weight 4 --device cpu",
+  "prerequisite_fix": "이 모델을 로드하려면 agent/rl_agent.py의 _load_compatible_model()이 MaskablePPO.load()에 custom_objects(learning_rate/lr_schedule/clip_range)를 넘기도록 패치되어 있어야 한다 — lr_schedule='linear'로 학습한 모델은 학습률 클로저가 cloudpickle로 값째 저장되는데, 학습 시점과 다른 Python 마이너 버전에서 로드하면 그 바이트코드를 그대로 실행하다 세그폴트가 난다(커밋 b7b66d1)."
+}
