@@ -27,8 +27,8 @@ def obs_dim_components() -> dict:
     O = CONFIG.env.max_oper_count
     P = CONFIG.env.max_prod_count
     K = CONFIG.env.max_model_count
-    F_po = 6
-    F_pom = 5
+    F_po = SchedulingSimulator.PPK_OPER_FEATURES
+    F_pom = SchedulingSimulator.PPK_OPER_MODEL_FEATURES
     bucket = O * P * F_po + O * P * K * F_pom
     return {
         "O": O,
@@ -51,7 +51,7 @@ def _opk_product_from_obs_dim(dim: int) -> Optional[int]:
     """obs_dim에서 O×P×K 곱을 역산. 고정 6차원(Global) 제외."""
     inner = dim - _OBS_FIXED_DIM
     K = CONFIG.env.max_model_count
-    factor = 6 + K * 5
+    factor = SchedulingSimulator.PPK_OPER_FEATURES + K * SchedulingSimulator.PPK_OPER_MODEL_FEATURES
     if inner < 0 or inner % factor != 0:
         return None
     op = inner // factor
