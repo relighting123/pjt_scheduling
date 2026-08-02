@@ -308,6 +308,7 @@ class SchedulingSimulator:
         # 성능 최적화: 상태 버전 기반 캐시
         self._state_version: int = 0
         self._feasible_cache: Dict[str, tuple] = {}          # {eqp_id: (version, List[int])}
+        self._bucket_keys_cache: Dict[str, tuple] = {}        # {eqp_id: (version, set)}
         self._wip_waiting_cache: Optional[Dict[str, int]] = None
         self._wip_waiting_version: int = -1
         self._bucket_feats_cache: Optional[np.ndarray] = None
@@ -1356,29 +1357,39 @@ class SchedulingSimulator:
         return None
 
     def _eqp_feasible_bucket_keys(self, eqp_id: str) -> set:
-        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합."""
+        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합.
+
+        상태(state_version) 불변인 동안 같은 EQP에 대해 반복 호출되는 일이
+        잦아(버킷별 capacity 계산 등) state_version 키 캐시로 재계산을 막는다.
+        """
         if self.eqps[eqp_id].status != "idle":
             return set()
+        cached = self._bucket_keys_cache.get(eqp_id)
+        if cached is not None and cached[0] == self._state_version:
+            return cached[1]
         lots = self.available_lots(eqp_id)
         if not lots:
-            return set()
-        feasible: set = set()
-        buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
-        for bucket_ppk, bucket_oper in buckets:
-            bucket_lots = [
-                l for l in lots
-                if l["PLAN_PROD_ATTR_VAL"] == bucket_ppk and l["oper_id"] == bucket_oper
-            ]
-            lot_id = self._auto_select_lot(eqp_id, bucket_lots)
-            if lot_id is None:
-                continue
-            lot_cd, temp = self._lot_cd_temp(
-                lot_id, self.lot_pool.get(lot_id), ppk=bucket_ppk, oper_id=bucket_oper,
-            )
-            if self._assign_blocked(eqp_id, lot_cd, temp):
-                continue
-            feasible.add((bucket_ppk, bucket_oper))
-        return feasible
+            result: set = set()
+        else:
+            feasible: set = set()
+            buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
+            for bucket_ppk, bucket_oper in buckets:
+                bucket_lots = [
+                    l for l in lots
+                    if l["PLAN_PROD_ATTR_VAL"] == bucket_ppk and l["oper_id"] == bucket_oper
+                ]
+                lot_id = self._auto_select_lot(eqp_id, bucket_lots)
+                if lot_id is None:
+                    continue
+                lot_cd, temp = self._lot_cd_temp(
+                    lot_id, self.lot_pool.get(lot_id), ppk=bucket_ppk, oper_id=bucket_oper,
+                )
+                if self._assign_blocked(eqp_id, lot_cd, temp):
+                    continue
+                feasible.add((bucket_ppk, bucket_oper))
+            result = feasible
+        self._bucket_keys_cache[eqp_id] = (self._state_version, result)
+        return result
 
     def _oper_committed_capacity_per_min(self, ppk: str, oper_id: str) -> float:
         """마지막 setup(prev_prod/prev_oper)이 일치하는 장비 합산 분당 처리량(매/분)."""
