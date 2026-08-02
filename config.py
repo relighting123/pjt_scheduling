@@ -664,7 +664,12 @@ class RLConfig:
     # True면 eval 시점마다 실제 KPI로 채점해 best_model을 고른다.
     kpi_eval_enabled: bool = True
     # KPI 점수 = 생산량(sim_end 내 완료 carrier) − kpi_conversion_weight × 전환수
-    kpi_conversion_weight: float = 1.0
+    # 전환이 계획달성보다 중요하다는 판단에 따라 1.0→2.0으로 상향(전환 1회가
+    # carrier 2장 생산과 맞먹는 손실로 취급됨). RewardConfig.w_terminal_conversion과
+    # 항상 같은 값으로 맞춘다 — 학습이 최적화하는 목표(종단 보상)와 평가가 재는
+    # 목표(KPI)가 어긋나면 벤치마크 점수는 좋아 보여도 실제로는 다른 걸 학습한
+    # 정책이 나온다.
+    kpi_conversion_weight: float = 2.0
     # 학습 시작 시 DedicationAgent 베이스라인 KPI를 측정해 로그·차트 기준선으로
     # 남기고, 최종 모델이 베이스라인에 못 미치면 경고한다.
     kpi_baseline_enabled: bool = True
@@ -758,7 +763,9 @@ class RewardConfig:
     # 신호가 초반 결정까지 역전파되려면 RLConfig.gamma가 충분히 커야 한다
     # (기본 0.997).
     w_terminal_throughput: float = 30.0   # × (완료 carrier / 생산가능 carrier)
-    w_terminal_conversion: float = -1.0   # × 전환 총횟수
+    # RLConfig.kpi_conversion_weight와 항상 같은 값 — 전환이 계획달성보다
+    # 중요하다는 판단으로 -1.0→-2.0 상향(전환 1회 = carrier 2장 생산과 동급 손실).
+    w_terminal_conversion: float = -2.0   # × 전환 총횟수
     # 종단 보상 전체를 이 범위로 clip (한 스텝에 과도한 보상이 들어가 PPO
     # advantage 분포를 망가뜨리는 걸 방지). 0이면 clip 없음.
     terminal_reward_clip: float = 60.0

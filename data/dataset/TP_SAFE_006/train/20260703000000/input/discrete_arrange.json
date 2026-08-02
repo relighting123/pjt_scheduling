@@ -1,0 +1,134 @@
+[
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_001",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C001"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_002",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C002"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_003",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C003"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_004",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C004"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_005",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C005"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_006",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C006"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_007",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C007"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_008",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C008"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_009",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C009"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_010",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C010"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_011",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C011"
+  },
+  {
+    "EQP_ID": "EQP001",
+    "LOT_ID": "UP_012",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 10,
+    "EQP_MODEL_CD": "A",
+    "WF_QTY": 1,
+    "SEQ": 1,
+    "CARRIER_ID": "UP_C012"
+  }
+]

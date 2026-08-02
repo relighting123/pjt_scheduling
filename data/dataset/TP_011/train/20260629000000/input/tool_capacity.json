@@ -1,0 +1,42 @@
+[
+  {
+    "LOT_CD": "LC_A",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  },
+  {
+    "LOT_CD": "LC_B",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  },
+  {
+    "LOT_CD": "LC_C",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  },
+  {
+    "LOT_CD": "LC_D",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  },
+  {
+    "LOT_CD": "LC_E",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  },
+  {
+    "LOT_CD": "LC_F",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  },
+  {
+    "LOT_CD": "LC_G",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  },
+  {
+    "LOT_CD": "LC_H",
+    "TEMP": "T600",
+    "MAX_TOOL": 99
+  }
+]

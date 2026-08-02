@@ -1,0 +1,44 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 5,
+    "D1_PLAN_QTY": 5,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK002",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 5,
+    "D1_PLAN_QTY": 5,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK003",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 5,
+    "D1_PLAN_QTY": 5,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK004",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 5,
+    "D1_PLAN_QTY": 5,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK005",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 5,
+    "D1_PLAN_QTY": 5,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK006",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 5,
+    "D1_PLAN_QTY": 5,
+    "PLAN_PRIORITY": 1
+  }
+]
