@@ -1,0 +1,22 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_SEQ": 1,
+    "OPER_ID": "OPER001"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_SEQ": 2,
+    "OPER_ID": "OPER002"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_SEQ": 3,
+    "OPER_ID": "OPER003"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_SEQ": 4,
+    "OPER_ID": "OPER004"
+  }
+]

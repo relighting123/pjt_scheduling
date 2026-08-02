@@ -24,7 +24,6 @@ from data.loader.fetch import load_data
 from data.loader.preprocess import preprocess
 from inference.runner import run_inference, run_inference_compare, run_inference_with_agent
 from env.scheduling_env import SchedulingEnv
-from benchmark.gen_tool_change_bench import BASE_FAC_ID
 
 
 @contextmanager
@@ -45,19 +44,21 @@ def _discrete_wait_disabled():
 
 ROOT = Path(__file__).parent.parent
 SUITE_ROOT = ROOT / "data/dataset"
-_META_PATH = SUITE_ROOT / "tool_change_bench_meta.json"
+# BENCH_ROOT(data/dataset/benchmark/)는 data/dataset/의 나머지와 달리
+# .gitignore 예외로 git에 커밋돼 있다 — 서버가 최초 기동될 때 매번
+# 재생성할 필요 없이 바로 사용할 수 있다.
+from benchmark.gen_tool_change_bench import BENCH_ROOT
+_META_PATH = BENCH_ROOT / "tool_change_bench_meta.json"
 if not _META_PATH.exists():
-    # data/dataset/은 gitignore 대상 — 이 메타 + 케이스별 input JSON은 저장소에
-    # 커밋돼 있지 않고 gen_tool_change_bench.py가 생성하는 산출물이다. 새로
-    # clone한 환경(또는 UI 서버 최초 기동)에서 이 모듈이 import되는 순간 파일이
-    # 없어 바로 죽지 않도록, 없으면 그 자리에서 1회 생성한다.
+    # 커밋된 파일이 없는 예외 상황(예: 로컬에서 수동으로 지운 경우)에도
+    # 바로 죽지 않도록, 없으면 그 자리에서 1회 재생성한다.
     from benchmark.gen_tool_change_bench import main as _generate_tool_change_bench
     _generate_tool_change_bench()
 META = json.load(open(_META_PATH, encoding="utf-8"))
 
 
 def load_ed(m: dict) -> dict:
-    inp = SUITE_ROOT / BASE_FAC_ID / "train" / m["id"] / "input"
+    inp = BENCH_ROOT / m["id"] / "input"
     ed = preprocess(load_data(inp))
     ed["eqp_selection"] = "order"
     ed["sim_end_minutes"] = m["sim_end_minutes"]

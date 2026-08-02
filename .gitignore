@@ -9,7 +9,10 @@ dist/
 build/
 
 # External dataset (JSON 산출물, git 제외) – SQL 템플릿은 추적
-data/dataset/
+# benchmark/ 만 예외로 커밋한다(고정 10종 TOOL_CHANGE_BENCH 데이터 —
+# UI "벤치마크" 탭이 서버 최초 기동 시 재생성 없이 바로 쓸 수 있도록).
+data/dataset/*
+!data/dataset/benchmark/
 
 # Oracle 실행용 SQL (환경별 커스텀) – 템플릿은 data/sql.example/ 추적
 data/sql/*

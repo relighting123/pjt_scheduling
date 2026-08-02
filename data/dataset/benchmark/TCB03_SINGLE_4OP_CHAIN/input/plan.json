@@ -1,0 +1,30 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 50,
+    "D1_PLAN_QTY": 50,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER002",
+    "D0_PLAN_QTY": 50,
+    "D1_PLAN_QTY": 50,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER003",
+    "D0_PLAN_QTY": 50,
+    "D1_PLAN_QTY": 50,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER004",
+    "D0_PLAN_QTY": 50,
+    "D1_PLAN_QTY": 50,
+    "PLAN_PRIORITY": 1
+  }
+]

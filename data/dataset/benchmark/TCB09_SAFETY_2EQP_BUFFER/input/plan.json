@@ -1,0 +1,16 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "D0_PLAN_QTY": 60,
+    "D1_PLAN_QTY": 60,
+    "PLAN_PRIORITY": 1
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER002",
+    "D0_PLAN_QTY": 40,
+    "D1_PLAN_QTY": 40,
+    "PLAN_PRIORITY": 1
+  }
+]

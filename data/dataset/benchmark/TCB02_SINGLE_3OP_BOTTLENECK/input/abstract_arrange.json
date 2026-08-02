@@ -1,0 +1,20 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "EQP_MODEL_CD": "M1",
+    "ST": 15
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER002",
+    "EQP_MODEL_CD": "M2",
+    "ST": 15
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER003",
+    "EQP_MODEL_CD": "M3",
+    "ST": 30
+  }
+]
