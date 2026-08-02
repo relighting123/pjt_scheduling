@@ -24,7 +24,7 @@
     "tool": 99,
     "desc": "4설비·4제품·각 7캐리어 대칭.",
     "tests": "[holdout] 전담 최적해 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/H_SYM_4x4/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/H_SYM_4x4/input"
   },
   {
     "id": "H_SYM_6x6",
@@ -55,7 +55,7 @@
     "tool": 99,
     "desc": "6설비·6제품·각 5캐리어. BENCH보다 큰 대칭.",
     "tests": "[holdout] 규모 확장 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/H_SYM_6x6/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/H_SYM_6x6/input"
   },
   {
     "id": "H_OVER_6p4",
@@ -86,7 +86,7 @@
     "tool": 99,
     "desc": "4설비가 6제품 → 최소 2회 전환.",
     "tests": "[holdout] 불가피 전환 최소화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/H_OVER_6p4/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/H_OVER_6p4/input"
   },
   {
     "id": "H_LOAD_skew2",
@@ -115,7 +115,7 @@
     "tool": 99,
     "desc": "제품별 계획량 16·10·6·4·4로 편중.",
     "tests": "[holdout] 물량 편중 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/H_LOAD_skew2/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/H_LOAD_skew2/input"
   },
   {
     "id": "H_LOAD_stmix2",
@@ -140,7 +140,7 @@
     "tool": 99,
     "desc": "제품별 처리시간 25·50·75로 이질.",
     "tests": "[holdout] 처리시간 이질성 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/H_LOAD_stmix2/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/H_LOAD_stmix2/input"
   },
   {
     "id": "H_CONV_x25",
@@ -169,6 +169,6 @@
     "tool": 99,
     "desc": "전환시간(100)=처리시간(40)의 2.5배.",
     "tests": "[holdout] 큰 전환비용 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/H_CONV_x25/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/H_CONV_x25/input"
   }
 ]

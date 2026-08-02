@@ -31,13 +31,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 SUITE_ROOT = ROOT / "data/dataset"
-TIMEKEY = "20260703000000"
+# gen_bench_suite.BASE_FAC_ID 와 동일한 공용 base FAC_ID — 값을 여기서
+# 다시 import하면 순환 import(gen_train_pool이 두 모듈을 모두 씀)가 생기므로
+# 문자열을 그대로 반복한다. 바꿀 땐 두 곳(gen_bench_suite.py도) 함께 바꿀 것.
+BASE_FAC_ID = "BASE"
 TEMP = "T600"
 TOOL_MAX = 99
 
 
 def _write(bench_id: str, files: dict) -> Path:
-    out = SUITE_ROOT / bench_id / "train" / TIMEKEY / "input"
+    out = SUITE_ROOT / BASE_FAC_ID / "train" / bench_id / "input"
     out.mkdir(parents=True, exist_ok=True)
     for fn, data in files.items():
         with open(out / fn, "w", encoding="utf-8") as f:

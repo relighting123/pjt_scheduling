@@ -38,7 +38,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 SUITE_ROOT = ROOT / "data/dataset"
-TIMEKEY = "20260629000000"
+# 모든 합성 벤치마크/학습 시나리오(BENCH_SUITE/HOLDOUT_SUITE/TRAIN_POOL/
+# TOOL_CHANGE_BENCH)를 실FAC_ID와 겹치지 않는 이 하나의 가짜 FAC_ID 아래
+# 시나리오ID=period 폴더로 모은다(과거엔 시나리오마다 최상위 폴더 하나씩 써서
+# 실FAC_ID처럼 보였다).
+BASE_FAC_ID = "BASE"
 OPER = "OPER001"
 MODEL = "A"
 TEMP = "T600"
@@ -136,7 +140,7 @@ def gen_one(spec):
         "lot_master.json": lot_master, "plan.json": plan, "flow.json": flow,
         "split.json": split, "batch_info.json": batch, "tool_capacity.json": tool_rows,
     }
-    out = SUITE_ROOT / bid / "train" / TIMEKEY / "input"
+    out = SUITE_ROOT / BASE_FAC_ID / "train" / bid / "input"
     out.mkdir(parents=True, exist_ok=True)
     for fn, data in files.items():
         with open(out / fn, "w", encoding="utf-8") as f:

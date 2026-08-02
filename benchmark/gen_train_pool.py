@@ -131,7 +131,7 @@ def generate_multistage(spec: dict) -> dict:
         unavoidable = max(spec["n_ppk"] - stage["n_eqp"], 0)
         stage_horizons.append(math.ceil(work / stage["n_eqp"]) + unavoidable * spec["conv"])
     sim = int(math.ceil(max(stage_horizons) / 10.0) * 10)
-    out = multistage.SUITE_ROOT / spec["id"] / "train" / multistage.TIMEKEY / "input"
+    out = multistage.SUITE_ROOT / multistage.BASE_FAC_ID / "train" / spec["id"] / "input"
     return {
         "id": spec["id"],
         "cat": "다공정 랜덤",
@@ -183,7 +183,7 @@ def generate_safety(spec: dict) -> dict:
     )
     work = spec["up"]["plan"] * spec["up"]["st"] + spec["down"]["plan"] * spec["down"]["st"]
     sim = int(math.ceil((math.ceil(work / spec["n_eqp"]) + spec["conv"]) * 1.2 / 10.0) * 10)
-    out = multistage.SUITE_ROOT / spec["id"] / "train" / multistage.TIMEKEY / "input"
+    out = multistage.SUITE_ROOT / multistage.BASE_FAC_ID / "train" / spec["id"] / "input"
     return {
         "id": spec["id"],
         "cat": "안전재공 랜덤",

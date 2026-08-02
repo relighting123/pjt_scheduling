@@ -24,6 +24,7 @@ from data.loader.fetch import load_data
 from data.loader.preprocess import preprocess
 from inference.runner import run_inference, run_inference_compare, run_inference_with_agent
 from env.scheduling_env import SchedulingEnv
+from benchmark.gen_tool_change_bench import BASE_FAC_ID
 
 
 @contextmanager
@@ -53,11 +54,10 @@ if not _META_PATH.exists():
     from benchmark.gen_tool_change_bench import main as _generate_tool_change_bench
     _generate_tool_change_bench()
 META = json.load(open(_META_PATH, encoding="utf-8"))
-TIMEKEY = "20260703000000"
 
 
 def load_ed(m: dict) -> dict:
-    inp = SUITE_ROOT / m["id"] / "train" / TIMEKEY / "input"
+    inp = SUITE_ROOT / BASE_FAC_ID / "train" / m["id"] / "input"
     ed = preprocess(load_data(inp))
     ed["eqp_selection"] = "order"
     ed["sim_end_minutes"] = m["sim_end_minutes"]
