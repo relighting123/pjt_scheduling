@@ -5,8 +5,8 @@ main.py - 운영 CLI
     python main.py train --facid FAC001 --prevcnt 3
     python main.py train --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
-    python main.py train --facid FAC001 --prevcnt 3 --train-pool
-    python main.py train --facid FAC001 --prevcnt 3 --train-pool --pool-weight 8
+    python main.py train --facid FAC001 --prevcnt 3 --pool-weight 8
+    python main.py train --facid FAC001 --prevcnt 3 --no-train-pool
     python main.py test --facid FAC001
     python main.py test --facid FAC001 --prevcnt 3
     python main.py infer --facid FAC001
@@ -122,7 +122,8 @@ def _load_train_pool() -> List[dict]:
     "전담이 유리하다" 같은 일반 규칙을 익히게 된다."""
     path = ROOT / "data" / "dataset" / "train_pool_meta.json"
     if not path.exists():
-        print(f"[오류] {path} 없음 — 먼저 `python benchmark/gen_train_pool.py` 를 실행하세요.")
+        print(f"[오류] {path} 없음 — 먼저 `python benchmark/gen_train_pool.py` 를 실행하거나, "
+              f"`--no-train-pool`로 실FAC 데이터만 학습하세요.")
         sys.exit(1)
     meta = json.loads(path.read_text(encoding="utf-8"))
     pool: List[dict] = []
@@ -169,7 +170,7 @@ def cmd_train(
     *,
     all_folders: bool = False,
     algorithm: str = "scheduling_rl",
-    use_train_pool: bool = False,
+    use_train_pool: bool = True,
     pool_weight: int = 5,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
@@ -715,16 +716,17 @@ def parse_args():
         help="train 폴더 전체 학습 (--prevcnt/--from/--to/--ruletimekey 불필요)",
     )
     train_p.add_argument(
-        "--train-pool", dest="use_train_pool", action="store_true",
-        help="실FAC 데이터에 더해 TRAIN_POOL(다양한 상황의 도메인 랜덤화 시나리오, "
-             "benchmark/gen_train_pool.py 생성)로도 co-train해 기본 일반화 성능을 "
-             "함께 학습한다. 평가/best 모델 선택은 실FAC 데이터 기준을 유지한다.",
+        "--no-train-pool", dest="use_train_pool", action="store_false", default=True,
+        help="기본적으로 실FAC 데이터에 TRAIN_POOL(data/dataset/BASE, 다양한 상황의 "
+             "도메인 랜덤화 시나리오 — benchmark/gen_train_pool.py 생성)을 더해 "
+             "co-train해서 기본 일반화 성능을 함께 학습한다. 이 옵션을 주면 "
+             "실FAC 데이터만으로 학습(기존 동작)한다.",
     )
     train_p.add_argument(
         "--pool-weight", type=int, default=5,
-        help="--train-pool 사용 시 실FAC 데이터를 몇 배로 반복해 풀에 넣을지 "
-             "(기본 5). TRAIN_POOL이 커서(80종) 실FAC 비중이 낮으면 실FAC 특화가 "
-             "약해지므로 반복으로 비중을 맞춘다.",
+        help="TRAIN_POOL co-train 시(기본 켜짐) 실FAC 데이터를 몇 배로 반복해 풀에 "
+             "넣을지 (기본 5). TRAIN_POOL이 커서(80종) 실FAC 비중이 낮으면 실FAC "
+             "특화가 약해지므로 반복으로 비중을 맞춘다.",
     )
     test_p = sub.add_parser("test", help="test dataset JSON 검증")
     test_p.add_argument("--facid", required=True, help="공장 ID")
