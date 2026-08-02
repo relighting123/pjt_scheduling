@@ -128,7 +128,9 @@ def _load_train_pool() -> List[dict]:
     meta = json.loads(path.read_text(encoding="utf-8"))
     pool: List[dict] = []
     for m in meta:
-        ed = preprocess(load_data(Path(m["dir"])))
+        # m["dir"]는 ROOT 상대경로(구 데이터는 절대경로일 수 있음 — Path.__truediv__는
+        # 우변이 절대경로면 좌변을 무시하고 그대로 쓰므로 두 경우 다 안전하다).
+        ed = preprocess(load_data(ROOT / m["dir"]))
         ed["eqp_selection"] = "order"
         ed["sim_end_minutes"] = m["sim"]
         ed["conversion_minutes"] = m["conv"]

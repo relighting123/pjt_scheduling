@@ -43,6 +43,19 @@ SUITE_ROOT = ROOT / "data/dataset"
 # 시나리오ID=period 폴더로 모은다(과거엔 시나리오마다 최상위 폴더 하나씩 써서
 # 실FAC_ID처럼 보였다).
 BASE_FAC_ID = "BASE"
+
+
+def relative_dir(out: Path) -> str:
+    """meta의 "dir" 필드용 경로 문자열. 가능하면 ROOT 상대경로로 저장한다 —
+    절대경로를 그대로 커밋하면 다른 체크아웃 경로(다른 사용자/환경)에서
+    로드할 때 존재하지 않는 절대경로를 찾다 실패한다(소비자는 ROOT / dir로
+    복원). 테스트처럼 SUITE_ROOT를 ROOT 밖 임시 디렉터리로 monkeypatch한
+    경우엔 relative_to가 실패하므로 절대경로로 폴백한다 — ROOT / <절대경로>는
+    pathlib에서 우변 절대경로를 그대로 반환하므로 소비자 쪽은 두 경우 다 안전하다."""
+    try:
+        return str(out.relative_to(ROOT))
+    except ValueError:
+        return str(out)
 OPER = "OPER001"
 MODEL = "A"
 TEMP = "T600"
@@ -148,7 +161,7 @@ def gen_one(spec):
     return dict(id=bid, cat=spec["cat"], n_eqp=ne, n_ppk=npk,
                 carriers=carriers, st=sts, conv=conv, sim=sim,
                 total=sum(carriers), min_conv=min_conv, mix=mix, tool=tool,
-                desc=spec["desc"], tests=spec["tests"], dir=str(out))
+                desc=spec["desc"], tests=spec["tests"], dir=relative_dir(out))
 
 
 def main():

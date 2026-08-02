@@ -156,7 +156,7 @@ def generate_multistage(spec: dict) -> dict:
             f"{spec['stage1']['n_eqp']}+{spec['stage2']['n_eqp']}설비×{spec['n_ppk']}제품"
         ),
         "tests": "[train pool] 미학습 다공정 일반화",
-        "dir": str(out),
+        "dir": base.relative_dir(out),
     }
 
 
@@ -203,7 +203,7 @@ def generate_safety(spec: dict) -> dict:
             f"상류/하류={spec['up']['plan']}/{spec['down']['plan']}"
         ),
         "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-        "dir": str(out),
+        "dir": base.relative_dir(out),
     }
 
 
