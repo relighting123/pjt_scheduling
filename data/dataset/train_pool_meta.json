@@ -26,7 +26,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_000/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_000/input"
   },
   {
     "id": "TP_001",
@@ -57,7 +57,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 3설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_001/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_001/input"
   },
   {
     "id": "TP_002",
@@ -86,7 +86,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_002/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_002/input"
   },
   {
     "id": "TP_003",
@@ -117,7 +117,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_003/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_003/input"
   },
   {
     "id": "TP_004",
@@ -148,7 +148,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_004/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_004/input"
   },
   {
     "id": "TP_005",
@@ -179,7 +179,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_005/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_005/input"
   },
   {
     "id": "TP_006",
@@ -206,7 +206,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 3설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_006/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_006/input"
   },
   {
     "id": "TP_007",
@@ -237,7 +237,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_007/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_007/input"
   },
   {
     "id": "TP_008",
@@ -266,7 +266,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 3설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_008/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_008/input"
   },
   {
     "id": "TP_009",
@@ -291,7 +291,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 3설비×3제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_009/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_009/input"
   },
   {
     "id": "TP_010",
@@ -322,7 +322,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_010/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_010/input"
   },
   {
     "id": "TP_011",
@@ -357,7 +357,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 6설비×8제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_011/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_011/input"
   },
   {
     "id": "TP_012",
@@ -386,7 +386,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_012/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_012/input"
   },
   {
     "id": "TP_013",
@@ -417,7 +417,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 5설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_013/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_013/input"
   },
   {
     "id": "TP_014",
@@ -448,7 +448,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_014/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_014/input"
   },
   {
     "id": "TP_015",
@@ -477,7 +477,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_015/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_015/input"
   },
   {
     "id": "TP_016",
@@ -514,7 +514,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 6설비×9제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_016/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_016/input"
   },
   {
     "id": "TP_017",
@@ -543,7 +543,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_017/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_017/input"
   },
   {
     "id": "TP_018",
@@ -576,7 +576,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 5설비×7제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_018/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_018/input"
   },
   {
     "id": "TP_019",
@@ -605,7 +605,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_019/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_019/input"
   },
   {
     "id": "TP_020",
@@ -636,7 +636,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_020/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_020/input"
   },
   {
     "id": "TP_021",
@@ -665,7 +665,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 3설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_021/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_021/input"
   },
   {
     "id": "TP_022",
@@ -690,7 +690,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 3설비×3제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_022/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_022/input"
   },
   {
     "id": "TP_023",
@@ -719,7 +719,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 4설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_023/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_023/input"
   },
   {
     "id": "TP_024",
@@ -746,7 +746,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_024/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_024/input"
   },
   {
     "id": "TP_025",
@@ -775,7 +775,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_025/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_025/input"
   },
   {
     "id": "TP_026",
@@ -808,7 +808,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 5설비×7제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_026/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_026/input"
   },
   {
     "id": "TP_027",
@@ -835,7 +835,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_027/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_027/input"
   },
   {
     "id": "TP_028",
@@ -866,7 +866,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_028/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_028/input"
   },
   {
     "id": "TP_029",
@@ -891,7 +891,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 3설비×3제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_029/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_029/input"
   },
   {
     "id": "TP_030",
@@ -920,7 +920,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_030/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_030/input"
   },
   {
     "id": "TP_031",
@@ -951,7 +951,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 3설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_031/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_031/input"
   },
   {
     "id": "TP_032",
@@ -982,7 +982,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_032/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_032/input"
   },
   {
     "id": "TP_033",
@@ -1009,7 +1009,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_033/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_033/input"
   },
   {
     "id": "TP_034",
@@ -1034,7 +1034,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 3설비×3제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_034/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_034/input"
   },
   {
     "id": "TP_035",
@@ -1063,7 +1063,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_035/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_035/input"
   },
   {
     "id": "TP_036",
@@ -1094,7 +1094,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 3설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_036/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_036/input"
   },
   {
     "id": "TP_037",
@@ -1121,7 +1121,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_037/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_037/input"
   },
   {
     "id": "TP_038",
@@ -1148,7 +1148,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 3설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_038/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_038/input"
   },
   {
     "id": "TP_039",
@@ -1179,7 +1179,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 6설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_039/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_039/input"
   },
   {
     "id": "TP_040",
@@ -1206,7 +1206,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_040/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_040/input"
   },
   {
     "id": "TP_041",
@@ -1237,7 +1237,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 4설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_041/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_041/input"
   },
   {
     "id": "TP_042",
@@ -1262,7 +1262,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 3설비×3제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_042/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_042/input"
   },
   {
     "id": "TP_043",
@@ -1293,7 +1293,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 5설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_043/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_043/input"
   },
   {
     "id": "TP_044",
@@ -1320,7 +1320,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_044/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_044/input"
   },
   {
     "id": "TP_045",
@@ -1347,7 +1347,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_045/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_045/input"
   },
   {
     "id": "TP_046",
@@ -1380,7 +1380,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 4설비×7제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_046/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_046/input"
   },
   {
     "id": "TP_047",
@@ -1409,7 +1409,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_047/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_047/input"
   },
   {
     "id": "TP_048",
@@ -1440,7 +1440,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 4설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_048/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_048/input"
   },
   {
     "id": "TP_049",
@@ -1469,7 +1469,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_049/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_049/input"
   },
   {
     "id": "TP_050",
@@ -1496,7 +1496,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_050/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_050/input"
   },
   {
     "id": "TP_051",
@@ -1527,7 +1527,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 3설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_051/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_051/input"
   },
   {
     "id": "TP_052",
@@ -1552,7 +1552,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 3설비×3제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_052/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_052/input"
   },
   {
     "id": "TP_053",
@@ -1579,7 +1579,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_053/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_053/input"
   },
   {
     "id": "TP_054",
@@ -1608,7 +1608,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 5설비×5제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_054/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_054/input"
   },
   {
     "id": "TP_055",
@@ -1635,7 +1635,7 @@
     "tool": 99,
     "desc": "[train pool] 대칭 기준 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_055/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_055/input"
   },
   {
     "id": "TP_056",
@@ -1666,7 +1666,7 @@
     "tool": 99,
     "desc": "[train pool] 제품 과잉 3설비×6제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_056/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_056/input"
   },
   {
     "id": "TP_057",
@@ -1693,7 +1693,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_057/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_057/input"
   },
   {
     "id": "TP_058",
@@ -1720,7 +1720,7 @@
     "tool": 99,
     "desc": "[train pool] 전환 과중 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_058/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_058/input"
   },
   {
     "id": "TP_059",
@@ -1747,7 +1747,7 @@
     "tool": 99,
     "desc": "[train pool] 부하 불균등 4설비×4제품",
     "tests": "[train pool] 도메인 랜덤화 학습용",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_059/train/20260629000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_059/input"
   },
   {
     "id": "TP_MS_000",
@@ -1782,7 +1782,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 4+2설비×4제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_000/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_000/input"
   },
   {
     "id": "TP_MS_001",
@@ -1823,7 +1823,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 3+4설비×6제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_001/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_001/input"
   },
   {
     "id": "TP_MS_002",
@@ -1852,7 +1852,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 3+4설비×2제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_002/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_002/input"
   },
   {
     "id": "TP_MS_003",
@@ -1884,7 +1884,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 2+3설비×3제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_003/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_003/input"
   },
   {
     "id": "TP_MS_004",
@@ -1919,7 +1919,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 4+4설비×4제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_004/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_004/input"
   },
   {
     "id": "TP_MS_005",
@@ -1954,7 +1954,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 4+2설비×4제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_005/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_005/input"
   },
   {
     "id": "TP_MS_006",
@@ -1989,7 +1989,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 2+2설비×4제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_006/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_006/input"
   },
   {
     "id": "TP_MS_007",
@@ -2021,7 +2021,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 2+4설비×3제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_007/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_007/input"
   },
   {
     "id": "TP_MS_008",
@@ -2056,7 +2056,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 2+3설비×4제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_008/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_008/input"
   },
   {
     "id": "TP_MS_009",
@@ -2088,7 +2088,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 2+2설비×3제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_009/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_009/input"
   },
   {
     "id": "TP_MS_010",
@@ -2123,7 +2123,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 3+2설비×4제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_010/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_010/input"
   },
   {
     "id": "TP_MS_011",
@@ -2152,7 +2152,7 @@
     "tool": 99,
     "desc": "[train pool] 2공정 랜덤 장비공유 3+2설비×2제품",
     "tests": "[train pool] 미학습 다공정 일반화",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_MS_011/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_MS_011/input"
   },
   {
     "id": "TP_SAFE_000",
@@ -2176,7 +2176,7 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 1설비 상류/하류=20/20",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_000/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_000/input"
   },
   {
     "id": "TP_SAFE_001",
@@ -2200,7 +2200,7 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=29/29",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_001/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_001/input"
   },
   {
     "id": "TP_SAFE_002",
@@ -2224,7 +2224,7 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 1설비 상류/하류=28/28",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_002/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_002/input"
   },
   {
     "id": "TP_SAFE_003",
@@ -2248,7 +2248,7 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=13/13",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_003/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_003/input"
   },
   {
     "id": "TP_SAFE_004",
@@ -2272,7 +2272,7 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 3설비 상류/하류=28/28",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_004/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_004/input"
   },
   {
     "id": "TP_SAFE_005",
@@ -2296,7 +2296,7 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 2설비 상류/하류=20/20",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_005/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_005/input"
   },
   {
     "id": "TP_SAFE_006",
@@ -2320,7 +2320,7 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 1설비 상류/하류=12/12",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_006/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_006/input"
   },
   {
     "id": "TP_SAFE_007",
@@ -2344,6 +2344,6 @@
     "enable_wip_inflow": true,
     "desc": "[train pool] 안전재공 2공정 4설비 상류/하류=19/19",
     "tests": "[train pool] 하류 WIP 유입 후 안정적 단일 전환",
-    "dir": "/home/user/pjt_scheduling/data/dataset/TP_SAFE_007/train/20260703000000/input"
+    "dir": "/home/user/pjt_scheduling/data/dataset/BASE/train/TP_SAFE_007/input"
   }
 ]

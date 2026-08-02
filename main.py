@@ -5,6 +5,8 @@ main.py - 운영 CLI
     python main.py train --facid FAC001 --prevcnt 3
     python main.py train --facid FAC001 --ruletimekey 20260621170000
     python main.py train --facid FAC001 --from 20260621170000 --to 20260623170000
+    python main.py train --facid FAC001 --prevcnt 3 --pool-weight 8
+    python main.py train --facid FAC001 --prevcnt 3 --no-train-pool
     python main.py test --facid FAC001
     python main.py test --facid FAC001 --prevcnt 3
     python main.py infer --facid FAC001
@@ -22,6 +24,7 @@ main.py - 운영 CLI
     python main.py ui
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -112,6 +115,29 @@ def _load_many(folders: List[str]) -> List[dict]:
     return datasets
 
 
+def _load_train_pool() -> List[dict]:
+    """TRAIN_POOL(도메인 랜덤화용 다양한 상황 시나리오, benchmark/gen_train_pool.py
+    생성) 전체를 학습 데이터로 로드. 실FAC 데이터와 합쳐 co-train하면 실FAC
+    기간이 몇 개 안 되더라도 정책이 그 소수 시나리오에 과적합하지 않고
+    "전담이 유리하다" 같은 일반 규칙을 익히게 된다."""
+    path = ROOT / "data" / "dataset" / "train_pool_meta.json"
+    if not path.exists():
+        print(f"[오류] {path} 없음 — 먼저 `python benchmark/gen_train_pool.py` 를 실행하거나, "
+              f"`--no-train-pool`로 실FAC 데이터만 학습하세요.")
+        sys.exit(1)
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    pool: List[dict] = []
+    for m in meta:
+        ed = preprocess(load_data(Path(m["dir"])))
+        ed["eqp_selection"] = "order"
+        ed["sim_end_minutes"] = m["sim"]
+        ed["conversion_minutes"] = m["conv"]
+        ed["enable_wip_inflow"] = bool(m.get("enable_wip_inflow", False))
+        pool.append(ed)
+    print(f"[train] TRAIN_POOL {len(pool)}종 로드 (다양한 상황 기본 학습용)")
+    return pool
+
+
 def _validate_period_selectors(
     args: argparse.Namespace,
     *,
@@ -144,6 +170,8 @@ def cmd_train(
     *,
     all_folders: bool = False,
     algorithm: str = "scheduling_rl",
+    use_train_pool: bool = True,
+    pool_weight: int = 5,
 ):
     fac_id = validate_path_segment(fac_id, "FAC_ID")
     start_key = end_key = None
@@ -196,9 +224,23 @@ def cmd_train(
 
     print("=" * 60)
     print("[train] 모델 학습")
-    datasets = env_data if isinstance(env_data, list) else [env_data]
-    if len(datasets) > 1:
-        print(f"  학습 기간: {len(datasets)}개 (VecEnv)")
+    fac_datasets = env_data if isinstance(env_data, list) else [env_data]
+
+    eval_datasets = None
+    if use_train_pool:
+        pool = _load_train_pool()
+        weight = max(pool_weight, 1)
+        datasets = fac_datasets * weight + pool
+        eval_datasets = fac_datasets
+        print(
+            f"  학습 시나리오: 실FAC {len(fac_datasets)}개×{weight} + "
+            f"TRAIN_POOL {len(pool)}종 = {len(datasets)}개 "
+            f"(평가/best 모델 선택은 실FAC {len(fac_datasets)}개 기준)"
+        )
+    else:
+        datasets = fac_datasets
+        if len(datasets) > 1:
+            print(f"  학습 기간: {len(datasets)}개 (VecEnv)")
     print(f"  Total Timesteps: {CONFIG.rl.total_timesteps:,}")
 
     from env.scheduling_rl_env import SchedulingRLEnv
@@ -206,7 +248,10 @@ def cmd_train(
     print("  알고리즘: scheduling_rl (SchedulingRLEnv)")
 
     agent = SchedulingAgent()
-    agent.train(env_data, verbose=1, env_cls=env_cls, fac_id=fac_id)
+    agent.train(
+        datasets, verbose=1, env_cls=env_cls, fac_id=fac_id,
+        eval_datasets=eval_datasets,
+    )
     agent.save(fac_id=fac_id)
     print(f"  모델 저장: {model_dir_for(fac_id) / CONFIG.rl.model_name}.zip")
 
@@ -670,6 +715,19 @@ def parse_args():
         "--all", dest="all_folders", action="store_true",
         help="train 폴더 전체 학습 (--prevcnt/--from/--to/--ruletimekey 불필요)",
     )
+    train_p.add_argument(
+        "--no-train-pool", dest="use_train_pool", action="store_false", default=True,
+        help="기본적으로 실FAC 데이터에 TRAIN_POOL(data/dataset/BASE, 다양한 상황의 "
+             "도메인 랜덤화 시나리오 — benchmark/gen_train_pool.py 생성)을 더해 "
+             "co-train해서 기본 일반화 성능을 함께 학습한다. 이 옵션을 주면 "
+             "실FAC 데이터만으로 학습(기존 동작)한다.",
+    )
+    train_p.add_argument(
+        "--pool-weight", type=int, default=5,
+        help="TRAIN_POOL co-train 시(기본 켜짐) 실FAC 데이터를 몇 배로 반복해 풀에 "
+             "넣을지 (기본 5). TRAIN_POOL이 커서(80종) 실FAC 비중이 낮으면 실FAC "
+             "특화가 약해지므로 반복으로 비중을 맞춘다.",
+    )
     test_p = sub.add_parser("test", help="test dataset JSON 검증")
     test_p.add_argument("--facid", required=True, help="공장 ID")
     test_p.add_argument(
@@ -897,6 +955,8 @@ def main():
                 to_key=args.to_key,
                 rule_timekey=args.ruletimekey,
                 all_folders=args.all_folders,
+                use_train_pool=args.use_train_pool,
+                pool_weight=args.pool_weight,
             )
 
         elif args.command == "test":

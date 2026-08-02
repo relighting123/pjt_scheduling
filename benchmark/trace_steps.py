@@ -15,7 +15,7 @@ from agent.rl_agent import SchedulingAgent
 from env.scheduling_rl_env import SchedulingRLEnv
 from benchmark.reward_formula_trace import REWARD_LABELS, build_reward_formula_details
 
-DS = ROOT / "data/dataset/SYM_3x3/train/20260629000000/input"
+DS = ROOT / "data/dataset/BASE/train/SYM_3x3/input"
 SIM = 480
 
 cfg = CONFIG.reward
