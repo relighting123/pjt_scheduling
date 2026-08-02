@@ -137,12 +137,17 @@ def main() -> None:
         "kpi_history": getattr(agent, "kpi_history", []),
     }
     if not args.no_benchmark:
-        out["benchmark"] = run_suite(use_rl=True, conv_weight=1.0, suite="bench")
+        # CONFIG.rl.kpi_conversion_weight(학습 중 best-model 선택 기준)와 같은
+        # 값을 써야 여기 찍히는 최종 벤치마크 점수가 학습이 실제로 최적화한
+        # 목표와 일치한다. 하드코딩된 1.0을 그대로 두면 kpi_conversion_weight를
+        # 바꿔도 리포트만 옛 기준으로 남는 train/report skew가 생긴다.
+        report_conv_weight = CONFIG.rl.kpi_conversion_weight
+        out["benchmark"] = run_suite(use_rl=True, conv_weight=report_conv_weight, suite="bench")
         if args.holdout:
             print("\n" + "#" * 72)
             print("# HOLDOUT_SUITE (학습에 쓰지 않은 시나리오 — 일반화 검증)")
             print("#" * 72)
-            out["holdout"] = run_suite(use_rl=True, conv_weight=1.0, suite="holdout")
+            out["holdout"] = run_suite(use_rl=True, conv_weight=report_conv_weight, suite="holdout")
 
     path = Path(__file__).parent.parent / "data/dataset" / f"train_bench_{args.tag}.json"
     with open(path, "w", encoding="utf-8") as f:

@@ -37,6 +37,27 @@ class SimEvent:
     eqp_id: str = field(compare=False, default="")
 
 
+def _grade5(ratio: float) -> float:
+    """연속 비율(0~1)을 0/0.25/0.5/0.75/1.0 5단계로 등급화.
+
+    계획달성 관련 채널(achievable_ratio, 전역 계획진척률)에 쓴다. 연속값을
+    그대로 넣으면 정책이 "70%냐 74%냐" 같은 미세한 차이까지 좇아 전환 1회를
+    더 감수하는 과최적화가 나타난다(전환이 계획달성보다 중요하다는 목표와
+    반대 방향). po_feats의 starve_time_norm 채널이 이미 같은 방식으로
+    시간을 이산화하고 있어(1h/2h/4h 구간 → 0/0.25/0.5/0.75), 그 패턴을
+    따른다.
+    """
+    if ratio >= 1.0:
+        return 1.0
+    if ratio >= 0.75:
+        return 0.75
+    if ratio >= 0.5:
+        return 0.5
+    if ratio >= 0.25:
+        return 0.25
+    return 0.0
+
+
 class ToolTracker:
     """LOT_CD × EQP_MODEL_CD 동시 가공 상한 추적."""
 
@@ -2661,7 +2682,7 @@ class SchedulingSimulator:
                 po_feats[oi, pi, 0] = wip_q / total_wip
                 po_feats[oi, pi, 1] = wip_q / ppk_total
                 po_feats[oi, pi, 2] = urgency
-                po_feats[oi, pi, 3] = achievable_ratio
+                po_feats[oi, pi, 3] = _grade5(achievable_ratio)
 
                 done11 = completed.get((ppk, op), 0)
                 need11 = max(self._achievable_qty(ppk, op) - done11, 1.0)
@@ -2758,9 +2779,9 @@ class SchedulingSimulator:
         group_global[2] = min(len(self.lot_pool) / initial_lot_count, 1.0)
         produced = sum(self.stats["completed_qty"].values())
         if total_plan > 0:
-            group_global[3] = min(produced / total_plan, 1.0)
+            group_global[3] = _grade5(min(produced / total_plan, 1.0))
         else:
-            group_global[3] = min(produced / max(self._initial_wip_total, 1), 1.0)
+            group_global[3] = _grade5(min(produced / max(self._initial_wip_total, 1), 1.0))
         conv_eqps = 0
         for eqp_id, eqp in self.eqps.items():
             rem = max(eqp.free_at - self.current_time, 0)

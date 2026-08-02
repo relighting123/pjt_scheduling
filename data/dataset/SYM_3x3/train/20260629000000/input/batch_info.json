@@ -1,0 +1,20 @@
+[
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "LOT_CD": "LC_A",
+    "TEMP": "T600"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK002",
+    "OPER_ID": "OPER001",
+    "LOT_CD": "LC_B",
+    "TEMP": "T600"
+  },
+  {
+    "PLAN_PROD_ATTR_VAL": "PPK003",
+    "OPER_ID": "OPER001",
+    "LOT_CD": "LC_C",
+    "TEMP": "T600"
+  }
+]

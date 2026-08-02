@@ -1,0 +1,56 @@
+[
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK001",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK002",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK003",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK004",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK005",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK006",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK007",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK008",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  },
+  {
+    "EQP_MODEL_CD": "A",
+    "PLAN_PROD_ATTR_VAL": "PPK009",
+    "OPER_ID": "OPER001",
+    "ST": 30
+  }
+]
