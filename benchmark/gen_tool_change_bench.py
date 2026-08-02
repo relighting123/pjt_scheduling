@@ -22,7 +22,7 @@ TOOL_CHANGE_BENCH 데이터셋 생성기 — "tool 교체(전환)" 대표 스케
 
 각 데이터셋은 최적해를 '수식으로 우겨넣은 값'이 아니라, 실제로 달성 가능한
 구성적(constructive) 스케줄을 손으로 설계해 도출한 값이다 — 자세한 도출 방법은
-`data/dataset/tool_change_bench_meta.json`의 `optimal.derivation`에 기록한다.
+`data/dataset/benchmark/tool_change_bench_meta.json`의 `optimal.derivation`에 기록한다.
 （검증: `benchmark/tool_change_bench.py`가 오라클 정책으로 실제 시뮬레이터를
 구동해 이 값이 진짜로 달성되는지 재확인한다.）
 """
@@ -37,10 +37,18 @@ SUITE_ROOT = ROOT / "data/dataset"
 BASE_FAC_ID = "BASE"
 TEMP = "T600"
 TOOL_MAX = 99
+# 고정 10종 TCB 벤치마크 데이터의 저장 위치. data/dataset/은 통째로
+# gitignore 대상이지만, UI "벤치마크" 탭이 매번 재생성 없이 바로 쓸 수
+# 있도록 이 폴더만 예외로 git에 커밋한다(.gitignore 참고).
+# gen_train_pool.py가 같은 생성 함수(gen_multi_stage/gen_safety_switch)를
+# 재사용해 임의 시나리오(TP_MS_*/TP_SAFE_*)를 만들 때는 out_root를 넘기지
+# 않아 기존 BASE/train 경로를 그대로 쓴다 — 이 상수를 건드리면 안 된다.
+BENCH_ROOT = SUITE_ROOT / "benchmark"
 
 
-def _write(bench_id: str, files: dict) -> Path:
-    out = SUITE_ROOT / BASE_FAC_ID / "train" / bench_id / "input"
+def _write(bench_id: str, files: dict, out_root: Path = None) -> Path:
+    root = out_root if out_root is not None else SUITE_ROOT / BASE_FAC_ID / "train"
+    out = root / bench_id / "input"
     out.mkdir(parents=True, exist_ok=True)
     for fn, data in files.items():
         with open(out / fn, "w", encoding="utf-8") as f:
@@ -66,7 +74,7 @@ def _carrier_rows(ppk, oper, st, n, eqp_cycle, lot_prefix, model):
 # A. 단일 제품 · 공정 전담 · 재공 충분 (대조군)
 # ═══════════════════════════════════════════════════════════════════════
 
-def gen_single_dedicated(bench_id, desc, tests, opers):
+def gen_single_dedicated(bench_id, desc, tests, opers, out_root: Path = None):
     """opers: [{"oper":..,"st":..,"n_eqp":..,"wip":..,"plan":..}, ...] 순서대로 flow."""
     ppk = "PPK001"
     flow, plan, abstract, discrete, lot_master, batch, tool_cd = [], [], [], [], [], [], []
@@ -96,7 +104,7 @@ def gen_single_dedicated(bench_id, desc, tests, opers):
         "lot_master.json": lot_master, "plan.json": plan, "flow.json": flow,
         "split.json": split, "batch_info.json": batch, "tool_capacity.json": tool_cd,
     }
-    _write(bench_id, files)
+    _write(bench_id, files, out_root=out_root)
     return dict(files=files, n_eqp=eqp_counter)
 
 
@@ -104,7 +112,7 @@ def gen_single_dedicated(bench_id, desc, tests, opers):
 # B. 다품종 · 2단계 flow · 장비 공유 (전환 불가피/편중/전환과중)
 # ═══════════════════════════════════════════════════════════════════════
 
-def gen_multi_stage(bench_id, stage1, stage2):
+def gen_multi_stage(bench_id, stage1, stage2, out_root: Path = None):
     """stage1/stage2: dict(oper, n_eqp, ppks=[{ppk,carriers,st,group?}], conv, scramble)
     각 stage는 독립된 EQP 풀(모델도 stage별로 분리)을 가진다.
 
@@ -155,7 +163,7 @@ def gen_multi_stage(bench_id, stage1, stage2):
         "lot_master.json": lot_master, "plan.json": plan, "flow.json": flow,
         "split.json": split, "batch_info.json": batch, "tool_capacity.json": tool_cd,
     }
-    _write(bench_id, files)
+    _write(bench_id, files, out_root=out_root)
     return stage_dims
 
 
@@ -163,7 +171,7 @@ def gen_multi_stage(bench_id, stage1, stage2):
 # C. 재공 편중 + 안전재공 확보 후 전환 (동일 제품, 2공정 겸용 장비)
 # ═══════════════════════════════════════════════════════════════════════
 
-def gen_safety_switch(bench_id, n_eqp, up, down, conv):
+def gen_safety_switch(bench_id, n_eqp, up, down, conv, out_root: Path = None):
     """up/down: dict(oper, st, wip, plan). 동일 PPK, 겸용 장비 n_eqp대."""
     ppk = "PPK001"
     model = "A"
@@ -205,7 +213,7 @@ def gen_safety_switch(bench_id, n_eqp, up, down, conv):
         "lot_master.json": lot_master, "plan.json": plan, "flow.json": flow,
         "split.json": split, "batch_info.json": batch, "tool_capacity.json": tool_cd,
     }
-    _write(bench_id, files)
+    _write(bench_id, files, out_root=out_root)
     return eqps
 
 
@@ -226,6 +234,7 @@ def build_all():
         "TCB01_SINGLE_2OP", "1제품·2공정 전담, 재공 충분(대조군)", "쉬운 문제에서 100% 달성 확인",
         opers=[dict(oper="OPER001", st=20, n_eqp=1, wip=30, plan=24),
                dict(oper="OPER002", st=20, n_eqp=1, wip=30, plan=24)],
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB01_SINGLE_2OP", category="A. 단일제품 재공충분", n_ppk=1,
@@ -245,6 +254,7 @@ def build_all():
         opers=[dict(oper="OPER001", st=15, n_eqp=1, wip=40, plan=32),
                dict(oper="OPER002", st=15, n_eqp=1, wip=40, plan=32),
                dict(oper="OPER003", st=30, n_eqp=2, wip=40, plan=32)],
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB02_SINGLE_3OP_BOTTLENECK", category="A. 단일제품 재공충분", n_ppk=1,
@@ -265,6 +275,7 @@ def build_all():
                dict(oper="OPER002", st=12, n_eqp=1, wip=60, plan=50),
                dict(oper="OPER003", st=24, n_eqp=2, wip=60, plan=50),
                dict(oper="OPER004", st=12, n_eqp=1, wip=60, plan=50)],
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB03_SINGLE_4OP_CHAIN", category="A. 단일제품 재공충분", n_ppk=1,
@@ -284,6 +295,7 @@ def build_all():
                     ppks=[dict(ppk=f"PPK00{i+1}", carriers=8, st=40) for i in range(3)]),
         stage2=dict(oper="OPER002", n_eqp=3, conv=40, scramble=True,
                     ppks=[dict(ppk=f"PPK00{i+1}", carriers=8, st=40) for i in range(3)]),
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB04_MULTI_SYM_2STAGE", category="B. 다품종 재공충분", n_ppk=3,
@@ -304,6 +316,7 @@ def build_all():
         "TCB05_MULTI_OVER_2STAGE",
         stage1=dict(oper="OPER001", n_eqp=3, conv=45, ppks=_over_ppks),
         stage2=dict(oper="OPER002", n_eqp=3, conv=45, ppks=_over_ppks),
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB05_MULTI_OVER_2STAGE", category="B. 다품종 재공충분", n_ppk=5,
@@ -334,6 +347,7 @@ def build_all():
         stage2=dict(oper="OPER002", n_eqp=4, conv=30, scramble=True,
                     ppks=[dict(ppk="PPK001", carriers=12, st=30), dict(ppk="PPK002", carriers=8, st=30),
                           dict(ppk="PPK003", carriers=6, st=30), dict(ppk="PPK004", carriers=4, st=30)]),
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB06_MULTI_LOADSKEW_2STAGE", category="B. 다품종 재공충분", n_ppk=4,
@@ -360,6 +374,7 @@ def build_all():
         "TCB07_MULTI_CONVHEAVY_2STAGE",
         stage1=dict(oper="OPER001", n_eqp=3, conv=120, ppks=_convheavy_ppks),
         stage2=dict(oper="OPER002", n_eqp=3, conv=120, ppks=_convheavy_ppks),
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB07_MULTI_CONVHEAVY_2STAGE", category="B. 다품종 재공충분", n_ppk=5,
@@ -382,6 +397,7 @@ def build_all():
         "TCB08_SAFETY_1EQP", n_eqp=1, conv=60,
         up=dict(oper="OPER001", st=20, wip=20, plan=20),
         down=dict(oper="OPER002", st=20, wip=0, plan=20),
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB08_SAFETY_1EQP", category="C. 재공편중·안전재공", n_ppk=1,
@@ -405,6 +421,7 @@ def build_all():
         "TCB09_SAFETY_2EQP_BUFFER", n_eqp=2, conv=60,
         up=dict(oper="OPER001", st=15, wip=60, plan=60),
         down=dict(oper="OPER002", st=15, wip=0, plan=40),
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB09_SAFETY_2EQP_BUFFER", category="C. 재공편중·안전재공", n_ppk=1,
@@ -430,6 +447,7 @@ def build_all():
         "TCB10_SAFETY_3EQP_SKEWED", n_eqp=3, conv=40,
         up=dict(oper="OPER001", st=10, wip=90, plan=90),
         down=dict(oper="OPER002", st=10, wip=0, plan=30),
+        out_root=BENCH_ROOT,
     )
     _add_meta(
         id="TCB10_SAFETY_3EQP_SKEWED", category="C. 재공편중·안전재공", n_ppk=1,
@@ -452,9 +470,10 @@ def build_all():
 
 def main():
     build_all()
-    with open(SUITE_ROOT / "tool_change_bench_meta.json", "w", encoding="utf-8") as f:
+    BENCH_ROOT.mkdir(parents=True, exist_ok=True)
+    with open(BENCH_ROOT / "tool_change_bench_meta.json", "w", encoding="utf-8") as f:
         json.dump(META, f, ensure_ascii=False, indent=2)
-    print(f"TOOL_CHANGE_BENCH {len(META)}종 생성 완료 → {SUITE_ROOT}")
+    print(f"TOOL_CHANGE_BENCH {len(META)}종 생성 완료 → {BENCH_ROOT}")
     for m in META:
         opt = m["optimal"]
         print(f"  {m['id']:<32} [{m['category']:<14}] "
