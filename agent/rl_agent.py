@@ -1,6 +1,7 @@
 """
 agent/rl_agent.py – StableBaselines3 MaskablePPO 에이전트 래퍼
 """
+import json
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -527,6 +528,18 @@ class SchedulingAgent:
                 )
                 if ent is not None:
                     log(f"[bc] 최종 정책 엔트로피 {ent:.3f} (0에 가까우면 결정적 붕괴)")
+                # eval/kpi 곡선(evaluations.npz, kpi_evaluations.json)과 같은
+                # model_dir/logs/에 남겨서, 학습 리포트가 BC 워밍스타트 구간까지
+                # 이어붙여 그릴 수 있게 한다 — 안 남기면 리포트 차트가 PPO
+                # 시작 시점(이미 BC로 어느 정도 학습된 상태)부터만 보여서, "왜 안
+                # 오르지"가 실제론 "BC가 이미 다 올려놨다"인 걸 알 수 없다.
+                if summary.get("history"):
+                    bc_log_dir = model_dir / "logs"
+                    bc_log_dir.mkdir(parents=True, exist_ok=True)
+                    (bc_log_dir / "bc_history.json").write_text(
+                        json.dumps({"history": summary["history"]}, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
 
         if (
             expert_data is not None

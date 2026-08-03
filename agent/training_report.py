@@ -37,6 +37,32 @@ def _read_eval_npz(model_dir: Path) -> Optional[dict]:
         return None
 
 
+def _read_bc_history(model_dir: Path) -> Optional[dict]:
+    """behavior_clone()이 남긴 model_dir/logs/bc_history.json.
+
+    PPO(eval/kpi 곡선)는 timestep=0부터 시작하는데, 그 시점 정책은 이미
+    BC 워밍스타트를 거친 상태다 — BC 구간을 안 보여주면 "왜 eval 점수가
+    안 오르지?"에 "BC가 이미 다 올려놨다"는 흔한 답을 확인할 방법이 없다.
+    """
+    path = model_dir / "logs" / "bc_history.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    history = data.get("history") or []
+    if not history:
+        return None
+    return {
+        "epoch": [h["epoch"] for h in history],
+        "train_nll": [h["train_nll"] for h in history],
+        "val_nll": [h["val_nll"] for h in history],
+        "entropy": [h["entropy"] for h in history],
+        "value_loss": [h["value_loss"] for h in history],
+    }
+
+
 def _read_kpi_history(model_dir: Path) -> Optional[dict]:
     """KPIEvalCallback이 남긴 model_dir/logs/kpi_evaluations.json.
 
@@ -169,6 +195,7 @@ def _plot_png(
     eval_curve: Optional[dict],
     progress_series: Optional[dict],
     kpi_curve: Optional[dict] = None,
+    bc_curve: Optional[dict] = None,
 ) -> bool:
     try:
         import matplotlib
@@ -178,6 +205,11 @@ def _plot_png(
         return False
 
     panels = []
+    # bc를 맨 앞에 둔다 — PPO(kpi/eval)는 timestep=0부터 시작하지만 그 시점
+    # 정책은 이미 BC 워밍스타트를 거친 뒤라, BC 구간을 먼저 보여줘야
+    # "eval이 왜 안 오르나"가 "BC가 이미 다 올려놨다"인지 한눈에 보인다.
+    if bc_curve and bc_curve.get("train_nll"):
+        panels.append("bc")
     if kpi_curve and kpi_curve.get("score"):
         panels.append("kpi")
     if eval_curve and eval_curve.get("mean_reward"):
@@ -193,7 +225,24 @@ def _plot_png(
     axes = [a[0] for a in axes]
 
     for ax, kind in zip(axes, panels):
-        if kind == "kpi":
+        if kind == "bc":
+            ep = bc_curve["epoch"]
+            ax.plot(ep, bc_curve["train_nll"], color="#1B3257", label="train NLL")
+            ax.plot(ep, bc_curve["val_nll"], color="#B33A3A", linestyle="--", label="val NLL")
+            ax.set_title("BC warmstart (before PPO — epoch, not timestep)")
+            ax.set_xlabel("BC epoch")
+            ax.set_ylabel("NLL loss")
+            ax.grid(alpha=0.25)
+
+            ax2 = ax.twinx()
+            ax2.plot(ep, bc_curve["entropy"], color="#2E7D4F", alpha=0.55,
+                     linestyle=":", label="entropy")
+            ax2.set_ylabel("policy entropy")
+
+            handles, labels = ax.get_legend_handles_labels()
+            h2, l2 = ax2.get_legend_handles_labels()
+            ax.legend(handles + h2, labels + l2, fontsize=8, loc="best")
+        elif kind == "kpi":
             # 점수와 생산량(수백 규모)을 한 축에 그리면 축 범위가 생산량에
             # 끌려가 점수 곡선이 '평평해 보인다' — 정확히 이 리포트가 답해야
             # 할 질문(학습이 되고 있나?)을 가려버린다. 점수/기준선은 주축에
@@ -264,6 +313,7 @@ def save_training_convergence_report(
     model_dir = Path(model_dir)
     eval_curve = _read_eval_npz(model_dir)
     kpi_curve = _read_kpi_history(model_dir)
+    bc_curve = _read_bc_history(model_dir)
     # KPI 곡선이 있으면 그쪽을 판정 근거로 쓴다 — shaping 보상보다 실제
     # 벤치마크 목표에 직접 대응하기 때문.
     verdict = _kpi_verdict(kpi_curve) if kpi_curve else _convergence_verdict(eval_curve)
@@ -271,6 +321,7 @@ def save_training_convergence_report(
     report = {
         "generated_at": _now_iso(),
         "algorithm": algorithm,
+        "bc_curve": bc_curve,
         "eval_curve": eval_curve,
         "kpi_curve": kpi_curve,
         "train_series": progress_series,
@@ -284,7 +335,7 @@ def save_training_convergence_report(
     )
 
     png_path = model_dir / f"training_convergence_{algorithm}.png"
-    has_png = _plot_png(png_path, eval_curve, progress_series, kpi_curve)
+    has_png = _plot_png(png_path, eval_curve, progress_series, kpi_curve, bc_curve)
 
     return {
         "json_path": str(json_path),

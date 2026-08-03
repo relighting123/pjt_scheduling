@@ -319,6 +319,7 @@ def behavior_clone(
     patience = 0
     epochs_run = 0
     last: dict = {}
+    history: list[dict] = []
 
     log(f"[bc] 워밍스타트 시작 — 시연 {n:,}건(에피소드 {dataset.n_episodes}), "
         f"train {len(train_idx):,} / val {n_val:,}, epochs={epochs}, lr={lr}, batch={batch_size}")
@@ -363,6 +364,14 @@ def behavior_clone(
         else:
             val_nll = last["nll"]
 
+        history.append({
+            "epoch": epoch + 1,
+            "train_nll": last["nll"],
+            "val_nll": val_nll,
+            "entropy": last["ent"],
+            "value_loss": last["v"],
+        })
+
         if epoch == 0 or epoch == epochs - 1 or (epoch + 1) % max(epochs // 6, 1) == 0:
             log(f"[bc] epoch {epoch + 1}/{epochs} nll={last['nll']:.4f} "
                 f"val_nll={val_nll:.4f} ent={last['ent']:.3f} v_loss={last['v']:.4f}")
@@ -386,6 +395,7 @@ def behavior_clone(
         "train_nll": last.get("nll"),
         "entropy": last.get("ent"),
         "value_loss": last.get("v"),
+        "history": history,
     }
 
 

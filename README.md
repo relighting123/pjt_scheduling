@@ -133,6 +133,23 @@ AI 스케줄러가 배정을 결정하지 않는, 이미 투입이 확정된 EQP
   `discrete_arrange`에서만 나오므로, 그런 EQP는 tool 동시성 추적 대상에서는 제외됩니다.
 - `CONFIG.env.discrete_wait_enabled`와 무관하게 항상 그대로 반영됩니다.
 
+##### 대체 입력 경로: `discrete_arrange`의 `LOT_STAT_CD` (선택)
+
+`eqp_queue_init.json`을 별도로 만들기 어려운 소스를 위한 경로입니다. `discrete_arrange`
+행에 `LOT_STAT_CD`(`PROC`/`LOAD`/`SELE`/`RESV`, 비어 있으면 기본값 `WAIT`)를 채우면, 그
+carrier는 AI가 결정하지 않고 같은 `EQP_ID`에 `PROC → LOAD → RESV → SELE` 순서(동순위는
+입력 순서)로 강제 배정됩니다.
+
+- 내부적으로 `eqp_queue_init`과 동일한 큐 포맷으로 변환되어 합류합니다 — 실행 경로·제약
+  우회 동작(tool 동시성/전환그룹/WIP 가용성 무시)은 위 `eqp_queue_init` 항목과 같습니다.
+- 소요시간은 `START_TM`/`END_TM`을 직접 받는 `eqp_queue_init`과 달리 `ST × WF_QTY`로
+  역산합니다. 같은 EQP에 `eqp_queue_init` 큐가 이미 있으면 그 큐의 마지막 `END_TM`부터
+  이어서 순차 배정됩니다(이중 예약 방지).
+- 이 carrier들은 `discrete_arrange`의 자유배정(WAIT) 후보(`eqp_lot_map`)에서 제외됩니다 —
+  `LOT_STAT_CD`가 없거나 `WAIT`인 행만 자유배정 후보로 남습니다.
+- 한 EQP에 `eqp_queue_init`과 `LOT_STAT_CD` 강제 행이 동시에 있으면 함께 병합되어
+  하나의 큐로 처리됩니다.
+
 #### 전환 그룹 제약 (`config.CONVERSION_GROUPS`, 선택)
 
 같은 그룹 안의 `(LOT_CD, TEMP)`로만 전환을 허용하고 **다른 그룹으로의 전환은 배정 후보에서 제외**합니다(행동 공간 축소 → 문제 단순화). `config.py`의 `CONVERSION_GROUPS` 딕셔너리에 `FAC_ID`별로 설정하며, 해당 FAC_ID 항목이 없으면 제약은 비활성(기존 동작) — train/test/infer 등 split·기간과 무관하게 fac 전체에 공통 적용됩니다.
