@@ -4,6 +4,8 @@ data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 RTS_RSLT_MAS: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
 RTS_EQPCONVPLAN_INF: 동일 FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT
                       (같은 회차 재실행 시 JOB_ID 중복/PK 위반 방지, 다른 회차는 계속 누적)
+                      EXEC_TIMEKEY(생성 시각, NOT NULL)는 채우지만 PK엔 없음 —
+                      재실행마다 최신 실행시각으로 덮어써진다.
 HIS: INSERT only (EXEC_TIMEKEY = 생성 시각, PK에 포함되어 같은 회차 재실행도 누적)
 """
 from __future__ import annotations
@@ -142,9 +144,12 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
         ]
         cols.extend(["CRT_TM", "CHG_TM"])
         vals.extend(["SYSDATE", "SYSDATE"])
-        if history:
-            cols.append("EXEC_TIMEKEY")
-            vals.append(_sql_str(exec_timekey))
+        # EXEC_TIMEKEY: INF/HIS 둘 다 채운다. INF PK(RULE_TIMEKEY, JOB_ID)엔
+        # 안 들어가지만(같은 회차 재실행 시 DELETE 후 재적재라 값 자체는 매번
+        # 최신 실행시각으로 갱신됨), 컬럼이 NOT NULL이라 값을 안 넣으면 INF
+        # INSERT가 NULL 제약 위반으로 실패한다.
+        cols.append("EXEC_TIMEKEY")
+        vals.append(_sql_str(exec_timekey))
         lines.append(
             f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
