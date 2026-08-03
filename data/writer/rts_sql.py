@@ -59,7 +59,10 @@ def _insert_rts_rslt_rows(rows: List[dict], *, history: bool) -> List[str]:
             "FAC_ID", "RULE_TIMEKEY", "LOT_CD", "TEMPER_VAL", "EQP_ID", "EQP_MODEL_CD",
             "SEQ_NO", "PLAN_PROD_ATTR_VAL", "OPER_ID", "LOT_ID", "CARRIER_ID",
             "LOT_STAT_CD", "FLOW_ID", "WF_QTY", "ST", "PRGS_ENABLE_EQP_LVAL", "PLAN_QTY",
-            "START_TIME", "END_TIME", "PRODUCE_QTY", "FUNCTION_NM", "CRT_USER_ID",
+            "START_TIME", "END_TIME", "PRODUCE_QTY", "FUNCTION_NM",
+            "PPK_OPER_REASON_CD", "PPK_OPER_REASON_CTN",
+            "CARRIER_REASON_CD", "CARRIER_REASON_CTN",
+            "CRT_USER_ID",
         ]
         vals = [
             _sql_str(r["FAC_ID"]),
@@ -83,6 +86,10 @@ def _insert_rts_rslt_rows(rows: List[dict], *, history: bool) -> List[str]:
             _sql_str(r["END_TIME"]),
             _sql_num(r["PRODUCE_QTY"]),
             _sql_str(r.get("FUNCTION_NM", "TEST")),
+            _sql_str(r.get("PPK_OPER_REASON_CD", "")),
+            _sql_str(r.get("PPK_OPER_REASON_CTN", "")),
+            _sql_str(r.get("CARRIER_REASON_CD", "")),
+            _sql_str(r.get("CARRIER_REASON_CTN", "")),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
         ]
         cols.append("CRT_TM")

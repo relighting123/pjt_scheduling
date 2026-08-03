@@ -146,6 +146,10 @@ def _build_rts_rslt_rows(
                 "END_TIME":       minutes_to_timekey(int(rec["END_TM"]), base_time),
                 "PRODUCE_QTY":    int(rec.get("WF_QTY", 0)),
                 "FUNCTION_NM":    "TEST",
+                "PPK_OPER_REASON_CD":  rec.get("PPK_OPER_REASON_CD", ""),
+                "PPK_OPER_REASON_CTN": rec.get("PPK_OPER_REASON_CTN", ""),
+                "CARRIER_REASON_CD":   rec.get("CARRIER_REASON_CD", ""),
+                "CARRIER_REASON_CTN":  rec.get("CARRIER_REASON_CTN", ""),
                 "CRT_USER_ID":    meta["CRT_USER_ID"],
             })
     return rows

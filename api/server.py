@@ -1159,6 +1159,10 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
             "TEMP":          row.get("TEMPER_VAL", ""),
             "START_TM_STR":  row.get("START_TIME", ""),
             "END_TM_STR":    row.get("END_TIME", ""),
+            "PPK_OPER_REASON_CD":  row.get("PPK_OPER_REASON_CD", ""),
+            "PPK_OPER_REASON_CTN": row.get("PPK_OPER_REASON_CTN", ""),
+            "CARRIER_REASON_CD":   row.get("CARRIER_REASON_CD", ""),
+            "CARRIER_REASON_CTN":  row.get("CARRIER_REASON_CTN", ""),
         })
     schedule.sort(key=lambda r: (r["START_TM"], r["EQP_ID"], r["SEQ"], r["LOT_ID"]))
 

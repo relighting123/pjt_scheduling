@@ -24,6 +24,11 @@ from simulation.events import (
     EVENT_PRIORITY,
     EVENT_PROCESS_END,
 )
+from simulation.selection_reason import (
+    GLOBAL_EARLIEST_ST_REASON,
+    carrier_select_reason,
+    ppk_oper_select_reason,
+)
 from utils.helpers import effective_proc_time
 
 
@@ -740,6 +745,10 @@ class SchedulingSimulator:
             "ABSTRACT":      False,
             "OPER_IN_TIME":  0,
             "LOT_STAT_CD":   "FIXED",
+            "PPK_OPER_REASON_CD":  "FIXED_QUEUE_EXTERNAL",
+            "PPK_OPER_REASON_CTN": "eqp_queue_init 외부 확정 큐 — 알고리즘 선택이 아닌 기존 진행 사실 반영",
+            "CARRIER_REASON_CD":   "FIXED_QUEUE_EXTERNAL",
+            "CARRIER_REASON_CTN":  "eqp_queue_init 외부 확정 큐 — 알고리즘 선택이 아닌 기존 진행 사실 반영",
         })
         self._last_assigned = {
             "kind":          "actual",
@@ -891,7 +900,11 @@ class SchedulingSimulator:
         self._earliest_st_pick = None
         if pick_eqp != eqp_id:
             return -1.0
-        return self.assign_lot(eqp_id, lot_id)
+        return self.assign_lot(
+            eqp_id, lot_id,
+            carrier_reason=GLOBAL_EARLIEST_ST_REASON,
+            ppk_oper_mode="GLOBAL_EARLIEST_ST",
+        )
 
     def _idle_eqps_with_work(self) -> List[str]:
         return [
@@ -1841,7 +1854,8 @@ class SchedulingSimulator:
         )
         if self._assign_blocked(eqp_id, lot_cd, temp):
             return -1.0
-        return self.assign_lot(eqp_id, lot_id)
+        carrier_reason = carrier_select_reason(self, eqp_id, lots)
+        return self.assign_lot(eqp_id, lot_id, carrier_reason=carrier_reason)
 
     # ── 벌크(블록) 점유 지원 ───────────────────────────────────────────────
 
@@ -2207,12 +2221,23 @@ class SchedulingSimulator:
         end_time = start_time + proc_time
         plan_hit = self._plan_hit_reward(ppk, oper_id, wf_qty, end_time)
         reward = proc_reward + plan_hit
+        reward_terms = dict(pending.get("reward_terms", {}))
         # plan_hit를 직전 결정의 리워드 분해에 추가(같은 LOT일 때만)
         if plan_hit:
+            reward_terms["plan_hit"] = round(float(plan_hit), 4)
             lb = self._last_decision_assignment
             if lb is not None and lb.get("lot_id") == lot_id:
                 lb.setdefault("reward_breakdown", {})["plan_hit"] = round(float(plan_hit), 4)
                 self._last_reward_breakdown["plan_hit"] = round(float(plan_hit), 4)
+
+        ppk_oper_reason_cd, ppk_oper_reason_ctn = ppk_oper_select_reason(
+            self, eqp_id, ppk, oper_id, reward_terms,
+            wip_qty=pending.get("wip_qty_at_decision", 0),
+            mode=pending.get("ppk_oper_mode", "BUCKET"),
+        )
+        carrier_reason_cd, carrier_reason_ctn = pending.get(
+            "carrier_reason", ("NONE", "선택 근거 없음"),
+        )
 
         from_lot_cd = eqp.prev_lot_cd
         from_temp = eqp.prev_temp
@@ -2269,6 +2294,10 @@ class SchedulingSimulator:
             "ABSTRACT":      is_abstract,
             "OPER_IN_TIME":  oper_in_time,
             "LOT_STAT_CD":   "WAIT",
+            "PPK_OPER_REASON_CD":  ppk_oper_reason_cd,
+            "PPK_OPER_REASON_CTN": ppk_oper_reason_ctn,
+            "CARRIER_REASON_CD":   carrier_reason_cd,
+            "CARRIER_REASON_CTN":  carrier_reason_ctn,
         })
 
         self._last_assigned = {
@@ -2304,6 +2333,9 @@ class SchedulingSimulator:
         row: dict,
         oper_in_time: int,
         is_abstract: bool,
+        *,
+        carrier_reason: Optional[Tuple[str, str]] = None,
+        ppk_oper_mode: str = "BUCKET",
     ) -> float:
         """공통 배정: conversion + tool + WIP -1."""
         eqp = self.eqps[eqp_id]
@@ -2318,6 +2350,7 @@ class SchedulingSimulator:
         wip = self._wip_for(ppk, oper_id)
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
+        wip_qty_at_decision = int(wip["wip_qty"])
 
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
         terms: Dict[str, float] = {}
@@ -2365,6 +2398,10 @@ class SchedulingSimulator:
             "from_lot_cd": eqp.prev_lot_cd,
             "had_conversion": needs_conv,
             "proc_reward": reward,
+            "reward_terms": dict(terms),
+            "wip_qty_at_decision": wip_qty_at_decision,
+            "carrier_reason": carrier_reason or ("NONE", "선택 근거 없음"),
+            "ppk_oper_mode": ppk_oper_mode,
         }
         self._last_decision_assignment = {
             "eqp_id":        eqp_id,
@@ -2394,8 +2431,20 @@ class SchedulingSimulator:
             eqp_id, pending, start_time=conv_start, proc_reward=reward,
         )
 
-    def assign_lot(self, eqp_id: str, lot_id: str) -> float:
-        """LOT 배정. abstract WIP 풀에서 -1, conversion/tool 적용."""
+    def assign_lot(
+        self,
+        eqp_id: str,
+        lot_id: str,
+        *,
+        carrier_reason: Optional[Tuple[str, str]] = None,
+        ppk_oper_mode: str = "BUCKET",
+    ) -> float:
+        """LOT 배정. abstract WIP 풀에서 -1, conversion/tool 적용.
+
+        carrier_reason/ppk_oper_mode: 호출측(assign_ppk_oper/assign_earliest_st_pending)이
+        어떤 기준으로 이 carrier·버킷을 골랐는지 — RTS_RSLT_MAS의
+        CARRIER_REASON_CD/CTN, PPK_OPER_REASON_CD/CTN에 그대로 적재된다.
+        """
         lot = self.lot_pool.get(lot_id)
         meta = self._wip_lot_meta.get(lot_id, {})
 
@@ -2447,6 +2496,7 @@ class SchedulingSimulator:
         reward = self._execute_assignment(
             eqp_id, lot_id, ppk, oper_id, seq, wf_qty, st_per_wafer,
             carrier_id, row, oper_in_time, is_abstract,
+            carrier_reason=carrier_reason, ppk_oper_mode=ppk_oper_mode,
         )
         if reward < 0:
             return reward
