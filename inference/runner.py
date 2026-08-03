@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import torch
+
 from config import CONFIG
 from agent.rl_agent import SchedulingAgent
 from agent.minprogress_agent import MinProgressAgent
@@ -231,6 +233,13 @@ def _run_scheduling_rl_inference(
 ) -> dict:
     """SchedulingRLEnv(MultiDiscrete) 전용 추론 루프."""
     from env.scheduling_rl_env import SchedulingRLEnv
+
+    # PyTorch 기본값은 CPU 코어 수만큼 스레드를 씀 — [256,256] 크기 정책망처럼
+    # 연산량이 작은 모델을 이 루프처럼 스텝마다(결정 1회당) 반복 호출하면,
+    # 매 predict() 호출의 스레드 생성/동기화 오버헤드가 실제 연산량보다
+    # 커져서 오히려 훨씬 느려지고 CPU 부하만 올라간다(실측 8배 이상 차이).
+    # 배치가 1건뿐인 순차 추론이라 병렬화 이득이 없으므로 1로 고정한다.
+    torch.set_num_threads(1)
 
     env = SchedulingRLEnv(
         run_data,
