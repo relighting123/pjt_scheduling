@@ -57,11 +57,13 @@ def load_meta(suite: str = "bench") -> list:
 
 
 def load_ed(m: dict) -> dict:
-    ed = preprocess(load_data(Path(m["dir"])))
+    ed = preprocess(load_data(ROOT / m["dir"]))
     ed["eqp_selection"] = "order"
     ed["sim_end_minutes"] = m["sim"]
     ed["conversion_minutes"] = m["conv"]
     ed["enable_wip_inflow"] = bool(m.get("enable_wip_inflow", False))
+    if m.get("discrete_wait_enabled") is not None:
+        ed["discrete_wait_enabled"] = bool(m["discrete_wait_enabled"])
     return ed
 
 

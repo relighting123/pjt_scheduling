@@ -33,8 +33,15 @@ SYM 카테고리만 mix=0.0(분산 없음, 캐리어별 discrete_arrange 홈이 
 import json
 import math
 import random
+import sys
 import zlib
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# 2공정 스크램블 BENCH 시나리오(gen_multi_stage_scramble)에 재사용 — 순환
+# import 없음(gen_tool_change_bench는 다른 benchmark 모듈을 import하지 않음).
+from benchmark import gen_tool_change_bench as _multistage  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
 SUITE_ROOT = ROOT / "data/dataset"
@@ -43,6 +50,19 @@ SUITE_ROOT = ROOT / "data/dataset"
 # 시나리오ID=period 폴더로 모은다(과거엔 시나리오마다 최상위 폴더 하나씩 써서
 # 실FAC_ID처럼 보였다).
 BASE_FAC_ID = "BASE"
+
+
+def relative_dir(out: Path) -> str:
+    """meta의 "dir" 필드용 경로 문자열. 가능하면 ROOT 상대경로로 저장한다 —
+    절대경로를 그대로 커밋하면 다른 체크아웃 경로(다른 사용자/환경)에서
+    로드할 때 존재하지 않는 절대경로를 찾다 실패한다(소비자는 ROOT / dir로
+    복원). 테스트처럼 SUITE_ROOT를 ROOT 밖 임시 디렉터리로 monkeypatch한
+    경우엔 relative_to가 실패하므로 절대경로로 폴백한다 — ROOT / <절대경로>는
+    pathlib에서 우변 절대경로를 그대로 반환하므로 소비자 쪽은 두 경우 다 안전하다."""
+    try:
+        return str(out.relative_to(ROOT))
+    except ValueError:
+        return str(out)
 OPER = "OPER001"
 MODEL = "A"
 TEMP = "T600"
@@ -75,6 +95,49 @@ SPECS = [
          tool=99, desc="제품 과잉 + 전환시간(120)=처리시간(40)의 3배. 최난도.",
          tests="전환 과중 + 제품 과잉 복합"),
 ]
+
+# 단일공정 스크램블 대조군(mix=0.9, n_eqp=n_ppk)을 SYM_SCRAMBLE_3x3/4x4로 SPECS에
+# 넣어봤는데 V6가 이미 0전환으로 푼다(확인됨) — 단일공정 스크램블 자체는 기존
+# BENCH_SUITE 학습만으로 이미 일반화돼 있다는 뜻이라 제거했다. TOOL_CHANGE_BENCH
+# TCB04/06에서 실패하는 건 정확히 **2공정** 스크램블(OPER001→OPER002, 장비 풀이
+# 공정마다 따로)일 때뿐이므로, 그 축을 직접 겨냥한 2공정 버전만 아래에 추가한다.
+#  id, n_eqp(공정당), n_ppk, carriers, st, conv, cat, desc, tests
+MULTISTAGE_SPECS = [
+    dict(id="SYM_SCRAMBLE_2STAGE_3x3", n_eqp=3, n_ppk=3, carriers=6, st=50, conv=50,
+         cat="대칭 스크램블(2공정)",
+         desc="3제품×2공정(OPER001/002 각 독립 장비 3대), 홈 lot 스크램블. "
+              "TCB04_MULTI_SYM_2STAGE와 같은 함정(설비=제품인데 몰림)을 다른 규모로 재현.",
+         tests="2공정 스크램블 홈배정에서 설비 간 쏠림 없이 전담을 찾는지"),
+    dict(id="SYM_SCRAMBLE_2STAGE_4x4", n_eqp=4, n_ppk=4, carriers=5, st=40, conv=40,
+         cat="대칭 스크램블(2공정)",
+         desc="4제품×2공정, 홈 lot 스크램블. 규모를 키운 2공정 대칭 스크램블.",
+         tests="2공정 스크램블 규모 확장"),
+]
+
+
+def gen_multi_stage_scramble(spec: dict) -> dict:
+    """MULTISTAGE_SPECS 1건 → 2공정·양쪽 스테이지 모두 scramble=True인 BENCH
+    시나리오 생성. TCB04/06과 달리(비대칭 그룹 없이) 완전 대칭 + 완전 스크램블만
+    다뤄 "몰리지 말고 스스로 전담을 찾는지"라는 단일 축에 학습 신호를 집중한다."""
+    n_eqp, n_ppk, carriers, st, conv = (
+        spec["n_eqp"], spec["n_ppk"], spec["carriers"], spec["st"], spec["conv"]
+    )
+    ppks = [f"PPK{i + 1:03d}" for i in range(n_ppk)]
+    products = [{"ppk": p, "carriers": carriers, "st": st} for p in ppks]
+    stage = lambda oper: dict(oper=oper, n_eqp=n_eqp, ppks=products, conv=conv, scramble=True)
+    stage1, stage2 = stage("OPER001"), stage("OPER002")
+
+    _multistage.gen_multi_stage(spec["id"], stage1, stage2)
+    work_per_stage = n_ppk * carriers * st
+    sim = int(math.ceil(math.ceil(work_per_stage / n_eqp) / 10.0) * 10)
+    out = SUITE_ROOT / BASE_FAC_ID / "train" / spec["id"] / "input"
+    return dict(
+        id=spec["id"], cat=spec["cat"], n_eqp=2 * n_eqp, n_ppk=n_ppk,
+        carriers=carriers, st=st, conv=conv, sim=sim,
+        total=2 * n_ppk * carriers, min_conv=0, mix=1.0, tool=_multistage.TOOL_MAX,
+        desc=spec["desc"], tests=spec["tests"], dir=relative_dir(out),
+        discrete_wait_enabled=False,
+    )
 
 
 def _as_list(v, n):
@@ -140,6 +203,26 @@ def gen_one(spec):
         "lot_master.json": lot_master, "plan.json": plan, "flow.json": flow,
         "split.json": split, "batch_info.json": batch, "tool_capacity.json": tool_rows,
     }
+
+    # mix=0.0(스크램블 없음)면 각 설비의 홈 제품이 유일하게 정해진다 —
+    # eqp_initial_state로 "이미 그 제품 셋업으로 시작"을 선언해두면, 기존
+    # 전환회피 신호(needs_conv/setup_changed)가 첫 배정부터 바로 작동한다.
+    # (첫 배정은 prev_lot_cd=None이면 "비교 대상 없음"으로 무조건 전환 취급을
+    # 안 하는데, 실제 현장 데이터는 설비가 항상 뭔가 하던 중이라 이 공백이
+    # 없다 — 합성 데이터에만 있던 인위적 백지 상태를 없애는 것.)
+    # mix>0(스크램블)이면 설비 하나가 여러 제품 carrier를 나눠 가지므로 "홈"이
+    # 모호해 여기서 아무것도 선언하지 않는다(원래 학습해야 하는 축이라 그대로 둠).
+    if mix == 0.0:
+        eqp_home = {}
+        for pi, ppk in enumerate(ppks):
+            eqp_home.setdefault(eqps[pi % ne], set()).add(ppk)
+        eqp_initial_state = [
+            dict(EQP_ID=eid, LOT_CD=lot_cd_by_ppk[next(iter(homes))],
+                 TEMP=TEMP, PLAN_PROD_ATTR_VAL=next(iter(homes)), OPER_ID=OPER)
+            for eid, homes in eqp_home.items() if len(homes) == 1
+        ]
+        if eqp_initial_state:
+            files["eqp_initial_state.json"] = eqp_initial_state
     out = SUITE_ROOT / BASE_FAC_ID / "train" / bid / "input"
     out.mkdir(parents=True, exist_ok=True)
     for fn, data in files.items():
@@ -148,7 +231,10 @@ def gen_one(spec):
     return dict(id=bid, cat=spec["cat"], n_eqp=ne, n_ppk=npk,
                 carriers=carriers, st=sts, conv=conv, sim=sim,
                 total=sum(carriers), min_conv=min_conv, mix=mix, tool=tool,
-                desc=spec["desc"], tests=spec["tests"], dir=str(out))
+                desc=spec["desc"], tests=spec["tests"], dir=relative_dir(out),
+                # None이면 소비자(load_ed)가 키 자체를 안 넣어 시뮬레이터가
+                # CONFIG.env.discrete_wait_enabled 기본값을 쓰게 둔다.
+                discrete_wait_enabled=spec.get("discrete_wait_enabled"))
 
 
 def main():
@@ -157,6 +243,11 @@ def main():
         m = gen_one(spec)
         meta.append(m)
         print(f"  {m['id']:<12} [{m['cat']:<6}] {m['n_eqp']}설비×{m['n_ppk']}제품 "
+              f"총{m['total']}캐리어 sim={m['sim']} 최소전환={m['min_conv']}  · {m['tests']}")
+    for spec in MULTISTAGE_SPECS:
+        m = gen_multi_stage_scramble(spec)
+        meta.append(m)
+        print(f"  {m['id']:<24} [{m['cat']:<12}] 공정당{m['n_eqp']//2}설비×{m['n_ppk']}제품 "
               f"총{m['total']}캐리어 sim={m['sim']} 최소전환={m['min_conv']}  · {m['tests']}")
     with open(SUITE_ROOT / "bench_suite_meta.json", "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)

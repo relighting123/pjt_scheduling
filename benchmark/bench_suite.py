@@ -30,10 +30,12 @@ META = json.load(open(SUITE_ROOT / "bench_suite_meta.json", encoding="utf-8"))
 
 
 def load_ed(m):
-    ed = preprocess(load_data(Path(m["dir"])))
+    ed = preprocess(load_data(ROOT / m["dir"]))
     ed["eqp_selection"] = "order"
     ed["sim_end_minutes"] = m["sim"]
     ed["conversion_minutes"] = m["conv"]
+    if m.get("discrete_wait_enabled") is not None:
+        ed["discrete_wait_enabled"] = bool(m["discrete_wait_enabled"])
     return ed
 
 
