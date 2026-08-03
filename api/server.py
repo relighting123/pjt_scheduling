@@ -440,12 +440,12 @@ class InferenceRequest(InferFetchOptions):
         default=False,
         description="시뮬레이션 재생용 history/event payload 포함",
     )
-    timeout_seconds: Optional[float] = Field(
+    timeout: Optional[float] = Field(
         default=None,
         ge=0,
         description=(
-            "전체 처리 제한 시간(초, 0 허용 = 즉시 만료). DB 조회 시작~시뮬레이션~DB 적재. "
-            "초과 시 결과를 저장·반환하지 않고 504 오류로 중단한다(CLI --timeout과 달리 "
+            "전체 처리 제한 시간(밀리초, 0 허용 = 즉시 만료). DB 조회 시작~시뮬레이션~DB 적재. "
+            "초과 시 결과를 저장·반환하지 않고 504 오류로 중단한다(CLI --timeout(초 단위)과 달리 "
             "부분 결과를 성공으로 돌려주지 않음)."
         ),
     )
@@ -863,18 +863,21 @@ def list_algorithms():
 def inference(req: InferenceRequest):
     global _last_inference
     pipeline_start = time.monotonic()
+    # req.timeout은 밀리초 단위(클라이언트 계약) — 내부 시간 계산은 전부
+    # time.monotonic() 기준 초 단위라 여기서 한 번만 변환해 재사용한다.
+    timeout_sec = req.timeout / 1000.0 if req.timeout is not None else None
 
     def remaining_seconds() -> Optional[float]:
         """최초 요청 시점부터 지금까지 경과 시간을 뺀 잔여 제한 시간(초)."""
-        if req.timeout_seconds is None:
+        if timeout_sec is None:
             return None
-        return max(0.0, req.timeout_seconds - (time.monotonic() - pipeline_start))
+        return max(0.0, timeout_sec - (time.monotonic() - pipeline_start))
 
     def raise_if_timed_out(stage: str) -> None:
-        if req.timeout_seconds is not None and remaining_seconds() <= 0:
+        if timeout_sec is not None and remaining_seconds() <= 0:
             raise HTTPException(
                 status_code=504,
-                detail=f"제한 시간({req.timeout_seconds}초) 초과 ({stage} 단계) — 작업을 중단했습니다.",
+                detail=f"제한 시간({req.timeout}ms) 초과 ({stage} 단계) — 작업을 중단했습니다.",
             )
 
     try:
@@ -936,7 +939,7 @@ def inference(req: InferenceRequest):
             # 없이 바로 오류로 중단한다.
             raise HTTPException(
                 status_code=504,
-                detail=f"제한 시간({req.timeout_seconds}초) 초과 (시뮬레이션 단계) — 작업을 중단했습니다.",
+                detail=f"제한 시간({req.timeout}ms) 초과 (시뮬레이션 단계) — 작업을 중단했습니다.",
             )
         result["prod_keys"] = env_data["prod_keys"]
         result["oper_ids"] = env_data["oper_ids"]
