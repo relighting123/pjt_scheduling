@@ -9,7 +9,8 @@ from config import (
     CONFIG, normalize_rule_timekey, RULE_TIMEKEY_FMT, PERIOD_SPLITS, rule_timekey_now,
 )
 from utils.helpers import (
-    build_index_map, coerce_int, effective_proc_time, normalize_tool_capacity_rows, split_wf_qty,
+    build_index_map, coerce_int, effective_proc_time, FORCED_LOT_STAT_CDS, FORCED_LOT_STAT_ORDER,
+    normalize_lot_stat_cd, normalize_tool_capacity_rows, split_wf_qty,
 )
 
 
@@ -327,6 +328,71 @@ def _carrier_instance_id(row: dict) -> str:
     return carrier_id if carrier_id else lot_id
 
 
+def _forced_carrier_ids(discrete_raw: List[dict]) -> set:
+    """discrete_arrange 중 LOT_STAT_CD가 PROC/LOAD/RESV/SELE인 carrier id 집합."""
+    out = set()
+    for r in discrete_raw:
+        carrier_id = _carrier_instance_id(r)
+        code = normalize_lot_stat_cd(r.get("LOT_STAT_CD"), lot_id=carrier_id)
+        if code in FORCED_LOT_STAT_CDS:
+            out.add(carrier_id)
+    return out
+
+
+def _forced_rows_to_fixed_queue(
+    discrete_raw: List[dict],
+    flow_map: Dict[str, Dict[int, str]],
+    oper_seq_map: Dict[str, Dict[str, int]],
+    existing_queue: Dict[str, List[dict]],
+) -> Dict[str, List[dict]]:
+    """discrete_arrange의 LOT_STAT_CD(PROC/LOAD/RESV/SELE) 강제배정 행을
+    eqp_queue_init과 동일한 eqp_fixed_queue 포맷으로 변환한다.
+
+    별도 eqp_queue_init 파이프라인을 못 넣는 소스를 위한 대체 입력 경로다.
+    EQP_ID별로 FORCED_LOT_STAT_ORDER(PROC→LOAD→RESV→SELE) 우선순위, 동순위는
+    입력 순서로 정렬한 뒤, 그 EQP에 이미 eqp_queue_init 큐가 있으면 그 마지막
+    end_min부터 이어서 effective_proc_time만큼 순차 배정한다(이중 예약 방지).
+    """
+    grouped: Dict[str, List[Tuple[int, str, dict]]] = {}
+    for idx, r in enumerate(discrete_raw):
+        carrier_id = _carrier_instance_id(r)
+        code = normalize_lot_stat_cd(r.get("LOT_STAT_CD"), lot_id=carrier_id)
+        if code not in FORCED_LOT_STAT_CDS:
+            continue
+        eid = str(r["EQP_ID"]).strip()
+        grouped.setdefault(eid, []).append((idx, code, r))
+
+    out: Dict[str, List[dict]] = {}
+    for eid, entries in grouped.items():
+        entries.sort(key=lambda item: (FORCED_LOT_STAT_ORDER[item[1]], item[0]))
+        cursor = max((row["end_min"] for row in existing_queue.get(eid, [])), default=0)
+        queue: List[dict] = []
+        for idx, _code, r in entries:
+            carrier_id = _carrier_instance_id(r)
+            logical_lot_id = r["LOT_ID"]
+            oper_id, seq = _resolve_lot_oper_seq(r, flow_map, oper_seq_map)
+            wf_qty = coerce_int(r["WF_QTY"], field="WF_QTY")
+            st_per_wafer = _coerce_proc_time(r.get("ST")) or 60
+            start_min = cursor
+            end_min = start_min + max(effective_proc_time(st_per_wafer, wf_qty), 1)
+            cursor = end_min
+            queue.append({
+                "eqp_id":             eid,
+                "seq_no":             idx,
+                "lot_id":             carrier_id,
+                "logical_lot_id":     logical_lot_id,
+                "carrier_id":         carrier_id,
+                "PLAN_PROD_ATTR_VAL": r["PLAN_PROD_ATTR_VAL"],
+                "oper_id":            oper_id,
+                "seq":                seq,
+                "wf_qty":             wf_qty,
+                "start_min":          start_min,
+                "end_min":            end_min,
+            })
+        out[eid] = queue
+    return out
+
+
 def _build_tool_capacity_map(
     tool_raw: List[dict],
     lot_cds: List[str],
@@ -586,6 +652,23 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         raw.get("eqp_queue_init", []), base_time, oper_seq_map,
     )
 
+    # discrete_arrange의 LOT_STAT_CD(PROC/LOAD/RESV/SELE) 강제배정 행을
+    # eqp_queue_init과 같은 eqp_fixed_queue로 합류시킨다 — eqp_queue_init
+    # 파이프라인을 아직 못 넣는 소스를 위한 대체 입력 경로. 이후 모든
+    # 자유배정(WAIT) 후보 구성 로직은 discrete_free_raw(강제 행 제외본)만 본다.
+    forced_queue = _forced_rows_to_fixed_queue(
+        discrete_raw, flow_map, oper_seq_map, eqp_fixed_queue,
+    )
+    for eid, rows in forced_queue.items():
+        eqp_fixed_queue.setdefault(eid, [])
+        eqp_fixed_queue[eid].extend(rows)
+        eqp_fixed_queue[eid].sort(key=lambda r: (r["start_min"], r["seq_no"]))
+
+    forced_carrier_ids = _forced_carrier_ids(discrete_raw)
+    discrete_free_raw = [
+        r for r in discrete_raw if _carrier_instance_id(r) not in forced_carrier_ids
+    ]
+
     # ── 범주형 목록 & 인덱스 맵 ──────────────────────────────────────────────
     # eqp_queue_init에만 등장하는 EQP(discrete_arrange 자유배정 후보가 전혀
     # 없을 만큼 이미 확정 큐로 꽉 찬 장비)도 EQP 목록에 포함해야 한다 —
@@ -606,7 +689,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     discrete_wait_enabled = CONFIG.env.discrete_wait_enabled
     avail_map: Dict[Tuple[str, str], int] = {}
     eqp_lot_map: Dict[str, List[str]] = {}
-    for r in discrete_raw:
+    for r in discrete_free_raw:
         carrier_id = _carrier_instance_id(r)
         key = (r["EQP_ID"], carrier_id)
         avail_map[key] = coerce_int(r["WF_QTY"], field="WF_QTY")
@@ -619,7 +702,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # LOT 정보 빌드 — carrier 단위 1행 (LOT_ID:CARRIER_ID = 1:N)
     lot_info: Dict[str, dict] = {}
     seen_carriers: set = set()
-    for r in discrete_raw:
+    for r in discrete_free_raw:
         carrier_id = _carrier_instance_id(r)
         if carrier_id in seen_carriers:
             continue
@@ -675,7 +758,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # discrete_wait_enabled=False면 discrete ST/EQP 조합을 만들지 않고
     # abstract 평균 ST(아래 fallback)로만 처리한다.
     proc_time_matrix: Dict[Tuple[str, str, str], int] = {}
-    for r in discrete_raw:
+    for r in discrete_free_raw:
         if not discrete_wait_enabled:
             continue
         lid = _carrier_instance_id(r)
@@ -705,7 +788,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # discrete_wait_enabled=False면 discrete 실적으로는 EQP 가능 OPER을 넓히지
     # 않는다(abstract_arrange_map 모델 매칭만으로 판정하도록).
     eqp_oper_cap: Dict[str, List[str]] = {}
-    for r in discrete_raw:
+    for r in discrete_free_raw:
         if not discrete_wait_enabled:
             continue
         eid = r["EQP_ID"]

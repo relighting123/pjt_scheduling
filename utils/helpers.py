@@ -43,9 +43,30 @@ def encode_normalized(value: Optional[str], index_map: Dict[str, int], total: in
 REQUIRED_DISCRETE_ARRANGE_FIELDS = {
     "EQP_ID", "LOT_ID", "PLAN_PROD_ATTR_VAL", "OPER_ID", "ST", "EQP_MODEL_CD", "WF_QTY",
 }
-# discrete_arrange는 전건 자유배정(WAIT) 후보다. 이미 투입이 확정된 큐는
-# eqp_queue_init 입력으로 별도 제공된다(data/loader/preprocess.py의
-# _normalize_eqp_queue_init 참고).
+# discrete_arrange는 기본적으로 전건 자유배정(WAIT) 후보다. 이미 투입이
+# 확정된 큐는 원래 eqp_queue_init 입력으로 별도 제공하는 게 정식 경로지만
+# (data/loader/preprocess.py의 _normalize_eqp_queue_init), 그 데이터를 못
+# 받는 소스는 LOT_STAT_CD로 같은 사실을 discrete_arrange 안에 실어 보낼 수
+# 있다 — LOT_STAT_CD가 이 중 하나면 그 carrier는 AI가 결정하지 않고
+# EQP_ID에 우선순위(FORCED_LOT_STAT_ORDER)대로 강제 배정된다.
+FORCED_LOT_STAT_CDS = {"PROC", "LOAD", "SELE", "RESV"}
+FORCED_LOT_STAT_ORDER = {"PROC": 0, "LOAD": 1, "RESV": 2, "SELE": 3}
+VALID_LOT_STAT_CDS = FORCED_LOT_STAT_CDS | {"WAIT"}
+
+
+def normalize_lot_stat_cd(value, *, lot_id: str = "") -> str:
+    """discrete_arrange LOT_STAT_CD 정규화. 비어 있으면 WAIT(자유배정, 기본값)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "WAIT"
+    code = str(value).strip().upper()
+    if code not in VALID_LOT_STAT_CDS:
+        raise ValueError(
+            f"discrete_arrange LOT {lot_id}: 알 수 없는 LOT_STAT_CD {value!r} "
+            f"(허용값: {sorted(VALID_LOT_STAT_CDS)})"
+        )
+    return code
+
+
 REQUIRED_ABSTRACT_ARRANGE_FIELDS = {"PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD", "ST"}
 REQUIRED_PLAN_FIELDS         = {"PLAN_PROD_ATTR_VAL", "OPER_ID",
                                  "D0_PLAN_QTY", "D1_PLAN_QTY", "PLAN_PRIORITY"}
