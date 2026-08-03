@@ -161,7 +161,7 @@ export const api = {
     max_conversions_per_eqp?: number;
     conversion_minutes?: number;
     discrete_wait_enabled?: boolean;
-    timeout_seconds?: number;
+    timeout?: number; // 밀리초
   } = {}) =>
     request<InferenceResult>("/api/inference", {
       method: "POST",
@@ -189,7 +189,7 @@ export const api = {
         ...(opts.discrete_wait_enabled != null
           ? { discrete_wait_enabled: opts.discrete_wait_enabled }
           : {}),
-        ...(opts.timeout_seconds != null ? { timeout_seconds: opts.timeout_seconds } : {}),
+        ...(opts.timeout != null ? { timeout: opts.timeout } : {}),
       }),
     }),
   runCompare: (
