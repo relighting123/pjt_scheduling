@@ -48,15 +48,16 @@ def test_eqpconvplan_his_insert_sets_crt_tm_and_chg_tm_to_sysdate():
     assert insert_line.count("SYSDATE") == 2
 
 
-def test_eqpconvplan_his_insert_has_exec_timekey():
+def test_eqpconvplan_inf_and_his_insert_have_exec_timekey():
+    """RTS_EQPCONVPLAN_INF도 EXEC_TIMEKEY가 NOT NULL이라 INF/HIS 둘 다 채워야 한다
+    (INF는 PK엔 안 들어가지만, 컬럼 자체가 없으면 INSERT가 NULL 제약 위반)."""
     scripts = _scripts()
-    his_line = next(
-        line for line in scripts["rts_eqpconvplan_his.sql"].splitlines()
-        if line.startswith("INSERT INTO")
-    )
-    assert "EXEC_TIMEKEY" in his_line
-    inf_sql = scripts["rts_eqpconvplan_inf.sql"]
-    assert "EXEC_TIMEKEY" not in inf_sql
+    for filename in ("rts_eqpconvplan_inf.sql", "rts_eqpconvplan_his.sql"):
+        insert_line = next(
+            line for line in scripts[filename].splitlines()
+            if line.startswith("INSERT INTO")
+        )
+        assert "EXEC_TIMEKEY" in insert_line
 
 
 def test_rslt_mas_insert_sets_crt_tm_to_systimestamp():
