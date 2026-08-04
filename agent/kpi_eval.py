@@ -236,13 +236,13 @@ class KPIEvalCallback(BaseCallback):
         self.history.append(entry)
 
         if self._state is not None:
-            series = self._state.series
-            series.setdefault("kpi_timesteps", []).append(entry["timestep"])
-            series.setdefault("kpi_score", []).append(entry["score"])
-            series.setdefault("kpi_produced", []).append(entry["produced"])
-            series.setdefault("kpi_conversions", []).append(entry["conversions"])
-            if self._baseline is not None:
-                series.setdefault("kpi_baseline_score", []).append(entry["baseline_score"])
+            self._state.record_kpi_point(
+                entry["timestep"],
+                score=entry["score"],
+                produced=entry["produced"],
+                conversions=entry["conversions"],
+                baseline_score=entry.get("baseline_score") if self._baseline is not None else None,
+            )
 
         # 수렴 리포트(agent/training_report.py)가 읽어갈 원자료.
         # EvalCallback을 대체했기 때문에 evaluations.npz가 생기지 않으므로,

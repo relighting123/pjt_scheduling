@@ -103,6 +103,14 @@ def read_train_logger_values(model: Any) -> dict[str, float]:
 class TrainProgressState:
     """스레드 세이프 학습 진행 상태."""
 
+    # 시리즈 계열(rollout/eval/kpi)당 최대 보관 포인트. 장시간 학습
+    # (수십만 rollout, 최대 EPISODE_TRAIN_TIMESTEP_CEILING=50M 스텝)에서
+    # 무제한 append는 리스트가 계속 자라고, UI가 폴링할 때마다 snapshot()이
+    # 그 전체를 deepcopy하므로 학습이 길어질수록 API 서버 메모리와 폴링
+    # 비용이 함께 늘어난다. 상한을 넘으면 격자를 2배로 성기게 만들어
+    # (짝수 인덱스만 유지) 처음~끝 추세는 보존하면서 크기를 절반으로 줄인다.
+    _MAX_SERIES_POINTS = 2000
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self.reset()
@@ -140,6 +148,16 @@ class TrainProgressState:
             self.metrics: Optional[dict] = None
             self.error: Optional[str] = None
             self._last_ep_source = "episode"
+
+    def _decimate_locked(self, keys: list[str]) -> None:
+        """호출 시점에 self._lock을 이미 보유하고 있어야 한다."""
+        n = max((len(self.series.get(k, [])) for k in keys), default=0)
+        if n <= self._MAX_SERIES_POINTS:
+            return
+        for k in keys:
+            lst = self.series.get(k)
+            if lst:
+                self.series[k] = lst[::2]
 
     def add_log(self, message: str, level: str = "info") -> None:
         with self._lock:
@@ -241,7 +259,37 @@ class TrainProgressState:
             self.series["policy_loss"].append(_json_float(policy_loss))
             self.series["value_loss"].append(_json_float(value_loss))
             self.series["explained_variance"].append(_json_float(explained_variance))
+            self._decimate_locked(
+                ["timesteps", "ep_rew_mean", "policy_loss", "value_loss", "explained_variance"]
+            )
             self._last_ep_source = ep_source
+
+    def record_eval_point(self, timestep: int, mean_reward: float) -> None:
+        with self._lock:
+            self.series["eval_timesteps"].append(int(timestep))
+            self.series["eval_reward"].append(_json_float(mean_reward))
+            self._decimate_locked(["eval_timesteps", "eval_reward"])
+
+    def record_kpi_point(
+        self,
+        timestep: int,
+        *,
+        score: float,
+        produced: float,
+        conversions: float,
+        baseline_score: Optional[float] = None,
+    ) -> None:
+        with self._lock:
+            series = self.series
+            series.setdefault("kpi_timesteps", []).append(int(timestep))
+            series.setdefault("kpi_score", []).append(_json_float(score))
+            series.setdefault("kpi_produced", []).append(_json_float(produced))
+            series.setdefault("kpi_conversions", []).append(_json_float(conversions))
+            keys = ["kpi_timesteps", "kpi_score", "kpi_produced", "kpi_conversions"]
+            if baseline_score is not None:
+                series.setdefault("kpi_baseline_score", []).append(_json_float(baseline_score))
+                keys.append("kpi_baseline_score")
+            self._decimate_locked(keys)
 
     def last_ep_reward_source(self) -> str:
         with self._lock:
@@ -358,8 +406,7 @@ class EvalProgressCallback(EvalCallback):
         mean_rew = getattr(self, "last_mean_reward", None)
         if mean_rew is not None and mean_rew != self._last_logged_reward:
             self._last_logged_reward = float(mean_rew)
-            self._state.series["eval_timesteps"].append(self.num_timesteps)
-            self._state.series["eval_reward"].append(_json_float(mean_rew))
+            self._state.record_eval_point(self.num_timesteps, mean_rew)
             self._state.add_log(
                 f"Eval @ {self.num_timesteps:,} · mean_reward={mean_rew:.2f}"
             )
