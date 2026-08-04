@@ -33,9 +33,9 @@ from config import (
 @dataclass
 class GeneratorConfig:
     """랜덤 샘플 생성 파라미터"""
-    n_products: int = 3
+    n_products: int = 16
     n_eqps: int = 3
-    n_opers: int = 2
+    n_opers: int = 4
     lots_per_oper: int = 3
     wf_qty: int = 25
     st_min: float = 3.0
