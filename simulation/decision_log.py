@@ -19,6 +19,7 @@ REASON_LABELS: Dict[str, str] = {
     "no_arrange": "EQP arrange/가공 불가",
     "tool_cap_blocked": "tool cap 차단",
     "lot_select_failed": "LOT 자동 선택 실패",
+    "eqp_quota_full": "필요 장비수(계획÷IPH) 충족 — 추가 점유 불가",
 }
 
 
@@ -72,7 +73,9 @@ def diagnose_eqp(sim: "SchedulingSimulator", eqp_id: str) -> dict:
         return {"eqp_id": eqp_id, "error": "unknown_eqp"}
 
     feasible_flats = sim.get_feasible_ppk_oper(eqp_id)
+    allowed_set = set(sim.get_allowed_ppk_oper(eqp_id))
     feasible_options: List[dict] = []
+    quota_blocked: List[dict] = []
     for flat in feasible_flats:
         ppk, oper_id = sim.ppk_oper_from_flat(flat)
         lots = [
@@ -80,12 +83,29 @@ def diagnose_eqp(sim: "SchedulingSimulator", eqp_id: str) -> dict:
             if lot["PLAN_PROD_ATTR_VAL"] == ppk and lot["oper_id"] == oper_id
         ]
         lot_id = sim._auto_select_lot(eqp_id, lots)
-        feasible_options.append({
+        # 사용자 수기 계산(계획÷IPH÷시간)과 대조할 수 있게 산출 근거를 그대로 싣는다
+        quota = sim.bucket_quota_state(eqp_id, ppk, oper_id)
+        option = {
             "flat": flat,
             "ppk": ppk,
             "oper_id": oper_id,
             "lot_id": lot_id,
-        })
+            "quota": quota,
+            "quota_allowed": flat in allowed_set,
+        }
+        feasible_options.append(option)
+        if flat not in allowed_set:
+            required = quota.get("required")
+            quota_blocked.append({
+                "ppk": ppk,
+                "oper_id": oper_id,
+                "reason": "eqp_quota_full",
+                "detail": (
+                    f"필요 {required}대 / 이미 {quota['committed_others']}대 점유"
+                ),
+                "wip_qty": int((sim._wip_for(ppk, oper_id) or {}).get("wip_qty", 0)),
+                "quota": quota,
+            })
 
     feasible_set = set(feasible_flats)
     blocked_buckets: List[dict] = []
@@ -132,6 +152,8 @@ def diagnose_eqp(sim: "SchedulingSimulator", eqp_id: str) -> dict:
             "detail": detail,
             "wip_qty": int(wip.get("wip_qty", 0)),
         })
+
+    blocked_buckets.extend(quota_blocked)
 
     summary = REASON_LABELS["no_feasible"]
     if eqp.status != "idle":
@@ -310,6 +332,12 @@ def build_step_decision_entry(
             else (diagnosis.get("blocked_buckets", []) if diagnosis else [])
         ),
     }
+    if selected_matches_eqp and selected_ppk and selected_oper:
+        # 선택된 버킷의 '필요 장비수' 산출 근거 (계획량·IPH·가동시간·필요대수)
+        entry["eqp_quota"] = {
+            **sim.bucket_required_eqp_breakdown(selected_ppk, selected_oper),
+            **sim.bucket_quota_state(selected_eqp_id, selected_ppk, selected_oper),
+        }
     if failure_code:
         entry["failure_code"] = failure_code
         entry["failure_detail"] = failure_detail

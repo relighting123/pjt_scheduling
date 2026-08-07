@@ -5,6 +5,7 @@ RL 환경의 내부 시뮬레이터로, EQP 상태 및 LOT 배정 이력을 관�
 """
 import copy
 import heapq
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -306,6 +307,7 @@ class SchedulingSimulator:
         # 디버그용 리워드 항목별 분해 (추론 decision_log에서만 소비)
         self._cur_conv_terms: Dict[str, float] = {}
         self._last_reward_breakdown: Dict[str, float] = {}
+        self._last_quota_state: Dict[str, Any] = {}
         self._current_eqp: Optional[str] = None
         self._earliest_st_pick: Optional[Tuple[str, str]] = None
         self._initial_wip_total: int = sum(
@@ -317,6 +319,10 @@ class SchedulingSimulator:
         self._state_version: int = 0
         self._feasible_cache: Dict[str, tuple] = {}          # {eqp_id: (version, List[int])}
         self._bucket_keys_cache: Dict[str, tuple] = {}        # {eqp_id: (version, set)}
+        self._allowed_cache: Dict[str, tuple] = {}            # {eqp_id: (version, List[int])}
+        # 하루 고정 쿼터(static_daily) 캐시 — 에피소드당 1회 산출해 고정한다.
+        # 매 결정마다 재계산하면 상한이 흔들려 시간대별 장비 이동이 생긴다.
+        self._quota_cache: Dict[tuple, Optional[int]] = {}    # {(ppk, oper): required}
         self._wip_waiting_cache: Optional[Dict[str, int]] = None
         self._wip_waiting_version: int = -1
         self._bucket_feats_cache: Optional[np.ndarray] = None
@@ -1843,6 +1849,329 @@ class SchedulingSimulator:
             return -1.0
         return self.assign_lot(eqp_id, lot_id)
 
+    # ── 버킷별 필요 장비수(쿼터) ────────────────────────────────────────────
+    #
+    # 운영 라인 사용자가 손으로 하는 계산과 같은 식·같은 단위(대수)를 쓴다:
+    #     필요대수 = 계획량 ÷ (IPH × 가동시간),   IPH = 60 / ST(분/매)
+    # 기존 _bucket_projected_cover(투영 생산 '매수') 기반 억제는 사용자가 세는
+    # '대수'와 단위가 달라 검증이 안 됐고, 매 결정마다 값이 흔들려 시간대별로
+    # 장비가 공정 사이를 오갔다. 쿼터는 static_daily=True면 에피소드당 1회만
+    # 산출해 고정하므로 상한이 흔들리지 않는다.
+
+    def _bucket_st_per_wafer(self, ppk: str, oper_id: str) -> Optional[float]:
+        """버킷 대표 장당 ST(분/매) = 처리 가능한 모델들의 평균.
+
+        _carrier_takt_minutes()의 spw와 같은 정의 — 사용자가 IPH를 볼 때
+        쓰는 '그 공정의 대표 처리속도'에 해당한다.
+        """
+        lst = self._env_data.get("abstract_arranges_by_ppk_oper", {}).get((ppk, oper_id))
+        if lst:
+            vals = [float(s) for _m, s in lst if s and s > 0]
+            if vals:
+                return sum(vals) / len(vals)
+        # arrange 목록이 없으면 실제 처리 가능 장비들의 ST 평균으로 폴백
+        vals = []
+        for eqp_id in self._env_data.get("eqp_ids", []):
+            if not self._eqp_can_process(eqp_id, ppk, oper_id):
+                continue
+            st = self._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
+            if st and st > 0:
+                vals.append(float(st))
+        return (sum(vals) / len(vals)) if vals else None
+
+    def _plan_met(self, ppk: str, oper_id: str) -> bool:
+        """이 버킷의 D0 계획량을 이미 채웠는가(배정 기준)."""
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        plan_qty = int(pm["d0_plan_qty"]) if pm else 0
+        if plan_qty <= 0:
+            return False
+        return self.stats["completed_qty"].get((ppk, oper_id), 0) >= plan_qty
+
+    def bucket_iph(self, ppk: str, oper_id: str) -> Optional[float]:
+        """장비 1대의 시간당 처리량(매/시). IPH = 60 / ST(분/매)."""
+        st = self._bucket_st_per_wafer(ppk, oper_id)
+        if st is None or st <= 0:
+            return None
+        return 60.0 / st
+
+    def _capable_eqp_count(self, ppk: str, oper_id: str) -> int:
+        """이 버킷을 처리할 수 있는 장비 총 대수(쿼터 상한)."""
+        return sum(
+            1 for eqp_id in self._env_data.get("eqp_ids", [])
+            if self._eqp_can_process(eqp_id, ppk, oper_id)
+        )
+
+    def _round_required(self, raw: float) -> int:
+        mode = CONFIG.quota.rounding
+        if mode == "floor":
+            return int(math.floor(raw))
+        if mode == "round":
+            return int(round(raw))
+        return int(math.ceil(raw))
+
+    def bucket_required_eqp_breakdown(self, ppk: str, oper_id: str) -> Dict[str, Any]:
+        """필요 장비 대수 산출 근거 전체 (스텝 디버거/검증용).
+
+        required = round(계획량 ÷ (IPH × 가동시간) + headroom)
+                   를 [min_eqp, 처리가능 장비수] 로 clamp.
+        required=None 이면 쿼터 없음(무제한).
+        """
+        q = CONFIG.quota
+        pm = self._env_data.get("plan_meta", {}).get((ppk, oper_id))
+        plan_qty = int(pm["d0_plan_qty"]) if pm else 0
+        has_plan = plan_qty > 0
+        capable = self._capable_eqp_count(ppk, oper_id)
+        iph = self.bucket_iph(ppk, oper_id)
+        st = self._bucket_st_per_wafer(ppk, oper_id)
+
+        info: Dict[str, Any] = {
+            "ppk": ppk,
+            "oper_id": oper_id,
+            "static_daily": q.static_daily,
+            "plan_qty": plan_qty,
+            "has_plan": has_plan,
+            "st_min_per_wafer": round(st, 4) if st else None,
+            "iph": round(iph, 4) if iph else None,
+            "capable_eqp": capable,
+            "required": None,
+        }
+
+        if not q.enabled:
+            info["skip_reason"] = "quota_disabled"
+            return info
+        if not has_plan and not q.limit_planless:
+            info["skip_reason"] = "no_plan"
+            return info
+        # 계획 달성 후에는 쿼터가 풀리지만(bucket_required_eqp), 대조표에는
+        # '사용자 계산상 몇 대가 필요했는지'를 그대로 남겨야 검증이 된다.
+        info["plan_met_released"] = bool(
+            q.release_when_plan_met and self._plan_met(ppk, oper_id)
+        )
+        if iph is None:
+            info["skip_reason"] = "no_st"
+            return info
+
+        if q.static_daily:
+            # 하루 고정: D0 계획 전량 ÷ 전체 horizon (현재 시각과 무관 → 값이 안 흔들림)
+            basis_qty = float(plan_qty)
+            minutes = float(max(self.soft_cutoff, 1))
+        else:
+            done = self.stats["completed_qty"].get((ppk, oper_id), 0)
+            basis_qty = float(max(plan_qty - done, 0))
+            minutes = float(max(self.soft_cutoff - self.current_time, 0))
+
+        if q.use_achievable_cap:
+            basis_qty = min(basis_qty, float(self._achievable_qty(ppk, oper_id)))
+
+        hours = minutes / 60.0
+        info["basis_qty"] = basis_qty
+        info["hours"] = round(hours, 4)
+        info["capacity_per_eqp"] = round(iph * hours, 2)   # 장비 1대가 그 시간에 만드는 매수
+
+        if hours <= 0 or basis_qty <= 0:
+            # 잔여 시간·잔여 계획이 없으면 신규 장비 투입 근거가 없다 → min_eqp만 허용
+            required = max(q.min_eqp, 0)
+        else:
+            raw = basis_qty / (iph * hours) + q.headroom
+            info["raw"] = round(raw, 4)
+            required = self._round_required(raw)
+            required = max(required, q.min_eqp)
+        if capable > 0:
+            required = min(required, capable)
+        info["required"] = int(max(required, 0))
+        return info
+
+    def bucket_required_eqp(self, ppk: str, oper_id: str) -> Optional[int]:
+        """버킷에 붙일 수 있는 장비 대수 상한. None이면 무제한.
+
+        static_daily=True면 에피소드 1회 계산 후 캐시(하루 고정 쿼터).
+        """
+        q = CONFIG.quota
+        if not q.enabled:
+            return None
+        if q.release_when_plan_met and self._plan_met(ppk, oper_id):
+            # 계획 달성 후 남은 재공은 '필요 대수'가 아니라 소진 대상 → 쿼터 해제.
+            # (계획을 쫓는 동안만 사용자 계산이 의미를 갖는다. 계속 묶어두면
+            #  재공이 많은 라인에서 장비가 놀아 처리량만 깎인다.)
+            return None
+        if not q.static_daily:
+            return self.bucket_required_eqp_breakdown(ppk, oper_id)["required"]
+        # 하루 고정: 계획량·전체 horizon만 쓰므로 시각과 무관 → 1회 계산 후 고정.
+        key = (ppk, oper_id)
+        if key not in self._quota_cache:
+            self._quota_cache[key] = self.bucket_required_eqp_breakdown(
+                ppk, oper_id,
+            )["required"]
+        return self._quota_cache[key]
+
+    def bucket_committed_eqp_count(
+        self, ppk: str, oper_id: str, exclude_eqp: Optional[str] = None,
+    ) -> int:
+        """이 버킷에 '이미 붙어 있는' 장비 대수.
+
+        기준은 _bucket_projected_cover와 동일하게 마지막 셋업(prev_prod/prev_oper).
+        방금 끝내고 idle인 전담 장비도 계속 이 버킷 소속으로 센다(핸드오프 구멍 방지).
+        exclude_eqp(=결정 중인 장비)는 제외 → 자기 자신 때문에 자기 버킷이
+        막히는 일이 없다(= 계속 같은 공정을 도는 것은 절대 안 막힘 → 플립플롭 억제).
+        """
+        count = 0
+        for eqp_id in self._env_data.get("eqp_ids", []):
+            if eqp_id == exclude_eqp:
+                continue
+            e = self.eqps.get(eqp_id)
+            if e is None:
+                continue
+            if e.prev_prod == ppk and e.prev_oper == oper_id:
+                count += 1
+        return count
+
+    def bucket_quota_state(
+        self, eqp_id: Optional[str], ppk: str, oper_id: str,
+    ) -> Dict[str, Any]:
+        """이 장비가 이 버킷을 잡았을 때의 쿼터 상태.
+
+        occupied = 다른 장비 점유수 + 1(나) → required 초과분이 overflow.
+        """
+        required = self.bucket_required_eqp(ppk, oper_id)
+        others = self.bucket_committed_eqp_count(ppk, oper_id, exclude_eqp=eqp_id)
+        occupied = others + 1
+        overflow = 0 if required is None else max(occupied - required, 0)
+        released = (
+            CONFIG.quota.enabled
+            and CONFIG.quota.release_when_plan_met
+            and self._plan_met(ppk, oper_id)
+        )
+        return {
+            "ppk": ppk,
+            "oper_id": oper_id,
+            "required": required,
+            # 계획 달성으로 쿼터가 풀린 상태(required=None의 사유 구분용)
+            "plan_met_released": bool(released),
+            "committed_others": others,
+            "occupied_if_taken": occupied,
+            "overflow": overflow,
+            "over_quota": overflow > 0,
+        }
+
+    def bucket_over_quota(self, eqp_id: Optional[str], ppk: str, oper_id: str) -> bool:
+        """이 장비가 이 버킷을 잡으면 필요 대수를 초과하는가."""
+        required = self.bucket_required_eqp(ppk, oper_id)
+        if required is None:
+            return False
+        return self.bucket_committed_eqp_count(ppk, oper_id, exclude_eqp=eqp_id) + 1 > required
+
+    def allowed_bucket_keys(self, eqp_id: str) -> set:
+        """feasible 버킷 중 쿼터를 넘지 않는 것만.
+
+        전부 초과라 비면 allow_overflow_when_idle=True일 때 원래 집합으로 폴백
+        (장비를 놀리느니 초과 점유 — 처리량 손실 방지).
+        """
+        feasible = self._eqp_feasible_bucket_keys(eqp_id)
+        q = CONFIG.quota
+        if not q.enabled or not q.mask_enabled or not feasible:
+            return feasible
+        allowed = {
+            (ppk, oper_id) for (ppk, oper_id) in feasible
+            if not self.bucket_over_quota(eqp_id, ppk, oper_id)
+        }
+        if not allowed and q.allow_overflow_when_idle:
+            return feasible
+        return allowed
+
+    def get_allowed_ppk_oper(self, eqp_id: str) -> List[int]:
+        """쿼터를 반영한 배정 가능 flat 목록. 버전 기반 캐싱.
+
+        action mask와 step()의 폴백이 같은 집합을 보게 하는 단일 진입점.
+        """
+        q = CONFIG.quota
+        if not q.enabled or not q.mask_enabled:
+            return self.get_feasible_ppk_oper(eqp_id)
+        cached = self._allowed_cache.get(eqp_id)
+        if cached is not None and cached[0] == self._state_version:
+            return cached[1]
+        result = [
+            self.ppk_oper_flat_index(oper_id, ppk)
+            for ppk, oper_id in self.allowed_bucket_keys(eqp_id)
+        ]
+        self._allowed_cache[eqp_id] = (self._state_version, result)
+        return result
+
+    def _eqp_quota_reward(self, eqp_id: str, ppk: str, oper_id: str) -> Tuple[float, Dict[str, Any]]:
+        """필요 대수를 넘겨 점유했을 때의 페널티.
+
+        식: w_eqp_over_quota × min(overflow / max(required,1), 1.0)
+        """
+        cfg = self._reward_cfg
+        if cfg.w_eqp_over_quota >= 0 or not CONFIG.quota.enabled:
+            return 0.0, {}
+        state = self.bucket_quota_state(eqp_id, ppk, oper_id)
+        if not state["over_quota"]:
+            return 0.0, state
+        required = max(state["required"] or 1, 1)
+        ratio = min(state["overflow"] / required, 1.0)
+        return cfg.w_eqp_over_quota * ratio, state
+
+    def bucket_quota_report(self) -> List[Dict[str, Any]]:
+        """버킷별 '필요 장비수 vs 실제 투입 장비수' 대조표.
+
+        사용자가 엑셀로 하는 검증(계획 ÷ IPH ÷ 가동시간 = 몇 대)과 스케줄
+        결과를 같은 표에서 비교하기 위한 것. 추론 결과(eqp_quota_report)로
+        내보내 운영에서 바로 대조할 수 있다.
+
+        used_eqp   : 하루 전체 동안 이 버킷을 한 번이라도 돌린 장비 수
+        peak_eqp   : 같은 시각에 이 버킷을 동시에 돌린 최대 장비 수
+        over_used  : used_eqp - required (양수면 사용자 계산보다 많이 붙은 것)
+        """
+        by_bucket: Dict[tuple, Dict[str, Any]] = {}
+        for rec in self.schedule:
+            key = (rec["PLAN_PROD_ATTR_VAL"], rec["OPER_ID"])
+            slot = by_bucket.setdefault(key, {"eqps": set(), "spans": [], "qty": 0})
+            slot["eqps"].add(rec["EQP_ID"])
+            slot["spans"].append((rec["START_TM"], rec["END_TM"], rec["EQP_ID"]))
+            slot["qty"] += int(rec.get("WF_QTY", 0) or 0)
+
+        plan_meta = self._env_data.get("plan_meta", {})
+        keys = set(by_bucket) | {
+            k for k, pm in plan_meta.items() if pm.get("d0_plan_qty", 0) > 0
+        }
+
+        report: List[Dict[str, Any]] = []
+        for ppk, oper_id in sorted(keys):
+            info = self.bucket_required_eqp_breakdown(ppk, oper_id)
+            slot = by_bucket.get((ppk, oper_id))
+            used = sorted(slot["eqps"]) if slot else []
+            peak = self._peak_concurrent_eqp(slot["spans"]) if slot else 0
+            required = info.get("required")
+            report.append({
+                **info,
+                "produced_qty": slot["qty"] if slot else 0,
+                "used_eqp": len(used),
+                "used_eqp_ids": used,
+                "peak_eqp": peak,
+                "over_used": (len(used) - required) if required is not None else None,
+            })
+        return report
+
+    @staticmethod
+    def _peak_concurrent_eqp(spans: List[tuple]) -> int:
+        """겹치는 구간을 훑어 동시 가동 장비 최대 수를 센다(sweep line).
+
+        같은 장비의 연속 carrier는 1대로 세야 하므로 (시각, 장비) 단위로 훑는다.
+        """
+        events: List[tuple] = []
+        for start, end, eqp_id in spans:
+            events.append((start, 1, eqp_id))
+            events.append((end, -1, eqp_id))
+        events.sort(key=lambda e: (e[0], e[1]))
+        active: Dict[str, int] = {}
+        peak = 0
+        for _t, delta, eqp_id in events:
+            active[eqp_id] = active.get(eqp_id, 0) + delta
+            if active[eqp_id] <= 0:
+                active.pop(eqp_id, None)
+            peak = max(peak, len(active))
+        return peak
+
     # ── 벌크(블록) 점유 지원 ───────────────────────────────────────────────
 
     def _carrier_takt_minutes(self, ppk: str, oper_id: str) -> float:
@@ -1976,12 +2305,14 @@ class SchedulingSimulator:
     ) -> float:
         """벌크 블록 '시작' 결정에 대한 추가 보상 shaping (SchedulingRLEnv 전용).
 
-        세 항(모두 가중치 0이면 비활성):
+        네 항(모두 가중치 0이면 비활성):
           ① 블록 크기 보너스(+): 같은 제품군을 큰 블록으로 커밋할수록 보상.
           ② 전용 오용 페널티(−): 범용 장비가 더 전용적인 idle 장비도 가능한
              버킷을 잡으면 감점(전용 장비가 놀지 않게).
           ③ 중복 커버 페널티(−): 이미 다른 셋업 장비가 horizon 내 충분히
              덮는 버킷을 잡으면 감점(다른 제품으로 전환할 '용기').
+          ④ 장비수 쿼터 초과 페널티(−): 사용자 계산(계획÷IPH÷시간)상 필요한
+             대수를 이미 채운 버킷을 또 잡으면 초과 대수에 비례해 감점.
         """
         cfg = self._reward_cfg
         shaping = 0.0
@@ -2015,6 +2346,19 @@ class SchedulingSimulator:
             t = cfg.w_redundant_cover * min(cover / need, 2.0)
             shaping += t
             bulk_terms["redundant_cover"] = round(float(t), 4)
+
+        # ④ 장비수 쿼터 초과: 사용자 수기 계산과 같은 단위(대수)로 초과분을 잰다.
+        #    shaping += w_eqp_over_quota * min(overflow / required, 1.0)
+        #    마스크(allowed_bucket_keys)가 이미 대부분 막지만, 선택지가 전부
+        #    초과라 폴백된 경우·mask_enabled=False인 경우에도 신호는 남긴다.
+        t, quota_state = self._eqp_quota_reward(eqp_id, ppk, oper_id)
+        if t != 0.0:
+            shaping += t
+            bulk_terms["eqp_over_quota"] = round(float(t), 4)
+        if quota_state:
+            self._last_quota_state = quota_state
+            if self._last_decision_assignment is not None:
+                self._last_decision_assignment["quota"] = quota_state
 
         # 직전 배정의 리워드 분해에 벌크 항 병합 (decision_log 디버그용)
         if bulk_terms:

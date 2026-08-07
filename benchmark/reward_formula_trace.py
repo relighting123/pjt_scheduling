@@ -29,6 +29,7 @@ BULK_REWARD_ORDER = [
     "avoidable_conversion",
     "redundant_cover",
     "dedication_misuse",
+    "eqp_over_quota",
 ]
 
 # 항목별 PPT 상세 슬라이드 메타 + 대표 A/B 시나리오
@@ -185,6 +186,29 @@ REWARD_TERM_PAGES: List[Dict[str, Any]] = [
         },
         "trace_step": None,
     },
+    {
+        "key": "eqp_over_quota",
+        "weight": "−6.0",
+        "formula": "r = w_over_quota · min(초과대수 / 필요대수, 1)",
+        "desc": (
+            "사용자 수기 계산과 같은 식으로 봄 필요 장비 대수"
+            "(계획÷IPH÷가동시간)를 이미 채운 버킷을 또 잡으면 −. "
+            "과점유로 다른 버킷이 굶는 것을 막는다."
+        ),
+        "scenario_a": {
+            "title": "예시 A · 쿼터 이내",
+            "context": "필요 3대 / 이미 1대 점유 → 나 포함 2대",
+            "substitution": "초과 0 → 0",
+            "value": "0",
+        },
+        "scenario_b": {
+            "title": "예시 B · 쿼터 초과",
+            "context": "필요 2대 / 이미 2대 점유 → 나 포함 3대",
+            "substitution": "−6.0 · min(1 / 2, 1) = −3.0",
+            "value": "−3.0",
+        },
+        "trace_step": None,
+    },
 ]
 
 
@@ -276,7 +300,7 @@ def build_reward_formula_details(
     done_before: int,
     include_zero: bool = False,
 ) -> List[Dict[str, Any]]:
-    """스텝별 보상 항목 세부 산식. include_zero=True면 8개 항목 전부 반환."""
+    """스텝별 보상 항목 세부 산식. include_zero=True면 9개 항목 전부 반환."""
     cfg = sim._reward_cfg
     target = max(sim._achievable_qty(ppk, oper_id), 1)
     horizon = max(sim.soft_cutoff, 1)
@@ -442,6 +466,29 @@ def build_reward_formula_details(
             f"{w} · 1[전용 오용]" if val else "더 전용 idle 설비 없음 → 0",
             val,
             {"w_dedication_misuse": w},
+        )
+
+    # --- eqp_over_quota (장비수 쿼터 초과) ---
+    if cfg.w_eqp_over_quota != 0 and (include_zero or "eqp_over_quota" in breakdown):
+        w = cfg.w_eqp_over_quota
+        val = breakdown.get("eqp_over_quota", 0.0)
+        q = sim.bucket_quota_state(eqp_id, ppk, oper_id)
+        required = q.get("required")
+        emit(
+            "eqp_over_quota",
+            "w_over_quota · min(초과대수 / 필요대수, 1)",
+            (
+                f"{w} · min({q['overflow']} / {required}, 1)"
+                if val else
+                f"필요 {required}대 / 점유 {q['occupied_if_taken']}대 → 초과 없음 → 0"
+            ),
+            val,
+            {
+                "w_over_quota": w,
+                "required": required,
+                "occupied": q.get("occupied_if_taken"),
+                "overflow": q.get("overflow"),
+            },
         )
 
     by_key = {d["key"]: d for d in details}

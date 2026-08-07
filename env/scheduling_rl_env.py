@@ -298,7 +298,11 @@ class SchedulingRLEnv(gym.Env):
             bucket_mask[active] = True
             size_mask[0] = True
         else:
-            for flat in self.sim.get_feasible_ppk_oper(eqp_id):
+            # get_allowed_ppk_oper = feasible ∩ 장비수 쿼터(CONFIG.quota).
+            # 사용자 계산(계획÷IPH÷시간)상 필요 대수를 이미 채운 버킷은 빼서
+            # 과점유를 막는다. 선택지가 전부 초과면 시뮬레이터가 feasible로
+            # 폴백하므로(allow_overflow_when_idle) 장비가 유휴로 남지는 않는다.
+            for flat in self.sim.get_allowed_ppk_oper(eqp_id):
                 if 0 <= flat < self._n_bucket:
                     bucket_mask[flat] = True
             if not bucket_mask.any():
@@ -328,7 +332,9 @@ class SchedulingRLEnv(gym.Env):
         reward = 0.0
 
         if eqp_id is not None:
-            feasible = self.sim.get_feasible_ppk_oper(eqp_id)
+            # action_masks()와 동일한 집합(쿼터 반영)을 봐야 폴백이 마스크 밖
+            # 버킷으로 새지 않는다.
+            feasible = self.sim.get_allowed_ppk_oper(eqp_id)
             active = self._active_block_flat(eqp_id)
 
             if active is not None:

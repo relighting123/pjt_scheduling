@@ -552,6 +552,83 @@ class EnvConfig:
 
 
 @dataclass
+class EqpQuotaConfig:
+    """버킷(=PPK×OPER)별 '필요 장비 대수' 쿼터.
+
+    운영 라인에서 사용자가 손으로 하는 계산 —
+        필요대수 = 계획량 ÷ (IPH × 가동시간),  IPH = 60 / ST(분/매)
+    — 을 그대로 재현해 버킷 결정의 상한으로 쓴다.
+
+    왜 필요한가
+    -----------
+    기존에는 '필요 장비수'라는 개념이 없고 `_bucket_projected_cover`(다른 장비의
+    투영 생산량) + `w_redundant_cover` 페널티로 간접 억제만 했다. 그 결과
+    운영 검증에서 두 가지가 지적됐다.
+      ① 한 버킷에 사용자 계산보다 많은 장비가 붙어 다른 버킷이 굶는다.
+      ② 커버 값이 매 결정마다 바뀌어 시간대별로 장비가 공정 사이를 왔다갔다 한다.
+    쿼터를 '하루 고정'(static_daily)으로 한 번만 산출해 상한으로 걸면 ①이 막히고,
+    값이 흔들리지 않으므로 ②도 함께 줄어든다.
+    """
+    enabled: bool = True
+    # True  : 에피소드 시작 시 D0 계획량 × 전체 horizon으로 1회 산출해 하루 내내 고정
+    #         (사용자 수기 계산과 동일. 값이 안 흔들려 시간대별 장비 이동이 줄어든다)
+    # False : 매 결정마다 (잔여계획 ÷ 잔여시간)으로 롤링 재계산
+    static_daily: bool = True
+    # 필요대수 반올림 방식. 사용자 수기 계산은 보통 올림(ceil).
+    rounding: str = "ceil"          # ceil | round | floor
+    min_eqp: int = 1                # 계획이 있는 버킷에 최소 보장할 대수
+    headroom: float = 0.0           # 필요대수에 더할 여유 대수 (0.5 = 반 대 여유)
+    # 계획이 없는(d0_plan_qty=0) 버킷에도 쿼터를 걸지 여부. 기본 False —
+    # 계획 없는 재공 소진까지 막으면 장비가 놀기만 한다.
+    limit_planless: bool = False
+    # 계획을 이미 달성한 버킷은 쿼터를 푼다(무제한). 남은 재공은 계획이 아니라
+    # 소진 대상이라 '필요 대수' 개념이 성립하지 않는다 — 계속 묶어두면 재공이
+    # 많은 라인(테스트 데이터셋 등)에서 장비가 놀아 처리량만 깎인다.
+    # 한 방향으로만(묶임→풀림) 바뀌므로 값이 오락가락하지 않는다.
+    release_when_plan_met: bool = True
+    # 재공(achievable_qty)으로 필요대수를 상한할지. 재공이 부족한 버킷에
+    # 계획량 기준 대수가 통째로 붙는 것을 막는다. 기본 False(순수 계획 기준).
+    use_achievable_cap: bool = False
+    # 쿼터를 action mask에서도 강제할지(False면 리워드 페널티로만 유도)
+    mask_enabled: bool = True
+    # 그 장비의 선택지가 전부 쿼터 초과라 마스크가 비면 원래 feasible 집합으로
+    # 폴백한다(장비를 놀리느니 초과 점유). False면 초과 버킷은 끝까지 막는다.
+    allow_overflow_when_idle: bool = True
+
+
+def eqp_quota_params_dict(quota: Optional["EqpQuotaConfig"] = None) -> dict:
+    """EqpQuotaConfig → API/UI 공유 dict."""
+    q = quota or CONFIG.quota
+    return {
+        "enabled": q.enabled,
+        "static_daily": q.static_daily,
+        "rounding": q.rounding,
+        "min_eqp": q.min_eqp,
+        "headroom": q.headroom,
+        "limit_planless": q.limit_planless,
+        "release_when_plan_met": q.release_when_plan_met,
+        "use_achievable_cap": q.use_achievable_cap,
+        "mask_enabled": q.mask_enabled,
+        "allow_overflow_when_idle": q.allow_overflow_when_idle,
+    }
+
+
+def apply_eqp_quota_params(params: dict) -> None:
+    """요청 파라미터 → CONFIG.quota 반영."""
+    q = CONFIG.quota
+    for key in ("enabled", "static_daily", "limit_planless", "release_when_plan_met",
+                "use_achievable_cap", "mask_enabled", "allow_overflow_when_idle"):
+        if params.get(key) is not None:
+            setattr(q, key, bool(params[key]))
+    if params.get("rounding") in ("ceil", "round", "floor"):
+        q.rounding = params["rounding"]
+    if params.get("min_eqp") is not None:
+        q.min_eqp = int(params["min_eqp"])
+    if params.get("headroom") is not None:
+        q.headroom = float(params["headroom"])
+
+
+@dataclass
 class RLConfig:
     algorithm:       str   = "PPO"
     learning_rate:   float = 3e-4
@@ -738,6 +815,12 @@ class RewardConfig:
     # ③ 중복 커버 페널티(<0): 이미 다른 셋업 장비가 horizon 내 충분히 덮는 버킷을
     #    잡으면 감점 → 다른 제품으로 전환할 '용기'.
     w_redundant_cover:    float = -5.0
+    # ④ 장비수 쿼터 초과 페널티(<0): 사용자 수기 계산과 동일한 '필요 장비 대수'
+    #    (계획량 ÷ IPH ÷ 가동시간, CONFIG.quota 참고)를 이미 채운 버킷을 또
+    #    잡으면 초과분에 비례해 감점. ③의 redundant_cover는 '투영 생산량' 기준
+    #    연속 신호라 사용자가 세는 '대수'와 단위가 달라 검증이 안 됐다 —
+    #    이 항은 사용자와 같은 단위(대수)로 초과를 잰다.
+    w_eqp_over_quota:     float = -6.0
     # --- Step B: flow-balance shaping (WIP 비중 vs 계획 비중 기준) ---
     w_flow_balance:    float = 0.0       # [제거] cover 무시 → 전담 방해 2위라 제거
     # 후속 ready WIP / 후속 장비 합산 분당 처리량(매/분) ≤ 이 값(분)일 때만 feeding 보너스
@@ -786,6 +869,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_bulk_block_bonus": r.w_bulk_block_bonus,
         "w_dedication_misuse": r.w_dedication_misuse,
         "w_redundant_cover": r.w_redundant_cover,
+        "w_eqp_over_quota": r.w_eqp_over_quota,
         "w_flow_balance": r.w_flow_balance,
         "flow_balance_starving_cover_min": r.flow_balance_starving_cover_min,
         "reward_clip": r.reward_clip,
@@ -804,6 +888,7 @@ def apply_reward_params(params: dict) -> None:
         "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
+        "w_eqp_over_quota",
         "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
         "w_terminal_throughput", "w_terminal_conversion", "terminal_reward_clip",
     )
@@ -844,6 +929,7 @@ class Config:
     env:       EnvConfig       = field(default_factory=EnvConfig)
     rl:        RLConfig        = field(default_factory=RLConfig)
     reward:    RewardConfig    = field(default_factory=RewardConfig)
+    quota:     EqpQuotaConfig  = field(default_factory=EqpQuotaConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 

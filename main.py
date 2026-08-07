@@ -381,6 +381,27 @@ def _inference_summary_kpi(result: dict) -> dict:
     return {"makespan": makespan, "achievement_pct": achievement_pct}
 
 
+def _print_eqp_quota_summary(report: list) -> None:
+    """버킷별 '필요 장비수(계획÷IPH) vs 실제 투입' 요약 — 사용자 수기 검증용.
+
+    필요 대수보다 많이 붙은 버킷만 추려서 보여준다(전부 맞으면 한 줄).
+    """
+    if not report:
+        return
+    rows = [r for r in report if r.get("required") is not None]
+    if not rows:
+        return
+    over = [r for r in rows if (r.get("over_used") or 0) > 0]
+    moved = [r for r in rows if r["used_eqp"] > r["peak_eqp"]]
+    print(f"  장비수 쿼터:    필요 대비 초과 {len(over)}건 / 시간대 이동 {len(moved)}건 (전체 {len(rows)} 버킷)")
+    for r in over[:10]:
+        print(
+            f"    · {r['ppk']}/{r['oper_id']} 계획 {r['plan_qty']}매 "
+            f"IPH {r['iph']} → 필요 {r['required']}대 / 투입 {r['used_eqp']}대"
+            f"(동시 최대 {r['peak_eqp']}대)"
+        )
+
+
 def cmd_inference(
     fac_id: str,
     rule_timekey: str = None,
@@ -509,6 +530,7 @@ def cmd_inference(
     print(f"  공정 전환 횟수: {stats['oper_switches']}")
     print(f"  제품 전환 횟수: {stats['prod_switches']}")
     print(f"  Idle 합계:      {stats['idle_total']}분")
+    _print_eqp_quota_summary(result.get("eqp_quota_report", []))
     print(f"  결과 파일:      {path}")
     if decision_log:
         log = result.get("decision_log", [])

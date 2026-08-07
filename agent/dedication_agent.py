@@ -174,7 +174,8 @@ class DedicationAgent:
         eqp_id = sim.current_idle_eqp()
         if eqp_id is None:
             return np.array([0], dtype=np.int64)
-        feasible = sim.get_feasible_ppk_oper(eqp_id)
+        # 장비수 쿼터(계획÷IPH÷시간)를 넘긴 버킷은 후보에서 제외
+        feasible = sim.get_allowed_ppk_oper(eqp_id)
         if not feasible:
             return np.array([0], dtype=np.int64)
 

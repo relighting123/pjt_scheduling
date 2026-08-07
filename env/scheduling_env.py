@@ -411,7 +411,9 @@ class SchedulingEnv(gym.Env):
                 else:
                     reward = -0.5
             else:
-                feasible = self.sim.get_feasible_ppk_oper(eqp_id)
+                # 쿼터(CONFIG.quota) 반영 집합 — action_masks()와 동일해야
+                # 폴백이 마스크 밖 버킷으로 새지 않는다.
+                feasible = self.sim.get_allowed_ppk_oper(eqp_id)
                 if ppk_oper_idx < 0 and self.sim._has_pending_processing():
                     # HOLD 센티널(음수 액션): 에이전트가 이번 결정을 명시적으로
                     # 보류한다(dedication 등 휴리스틱 전용 — 전환 채터링 방지).
@@ -541,7 +543,9 @@ class SchedulingEnv(gym.Env):
             ppk_mask[0] = True
             return ppk_mask
 
-        for flat in self.sim.get_feasible_ppk_oper(eqp_id):
+        # feasible ∩ 장비수 쿼터(계획÷IPH÷시간) — 필요 대수를 이미 채운 버킷은
+        # 제외해 과점유를 막는다(전부 초과면 시뮬레이터가 feasible로 폴백).
+        for flat in self.sim.get_allowed_ppk_oper(eqp_id):
             if 0 <= flat < n_ppk:
                 ppk_mask[flat] = True
 

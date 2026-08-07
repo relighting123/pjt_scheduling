@@ -214,6 +214,9 @@ def run_inference_with_agent(
             "termination_mode": sched_env.sim._termination_mode,
             "enable_wip_inflow": sched_env.sim._enable_wip_inflow,
         },
+        # 버킷별 '필요 장비수(계획÷IPH÷가동시간) vs 실제 투입 장비수' 대조표.
+        # 사용자가 손으로 하는 검증과 같은 식·같은 단위라 바로 비교할 수 있다.
+        "eqp_quota_report": sched_env.sim.bucket_quota_report(),
         "plan":      env_data["plan"],
         "sim_base_time": base_time.isoformat(sep=" ") if hasattr(base_time, "isoformat") else str(base_time),
         "algorithm": algorithm,
@@ -308,6 +311,9 @@ def _run_scheduling_rl_inference(
             "termination_mode": sched_env.sim._termination_mode,
             "enable_wip_inflow": sched_env.sim._enable_wip_inflow,
         },
+        # 버킷별 '필요 장비수(계획÷IPH÷가동시간) vs 실제 투입 장비수' 대조표.
+        # 사용자가 손으로 하는 검증과 같은 식·같은 단위라 바로 비교할 수 있다.
+        "eqp_quota_report": sched_env.sim.bucket_quota_report(),
         "plan":      env_data["plan"],
         "sim_base_time": base_time.isoformat(sep=" ") if hasattr(base_time, "isoformat") else str(base_time),
         "algorithm": algorithm,

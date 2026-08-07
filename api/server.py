@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey, model_dir_for
+from config import CONFIG, set_input_folder, list_input_folders, PERIOD_SPLITS, validate_path_segment, parse_input_folder, latest_period, folders_in_period_range, format_missing_input_file_error, reward_params_dict, apply_reward_params, eqp_quota_params_dict, resolve_infer_rule_timekey, resolve_train_folders, normalize_rule_timekey, model_dir_for
 from data.loader import load_data, validate_data, fetch_from_db, preprocess
 from data.loader.sql_binds import resolve_lot_cd
 from data.writer.db_load import load_output_sql_files
@@ -314,6 +314,8 @@ class RewardParams(BaseModel):
     w_bulk_block_bonus: float = Field(default=CONFIG.reward.w_bulk_block_bonus)
     w_dedication_misuse: float = Field(default=CONFIG.reward.w_dedication_misuse)
     w_redundant_cover: float = Field(default=CONFIG.reward.w_redundant_cover)
+    # 장비수 쿼터(계획÷IPH÷가동시간) 초과 점유 페널티
+    w_eqp_over_quota: float = Field(default=CONFIG.reward.w_eqp_over_quota)
     w_flow_balance: float = Field(default=CONFIG.reward.w_flow_balance)
     flow_balance_starving_cover_min: float = Field(default=CONFIG.reward.flow_balance_starving_cover_min)
     reward_clip: float = Field(default=CONFIG.reward.reward_clip, ge=0.1)
@@ -733,6 +735,8 @@ def get_config():
         "default_n_episodes": CONFIG.rl.default_n_episodes,
         "default_learning_rate": CONFIG.rl.learning_rate,
         "default_reward": reward_params_dict(),
+        # 버킷별 필요 장비수 쿼터 (계획÷IPH÷가동시간)
+        "default_eqp_quota": eqp_quota_params_dict(),
         "default_env": {
             "conversion_minutes": CONFIG.env.conversion_minutes,
             "max_conversions": CONFIG.env.max_conversions,

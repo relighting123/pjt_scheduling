@@ -299,10 +299,24 @@ export interface RewardConfig {
   w_bulk_block_bonus: number;
   w_dedication_misuse: number;
   w_redundant_cover: number;
+  w_eqp_over_quota: number;
   w_flow_balance: number;
   flow_balance_starving_cover_min: number;
   reward_clip: number;
   use_achievable_target: boolean;
+}
+
+export interface EqpQuotaConfig {
+  enabled: boolean;
+  static_daily: boolean;
+  rounding: string;
+  min_eqp: number;
+  headroom: number;
+  limit_planless: boolean;
+  release_when_plan_met: boolean;
+  use_achievable_cap: boolean;
+  mask_enabled: boolean;
+  allow_overflow_when_idle: boolean;
 }
 
 export interface EnvDefaults {
@@ -328,6 +342,7 @@ export interface AppConfig {
   default_n_episodes: number;
   default_learning_rate: number;
   default_reward: RewardConfig;
+  default_eqp_quota?: EqpQuotaConfig;
   default_env?: EnvDefaults;
 }
 

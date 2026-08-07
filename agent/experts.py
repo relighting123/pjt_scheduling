@@ -117,7 +117,7 @@ class EarliestSTExpert(ExpertPolicy):
         del env_data
 
     def bucket(self, sim, eqp_id, mask, n_bucket):
-        feasible = set(sim.get_feasible_ppk_oper(eqp_id))
+        feasible = set(sim.get_allowed_ppk_oper(eqp_id))
         if not feasible:
             return self._fallback(mask, n_bucket)
 

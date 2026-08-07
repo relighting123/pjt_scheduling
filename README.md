@@ -189,6 +189,8 @@ CONVERSION_GROUPS = {
   타지 않고 항상 그대로 반영됩니다.
 - 위 자격 조건을 만족하는 carrier가 하나도 없는 `(PPK,OPER)` 버킷은 해당 EQP의
   액션 마스크(`get_feasible_ppk_oper`)에서 제외됩니다.
+- 그 위에 **장비수 쿼터**(`get_allowed_ppk_oper`)가 한 겹 더 걸립니다 — 필요 대수를
+  이미 채운 버킷은 마스크에서 빠집니다. 아래 [장비수 쿼터](#장비수-쿼터-필요-장비-대수--계획--iph) 참고.
 
 Earliest-ST는 idle EQP 전체 × feasible LOT을 한 번에 비교해 예상 종료 시각이 가장 이른 **EQP×carrier** 1건을 선택합니다.
 
@@ -267,6 +269,7 @@ value 추정과 advantage가 같이 흐려진다.
 | `w_bulk_block_bonus` | 3.0 | (Bulk-Fill 전용) 같은 제품군을 큰 블록으로 커밋할수록 보상 |
 | `w_dedication_misuse` | -4.0 | (Bulk-Fill 전용) 범용 장비가 더 전용적인 idle 장비 몫의 버킷을 잡으면 감점 |
 | `w_redundant_cover` | -5.0 | (Bulk-Fill 전용) 이미 다른 장비가 충분히 커버 중인 버킷을 또 잡으면 감점 |
+| `w_eqp_over_quota` | -6.0 | 사용자 계산(계획÷IPH÷가동시간)상 **필요 장비 대수**를 이미 채운 버킷을 또 잡으면 초과 대수에 비례해 감점 → [장비수 쿼터](#장비수-쿼터-필요-장비-대수--계획--iph) |
 | `reward_clip` | ±20.0 | step reward clip (PPO 안정화) |
 | `w_terminal_throughput` | 30.0 | **에피소드 종료 시** `완료 carrier / 생산가능 carrier` 비율 보상 |
 | `w_terminal_conversion` | -1.0 | **에피소드 종료 시** 전환 총횟수 패널티 |
@@ -274,6 +277,77 @@ value 추정과 advantage가 같이 흐려진다.
 | `w_plan_hit` / `w_pacing` / `w_flow_balance` / `w_idle_per_min` | 0.0 | cover 무시·전담 방해로 판단되어 제거됨(주석 참고) |
 
 `use_achievable_target=True`: 재공이 부족하면 무리한 계획 추격을 막고, 선행 공정 투입 유도.
+
+### 장비수 쿼터 (필요 장비 대수 = 계획 ÷ IPH)
+
+운영 라인 사용자는 버킷마다 **계획량을 IPH로 나눠 "몇 대 필요하다"**를 손으로
+계산해 검증한다. 기존 스케줄러에는 이 개념이 없었고 `_bucket_projected_cover`
+(다른 장비의 투영 생산 **매수**) + `w_redundant_cover`로 간접 억제만 했다.
+단위가 사용자와 달라 대조가 안 됐고, 커버 값이 결정마다 바뀌어 **시간대별로
+장비가 공정 사이를 옮겨다니는** 문제도 남았다. 그래서 사용자와 **같은 식·같은
+단위(대수)** 로 상한을 계산해 버킷 결정에 직접 건다.
+
+```
+IPH        = 60 / ST(분/매)                       # 장비 1대 시간당 처리량
+필요대수    = ceil( 계획량 ÷ (IPH × 가동시간) )      # 사용자 수기 계산과 동일
+           → [min_eqp, 처리가능 장비수] 로 clamp
+점유대수    = 이 버킷에 마지막 셋업된 다른 장비 수 + 1(나)
+초과        = max(점유대수 − 필요대수, 0)
+```
+
+- **하루 고정**(`static_daily=True`, 기본): D0 계획 전량 × 전체 horizon으로
+  에피소드 시작 시 **1회만** 산출해 캐시한다. 값이 흔들리지 않으므로 시간대별
+  장비 이동이 줄어든다. `False`면 (잔여계획 ÷ 잔여시간) 롤링 재계산.
+- **자기 자신은 점유수에서 제외**한다(`exclude_eqp`). 이미 그 버킷에 셋업된
+  장비가 계속 도는 것은 쿼터가 절대 막지 않는다 — 막으면 오히려 공정을
+  옮겨다니게 되어 플립플롭이 심해진다.
+- **마스크 + 리워드 양쪽**에 적용된다. 마스크(`get_allowed_ppk_oper`)가 초과
+  버킷을 빼고, 그래도 초과 배정이 일어나면 `w_eqp_over_quota`가 감점한다.
+- **선택지가 전부 초과면 원래 feasible로 폴백**한다
+  (`allow_overflow_when_idle=True`, 기본) — 장비를 놀리느니 초과 점유가 낫다.
+  `False`로 두면 끝까지 막지만, 그 장비는 다음 이벤트까지 유휴로 남는다.
+- 계획이 없는(`d0_plan_qty=0`) 버킷은 재공 소진용이라 쿼터를 걸지 않는다
+  (`limit_planless=False`).
+- **계획을 채운 버킷은 쿼터가 풀린다**(`release_when_plan_met=True`). 남은 재공은
+  계획이 아니라 소진 대상이라 '필요 대수'가 성립하지 않는다 — 계속 묶어두면
+  재공이 많은 라인에서 장비만 놀게 된다. 한 방향(묶임→풀림)으로만 바뀌므로
+  값이 오락가락하지 않는다.
+
+설정은 `CONFIG.quota`(`config.py`의 `EqpQuotaConfig`):
+
+| 필드 | 기본값 | 설명 |
+|------|--------|------|
+| `enabled` | True | 쿼터 전체 on/off (off면 기존 동작과 완전히 동일) |
+| `static_daily` | True | 하루 고정 쿼터. False면 잔여 기준 롤링 |
+| `rounding` | `ceil` | 필요대수 반올림 (`ceil`/`round`/`floor`) |
+| `min_eqp` | 1 | 계획 있는 버킷의 최소 보장 대수 |
+| `headroom` | 0.0 | 필요대수에 더할 여유 대수 |
+| `limit_planless` | False | 계획 없는 버킷에도 쿼터 적용 |
+| `release_when_plan_met` | True | 계획 달성한 버킷은 쿼터 해제 |
+| `use_achievable_cap` | False | 재공(achievable_qty)으로 필요대수 상한 |
+| `mask_enabled` | True | 마스크에서도 강제 (False면 리워드 페널티만) |
+| `allow_overflow_when_idle` | True | 전부 초과면 feasible로 폴백 |
+
+**벤치마크 영향**(같은 모델 `models/best`, 쿼터 off→on):
+
+| 스위트 | Bulk-Fill RL | Dedication(휴리스틱 기준선) |
+|--------|--------------|------------------------------|
+| BENCH_SUITE (10종) | 26.0 → **133.0** | 152.0 → 132.0 |
+| HOLDOUT_SUITE (6종) | −6.0 → **59.0** | 69.0 → 54.0 |
+
+RL 정책은 쿼터 마스크가 과점유·전환 폭주를 막아 크게 개선된다(재학습 없이도).
+반대로 `dedication` 휴리스틱은 점수가 내려가는데, 벤치 데이터셋은 **재공 ≫ 계획**
+(계획 8매 vs 캐리어 25매)이라 KPI가 '계획 무시하고 재공을 최대한 밀어내기'를
+보상하기 때문이다. 계획을 지키는 배분과 재공 밀어내기가 상충하는 구간이며,
+계획 준수가 목적이 아니라면 `CONFIG.quota.enabled=False`로 기존 동작으로 되돌릴 수 있다.
+
+**검증**: 추론 결과에 `eqp_quota_report`가 실린다 —
+버킷별 `plan_qty / st_min_per_wafer / iph / hours / required`(사용자 계산식 그대로)와
+실제 결과 `used_eqp`(하루 동안 이 버킷을 돌린 장비 수) / `peak_eqp`(동시 가동
+최대) / `over_used = used_eqp − required`. `used_eqp > peak_eqp`이면 대수는
+맞지만 시간대별로 장비가 바뀐 것이고, `over_used > 0`이면 사용자 계산보다 많이
+붙은 것이다. `record_decision_log=True`면 step별로도 `eqp_quota`(선택 버킷의
+산출 근거)와 `blocked_buckets[].reason = "eqp_quota_full"`을 볼 수 있다.
 
 **종단(terminal) KPI 보상**: 위 step reward는 전부 대리지표라 "보상이 가장 높은
 정책"이 "벤치마크 KPI가 가장 좋은 정책"이라는 보장이 없었다. `w_terminal_*`는
