@@ -2026,13 +2026,14 @@ class SchedulingSimulator:
         return shaping
 
     def ppk_oper_flat_index(self, oper_id: str, ppk: str) -> int:
+        """(OPER, PPK) → flat bucket index. config O×P 밖이면 -1."""
         data = self._env_data
         O = CONFIG.env.max_oper_count
         P = CONFIG.env.max_prod_count
         oi = data["oper_idx"].get(oper_id, -1)
         pi = data["prod_idx"].get(ppk, -1)
-        if oi < 0 or pi < 0:
-            return 0
+        if oi < 0 or pi < 0 or oi >= O or pi >= P:
+            return -1
         return oi * P + pi
 
     def ppk_oper_from_flat(self, flat_idx: int) -> tuple:
@@ -2057,10 +2058,13 @@ class SchedulingSimulator:
 
     def _compute_feasible_ppk_oper(self, eqp_id: str) -> List[int]:
         """get_feasible_ppk_oper() 실계산 본체."""
-        return [
-            self.ppk_oper_flat_index(oper_id, ppk)
-            for ppk, oper_id in self._eqp_feasible_bucket_keys(eqp_id)
-        ]
+        n_bucket = CONFIG.env.max_oper_count * CONFIG.env.max_prod_count
+        result: List[int] = []
+        for ppk, oper_id in self._eqp_feasible_bucket_keys(eqp_id):
+            flat = self.ppk_oper_flat_index(oper_id, ppk)
+            if 0 <= flat < n_bucket:
+                result.append(flat)
+        return result
 
     def get_feasible_assignments(self) -> List[tuple]:
         """유효 (ppk_oper_flat_idx, eqp_idx) 목록. 하위 호환."""

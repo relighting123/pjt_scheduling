@@ -298,6 +298,9 @@ class SchedulingRLEnv(gym.Env):
             bucket_mask[active] = True
             size_mask[0] = True
         else:
+            if active is not None:
+                # config O×P 밖 버킷은 블록 종료 후 일반 마스크로 폴백
+                self._block.pop(eqp_id, None)
             for flat in self.sim.get_feasible_ppk_oper(eqp_id):
                 if 0 <= flat < self._n_bucket:
                     bucket_mask[flat] = True
