@@ -1951,14 +1951,20 @@ class SchedulingSimulator:
             info["skip_reason"] = "no_st"
             return info
 
+        # 실제 마감은 soft_cutoff와 sim_end 중 먼저 오는 쪽(DedicationAgent._deadline과
+        # 동일 정의). soft_cutoff만 쓰면 sim_end이 더 짧게 잡힌 환경(벤치마크 등)에서
+        # 실제보다 훨씬 긴 하루로 착각해 필요 대수를 과소 산정한다 — dedication
+        # 자신의 판단(더 짧은 실제 마감 기준)보다 적은 대수로 마스크를 씌우면
+        # 오히려 계획을 못 따라가 전환만 늘어난다.
+        deadline = min(self.soft_cutoff, self.sim_end)
         if q.static_daily:
             # 하루 고정: D0 계획 전량 ÷ 전체 horizon (현재 시각과 무관 → 값이 안 흔들림)
             basis_qty = float(plan_qty)
-            minutes = float(max(self.soft_cutoff, 1))
+            minutes = float(max(deadline, 1))
         else:
             done = self.stats["completed_qty"].get((ppk, oper_id), 0)
             basis_qty = float(max(plan_qty - done, 0))
-            minutes = float(max(self.soft_cutoff - self.current_time, 0))
+            minutes = float(max(deadline - self.current_time, 0))
 
         if q.use_achievable_cap:
             basis_qty = min(basis_qty, float(self._achievable_qty(ppk, oper_id)))

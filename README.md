@@ -289,11 +289,19 @@ value 추정과 advantage가 같이 흐려진다.
 
 ```
 IPH        = 60 / ST(분/매)                       # 장비 1대 시간당 처리량
+가동시간    = min(soft_cutoff, sim_end) − 현재시각    # DedicationAgent._deadline()과 동일
 필요대수    = ceil( 계획량 ÷ (IPH × 가동시간) )      # 사용자 수기 계산과 동일
            → [min_eqp, 처리가능 장비수] 로 clamp
 점유대수    = 이 버킷에 마지막 셋업된 다른 장비 수 + 1(나)
 초과        = max(점유대수 − 필요대수, 0)
 ```
+
+가동시간을 `soft_cutoff`만으로 잡으면(초기 구현의 버그) `sim_end`이 더 짧게
+설정된 환경(벤치마크가 실제로 이렇게 한다 — 아래 표 참고)에서 실제보다 훨씬
+긴 하루로 착각해 필요대수를 과소 산정한다. `dedication` 휴리스틱 자신은
+이미 `min(soft_cutoff, sim_end)` 기준으로 커버를 계산하므로, 이 마감을
+안 맞추면 쿼터가 dedication 자신의 판단보다 적은 대수로 마스크를 씌워
+계획을 못 따라가는 버킷이 생기고 그걸 만회하려 전환만 늘어난다.
 
 - **하루 고정**(`static_daily=True`, 기본): D0 계획 전량 × 전체 horizon으로
   에피소드 시작 시 **1회만** 산출해 캐시한다. 값이 흔들리지 않으므로 시간대별
@@ -328,18 +336,26 @@ IPH        = 60 / ST(분/매)                       # 장비 1대 시간당 처�
 | `mask_enabled` | True | 마스크에서도 강제 (False면 리워드 페널티만) |
 | `allow_overflow_when_idle` | True | 전부 초과면 feasible로 폴백 |
 
-**벤치마크 영향**(같은 모델 `models/best`, 쿼터 off→on):
+**벤치마크 영향**(같은 모델 `models/best`, 쿼터 off→on, 가동시간
+`min(soft_cutoff,sim_end)` 반영 후):
 
 | 스위트 | Bulk-Fill RL | Dedication(휴리스틱 기준선) |
 |--------|--------------|------------------------------|
-| BENCH_SUITE (10종) | 26.0 → **133.0** | 152.0 → 132.0 |
-| HOLDOUT_SUITE (6종) | −6.0 → **59.0** | 69.0 → 54.0 |
+| BENCH_SUITE (10종) | 26.0 → **134.0** | 152.0 → 138.0 |
+| HOLDOUT_SUITE (6종) | −6.0 → **36.0** | 69.0 → 63.0 |
 
-RL 정책은 쿼터 마스크가 과점유·전환 폭주를 막아 크게 개선된다(재학습 없이도).
-반대로 `dedication` 휴리스틱은 점수가 내려가는데, 벤치 데이터셋은 **재공 ≫ 계획**
-(계획 8매 vs 캐리어 25매)이라 KPI가 '계획 무시하고 재공을 최대한 밀어내기'를
-보상하기 때문이다. 계획을 지키는 배분과 재공 밀어내기가 상충하는 구간이며,
-계획 준수가 목적이 아니라면 `CONFIG.quota.enabled=False`로 기존 동작으로 되돌릴 수 있다.
+`dedication`은 자기 자신도 `get_allowed_ppk_oper`로 쿼터를 보게 바꿨는데,
+초기 구현은 가동시간을 `soft_cutoff`(22시간)로만 계산해 `sim_end`을 짧게
+덮어쓰는 벤치마크(예: LOAD_skew는 `sim_end=450분`=7.5시간)에서 필요대수를
+실제보다 훨씬 적게 잡았다. `dedication` 자신의 판단(`min(soft_cutoff,
+sim_end)` 기준 커버 계산)보다 적은 대수로 마스크가 씌워져 계획을 못 따라가는
+버킷이 생기고 전환만 늘었다 — LOAD_skew 생산 16/30(쿼터 on, 버그) →
+**20/30**(가동시간 수정 후, 쿼터 off와 동일) 로 확인. 위 표는 수정 후 값이다.
+남은 소폭 차이(BENCH_SUITE 152→138)는 **하루 고정** 쿼터가 한 번 계산한
+상한을 고정하는 반면 `dedication`은 시간이 지날수록 커버·잔여를 계속
+재평가하는 완전 동적 로직이라 생기는, 플립플롭 억제(사용자가 선택한
+`static_daily=True`)의 의도된 대가다. `CONFIG.quota.enabled=False`로
+기존 동작으로 되돌릴 수 있다.
 
 **검증**: 추론 결과에 `eqp_quota_report`가 실린다 —
 버킷별 `plan_qty / st_min_per_wafer / iph / hours / required`(사용자 계산식 그대로)와

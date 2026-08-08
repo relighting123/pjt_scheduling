@@ -99,6 +99,34 @@ def test_rolling_quota_tracks_remaining(env_data, quota_defaults):
     assert after_done["required"] <= at_start["required"]
 
 
+def test_deadline_uses_shorter_of_soft_cutoff_and_sim_end(env_data, quota_defaults):
+    """가동시간은 min(soft_cutoff, sim_end) — 벤치마크처럼 sim_end을 짧게
+    덮어써 soft_cutoff보다 먼저 끝나는 환경에서 '가동시간'을 실제보다
+    길게(=필요대수를 적게) 잡으면 안 된다.
+
+    DedicationAgent._deadline()과 동일 정의라야 한다 — 안 맞으면 이
+    쿼터가 dedication 자신의 판단보다 적은 대수로 마스크를 씌워, 계획을
+    못 따라가는 버킷이 생기고 그걸 만회하려 전환만 늘어난다(실측: 벤치마크
+    LOAD_skew에서 dedication 생산 16/30 → 20/30, 이 값이 quota 없을 때와
+    동일하게 맞아떨어짐).
+    """
+    sim = SchedulingSimulator(env_data, record_history=False, record_event_log=False)
+    ppk, oper_id = _planned_bucket(sim)
+    assert sim.soft_cutoff > 0
+
+    # soft_cutoff보다 훨씬 짧은 sim_end (벤치마크가 실제로 하는 오버라이드)
+    sim.sim_end = max(sim.soft_cutoff // 4, 1)
+    sim._quota_cache.clear()
+
+    info = sim.bucket_required_eqp_breakdown(ppk, oper_id)
+    assert info["hours"] == pytest.approx(sim.sim_end / 60.0, rel=1e-6)
+
+    plan_qty = sim._env_data["plan_meta"][(ppk, oper_id)]["d0_plan_qty"]
+    iph = sim.bucket_iph(ppk, oper_id)
+    expected_raw = plan_qty / (iph * (sim.sim_end / 60.0))
+    assert info["raw"] == pytest.approx(expected_raw, rel=1e-4)
+
+
 def test_quota_released_after_plan_met(env_data, quota_defaults):
     """계획을 채운 버킷은 쿼터가 풀린다 — 남은 재공 소진에 장비를 다시 붙일 수 있다."""
     sim = SchedulingSimulator(env_data, record_history=False, record_event_log=False)
