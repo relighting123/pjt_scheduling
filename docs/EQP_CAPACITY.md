@@ -1,0 +1,397 @@
+# 적정 장비 대수 산출과 정원 마스킹 — 예시 데이터로 보는 동작 방식
+
+제품(PPK)·공정(OPER)별로 **마감까지 잔여량을 처리하는 데 필요한 장비 대수**를 산출하고,
+재공이 그 대수를 실제로 먹일 수 있는 버킷만 **그 대수까지로 배정을 제한**하는 기능이다.
+구현은 `simulation/eqp_capacity.py`, 요약은 [README](../README.md#적정-장비-대수-정원-마스킹-eqp_capacity_mask_enabled-선택) 참고.
+
+세 단계로 돈다.
+
+| 단계 | 하는 일 | 산출물 |
+|------|---------|--------|
+| 1. 필요 대수 산출 | 마감까지 잔여량 ÷ 모델 ST → 필요 장비 대수 | `REQ_EQP_CNT` |
+| 2. 재공 적정성 사전 체크 | 그 대수를 먹일 재공이 있는지 → 구동 가능한 정원으로 축소 | `PLAN_EQP_CNT`, `RUNNABLE_YN`, `REASON_CD` |
+| 3. 정원 마스킹 | 정원까지만 배정 허용, 하던 장비 우선 유지 | `ALLOC_EQP_CNT` |
+
+이 문서의 모든 수치는 아래 예시 데이터를 실제로 돌려 얻은 값이다.
+
+---
+
+## 예시 데이터
+
+RULE_TIMEKEY `20260808070000`(07:00) 기준, 마감(`soft_cutoff`)은 1320분 뒤인 익일 05:00.
+
+**장비 4대 · 모델 2종** — 같은 공정을 처리하지만 ST가 다르다.
+
+| EQP_ID | EQP_MODEL_CD | ST (분/매) | 분당 처리량 (1/ST) |
+|--------|--------------|-----------|-------------------|
+| EQP001 | A | 60 | 0.01667 |
+| EQP002 | A | 60 | 0.01667 |
+| EQP003 | B | 120 | 0.00833 |
+| EQP004 | B | 120 | 0.00833 |
+
+**제품 2종 · 공정 1개(OPER001)**
+
+| PPK | LOT_CD / TEMP | D0 계획 | 재공(ready) |
+|-----|---------------|--------|------------|
+| PPK001 | LC001 / T700 | 60매 | 4 carrier = 100매 |
+| PPK002 | LC002 / T650 | 20매 | 1 carrier = 25매 |
+
+입력 JSON은 기존 스키마 그대로다(`plan.json`, `abstract_arrange.json`, `discrete_arrange.json`,
+`batch_info.json`). 새로 추가되는 입력 파일은 **없다** — 적정 대수는 이미 있는 계획·ST·재공에서 계산한다.
+
+```jsonc
+// plan.json — 마감까지의 목표 수량
+[{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "D0_PLAN_QTY": 60, ...},
+ {"PLAN_PROD_ATTR_VAL": "PPK002", "OPER_ID": "OPER001", "D0_PLAN_QTY": 20, ...}]
+
+// abstract_arrange.json — (PPK, OPER, EQP_MODEL)별 ST
+[{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "A", "ST": 60},
+ {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "EQP_MODEL_CD": "B", "ST": 120}, ...]
+```
+
+---
+
+## 1단계 — 필요 대수 산출
+
+### 계산식
+
+```
+마감시각   = min(soft_cutoff, sim_end)            # 둘 중 이른 쪽
+남은시간   = 마감시각 − 현재시각                    (분)
+잔여량     = min(계획 − 기배정, 재공 + 가공중)      # 계획이 있는 버킷
+           = 남은 재공                            # 계획이 없는 버킷
+필요처리율 = 잔여량 / 남은시간                      (매/분)
+필요 대수  = 우선순위 순으로 1/ST를 누적해 필요처리율에 도달하는 장비 수
+```
+
+마지막 줄이 핵심이다. 모델마다 ST가 다르면 "대수 × 평균 ST"로는 맞지 않으므로,
+**장비를 우선순위 순으로 한 대씩 붙이며 분당 처리량을 누적**한다.
+
+### PPK001 (계획 60매)
+
+```
+필요처리율 = 60매 / 1320분 = 0.04545 매/분
+
+  1대(EQP001, 모델 A)  누적 0.01667  <  0.04545   → 부족
+  2대(EQP002, 모델 A)  누적 0.03333  <  0.04545   → 부족
+  3대(EQP003, 모델 B)  누적 0.04167  <  0.04545   → 부족
+  4대(EQP004, 모델 B)  누적 0.05000  ≥  0.04545   → 도달
+
+  → 필요 4대 (모델 A 2대 + 모델 B 2대)
+```
+
+### PPK002 (계획 20매)
+
+```
+필요처리율 = 20매 / 1320분 = 0.01515 매/분
+
+  1대(EQP001, 모델 A)  누적 0.01667  ≥  0.01515   → 도달
+
+  → 필요 1대 (모델 A 1대)
+```
+
+### 실행 결과
+
+```
+PPK001/OPER001: horizon=1320 plan=60 done=0 remain=60 wip=100매/4carrier st_avg=90.0
+                → 필요 4대 / 정원 4대 (OK, runnable=True)
+    필요 장비: ['EQP001', 'EQP002', 'EQP003', 'EQP004']
+    모델별 필요={'A': 2, 'B': 2}
+PPK002/OPER001: horizon=1320 plan=20 done=0 remain=20 wip=25매/1carrier st_avg=90.0
+                → 필요 1대 / 정원 1대 (OK, runnable=True)
+    필요 장비: ['EQP001']
+    모델별 필요={'A': 1}
+```
+
+> **정원의 합은 장비 수와 무관하다.** 위 예시는 PPK001 4대 + PPK002 1대 = 5대로 실제 장비
+> 4대를 넘는다. 정원은 버킷별 **동시 상한**이지 장비를 배타적으로 예약하는 값이 아니다 —
+> 어느 버킷에 실제로 몇 대를 붙일지는 그대로 에이전트(RL/휴리스틱)의 선택이고, 정원은
+> "한 버킷이 필요 이상으로 장비를 물지 못하게" 막는 상한으로만 작동한다.
+
+---
+
+## 2단계 — 재공 적정성 사전 체크
+
+대수만 맞춰도 그 대수를 먹일 재공이 없으면 의미가 없다. 그래서 정원으로 확정하기 전에
+재공이 그 대수를 지탱하는지 본다.
+
+```
+재공 작업량   = 재공 매수 × 평균 ST                      (분)
+재공 기준 상한 = min(ready carrier 수,                   # 한 대는 최소 1 carrier
+                    재공 작업량 / capacity_min_run_minutes)   # 대당 최소 가동시간
+정원          = min(필요 대수, 재공 기준 상한, 처리 가능 장비 수)
+정원          = max(정원, 1)   # 단, 재공이 남아 있으면 최소 1대는 연다
+```
+
+`capacity_min_run_minutes`(기본 60분 = 전환 시간)보다 짧게 돌 거면 그 장비를 부르는 것이
+손해라는 판단이다. PPK001 기본 케이스는 `100매 × 90분 = 9000분 ÷ 60분 = 150대`,
+carrier 4개 → 상한 4대라 필요 대수 4대가 그대로 정원이 된다.
+
+### 케이스별 결과
+
+같은 예시 데이터에서 조건만 바꿔 실제로 돌린 결과다.
+
+| 조건 | 잔여량 | 재공 | 필요 | 정원 | REASON | RUNNABLE |
+|------|-------|------|-----|-----|--------|----------|
+| 기본 (계획 60매, 재공 4 carrier) | 60매 | 100매/4 | 4대 | **4대** | `OK` | Y |
+| 재공 부족 (재공 1 carrier) | 25매 | 25매/1 | 2대 | **1대** | `WIP` | Y |
+| 장비 부족 (계획 2000매, 재공 40 carrier) | 1000매 | 1000매/40 | 4대 | **4대** | `EQP` | Y |
+| 재공 없음 (재공 소진) | 0매 | 0매/0 | 0대 | **0대** | `NO_WIP` | **N** |
+| 계획 달성 (60매 배정 완료, 재공 잔존) | 0매 | 100매/4 | 0대 | **1대** | `DONE` | Y |
+
+읽는 법:
+
+- **`WIP`** — 계획상 2대가 필요한데 재공이 1 carrier뿐이라 정원이 1대로 깎였다.
+  잔여량도 계획 60매가 아니라 실제 만들 수 있는 25매로 잡힌다(`min(계획−실적, 재공+가공중)`).
+- **`EQP`** — 있는 장비를 다 붙여도(4대, 0.05 매/분) 필요처리율 0.7576 매/분에 못 미친다.
+  정원은 4대(전부)지만 마감까지 계획을 못 채운다는 사실이 사유로 남는다.
+- **`NO_WIP`** — 재공이 없으면 정원 0대, `RUNNABLE_YN='N'`. **이 버킷에는 마스킹을 걸지 않는다**
+  (애초에 배정할 재공이 없어 제한이 무의미하다).
+- **`DONE`** — 계획을 이미 채워 필요 대수는 0이지만, 재공이 남아 있으므로 정원에 **최소 1대**
+  바닥을 둔다. 이 바닥이 없으면 남은 재공이 마스킹 때문에 통째로 묶여 시뮬레이션이 멈춘다.
+
+---
+
+## 3단계 — 정원 마스킹
+
+정원이 정해지면 액션 마스크(`get_feasible_ppk_oper`)에서 정원을 넘는 신규 장비를 뺀다.
+
+```
+정원 점유(occupancy) = 지금 그 버킷을 가공 중이거나 전환 후 투입 예약된 장비
+                     + 마지막 셋업이 그 버킷이면서 지금 실제로 받을 수 있는 idle 장비
+                     (다운 장비는 제외)
+
+배정 차단 =  이 장비가 점유 목록에 없고  AND  점유 수 ≥ 정원
+```
+
+즉 **하던 장비(진행 중·마지막 셋업 동일)는 항상 통과**하고, 신규 장비만 정원에 걸린다.
+
+### t=0부터의 실제 트레이스
+
+계획을 PPK001 40매(정원 2대) / PPK002 20매(정원 1대)로 둔 실행이다.
+
+```
+[t=0 초기]
+    PPK001: 잔여 40매 → 정원 2대, 점유 없음
+    PPK002: 잔여 20매 → 정원 1대, 점유 없음
+    EQP001(idle ) 마스크 = PPK001, PPK002
+    EQP002(idle ) 마스크 = PPK001, PPK002
+    EQP003(idle ) 마스크 = PPK001, PPK002
+    EQP004(idle ) 마스크 = PPK001, PPK002
+
+[EQP001 → PPK001 요청: 배정됨]
+    PPK001: 잔여 15매 → 정원 1대, 점유 ['EQP001']      ← 배정으로 잔여량이 줄어 정원 재산출
+    PPK002: 잔여 20매 → 정원 1대, 점유 없음
+    EQP001(busy ) 마스크 = (없음)
+    EQP002(idle ) 마스크 = PPK002                      ← PPK001이 마스크에서 빠짐
+    EQP003(idle ) 마스크 = PPK002
+    EQP004(idle ) 마스크 = PPK002
+
+[EQP002 → PPK001 요청: 정원 초과로 거부(-1.0)]
+    (상태 변화 없음 — 마스크와 실제 배정이 같은 기준을 쓴다)
+
+[EQP002 → PPK002 요청: 배정됨]
+    PPK001: 잔여 15매 → 정원 1대, 점유 ['EQP001']
+    PPK002: 잔여 0매  → 정원 0대, 점유 ['EQP002']
+    EQP001(busy ) 마스크 = (없음)
+    EQP002(busy ) 마스크 = (없음)
+    EQP003(idle ) 마스크 = (없음)                      ← 재공은 남았지만 정원이 찼다
+    EQP004(idle ) 마스크 = (없음)
+```
+
+두 가지를 확인할 수 있다.
+
+1. **정원은 상태가 바뀔 때마다 다시 계산된다.** EQP001이 25매를 가져가면서 잔여량이
+   40 → 15매로 줄어 필요 대수도 2 → 1대가 됐다. `completed_qty`는 가공 완료가 아니라
+   **배정 시점**에 증가하므로 정원은 배정 즉시 반응한다.
+2. **마스크와 실제 배정 게이트가 같다.** 마스크에서 빠진 버킷을 에이전트가 강제로
+   요청하면 `assign_ppk_oper()`가 `-1.0`을 돌려주고 아무 일도 일어나지 않는다
+   (`_assign_blocked()`가 tool 동시성·전환 그룹·전환 상한과 같은 자리에서 정원도 본다).
+
+---
+
+## 장비 배치 우선순위 — "하던 장비 그대로"
+
+정원에 넣을 장비를 고르는 순서다.
+
+```
+① 지금 그 버킷을 가공 중  →  ② 마지막 셋업이 같음  →  ③ 전환 불필요
+   →  ④ ST 짧은 순  →  ⑤ 전용(범용성 낮은) 순  →  ⑥ EQP_ID
+```
+
+`eqp_initial_state.json`으로 EQP003(모델 B, ST 120)이 이미 PPK001 셋업이라고 주면,
+ST가 더 짧은 모델 A 장비들을 제치고 1순위로 올라온다.
+
+```jsonc
+// eqp_initial_state.json
+[{"EQP_ID": "EQP003", "LOT_CD": "LC001", "TEMP": "T700",
+  "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001"}]
+```
+
+```
+초기 셋업 없음: 필요 장비 = ['EQP001', 'EQP002', 'EQP003', 'EQP004']   # ST 순
+EQP003 셋업됨: 필요 장비 = ['EQP003', 'EQP001', 'EQP002', 'EQP004']   # 하던 장비가 1순위
+```
+
+정원이 4대보다 작았다면 EQP003이 먼저 잘려 들어가고, 새 장비를 부르느라 전환을 일으키는
+일이 줄어든다. ④·⑤는 동순위일 때만 쓰이는 보조 기준으로, 범용 장비를 다른 버킷 몫으로
+남기려고 전용 장비를 먼저 쓴다.
+
+---
+
+## 전체 실행 결과 비교
+
+같은 데이터(PPK001 계획 40매)를 `minprogress`로 끝까지 돌린 결과다.
+
+**마스킹 OFF**
+
+```
+PPK001/OPER001/A: 필요=2대 정원=2대 실제=1대[EQP001]            생산=50매
+PPK001/OPER001/B: 필요=0대 정원=0대 실제=2대[EQP003,EQP004]     생산=50매
+PPK002/OPER001/A: 필요=1대 정원=1대 실제=1대[EQP002]            생산=25매
+```
+
+**마스킹 ON**
+
+```
+PPK001/OPER001/A: 필요=2대 정원=2대 실제=1대[EQP001]            생산=100매
+PPK001/OPER001/B: 필요=0대 정원=0대 실제=0대[]                  생산=0매
+PPK002/OPER001/A: 필요=1대 정원=1대 실제=1대[EQP002]            생산=25매
+```
+
+마스킹을 끄면 PPK001 재공 100매가 **장비 3대(모델 A 1대 + 느린 모델 B 2대)** 로 흩어진다.
+켜면 정원이 붙잡아 **EQP001 한 대가 100매를 전부** 처리하고, ST가 2배 느린 모델 B는
+이 버킷에 아예 동원되지 않는다. 배정 건수(5건)와 총 생산량은 같지만, 모델 B 2대가
+다른 일에 쓸 수 있게 비워진다.
+
+`benchmark/optimal` 33개 조합(휴리스틱 3종) 기준으로는 켰을 때 증명된 최적값 도달이
+18 → 26건으로 늘고 전환 횟수가 크게 준다. 다만 계획량을 넘겨 생산하는 것이 이득인
+overflow·재공 유입 케이스에서는 생산량이 줄 수 있어 **기본값은 꺼짐**이다.
+
+---
+
+## DB 적재 — `RTS_EQPCAPA_INF` / `RTS_EQPCAPA_HIS`
+
+산출 근거와 결과가 `(PPK, OPER, EQP_MODEL_CD)` 한 행에 그대로 남는다.
+`output.json` payload와 생성 SQL은 다음과 같다.
+
+```json
+{
+  "FAC_ID": "FAC001",
+  "RULE_TIMEKEY": "20260808070000",
+  "FUNCTION_NM": "minprogress",
+  "PLAN_PROD_ATTR_VAL": "PPK001",
+  "OPER_ID": "OPER001",
+  "EQP_MODEL_CD": "A",
+  "ST": 60.0,
+  "HORIZON_MIN": 1320,
+  "PLAN_QTY": 40,
+  "DONE_QTY": 0,
+  "REMAIN_QTY": 40,
+  "WIP_QTY": 100,
+  "WIP_CARRIER_CNT": 4,
+  "CAPABLE_EQP_CNT": 4,
+  "REQ_EQP_CNT": 2,
+  "PLAN_EQP_CNT": 2,
+  "ALLOC_EQP_CNT": 1,
+  "PLAN_EQP_LVAL": "EQP001,EQP002",
+  "ALLOC_EQP_LVAL": "EQP001",
+  "RUN_QTY": 100,
+  "RUNNABLE_YN": "Y",
+  "MASK_APPLY_YN": "Y",
+  "REASON_CD": "OK",
+  "CRT_USER_ID": "RTS"
+}
+```
+
+```sql
+-- output/sql/rts_eqpcapa_inf.sql
+DELETE FROM RTS_EQPCAPA_INF WHERE FAC_ID = 'FAC001' AND RULE_TIMEKEY = '20260808070000';
+
+INSERT INTO RTS_EQPCAPA_INF (FAC_ID, RULE_TIMEKEY, FUNCTION_NM, PLAN_PROD_ATTR_VAL,
+    OPER_ID, EQP_MODEL_CD, ST, HORIZON_MIN, PLAN_QTY, DONE_QTY, REMAIN_QTY, WIP_QTY,
+    WIP_CARRIER_CNT, CAPABLE_EQP_CNT, REQ_EQP_CNT, PLAN_EQP_CNT, ALLOC_EQP_CNT,
+    PLAN_EQP_LVAL, ALLOC_EQP_LVAL, RUN_QTY, RUNNABLE_YN, MASK_APPLY_YN, REASON_CD,
+    CRT_USER_ID, CRT_TM)
+VALUES ('FAC001', '20260808070000', 'minprogress', 'PPK001', 'OPER001', 'A', 60.0,
+    1320, 40, 0, 40, 100, 4, 4, 2, 2, 1, 'EQP001,EQP002', 'EQP001', 100, 'Y', 'Y',
+    'OK', 'RTS', SYSTIMESTAMP);
+```
+
+### 컬럼
+
+| 컬럼 | 의미 |
+|------|------|
+| `ST` | 그 모델의 장당 ST(분/매) |
+| `HORIZON_MIN` | 산출 시점에서 마감까지 남은 시간(분) |
+| `PLAN_QTY` / `DONE_QTY` / `REMAIN_QTY` | D0 계획 / 기배정 / 마감까지 처리해야 할 잔여량(재공 상한 반영) |
+| `WIP_QTY` / `WIP_CARRIER_CNT` | ready 재공 매수 / carrier 수 |
+| `CAPABLE_EQP_CNT` | 그 버킷을 처리 가능한(다운 제외) 장비 수 |
+| **`REQ_EQP_CNT`** | **1단계 — ST 기준 필요 대수** (해당 모델 몫) |
+| **`PLAN_EQP_CNT`** | **2단계 — 재공 체크 후 확정 정원** (해당 모델 몫) |
+| **`ALLOC_EQP_CNT`** | **3단계 — 실제로 그 버킷을 돌린 서로 다른 장비 수** |
+| `PLAN_EQP_LVAL` / `ALLOC_EQP_LVAL` | 정원으로 선정된 / 실제 배치된 EQP_ID 목록(콤마 구분) |
+| `RUN_QTY` | 실제 생산 수량(매) |
+| `RUNNABLE_YN` / `REASON_CD` | 재공 기준 구동 가능 여부 / 사유(`OK` `WIP` `EQP` `NO_WIP` `DONE` `INFLOW`) |
+| `MASK_APPLY_YN` | 이번 실행에 정원 마스킹이 적용됐는지 |
+
+> `REQ/PLAN/ALLOC_EQP_CNT`는 **모델별** 값이고, `RUNNABLE_YN`·`REASON_CD`·`REMAIN_QTY` 등
+> 나머지는 **버킷(PPK·OPER) 단위** 판정이라 같은 버킷의 모델 행끼리 같은 값이 반복된다.
+> 그래서 위 예시의 모델 B 행은 `REQ=0/PLAN=0`이면서 `RUNNABLE_YN='Y'`다 — "버킷은 돌릴 수
+> 있지만 이 모델은 필요 없다"는 뜻이다.
+
+적재 방식은 기존 테이블과 같다. `RTS_EQPCAPA_INF`는 동일 `FAC_ID`+`RULE_TIMEKEY` 행만
+교체하고 다른 회차는 누적(= `RTS_EQPCONVPLAN_INF`와 동일), `RTS_EQPCAPA_HIS`는
+`EXEC_TIMEKEY`를 PK에 포함해 INSERT만 누적한다. DDL은
+`data/sql.example/rts_output_tables.sql`, 테이블별 DB 분리는
+`config/output_db_routing.yaml`을 그대로 쓴다.
+
+---
+
+## 켜는 법
+
+기본값은 **꺼짐**이다. 셋 중 하나로 켠다.
+
+```bash
+# 1) 실행 단위 (CLI)
+python main.py infer --facid FAC001 --eqp-capacity-mask
+python main.py infer --facid FAC001 --no-eqp-capacity-mask   # config 기본값이 켜져 있을 때 해제
+```
+
+```jsonc
+// 2) 실행 단위 (API) — POST /api/inference
+{"fac_id": "FAC001", "algorithm": "scheduling_rl", "eqp_capacity_mask": true}
+```
+
+```python
+# 3) 전역 기본값 (config.py)
+CONFIG.env.eqp_capacity_mask_enabled = True   # 정원 마스킹
+CONFIG.env.capacity_min_run_minutes  = 60     # 대당 최소 가동시간(재공 적정성 기준)
+CONFIG.env.capa_output_enabled       = True   # RTS_EQPCAPA_INF/HIS 적재(마스킹과 별개)
+```
+
+`capa_output_enabled`가 마스킹 스위치와 분리돼 있어서, **마스킹을 끈 채로 "필요 대수 대비
+실제 배치 대수"만 적재해 현황을 보는** 사용도 가능하다. 그때 `MASK_APPLY_YN='N'`으로
+기록되므로 적재된 데이터만 보고도 마스킹 적용 여부를 구분할 수 있다.
+
+---
+
+## 알아둘 점
+
+- **정원은 동시 상한이지 예약이 아니다.** 버킷별 정원의 합이 총 장비 수를 넘을 수 있고,
+  실제 배분은 에이전트가 정한다.
+- **`ALLOC_EQP_CNT`는 누적 distinct 값이다.** 정원이 1대라도 하루 동안 장비가 교대하면
+  그 버킷을 거쳐 간 장비 수는 1보다 클 수 있다. 배치 우선순위(하던 장비 우선)가 이 교대를
+  최소화하는 역할을 한다.
+- **`REQ/PLAN_EQP_CNT`는 RULE_TIMEKEY 시점 스냅샷이다.** 정원 자체는 시뮬 중 계속 재산출되지만,
+  적재되는 필요/정원 대수는 "이번 회차 계획을 세운 시점"의 값으로 고정된다.
+- **다운 장비는 정원을 차지하지 않는다.** `eqp_down`으로 다운된 장비는 마지막 셋업이 같아도
+  점유에서 빠져, 그 자리를 다른 장비가 채울 수 있다.
+- **이미 투입 확정된 큐는 정원을 우회한다.** `eqp_queue_init`(및 `discrete_arrange`의
+  `LOT_STAT_CD` 강제배정)은 tool 동시성·전환 제약과 마찬가지로 이 정원도 그대로 지나간다 —
+  물리적으로 이미 그 상태로 진행 중인 확정 사실이기 때문이다.
+- **모델 정보가 없는 장비는 산출 대상이 아니다.** `EQP_MODEL_CD`는 `discrete_arrange`에서만
+  나오므로, `eqp_queue_init`에만 등장하는 장비는 ST를 알 수 없어 후보에서 빠진다.
+
+회귀 테스트는 `tests/test_eqp_capacity.py`에 있다(15건 — 산출식·재공 체크·마스킹·배치
+우선순위·DB 출력).
