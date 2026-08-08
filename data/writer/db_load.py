@@ -18,10 +18,14 @@ from data.writer.rts_sql import build_writer_sql_scripts, write_sql
 from utils.file_logger import get_daily_file_logger
 
 _DDL_FILE = "rts_output_tables.sql"
-_INF_SCRIPTS = ("rts_rslt_mas.sql", "rts_eqpconvplan_inf.sql")
-_HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
+_INF_SCRIPTS = ("rts_rslt_mas.sql", "rts_eqpconvplan_inf.sql", "rts_eqpcapa_inf.sql")
+_HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql", "rts_eqpcapa_his.sql")
 # save_kpi 옵션 켰을 때만 생성되는 스크립트 — 있으면 적재, 없으면 조용히 생략
 _OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql")
+# 적정 장비 대수 출력이 추가되기 전에 만들어진 output 폴더에는 이 스크립트가 없다.
+# 그런 폴더를 다시 적재할 때 파일이 없다고 실패시키지 않고 건너뛴다
+# (--regenerate-sql 로 다시 만들면 그때부터 포함된다).
+_SKIP_IF_MISSING_SCRIPTS = ("rts_eqpcapa_inf.sql", "rts_eqpcapa_his.sql")
 
 # 스크립트 파일 → 테이블명 (테이블별 DB 라우팅 조회용)
 _SCRIPT_TABLE = {
@@ -29,6 +33,8 @@ _SCRIPT_TABLE = {
     "rts_rslt_his.sql":         "RTS_RSLT_HIS",
     "rts_eqpconvplan_inf.sql":  "RTS_EQPCONVPLAN_INF",
     "rts_eqpconvplan_his.sql":  "RTS_EQPCONVPLAN_HIS",
+    "rts_eqpcapa_inf.sql":      "RTS_EQPCAPA_INF",
+    "rts_eqpcapa_his.sql":      "RTS_EQPCAPA_HIS",
     "rts_perfmon_his.sql":      "RTS_PERFMON_HIS",
     "rts_validation.sql":       "RTS_VALIDATION",
 }
@@ -239,6 +245,8 @@ def load_output_sql_files(
             path = sql_dir / name
             if not path.is_file():
                 if name in _HIS_SCRIPTS and not include_history:
+                    continue
+                if name in _SKIP_IF_MISSING_SCRIPTS:
                     continue
                 raise FileNotFoundError(f"SQL 파일 없음: {path}")
             alias = table_aliases.get(_SCRIPT_TABLE.get(name, ""), db_alias)

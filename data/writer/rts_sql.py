@@ -2,6 +2,8 @@
 data/writer/rts_sql.py – RTS output.json → Oracle INSERT SQL (적재용)
 
 RTS_RSLT_MAS: 동일 FAC_ID 기준 전체 DELETE 후 INSERT (RULE_TIMEKEY 무관, 최신 결과만 유지)
+RTS_EQPCAPA_INF: 적정 장비 대수 산출 결과. RTS_EQPCONVPLAN_INF와 같이 동일
+                      FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT(회차별 누적)
 RTS_EQPCONVPLAN_INF: 동일 FAC_ID+RULE_TIMEKEY 기존 행만 DELETE 후 INSERT
                       (같은 회차 재실행 시 JOB_ID 중복/PK 위반 방지, 다른 회차는 계속 누적)
                       EXEC_TIMEKEY(생성 시각, NOT NULL)는 채우지만 PK엔 없음 —
@@ -156,6 +158,57 @@ def _insert_rts_eqpconvplan(rows: List[dict], *, history: bool) -> List[str]:
     return lines
 
 
+def _insert_rts_eqpcapa(rows: List[dict], *, history: bool) -> List[str]:
+    table = "RTS_EQPCAPA_HIS" if history else "RTS_EQPCAPA_INF"
+    lines: List[str] = []
+    exec_timekey = datetime.now().strftime(RULE_TIMEKEY_FMT)
+    for r in rows:
+        cols = [
+            "FAC_ID", "RULE_TIMEKEY", "FUNCTION_NM",
+            "PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD", "ST",
+            "HORIZON_MIN", "PLAN_QTY", "DONE_QTY", "REMAIN_QTY",
+            "WIP_QTY", "WIP_CARRIER_CNT", "CAPABLE_EQP_CNT",
+            "REQ_EQP_CNT", "PLAN_EQP_CNT", "ALLOC_EQP_CNT",
+            "PLAN_EQP_LVAL", "ALLOC_EQP_LVAL", "RUN_QTY",
+            "RUNNABLE_YN", "MASK_APPLY_YN", "REASON_CD", "CRT_USER_ID",
+        ]
+        vals = [
+            _sql_str(r["FAC_ID"]),
+            _sql_str(r["RULE_TIMEKEY"]),
+            _sql_str(r.get("FUNCTION_NM", "scheduling_rl")),
+            _sql_str(r["PLAN_PROD_ATTR_VAL"]),
+            _sql_str(r["OPER_ID"]),
+            _sql_str(r["EQP_MODEL_CD"]),
+            _sql_float(r.get("ST", 0)),
+            _sql_num(r.get("HORIZON_MIN", 0)),
+            _sql_num(r.get("PLAN_QTY", 0)),
+            _sql_num(r.get("DONE_QTY", 0)),
+            _sql_num(r.get("REMAIN_QTY", 0)),
+            _sql_num(r.get("WIP_QTY", 0)),
+            _sql_num(r.get("WIP_CARRIER_CNT", 0)),
+            _sql_num(r.get("CAPABLE_EQP_CNT", 0)),
+            _sql_num(r.get("REQ_EQP_CNT", 0)),
+            _sql_num(r.get("PLAN_EQP_CNT", 0)),
+            _sql_num(r.get("ALLOC_EQP_CNT", 0)),
+            _sql_str(r.get("PLAN_EQP_LVAL", "")),
+            _sql_str(r.get("ALLOC_EQP_LVAL", "")),
+            _sql_num(r.get("RUN_QTY", 0)),
+            _sql_str(r.get("RUNNABLE_YN", "N")),
+            _sql_str(r.get("MASK_APPLY_YN", "N")),
+            _sql_str(r.get("REASON_CD", "")),
+            _sql_str(r.get("CRT_USER_ID", "RTS")),
+        ]
+        cols.append("CRT_TM")
+        vals.append("SYSTIMESTAMP")
+        if history:
+            cols.append("EXEC_TIMEKEY")
+            vals.append(_sql_str(exec_timekey))
+        lines.append(
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
+        )
+    return lines
+
+
 def _insert_rts_perfmon_his(rows: List[dict]) -> List[str]:
     lines: List[str] = []
     for r in rows:
@@ -206,6 +259,7 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     fac_id = meta.get("FAC_ID", "")
     rslt_rows = payload.get("RTS_RSLT_MAS", [])
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
+    capa_rows = payload.get("RTS_EQPCAPA_INF", [])
     perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
     validation_rows = payload.get("RTS_VALIDATION", [])
 
@@ -224,6 +278,15 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     conv_inf_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=False))
     scripts["rts_eqpconvplan_inf.sql"] = "\n".join(conv_inf_lines) + "\n"
 
+    # 적정 장비 대수: 같은 FAC_ID+RULE_TIMEKEY 회차만 교체하고 다른 회차는 누적
+    # (RTS_EQPCONVPLAN_INF와 같은 방식 — 회차별 산출 근거를 남긴다).
+    capa_inf_lines = [f"-- RTS_EQPCAPA_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
+    if rule_timekey:
+        capa_inf_lines.append(_delete_inf_for_rule_timekey("RTS_EQPCAPA_INF", fac_id, rule_timekey))
+        capa_inf_lines.append("")
+    capa_inf_lines.extend(_insert_rts_eqpcapa(capa_rows, history=False))
+    scripts["rts_eqpcapa_inf.sql"] = "\n".join(capa_inf_lines) + "\n"
+
     if include_history:
         his_lines = [f"-- RTS_RSLT_HIS RULE_TIMEKEY={rule_timekey}", ""]
         his_lines.extend(_insert_rts_rslt_rows(rslt_rows, history=True))
@@ -232,6 +295,10 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
         conv_his_lines = [f"-- RTS_EQPCONVPLAN_HIS RULE_TIMEKEY={rule_timekey}", ""]
         conv_his_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=True))
         scripts["rts_eqpconvplan_his.sql"] = "\n".join(conv_his_lines) + "\n"
+
+        capa_his_lines = [f"-- RTS_EQPCAPA_HIS RULE_TIMEKEY={rule_timekey}", ""]
+        capa_his_lines.extend(_insert_rts_eqpcapa(capa_rows, history=True))
+        scripts["rts_eqpcapa_his.sql"] = "\n".join(capa_his_lines) + "\n"
 
     if perfmon_rows:
         perfmon_lines = [f"-- RTS_PERFMON_HIS RULE_TIMEKEY={rule_timekey}", ""]

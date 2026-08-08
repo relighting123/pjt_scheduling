@@ -216,6 +216,51 @@ def _build_rts_conv_rows(
     return rows
 
 
+def _build_rts_eqpcapa_rows(
+    result: dict,
+    meta: Dict[str, str],
+) -> List[dict]:
+    """적정 장비 대수 산출 결과 → RTS_EQPCAPA_INF 행.
+
+    REQ_EQP_CNT(ST 기준 필요 대수) / PLAN_EQP_CNT(재공 체크 후 확정 정원) /
+    ALLOC_EQP_CNT(실제 배치 대수)를 (PPK, OPER, EQP_MODEL_CD)별로 한 행에 담는다.
+    CONFIG.env.capa_output_enabled(기본 True)가 False면 저장하지 않는다.
+    """
+    if not CONFIG.env.capa_output_enabled:
+        return []
+
+    function_nm = result.get("algorithm", "scheduling_rl")
+    rows: List[dict] = []
+    for r in result.get("capacity_plan") or []:
+        rows.append({
+            "FAC_ID":              meta["FAC_ID"],
+            "RULE_TIMEKEY":        meta["RULE_TIMEKEY"],
+            "FUNCTION_NM":         function_nm,
+            "PLAN_PROD_ATTR_VAL":  r["PLAN_PROD_ATTR_VAL"],
+            "OPER_ID":             r["OPER_ID"],
+            "EQP_MODEL_CD":        r["EQP_MODEL_CD"],
+            "ST":                  float(r.get("ST", 0) or 0),
+            "HORIZON_MIN":         int(r.get("HORIZON_MIN", 0)),
+            "PLAN_QTY":            int(r.get("PLAN_QTY", 0)),
+            "DONE_QTY":            int(r.get("DONE_QTY", 0)),
+            "REMAIN_QTY":          int(r.get("REMAIN_QTY", 0)),
+            "WIP_QTY":             int(r.get("WIP_QTY", 0)),
+            "WIP_CARRIER_CNT":     int(r.get("WIP_CARRIER_CNT", 0)),
+            "CAPABLE_EQP_CNT":     int(r.get("CAPABLE_EQP_CNT", 0)),
+            "REQ_EQP_CNT":         int(r.get("REQ_EQP_CNT", 0)),
+            "PLAN_EQP_CNT":        int(r.get("PLAN_EQP_CNT", 0)),
+            "ALLOC_EQP_CNT":       int(r.get("ALLOC_EQP_CNT", 0)),
+            "PLAN_EQP_LVAL":       str(r.get("PLAN_EQP_LVAL", ""))[:4000],
+            "ALLOC_EQP_LVAL":      str(r.get("ALLOC_EQP_LVAL", ""))[:4000],
+            "RUN_QTY":             int(r.get("RUN_QTY", 0)),
+            "RUNNABLE_YN":         r.get("RUNNABLE_YN", "N"),
+            "MASK_APPLY_YN":       r.get("MASK_APPLY_YN", "N"),
+            "REASON_CD":           r.get("REASON_CD", ""),
+            "CRT_USER_ID":         meta["CRT_USER_ID"],
+        })
+    return rows
+
+
 def _build_rts_perfmon_rows(
     result: dict,
     meta: Dict[str, str],
@@ -296,7 +341,8 @@ def build_rts_output(
     """
     추론 결과 → RTS output.json 본문.
 
-    Keys: meta, RTS_RSLT_MAS, RTS_EQPCONVPLAN_INF, (옵션) RTS_PERFMON_HIS, RTS_VALIDATION
+    Keys: meta, RTS_RSLT_MAS, RTS_EQPCONVPLAN_INF, RTS_EQPCAPA_INF,
+          (옵션) RTS_PERFMON_HIS, RTS_VALIDATION
     """
     meta = resolve_writer_meta(
         env_data, fac_id=fac_id, rule_timekey=rule_timekey, crt_user_id=crt_user_id,
@@ -310,6 +356,7 @@ def build_rts_output(
         "meta": meta,
         "RTS_RSLT_MAS": _build_rts_rslt_rows(schedule, meta, base_time, env_data),
         "RTS_EQPCONVPLAN_INF": _build_rts_conv_rows(conversion_plans, meta, base_time),
+        "RTS_EQPCAPA_INF": _build_rts_eqpcapa_rows(result, meta),
     }
     if include_kpi:
         payload["RTS_PERFMON_HIS"] = _build_rts_perfmon_rows(result, meta)

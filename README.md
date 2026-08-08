@@ -192,6 +192,52 @@ CONVERSION_GROUPS = {
 
 Earliest-ST는 idle EQP 전체 × feasible LOT을 한 번에 비교해 예상 종료 시각이 가장 이른 **EQP×carrier** 1건을 선택합니다.
 
+### 적정 장비 대수 정원 마스킹 (`eqp_capacity_mask_enabled`, 선택)
+
+제품(PPK)·공정(OPER)별로 **마감까지 잔여량을 처리하는 데 필요한 장비 대수**를 산출하고,
+재공이 그 대수를 실제로 먹일 수 있는 버킷만 **그 대수까지로 배정을 제한**합니다
+(`simulation/eqp_capacity.py`). 기본값은 꺼짐 — `CONFIG.env.eqp_capacity_mask_enabled`,
+`python main.py infer --eqp-capacity-mask`, 또는 `POST /api/inference`의
+`eqp_capacity_mask`로 켭니다.
+
+**1) 필요 대수 산출** — 마감시각은 `soft_cutoff`와 `sim_end` 중 이른 쪽입니다.
+
+```
+잔여량   = 계획(D0) − 기배정  … 계획이 있으면. 단 실제 만들 수 있는 재공(+가공 중)까지만 인정
+           남은 재공          … 계획이 없는 버킷
+필요처리율 = 잔여량 / (마감 − 현재)                      (매/분)
+필요 대수  = 우선순위 순으로 1/ST(모델별 분당 처리량)를 쌓아 필요처리율에 도달하는 장비 수
+```
+
+모델마다 ST가 달라 "대수 × 평균 ST"로는 맞지 않으므로 장비를 한 대씩 채웁니다.
+
+**2) 재공 적정성 사전 체크** — 대수만 맞춰도 그 대수를 먹일 재공이 없으면 의미가 없습니다.
+ready carrier 수(한 대는 최소 1 carrier)와 재공 작업량(재공 매수 × ST)을 기준으로,
+한 대당 최소 `CONFIG.env.capacity_min_run_minutes`(기본 60분 = 전환 시간)는 돌 수 있는
+대수까지만 정원으로 인정합니다. 재공이 아예 없으면 구동 불가(`RUNNABLE_YN='N'`)로 남고
+마스킹도 적용되지 않습니다.
+
+**3) 마스킹 · 장비 선정** — 정원이 정해지면 그 버킷을 **지금 돌고 있거나 마지막 셋업이 같은**
+장비는 항상 통과시키고, 그 외 신규 장비는 점유 수가 정원 미만일 때만 통과시킵니다
+(`get_feasible_ppk_oper` = 액션 마스크). 정원 선정 우선순위도 같은 기준입니다:
+
+```
+진행 중 → 마지막 셋업 동일 → 전환 불필요 → ST 짧은 순 → 전용(범용성 낮은) 순 → EQP_ID
+```
+
+> 재공이 남아 있는 버킷의 정원은 **최소 1대**로 바닥을 둡니다 — 계획을 이미 채웠거나
+> 산출 대수가 0이라는 이유로 남은 재공이 통째로 묶여 시뮬레이션이 멈추면 안 되기 때문입니다.
+> 다운(`eqp_down`) 장비는 셋업이 같아도 정원을 차지하지 않고, 이미 투입 확정된
+> 큐(`eqp_queue_init`)는 다른 제약과 마찬가지로 이 정원도 우회합니다.
+
+정원은 상태가 바뀔 때마다 다시 계산되므로(잔여량이 줄면 필요 대수도 줄어듭니다),
+"동시에 몇 대까지"를 제한합니다. 하루 동안 장비가 교대하면 그 버킷을 거쳐 간 서로 다른
+장비 수(`ALLOC_EQP_CNT`)는 순간 정원보다 클 수 있습니다.
+
+효과(`benchmark/optimal` 33개 조합, 휴리스틱 3종): 켜면 증명된 최적값 도달이 18 → 26건으로
+늘고 전환 횟수가 크게 줄어듭니다. 다만 계획량을 넘겨 생산하는 것이 이득인 케이스
+(overflow·재공 유입 파이프라인)에서는 생산량이 줄 수 있어 기본값은 꺼짐입니다.
+
 ---
 
 ## 알고리즘
@@ -410,7 +456,7 @@ RL 모델은 `models/{FAC_ID}/`(체크포인트·best·logs 포함) 아래에 FA
 
 | 파일 | 설명 |
 |------|------|
-| `output.json` | RTS 적재 payload (`RTS_RSLT_MAS`, `RTS_EQPCONVPLAN_INF`) |
+| `output.json` | RTS 적재 payload (`RTS_RSLT_MAS`, `RTS_EQPCONVPLAN_INF`, `RTS_EQPCAPA_INF`) |
 | `output/sql/*.sql` | DELETE+INSERT 스크립트 |
 | `result_full.json` | UI/디버그용 전체 결과 |
 
@@ -431,6 +477,8 @@ python main.py db-load --ddl --facid FAC001 --split infer
 | `RTS_RSLT_HIS` | 스케줄 이력 (삭제 없이 INSERT만 누적, `EXEC_TIMEKEY`가 PK에 포함되어 같은 회차 재실행도 별도 행으로 쌓임) |
 | `RTS_EQPCONVPLAN_INF` | Conversion 계획 (동일 FAC_ID+RULE_TIMEKEY 기존 행만 교체, 다른 회차는 누적. 옵션: `CONFIG.env.conv_output_enabled`, 기본 True. RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`, 기본 60분 이내에 시작하는 건만) |
 | `RTS_EQPCONVPLAN_HIS` | Conversion 이력(위와 동일한 옵션/window 적용, 삭제 없이 INSERT만 누적, `EXEC_TIMEKEY`가 PK에 포함) |
+| `RTS_EQPCAPA_INF` | 제품·공정·장비모델별 [적정 장비 대수](#적정-장비-대수-정원-마스킹-eqp_capacity_mask_enabled-선택) 산출 결과 — 필요 대수(`REQ_EQP_CNT`) / 재공 체크 후 정원(`PLAN_EQP_CNT`) / 실제 배치 대수(`ALLOC_EQP_CNT`). 동일 FAC_ID+RULE_TIMEKEY 기존 행만 교체, 다른 회차는 누적. 옵션: `CONFIG.env.capa_output_enabled`, 기본 True |
+| `RTS_EQPCAPA_HIS` | 적정 장비 대수 이력(삭제 없이 INSERT만 누적, `EXEC_TIMEKEY`가 PK에 포함) |
 | `RTS_PERFMON_HIS` | KPI 이력 (옵션: `--save-kpi` / `save_kpi=true`) |
 | `RTS_VALIDATION` | 투입 불가 장비 재공 선택 건수 집계, EQP/PPK/OPER 조합별 (옵션: `--save-kpi` / `save_kpi=true`) |
 
@@ -555,6 +603,7 @@ DB 적재)에 남습니다. 두 로그 모두 자정에 자동 회전되고 백�
 | `python main.py infer --facid FAC001 --decision-log` | step별 EQP/PPK/OPER 결정·미할당 사유를 `result_full.json`에 기록 |
 | `python main.py infer --facid FAC001 --include-history` | UI 재생용 history/event snapshot 생성 |
 | `python main.py infer --facid FAC001 --enable-wip-inflow` | 공정 완료 시 다음 공정 flow 재공 유입 이벤트 활성화 |
+| `python main.py infer --facid FAC001 --eqp-capacity-mask` | 제품·공정별 [적정 장비 대수](#적정-장비-대수-정원-마스킹-eqp_capacity_mask_enabled-선택)를 산출해 그 대수까지만 배정 |
 | `python main.py infer --facid FAC001 --strict-validate` | 결과 검증 실패 시 종료코드 1로 종료 |
 | `python main.py infer --facid FAC001 --db Dev --no-history` | 대상 DB alias 지정, HIS 테이블 적재 생략 |
 | `python main.py infer --facid FAC001 --timeout 300` | DB 조회~DB 적재 전체 5분 제한 |

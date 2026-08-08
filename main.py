@@ -398,6 +398,7 @@ def cmd_inference(
     max_conversions: int = None,
     max_conversions_per_eqp: int = None,
     conversion_minutes: int = None,
+    eqp_capacity_mask: bool = None,
     strict_validate: bool = False,
     save_kpi: bool = False,
     timeout_seconds: float = None,
@@ -454,6 +455,11 @@ def cmd_inference(
         print(f"[inference] 전환 상한(EQP별): {max_conversions_per_eqp}")
     if conversion_minutes is not None:
         print(f"[inference] 전환 소요 시간: {conversion_minutes}분")
+    if eqp_capacity_mask is not None:
+        print(
+            "[inference] 적정 장비 대수 정원 마스킹: "
+            + ("ON" if eqp_capacity_mask else "OFF")
+        )
     if save_kpi:
         print("[inference] KPI/검증 집계 저장: ON (RTS_PERFMON_HIS, RTS_VALIDATION)")
     if timeout_seconds is not None:
@@ -468,6 +474,7 @@ def cmd_inference(
         max_conversions=max_conversions,
         max_conversions_per_eqp=max_conversions_per_eqp,
         conversion_minutes=conversion_minutes,
+        eqp_capacity_mask=eqp_capacity_mask,
         timeout_seconds=remaining_seconds(),
     )
     print("=" * 60)
@@ -820,6 +827,19 @@ def parse_args():
         help="LOT_CD/TEMP 전환 1회 소요 시간(분, 기본: config.env.conversion_minutes)",
     )
     inf_p.add_argument(
+        "--eqp-capacity-mask",
+        dest="eqp_capacity_mask",
+        action="store_true",
+        default=None,
+        help="제품·공정별 적정 장비 대수를 산출해 그 대수까지만 배정(정원 마스킹)",
+    )
+    inf_p.add_argument(
+        "--no-eqp-capacity-mask",
+        dest="eqp_capacity_mask",
+        action="store_false",
+        help="적정 장비 대수 정원 마스킹 해제(config 기본값이 켜져 있을 때)",
+    )
+    inf_p.add_argument(
         "--strict-validate",
         action="store_true",
         help="결과 검증(장비 투입 가능성·처리시간·배정 완전성) 실패 시 종료코드 1로 종료",
@@ -988,6 +1008,7 @@ def main():
                 max_conversions=args.max_conversions,
                 max_conversions_per_eqp=args.max_conversions_per_eqp,
                 conversion_minutes=args.conversion_minutes,
+                eqp_capacity_mask=args.eqp_capacity_mask,
                 strict_validate=args.strict_validate,
                 save_kpi=args.save_kpi,
                 timeout_seconds=args.timeout_seconds,

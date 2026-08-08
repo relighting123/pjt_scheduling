@@ -57,6 +57,7 @@ def serialize_inference_result(
     payload["decision_log"] = result.get("decision_log", []) if include_decision_log else []
     payload["conversion_plans"] = result.get("conversion_plans", [])
     payload["down_windows"] = result.get("down_windows", [])
+    payload["capacity_plan"] = result.get("capacity_plan", [])
     return payload
 
 

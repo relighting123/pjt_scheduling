@@ -11,5 +11,6 @@
 RTS_PERFMON_HIS: Dev
 RTS_VALIDATION: Dev
 
-# RTS_RSLT_MAS / RTS_RSLT_HIS / RTS_EQPCONVPLAN_INF / RTS_EQPCONVPLAN_HIS 는
-# 여기 없으므로 계속 --db/db_alias 인자를 그대로 씁니다.
+# RTS_RSLT_MAS / RTS_RSLT_HIS / RTS_EQPCONVPLAN_INF / RTS_EQPCONVPLAN_HIS /
+# RTS_EQPCAPA_INF / RTS_EQPCAPA_HIS 는 여기 없으므로 계속 --db/db_alias 인자를
+# 그대로 씁니다.

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from config import CONFIG, RewardConfig
+from simulation.eqp_capacity import CapacityPlanner, summarize_allocation
 from simulation.events import (
     EVENT_CONV_ASSIGNED,
     EVENT_CONV_END,
@@ -316,7 +317,8 @@ class SchedulingSimulator:
         # 성능 최적화: 상태 버전 기반 캐시
         self._state_version: int = 0
         self._feasible_cache: Dict[str, tuple] = {}          # {eqp_id: (version, List[int])}
-        self._bucket_keys_cache: Dict[str, tuple] = {}        # {eqp_id: (version, set)}
+        self._bucket_keys_cache: Dict[str, tuple] = {}        # {eqp_id: (version, set)} — 정원 미적용
+        self._capped_keys_cache: Dict[str, tuple] = {}        # {eqp_id: (version, set)} — 정원 적용
         self._wip_waiting_cache: Optional[Dict[str, int]] = None
         self._wip_waiting_version: int = -1
         self._bucket_feats_cache: Optional[np.ndarray] = None
@@ -324,6 +326,12 @@ class SchedulingSimulator:
         self._eqps_by_om: Dict[tuple, List[str]] = self._build_eqps_by_om()
 
         self._apply_eqp_initial_state(data.get("eqp_initial_state", []))
+        # 적정 장비 대수(정원) 산출기. 초기 셋업 반영 후, 시간이 전진하기 전
+        # (RULE_TIMEKEY 시점) 상태로 스냅샷을 떠 둔다 — 출력에 싣는 "필요 대수"는
+        # 이 회차 계획을 세운 시점의 값이어야 하고, 시뮬 중 잔여량이 줄면서
+        # 달라지는 값과 섞이면 안 된다.
+        self.capacity_planner = CapacityPlanner(self)
+        self.capacity_snapshot: List[dict] = self.capacity_planner.snapshot_rows()
         self._advance_to_next_decision()
         if self._record_history:
             self._append_initial_history()
@@ -830,8 +838,26 @@ class SchedulingSimulator:
                 return True
         return False
 
-    def _assign_blocked(self, eqp_id: str, lot_cd: str, temp: str) -> bool:
-        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 + 전환 횟수 제약."""
+    def _assign_blocked(
+        self,
+        eqp_id: str,
+        lot_cd: str,
+        temp: str,
+        ppk: Optional[str] = None,
+        oper_id: Optional[str] = None,
+    ) -> bool:
+        """배정 불가(feasibility) 통합 판단: tool 동시성 + 전환 그룹 + 전환 횟수 제약.
+
+        ppk/oper_id를 함께 주면 적정 장비 대수 정원(CapacityPlanner)까지 본다.
+        정원 판정은 버킷 단위라 (lot_cd, temp)만으로는 알 수 없고, 정원 계산 자체가
+        투입 자격 판정을 참조하므로 인자를 생략한 호출(정원 미적용 경로)이 순환을 끊는다.
+        """
+        if (
+            ppk is not None
+            and oper_id is not None
+            and self.capacity_planner.blocks(eqp_id, ppk, oper_id)
+        ):
+            return True
         return (
             self._tool_cap_blocks(eqp_id, lot_cd, temp)
             or self._conversion_group_blocks(eqp_id, lot_cd, temp)
@@ -874,7 +900,10 @@ class SchedulingSimulator:
                     continue
                 lot_cd = lot.get("lot_cd", "")
                 temp = lot.get("temp", "")
-                if self._assign_blocked(eqp_id, lot_cd, temp):
+                if self._assign_blocked(
+                    eqp_id, lot_cd, temp,
+                    ppk=lot.get("PLAN_PROD_ATTR_VAL"), oper_id=lot.get("oper_id"),
+                ):
                     continue
                 score = self.earliest_st_combo_score(eqp_id, lot)
                 if score < best_score:
@@ -1092,6 +1121,59 @@ class SchedulingSimulator:
             key = f"{ppk}|{oper_id}"
             remaining[key] = remaining.get(key, 0) + wf
         return remaining
+
+    def get_eqp_capacity_plan(self) -> List[dict]:
+        """(PPK, OPER, MODEL)별 적정 장비 대수 산출 결과 + 실제 배치 대수.
+
+        필요/정원 대수는 RULE_TIMEKEY 시점 스냅샷(capacity_snapshot)이고, 실제 배치
+        대수는 이번 스케줄에서 그 버킷을 실제로 돌린 서로 다른 장비 수다 —
+        둘을 나란히 두면 "적정 대수대로 운영됐는지"가 한 행에서 보인다.
+        """
+        alloc = summarize_allocation(self.schedule)
+        rows: List[dict] = []
+        for row in self.capacity_snapshot:
+            key = (row["PLAN_PROD_ATTR_VAL"], row["OPER_ID"], row["EQP_MODEL_CD"])
+            entry = alloc.get(key, {"eqp_ids": set(), "run_qty": 0})
+            item = dict(row)
+            item["ALLOC_EQP_CNT"] = len(entry["eqp_ids"])
+            item["ALLOC_EQP_LVAL"] = ",".join(sorted(entry["eqp_ids"]))
+            item["RUN_QTY"] = int(entry["run_qty"])
+            rows.append(item)
+
+        # 산출 시점엔 재공이 없어 스냅샷에 없었는데(유입 재공 등) 실제로는 돌아간
+        # 조합도 남긴다 — 계획 0대 대비 실제 N대로 보이는 게 정확하다.
+        seen = {(r["PLAN_PROD_ATTR_VAL"], r["OPER_ID"], r["EQP_MODEL_CD"]) for r in rows}
+        for (ppk, oper_id, model), entry in sorted(alloc.items()):
+            if (ppk, oper_id, model) in seen:
+                continue
+            rows.append({
+                "PLAN_PROD_ATTR_VAL": ppk,
+                "OPER_ID":       oper_id,
+                "EQP_MODEL_CD":  model,
+                "ST":            0.0,
+                "HORIZON_MIN":   max(min(self.soft_cutoff, self.sim_end), 0),
+                "PLAN_QTY":      int(
+                    self._env_data.get("plan_meta", {})
+                    .get((ppk, oper_id), {}).get("d0_plan_qty", 0)
+                ),
+                "DONE_QTY":      0,
+                "REMAIN_QTY":    0,
+                "WIP_QTY":       0,
+                "WIP_CARRIER_CNT": 0,
+                "REQ_EQP_CNT":   0,
+                "PLAN_EQP_CNT":  0,
+                "PLAN_EQP_LVAL": "",
+                "BUCKET_REQ_EQP_CNT":  0,
+                "BUCKET_PLAN_EQP_CNT": 0,
+                "CAPABLE_EQP_CNT": 0,
+                "RUNNABLE_YN":   "N",
+                "MASK_APPLY_YN": "Y" if self.capacity_planner.mask_enabled else "N",
+                "REASON_CD":     "INFLOW",
+                "ALLOC_EQP_CNT": len(entry["eqp_ids"]),
+                "ALLOC_EQP_LVAL": ",".join(sorted(entry["eqp_ids"])),
+                "RUN_QTY":       int(entry["run_qty"]),
+            })
+        return rows
 
     def get_in_flight_qty(self, ppk: str, oper_id: str) -> int:
         """(PPK, OPER) 기준 현재 장비에서 처리 중(배정됐지만 미완료)인 lot 수."""
@@ -1365,7 +1447,28 @@ class SchedulingSimulator:
         return None
 
     def _eqp_feasible_bucket_keys(self, eqp_id: str) -> set:
-        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합.
+        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합 (적정 대수 정원 반영).
+
+        정원 마스킹이 꺼져 있으면 _uncapped_feasible_bucket_keys()와 같다.
+        """
+        cached = self._capped_keys_cache.get(eqp_id)
+        if cached is not None and cached[0] == self._state_version:
+            return cached[1]
+        keys = self._uncapped_feasible_bucket_keys(eqp_id)
+        if keys and self.capacity_planner.mask_enabled:
+            keys = {
+                (ppk, oper_id) for ppk, oper_id in keys
+                if not self.capacity_planner.blocks(eqp_id, ppk, oper_id)
+            }
+        self._capped_keys_cache[eqp_id] = (self._state_version, keys)
+        return keys
+
+    def _uncapped_feasible_bucket_keys(self, eqp_id: str) -> set:
+        """정원(적정 대수) 제한을 빼고, 순수 투입 자격만 본 배정 가능 버킷 집합.
+
+        정원 점유 판정(CapacityPlanner.occupancy)이 "이 장비가 원래 이 버킷을 받을
+        수 있는가"를 물을 때 쓰는 기준이라, 정원 계산과 서로를 부르는 순환을 피하려면
+        정원을 모르는 이 버전이 따로 있어야 한다.
 
         상태(state_version) 불변인 동안 같은 EQP에 대해 반복 호출되는 일이
         잦아(버킷별 capacity 계산 등) state_version 키 캐시로 재계산을 막는다.
@@ -1839,7 +1942,7 @@ class SchedulingSimulator:
         lot_cd, temp = self._lot_cd_temp(
             lot_id, self.lot_pool.get(lot_id), ppk=ppk, oper_id=oper_id,
         )
-        if self._assign_blocked(eqp_id, lot_cd, temp):
+        if self._assign_blocked(eqp_id, lot_cd, temp, ppk=ppk, oper_id=oper_id):
             return -1.0
         return self.assign_lot(eqp_id, lot_id)
 
@@ -2312,7 +2415,7 @@ class SchedulingSimulator:
         proc_time = effective_proc_time(st_per_wafer, wf_qty)
 
         lot_cd, temp = self._lot_cd_temp(lot_id, ppk=ppk, oper_id=oper_id)
-        if self._assign_blocked(eqp_id, lot_cd, temp):
+        if self._assign_blocked(eqp_id, lot_cd, temp, ppk=ppk, oper_id=oper_id):
             return -1.0
 
         wip = self._wip_for(ppk, oper_id)

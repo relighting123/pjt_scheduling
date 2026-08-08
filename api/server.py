@@ -413,6 +413,13 @@ class InferFetchOptions(BaseModel):
         ge=0,
         description="LOT_CD/TEMP 전환 1회 소요 시간(분)",
     )
+    eqp_capacity_mask: Optional[bool] = Field(
+        default=None,
+        description=(
+            "제품(PPK)·공정(OPER)별 적정 장비 대수를 산출해 그 대수까지만 배정할지 여부 "
+            "(미지정 시 config.env.eqp_capacity_mask_enabled)"
+        ),
+    )
     discrete_wait_enabled: Optional[bool] = Field(
         default=None,
         description=(
@@ -738,6 +745,8 @@ def get_config():
             "max_conversions": CONFIG.env.max_conversions,
             "max_conversions_per_eqp": CONFIG.env.max_conversions_per_eqp,
             "discrete_wait_enabled": CONFIG.env.discrete_wait_enabled,
+            "eqp_capacity_mask_enabled": CONFIG.env.eqp_capacity_mask_enabled,
+            "capacity_min_run_minutes": CONFIG.env.capacity_min_run_minutes,
         },
     }
 
@@ -931,6 +940,7 @@ def inference(req: InferenceRequest):
             max_conversions=req.max_conversions,
             max_conversions_per_eqp=req.max_conversions_per_eqp,
             conversion_minutes=req.conversion_minutes,
+            eqp_capacity_mask=req.eqp_capacity_mask,
             timeout_seconds=remaining_seconds(),
         )
         if result["stats"].get("timed_out"):

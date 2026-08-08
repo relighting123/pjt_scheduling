@@ -549,6 +549,20 @@ class EnvConfig:
     # 아니라 eqp_queue_init 입력으로 별도 처리되며 이 옵션과 무관하게 항상 그대로
     # 반영된다.
     discrete_wait_enabled: bool = True
+    # ── (PPK, OPER)별 적정 장비 대수 정원 마스킹 ────────────────────────────
+    # True면 마감(soft_cutoff)까지의 잔여량 ÷ 모델 ST로 버킷별 필요 장비 대수를
+    # 산출하고, 재공이 그 대수를 먹일 수 있는 버킷만 그 대수까지로 배정을 제한한다
+    # (진행 중이거나 마지막 셋업이 같은 장비는 정원 안으로 보고 계속 통과 —
+    # simulation/eqp_capacity.py). 재공이 남은 버킷의 정원은 최소 1대라 마스킹
+    # 때문에 재공이 통째로 묶이지는 않는다.
+    eqp_capacity_mask_enabled: bool = False
+    # 한 대가 최소 이 시간(분)은 돌 수 있어야 정원으로 인정한다 — 재공 작업량
+    # (재공 매수 × ST)을 이 값으로 나눈 대수가 재공 기준 상한이 된다. 기본값은
+    # 전환 시간과 같다(전환보다 짧게 돌 거면 그 장비를 부르는 게 손해).
+    capacity_min_run_minutes: int = 60
+    # RTS_EQPCAPA_INF/HIS(필요 대수 vs 실제 배치 대수) 저장 여부. 마스킹을 끄고
+    # 분석용으로만 적재할 수도 있어 마스킹 스위치와 분리돼 있다.
+    capa_output_enabled: bool = True
 
 
 @dataclass
