@@ -64,8 +64,10 @@ RULE_TIMEKEY `20260808070000`(07:00) 기준, 마감(`soft_cutoff`)은 1320분 �
 필요 대수  = 우선순위 순으로 1/ST를 누적해 필요처리율에 도달하는 장비 수
 ```
 
-마지막 줄이 핵심이다. 모델마다 ST가 다르면 "대수 × 평균 ST"로는 맞지 않으므로,
-**장비를 우선순위 순으로 한 대씩 붙이며 분당 처리량을 누적**한다.
+마지막 줄이 핵심이다. **ST는 `(PPK, OPER, EQP_MODEL)`로 정해지므로** 같은 공정이라도
+장비마다 처리량이 다르다. 그래서 "대수 × 평균 ST"로 뭉치지 않고
+**장비를 우선순위 순으로 한 대씩 붙이며 분당 처리량(1/ST)을 누적**한다.
+자세한 근거는 아래 [ST는 (PPK, OPER, EQP_MODEL)로 결정된다](#st는-ppk-oper-eqp_model로-결정된다) 참고.
 
 ### PPK001 (계획 60매)
 
@@ -93,12 +95,12 @@ RULE_TIMEKEY `20260808070000`(07:00) 기준, 마감(`soft_cutoff`)은 1320분 �
 ### 실행 결과
 
 ```
-PPK001/OPER001: horizon=1320 plan=60 done=0 remain=60 wip=100매/4carrier st_avg=90.0
-                → 필요 4대 / 정원 4대 (OK, runnable=True)
+PPK001/OPER001: horizon=1320 plan=60 done=0 remain=60 wip=100매/4carrier
+                st={'A': 60.0, 'B': 120.0} → 필요 4대 / 정원 4대 (OK, runnable=True)
     필요 장비: ['EQP001', 'EQP002', 'EQP003', 'EQP004']
     모델별 필요={'A': 2, 'B': 2}
-PPK002/OPER001: horizon=1320 plan=20 done=0 remain=20 wip=25매/1carrier st_avg=90.0
-                → 필요 1대 / 정원 1대 (OK, runnable=True)
+PPK002/OPER001: horizon=1320 plan=20 done=0 remain=20 wip=25매/1carrier
+                st={'A': 60.0, 'B': 120.0} → 필요 1대 / 정원 1대 (OK, runnable=True)
     필요 장비: ['EQP001']
     모델별 필요={'A': 1}
 ```
@@ -116,16 +118,20 @@ PPK002/OPER001: horizon=1320 plan=20 done=0 remain=20 wip=25매/1carrier st_avg=
 재공이 그 대수를 지탱하는지 본다.
 
 ```
-재공 작업량   = 재공 매수 × 평균 ST                      (분)
-재공 기준 상한 = min(ready carrier 수,                   # 한 대는 최소 1 carrier
-                    재공 작업량 / capacity_min_run_minutes)   # 대당 최소 가동시간
-정원          = min(필요 대수, 재공 기준 상한, 처리 가능 장비 수)
-정원          = max(정원, 1)   # 단, 재공이 남아 있으면 최소 1대는 연다
+재공 소진시간(n대) = 재공 매수 / Σ(1/ST)                 # 상위 n대의 분당 처리량 합
+재공 기준 상한     = min(ready carrier 수,                       # 한 대는 최소 1 carrier
+                        소진시간 ≥ capacity_min_run_minutes 인 최대 n)  # 대당 최소 가동시간
+정원              = min(필요 대수, 재공 기준 상한, 처리 가능 장비 수)
+정원              = max(정원, 1)   # 단, 재공이 남아 있으면 최소 1대는 연다
 ```
 
-`capacity_min_run_minutes`(기본 60분 = 전환 시간)보다 짧게 돌 거면 그 장비를 부르는 것이
-손해라는 판단이다. PPK001 기본 케이스는 `100매 × 90분 = 9000분 ÷ 60분 = 150대`,
-carrier 4개 → 상한 4대라 필요 대수 4대가 그대로 정원이 된다.
+n대를 병렬로 붙이면 재공은 `재공 매수 / Σ(1/ST)`분 만에 마른다. 그 시간이
+`capacity_min_run_minutes`(기본 60분 = 전환 시간)보다 짧아지는 순간부터는 그 장비를
+부르는 것이 손해라는 판단이다. 여기서도 ST가 모델마다 다르므로 1단계와 **같은 우선순위
+목록을 한 대씩 누적**해서 계산한다(= 실제로 붙게 될 장비 순서).
+
+PPK001 기본 케이스는 4대를 다 붙여도 `100매 / 0.05 = 2000분 ≥ 60분`이라 작업량 상한에
+걸리지 않고, carrier 4개가 상한이 되어 필요 대수 4대가 그대로 정원이 된다.
 
 ### 케이스별 결과
 
@@ -207,6 +213,85 @@ carrier 4개 → 상한 4대라 필요 대수 4대가 그대로 정원이 된다
 2. **마스크와 실제 배정 게이트가 같다.** 마스크에서 빠진 버킷을 에이전트가 강제로
    요청하면 `assign_ppk_oper()`가 `-1.0`을 돌려주고 아무 일도 일어나지 않는다
    (`_assign_blocked()`가 tool 동시성·전환 그룹·전환 상한과 같은 자리에서 정원도 본다).
+
+---
+
+## ST는 (PPK, OPER, EQP_MODEL)로 결정된다
+
+이 기능의 모든 대수 계산은 그 3키 ST를 그대로 쓴다.
+
+### 조회 경로
+
+```
+abstract_arrange.json  →  abstract_arrange_map[(PPK, OPER, EQP_MODEL)] = ST
+                             ↑ _build_abstract_arrange_maps() (data/loader/preprocess.py)
+
+장비 하나의 ST  =  _st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
+                =  abstract_arrange_map[(ppk, oper_id, 그 장비의 EQP_MODEL_CD)]
+                   └ 없으면 ① abstract 템플릿 행(같은 3키) → ② (PPK,OPER) 모델 평균 순으로 폴백
+```
+
+같은 모델의 장비는 3키가 같으므로 ST도 항상 같다. 그래서 대수를 **모델 단위로 묶어**
+보고할 수 있고(`RTS_EQPCAPA_INF`가 `(PPK, OPER, EQP_MODEL_CD)` 단위 행인 이유),
+반대로 **모델이 다르면 같은 버킷 안에서도 ST가 다르다**는 것을 계산에서 다뤄야 한다.
+
+### 그래서 평균으로 뭉치지 않는다
+
+예시 데이터(모델 A 2대 ST 60, 모델 B 2대 ST 120)에서 PPK001 잔여 60매·남은 1320분:
+
+| 방식 | 계산 | 결과 |
+|------|------|------|
+| ❌ 평균 ST로 나누기 | 평균 ST 90분 → 대당 0.0111매/분, 필요 0.04545 ÷ 0.0111 | **5대** (장비 4대뿐 → "장비 부족"으로 오판) |
+| ✅ 한 대씩 1/ST 누적 | 0.01667 → 0.03333 → 0.04167 → **0.05 ≥ 0.04545** | **4대** (A 2대 + B 2대) |
+
+`mean(1/ST) ≠ 1/mean(ST)`이기 때문에 평균 ST를 쓰면 느린 모델이 섞일수록 오차가 커진다.
+그래서 다음 두 곳 모두 장비를 한 대씩 붙이며 누적한다.
+
+| 사용처 | 함수 | 누적 대상 |
+|--------|------|----------|
+| 1단계 필요 대수 | `_required_count()` | 1/ST 누적 ≥ 필요처리율 |
+| 2단계 재공 지탱 대수 | `_wip_sustainable_count()` | 재공 ÷ 1/ST 누적 ≥ 최소 가동시간 |
+
+두 함수 모두 `_ranked_candidates()`가 만든 **같은 우선순위 목록**을 쓴다. 목록의 각 원소가
+`(EQP_ID, ST, EQP_MODEL_CD)`라서, 몇 대가 정해지면 앞에서부터 잘라 모델별 대수
+(`REQ_EQP_CNT` / `PLAN_EQP_CNT`)로 바로 나뉜다.
+
+```
+후보 목록 = [(EQP001, 60, A), (EQP002, 60, A), (EQP003, 120, B), (EQP004, 120, B)]
+필요 4대  → 앞 4개 → 모델별 필요 {A: 2, B: 2}
+필요 2대  → 앞 2개 → 모델별 필요 {A: 2}          # 느린 B는 아예 부르지 않음
+```
+
+우선순위가 같은 조건에서는 ST가 짧은 장비가 앞에 오므로, 필요 대수가 적을 때는 빠른
+모델만 뽑히고 느린 모델은 다른 버킷 몫으로 남는다. 다만 ST 순서는 4순위 기준이라,
+"진행 중 · 마지막 셋업 동일 · 전환 불필요"가 먼저다 — 느린 모델이라도 이미 그 제품을
+돌고 있었다면 그 장비가 앞선다([아래](#장비-배치-우선순위--하던-장비-그대로) 참고).
+
+### 3키에 없는 조합
+
+`abstract_arrange`에 `(PPK, OPER, MODEL)` 행이 없어도, `discrete_arrange` 기준으로 그
+공정을 처리할 수 있다고 선언된 장비(`eqp_oper_cap`)는 후보에 남는다 —
+`_eqp_can_process()`가 두 경로를 OR로 보기 때문이다. 이때 ST는 폴백으로 채워진다.
+
+```
+① abstract_arrange_map[(PPK, OPER, MODEL)]        ← 정상 경로
+② 같은 3키의 abstract 템플릿 행
+③ (PPK, OPER)에 등록된 모든 모델 ST의 평균          ← 3키가 없을 때 최후 폴백
+   → 셋 다 실패(그 (PPK,OPER)에 abstract 행이 전혀 없음)하면 ST=None → 후보에서 제외
+```
+
+③으로 떨어진 장비만 평균 ST를 쓰게 되므로, 모델별 ST를 정확히 반영하려면
+`abstract_arrange`에 `(PPK, OPER, EQP_MODEL)` 행이 빠짐없이 있어야 한다. `EQP_MODEL_CD`
+자체를 모르는 장비 — `discrete_arrange`에 없고 `eqp_queue_init`에만 등장하는 장비 — 는
+어느 폴백도 탈 수 없어 대수 산출 대상이 아니다.
+
+### 산출 ST vs 실제 가공 ST
+
+대수 산출은 **모델 ST(abstract)** 만 쓴다. 실제 배정에서는 그 carrier에 대한 discrete ST
+(`proc_time_matrix[(CARRIER_ID, EQP_ID, OPER_ID)]`)가 있으면 그 값으로 가공시간을
+계산하므로, 계획한 대수와 실제 소요시간이 미세하게 어긋날 수 있다. discrete ST는
+carrier 단위 값이라 버킷 단위 정원을 정하는 근거로는 쓸 수 없고, 실측이 없는 유입
+재공에는 존재하지도 않기 때문에 산출에는 모델 ST를 쓰는 것이 맞다.
 
 ---
 
@@ -392,6 +477,9 @@ CONFIG.env.capa_output_enabled       = True   # RTS_EQPCAPA_INF/HIS 적재(마�
   물리적으로 이미 그 상태로 진행 중인 확정 사실이기 때문이다.
 - **모델 정보가 없는 장비는 산출 대상이 아니다.** `EQP_MODEL_CD`는 `discrete_arrange`에서만
   나오므로, `eqp_queue_init`에만 등장하는 장비는 ST를 알 수 없어 후보에서 빠진다.
+- **`abstract_arrange`의 `(PPK, OPER, EQP_MODEL)` 커버리지가 산출 정확도를 좌우한다.**
+  빠진 조합은 모델 평균 ST로 폴백되므로 모델별 ST 차이가 반영되지 않는다
+  ([위](#3키에-없는-조합) 참고).
 
 회귀 테스트는 `tests/test_eqp_capacity.py`에 있다(15건 — 산출식·재공 체크·마스킹·배치
 우선순위·DB 출력).

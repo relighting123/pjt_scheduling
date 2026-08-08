@@ -215,6 +215,90 @@ def test_mask_never_locks_out_all_eqps_while_wip_remains():
     assert any(sim.get_feasible_ppk_oper(e) for e in sim._env_data["eqp_ids"])
 
 
+# ── 3-b. 모델별 ST 반영 ──────────────────────────────────────────────────────
+#
+# ST는 (PPK, OPER, EQP_MODEL) 조합으로 정해진다. 모델마다 ST가 다르면 "대수 × 평균 ST"
+# 로는 맞지 않으므로, 필요 대수도 재공 지탱 대수도 장비를 우선순위 순으로 한 대씩
+# 붙이며 1/ST(분당 처리량)를 누적해서 구해야 한다.
+
+MIXED_ST = {"A": 60, "B": 120}
+
+
+def _mixed_model_inputs(*, n_carrier=4, plan_qty=200):
+    """모델 A(ST 60) 2대 + 모델 B(ST 120) 2대."""
+    eqp_model = {"EQP001": "A", "EQP002": "A", "EQP003": "B", "EQP004": "B"}
+    discrete = [
+        {"EQP_ID": eid, "LOT_ID": f"LOT{i:03d}", "CARRIER_ID": f"CAR{i:03d}",
+         "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+         "ST": MIXED_ST[model], "EQP_MODEL_CD": model, "WF_QTY": 25, "SEQ": i}
+        for i in range(1, n_carrier + 1)
+        for eid, model in eqp_model.items()
+    ]
+    return {
+        "discrete_arrange": discrete,
+        "plan": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+                  "D0_PLAN_QTY": plan_qty, "D1_PLAN_QTY": plan_qty, "PLAN_PRIORITY": 1}],
+        "flow": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
+        "abstract_arrange": [
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+             "EQP_MODEL_CD": m, "ST": st}
+            for m, st in MIXED_ST.items()
+        ],
+    }
+
+
+def _mixed_sim(**kwargs):
+    CONFIG.env.eqp_capacity_mask_enabled = False
+    data = preprocess(_mixed_model_inputs(**kwargs), period_key=RULE_TIMEKEY)
+    data["termination_mode"] = "current_wip_assigned"
+    data["enable_wip_inflow"] = False
+    return SchedulingSimulator(data, record_history=False)
+
+
+def test_st_resolved_per_ppk_oper_model():
+    """ST는 (PPK, OPER, EQP_MODEL)로 조회되고, 모델별로 나뉘어 보고된다."""
+    sim = _mixed_sim()
+    assert sim._env_data["abstract_arrange_map"][("PPK001", "OPER001", "A")] == 60
+    assert sim._env_data["abstract_arrange_map"][("PPK001", "OPER001", "B")] == 120
+    # 장비별 ST도 그 장비의 모델로 풀린다
+    assert sim._st_per_wafer_for_eqp("EQP001", "PPK001", "OPER001") == 60
+    assert sim._st_per_wafer_for_eqp("EQP003", "PPK001", "OPER001") == 120
+
+    cap = sim.capacity_planner.target_for("PPK001", "OPER001")
+    assert cap.st_by_model == {"A": 60.0, "B": 120.0}
+
+
+def test_required_count_accumulates_per_model_rate_not_average():
+    """필요 대수는 모델별 1/ST를 한 대씩 누적해 구한다(평균 ST로 나누지 않는다)."""
+    # 잔여 60매 / 1320분 = 0.04545매·분.  A(1/60)+A(1/60)+B(1/120) = 0.04167 → 부족,
+    # B 한 대를 더해 0.05 → 도달. 평균 ST(90분)로 뭉치면 3대로 잘못 나온다.
+    sim = _mixed_sim(plan_qty=60)
+    cap = sim.capacity_planner.target_for("PPK001", "OPER001")
+    assert cap.req_cnt == 4
+    assert cap.req_by_model == {"A": 2, "B": 2}
+    # 빠른 모델이 먼저 채워진다
+    assert cap.req_eqps == ["EQP001", "EQP002", "EQP003", "EQP004"]
+
+    # 잔여 40매 / 1320 = 0.0303 → A 두 대(0.0333)로 충족, 느린 B는 부르지 않는다
+    cap = _mixed_sim(plan_qty=40).capacity_planner.target_for("PPK001", "OPER001")
+    assert cap.req_cnt == 2
+    assert cap.req_by_model == {"A": 2}
+
+
+def test_wip_sustainable_count_uses_per_model_st():
+    """재공 지탱 대수도 평균이 아니라 붙는 장비의 ST로 소진 시간을 계산한다."""
+    CONFIG.env.capacity_min_run_minutes = 2600
+    sim = _mixed_sim(n_carrier=4, plan_qty=10_000)      # 재공 100매
+    cap = sim.capacity_planner.target_for("PPK001", "OPER001")
+    # 소진 시간 = 100매 / 누적 처리율.  1대 6000분, 2대 3000분, 3대 2400분(<2600).
+    # → 최소 가동 2600분을 채우는 건 2대까지. 평균 ST(90분)로 뭉치면
+    #   100×90/2600 = 3대로 과대 산출된다.
+    assert cap.req_cnt == 4
+    assert cap.target_cnt == 2
+    assert cap.reason == "WIP"
+    assert cap.target_by_model == {"A": 2}
+
+
 # ── 4. 배치 우선순위 ─────────────────────────────────────────────────────────
 
 def test_target_prefers_eqp_already_set_up_for_the_bucket():

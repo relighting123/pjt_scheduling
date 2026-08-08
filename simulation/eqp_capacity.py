@@ -3,23 +3,27 @@ simulation/eqp_capacity.py – (PPK, OPER)별 적정 장비 대수 산출 + 정�
 
 세 단계로 나뉜다.
 
-1. **필요 대수 산출** — 마감(soft_cutoff)까지 남은 시간 안에 잔여량을 처리하려면
-   장비가 몇 대 필요한가. 모델별 ST(장당 분)의 역수(1/ST = 분당 처리량)를 우선순위
-   순으로 쌓아, 필요 처리율(잔여량 / 남은시간)에 도달하는 시점의 장비 수가 필요 대수다.
-   모델마다 ST가 달라 "대수 × 평균 ST"로는 맞지 않으므로 장비를 한 대씩 채운다.
+1. **필요 대수 산출**(`_required_count`) — 마감(soft_cutoff와 sim_end 중 이른 쪽)까지 남은
+   시간 안에 잔여량을 처리하려면 장비가 몇 대 필요한가. 분당 처리량(1/ST)을 우선순위 순으로
+   쌓아, 필요 처리율(잔여량 / 남은시간)에 도달하는 시점의 장비 수가 필요 대수다.
 
-2. **재공 적정성 사전 체크** — 대수만 맞춰도 그 대수를 먹일 재공이 없으면 의미가 없다.
-   ready carrier 수(한 대는 최소 1 carrier를 받아야 한다)와 재공 작업량(재공 매수 × ST)을
-   기준으로, 한 대당 최소 `capacity_min_run_minutes`는 돌 수 있는 대수까지만 정원으로
-   인정한다. 그보다 잘게 쪼개면 전환·셋업 시간이 가공 시간보다 커진다.
+2. **재공 적정성 사전 체크**(`_wip_sustainable_count`) — 대수만 맞춰도 그 대수를 먹일 재공이
+   없으면 의미가 없다. n대를 붙이면 재공은 `재공 매수 / Σ(1/ST)`분 만에 마르므로, 그 소진
+   시간이 한 대당 최소 가동시간(`capacity_min_run_minutes`) 이상인 대수와 ready carrier 수
+   중 작은 쪽까지만 정원으로 인정한다. 그보다 잘게 쪼개면 전환·셋업 시간이 가공 시간보다 커진다.
 
-3. **마스킹** — 정원(target)이 정해지면 그 버킷을 지금 돌고 있거나(진행 중) 마지막
+3. **마스킹**(`blocks`) — 정원(target)이 정해지면 그 버킷을 지금 돌고 있거나(진행 중) 마지막
    셋업이 같은(진행했던) 장비는 항상 통과시키고, 그 외 신규 장비는 점유 수가 정원
    미만일 때만 통과시킨다. 결과적으로 "가급적 하던 장비 그대로, 적정 대수까지만" 운영된다.
 
+**ST는 `(PPK, OPER, EQP_MODEL)`로 정해진다**(`abstract_arrange_map`). 같은 버킷 안에서도
+모델이 다르면 처리량이 다르고 `mean(1/ST) ≠ 1/mean(ST)`이므로, 1·2단계 모두 평균 ST로 뭉치지
+않고 `_ranked_candidates()`가 만든 **같은 우선순위 목록**을 장비 한 대씩 누적한다. 목록 원소가
+`(EQP_ID, ST, EQP_MODEL_CD)`라 대수가 정해지면 앞에서부터 잘라 모델별 대수로 바로 나뉜다.
+
 정원 계산은 상태(state_version)가 바뀔 때마다 다시 하되 같은 상태에서는 캐시를 쓴다.
-재공이 남아 있는 버킷의 정원은 최소 1대로 바닥을 두어(`_floor_one`), 마스킹 때문에
-재공이 통째로 묶여 시뮬레이션이 멈추는 일이 없게 한다.
+재공이 남아 있는 버킷의 정원은 최소 1대로 바닥을 두어(`_apply_wip_check`의 `max(target, 1)`),
+마스킹 때문에 재공이 통째로 묶여 시뮬레이션이 멈추는 일이 없게 한다.
 """
 from __future__ import annotations
 
@@ -48,7 +52,6 @@ class BucketCapacity:
     remain_qty:     int                     # 마감까지 처리해야 할 잔여량(재공 상한 반영)
     wip_qty:        int                     # ready 재공 매수
     wip_carriers:   int                     # ready 재공 carrier 수
-    st_avg:         float                   # 처리 가능 장비 평균 ST(장당 분)
     req_cnt:        int                     # ST 기준 필요 대수(재공 미고려)
     target_cnt:     int                     # 재공 체크 후 확정 정원
     capable_cnt:    int                     # 처리 가능(다운 제외) 장비 수
@@ -135,14 +138,10 @@ class CapacityPlanner:
 
         candidates = self._ranked_candidates(ppk, oper_id)
         st_by_model = self._st_by_model(ppk, oper_id, candidates)
-        st_avg = (
-            sum(st for _eid, st, _model in candidates) / len(candidates)
-            if candidates else 0.0
-        )
 
         req_cnt, fleet_short = self._required_count(candidates, remain_qty, horizon)
         target_cnt, reason = self._apply_wip_check(
-            req_cnt, remain_qty, wip_qty, wip_carriers, st_avg, len(candidates),
+            req_cnt, remain_qty, wip_qty, wip_carriers, candidates,
             fleet_short=fleet_short,
         )
 
@@ -157,7 +156,6 @@ class CapacityPlanner:
             remain_qty=int(remain_qty),
             wip_qty=wip_qty,
             wip_carriers=wip_carriers,
-            st_avg=round(st_avg, 4),
             req_cnt=req_cnt,
             target_cnt=target_cnt,
             capable_cnt=len(candidates),
@@ -187,26 +185,49 @@ class CapacityPlanner:
                 return n, False
         return len(candidates), True
 
+    def _wip_sustainable_count(
+        self, candidates: List[Tuple[str, float, str]], wip_qty: int,
+    ) -> int:
+        """재공이 최소 가동시간 이상 먹일 수 있는 최대 대수.
+
+        n대를 병렬로 붙이면 재공은 `재공 매수 / Σ(1/ST)`분 만에 마르므로, 그 시간이
+        한 대당 최소 가동시간(capacity_min_run_minutes) 이상인 최대 n을 찾는다.
+        ST가 모델마다 다르면 어느 장비를 붙이느냐로 소진 시간이 달라지므로
+        평균 ST로 뭉치지 않고 _required_count()와 같은 우선순위 목록을 그대로
+        한 대씩 누적한다(같은 목록 = 실제로 붙게 될 장비 순서).
+        """
+        if wip_qty <= 0 or not candidates:
+            return 0
+        min_run = self._min_run_minutes
+        rate = 0.0
+        count = 0
+        for _eid, st, _model in candidates:
+            rate += 1.0 / st
+            if wip_qty / rate < min_run:
+                break
+            count += 1
+        return count
+
     def _apply_wip_check(
         self,
         req_cnt: int,
         remain_qty: int,
         wip_qty: int,
         wip_carriers: int,
-        st_avg: float,
-        capable_cnt: int,
+        candidates: List[Tuple[str, float, str]],
         *,
         fleet_short: bool = False,
     ) -> Tuple[int, str]:
         """재공이 그 대수를 먹일 수 있는지 사전 체크 → 구동 가능한 정원으로 축소."""
+        capable_cnt = len(candidates)
         if capable_cnt <= 0:
             return 0, REASON_NO_EQP
         if wip_carriers <= 0:
             return 0, REASON_NO_WIP
 
-        # 재공 작업량(분) / 한 대당 최소 가동시간 = 재공이 지탱 가능한 대수
-        wip_minutes = wip_qty * st_avg if st_avg > 0 else 0.0
-        by_workload = int(wip_minutes // self._min_run_minutes) if wip_minutes > 0 else 0
+        # 한 대는 최소 1 carrier를 받아야 하고(carrier 수 상한), 최소 가동시간도
+        # 채워야 한다(작업량 상한). 둘 중 작은 쪽이 재공 기준 상한이다.
+        by_workload = self._wip_sustainable_count(candidates, wip_qty)
         wip_cap = min(wip_carriers, by_workload) if by_workload > 0 else min(wip_carriers, 1)
 
         target = min(req_cnt, wip_cap, capable_cnt)
