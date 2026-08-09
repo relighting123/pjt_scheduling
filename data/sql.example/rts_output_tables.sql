@@ -171,6 +171,8 @@ CREATE TABLE RTS_EQPCAPA_INF (
     RUN_QTY                 NUMBER(10),            -- 실제 배치 수량(매)
     RUNNABLE_YN             CHAR(1)        DEFAULT 'N' NOT NULL,  -- 재공 기준 구동 가능 조건 여부
     MASK_APPLY_YN           CHAR(1)        DEFAULT 'N' NOT NULL,  -- 정원 마스킹 적용 여부
+    ALLOC_MODE              VARCHAR2(8)    DEFAULT 'CAP' NOT NULL, -- CAP(버킷별 상한) / ALLOC(장비 배분)
+    SHORTFALL_RATIO         NUMBER(6,4),           -- ALLOC 모드: 배분 후 남은 부족률(0=계획 충족)
     REASON_CD               VARCHAR2(16),          -- OK/WIP/EQP/NO_WIP/NO_EQP/DONE/INFLOW
     CRT_USER_ID             VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
     CRT_TM                  TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
@@ -203,6 +205,8 @@ CREATE TABLE RTS_EQPCAPA_HIS (
     RUN_QTY                 NUMBER(10),
     RUNNABLE_YN             CHAR(1)        DEFAULT 'N' NOT NULL,
     MASK_APPLY_YN           CHAR(1)        DEFAULT 'N' NOT NULL,
+    ALLOC_MODE              VARCHAR2(8)    DEFAULT 'CAP' NOT NULL,
+    SHORTFALL_RATIO         NUMBER(6,4),
     REASON_CD               VARCHAR2(16),
     CRT_USER_ID             VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
     CRT_TM                  TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,

@@ -170,7 +170,8 @@ def _insert_rts_eqpcapa(rows: List[dict], *, history: bool) -> List[str]:
             "WIP_QTY", "WIP_CARRIER_CNT", "CAPABLE_EQP_CNT",
             "REQ_EQP_CNT", "PLAN_EQP_CNT", "ALLOC_EQP_CNT",
             "PLAN_EQP_LVAL", "ALLOC_EQP_LVAL", "RUN_QTY",
-            "RUNNABLE_YN", "MASK_APPLY_YN", "REASON_CD", "CRT_USER_ID",
+            "RUNNABLE_YN", "MASK_APPLY_YN", "ALLOC_MODE", "SHORTFALL_RATIO",
+            "REASON_CD", "CRT_USER_ID",
         ]
         vals = [
             _sql_str(r["FAC_ID"]),
@@ -195,6 +196,8 @@ def _insert_rts_eqpcapa(rows: List[dict], *, history: bool) -> List[str]:
             _sql_num(r.get("RUN_QTY", 0)),
             _sql_str(r.get("RUNNABLE_YN", "N")),
             _sql_str(r.get("MASK_APPLY_YN", "N")),
+            _sql_str(r.get("ALLOC_MODE", "CAP")),
+            _sql_float(r.get("SHORTFALL_RATIO", 0)),
             _sql_str(r.get("REASON_CD", "")),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
         ]

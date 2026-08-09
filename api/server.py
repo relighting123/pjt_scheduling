@@ -420,6 +420,14 @@ class InferFetchOptions(BaseModel):
             "(미지정 시 config.env.eqp_capacity_mask_enabled)"
         ),
     )
+    capacity_alloc_mode: Optional[str] = Field(
+        default=None,
+        pattern="^(cap|allocate)$",
+        description=(
+            "적정 대수 적용 방식: cap(버킷별 상한) | allocate(보유 장비를 버킷에 배분). "
+            "미지정 시 config.env.capacity_alloc_mode"
+        ),
+    )
     discrete_wait_enabled: Optional[bool] = Field(
         default=None,
         description=(
@@ -746,6 +754,8 @@ def get_config():
             "max_conversions_per_eqp": CONFIG.env.max_conversions_per_eqp,
             "discrete_wait_enabled": CONFIG.env.discrete_wait_enabled,
             "eqp_capacity_mask_enabled": CONFIG.env.eqp_capacity_mask_enabled,
+            "capacity_alloc_mode": CONFIG.env.capacity_alloc_mode,
+            "capacity_line_balance": CONFIG.env.capacity_line_balance,
             "capacity_min_run_minutes": CONFIG.env.capacity_min_run_minutes,
         },
     }
@@ -941,6 +951,7 @@ def inference(req: InferenceRequest):
             max_conversions_per_eqp=req.max_conversions_per_eqp,
             conversion_minutes=req.conversion_minutes,
             eqp_capacity_mask=req.eqp_capacity_mask,
+            capacity_alloc_mode=req.capacity_alloc_mode,
             timeout_seconds=remaining_seconds(),
         )
         if result["stats"].get("timed_out"):

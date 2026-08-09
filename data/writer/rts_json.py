@@ -255,6 +255,8 @@ def _build_rts_eqpcapa_rows(
             "RUN_QTY":             int(r.get("RUN_QTY", 0)),
             "RUNNABLE_YN":         r.get("RUNNABLE_YN", "N"),
             "MASK_APPLY_YN":       r.get("MASK_APPLY_YN", "N"),
+            "ALLOC_MODE":          r.get("ALLOC_MODE", "CAP"),
+            "SHORTFALL_RATIO":     float(r.get("SHORTFALL_RATIO", 0) or 0),
             "REASON_CD":           r.get("REASON_CD", ""),
             "CRT_USER_ID":         meta["CRT_USER_ID"],
         })

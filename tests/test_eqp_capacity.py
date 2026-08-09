@@ -30,12 +30,16 @@ def _restore_env_config():
         CONFIG.env.eqp_capacity_mask_enabled,
         CONFIG.env.capacity_min_run_minutes,
         CONFIG.env.capa_output_enabled,
+        CONFIG.env.capacity_alloc_mode,
+        CONFIG.env.capacity_line_balance,
     )
     yield
     (
         CONFIG.env.eqp_capacity_mask_enabled,
         CONFIG.env.capacity_min_run_minutes,
         CONFIG.env.capa_output_enabled,
+        CONFIG.env.capacity_alloc_mode,
+        CONFIG.env.capacity_line_balance,
     ) = original
 
 
@@ -435,3 +439,159 @@ def test_capa_output_disabled_emits_no_rows():
         result, sim._env_data, fac_id="FAC001", rule_timekey=RULE_TIMEKEY,
     )
     assert payload["RTS_EQPCAPA_INF"] == []
+
+
+# ── 6. 라인 밸런스 (최종 out 기준) ───────────────────────────────────────────
+#
+# 같은 PPK의 공정들은 직렬이라 최종 공정 out이 곧 제품 실적이다. 앞 공정에 장비를
+# 몰아줘도 뒤 공정이 못 받으면 재공만 쌓이므로, 최종 공정 계획에서 역산해(pull)
+# 각 공정의 목표 out을 잡는다 → 공정 간 처리량(매/분)이 맞는다.
+
+def _two_oper_inputs(*, o1_carriers=4, o2_carriers=0, o1_plan=100, o2_plan=100,
+                     st1=60, st2=60):
+    """OPER001 → OPER002 2단 공정, 장비 4대(모델 A) 공용."""
+    eqps = [f"EQP{i:03d}" for i in range(1, 5)]
+    discrete, n = [], 0
+    for oper, carriers, st in (("OPER001", o1_carriers, st1), ("OPER002", o2_carriers, st2)):
+        for _ in range(carriers):
+            n += 1
+            for eid in eqps:
+                discrete.append({
+                    "EQP_ID": eid, "LOT_ID": f"LOT{n:03d}", "CARRIER_ID": f"CAR{n:03d}",
+                    "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": oper, "ST": st,
+                    "EQP_MODEL_CD": "A", "WF_QTY": 25, "SEQ": n})
+    return {
+        "discrete_arrange": discrete,
+        "plan": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+                  "D0_PLAN_QTY": o1_plan, "D1_PLAN_QTY": o1_plan, "PLAN_PRIORITY": 1},
+                 {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER002",
+                  "D0_PLAN_QTY": o2_plan, "D1_PLAN_QTY": o2_plan, "PLAN_PRIORITY": 1}],
+        "flow": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"},
+                 {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 2, "OPER_ID": "OPER002"}],
+        "abstract_arrange": [
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+             "EQP_MODEL_CD": "A", "ST": st1},
+            {"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER002",
+             "EQP_MODEL_CD": "A", "ST": st2}],
+    }
+
+
+def _line_sim(*, mask=False, alloc_mode="cap", line_balance=True, **kwargs):
+    CONFIG.env.eqp_capacity_mask_enabled = mask
+    CONFIG.env.capacity_alloc_mode = alloc_mode
+    CONFIG.env.capacity_line_balance = line_balance
+    data = preprocess(_two_oper_inputs(**kwargs), period_key=RULE_TIMEKEY)
+    data["termination_mode"] = "current_wip_assigned"
+    data["enable_wip_inflow"] = False
+    return SchedulingSimulator(data, record_history=False)
+
+
+def test_line_balance_pulls_upstream_demand_from_final_oper():
+    """상류 목표 out = 최종 공정 목표 − 최종 공정이 이미 들고 있는 재공."""
+    # 최종(OPER002) 계획 100매, OPER002가 이미 50매(2 carrier) 보유
+    # → OPER001이 만들어 줘야 할 양 = 100 − 50 = 50매
+    sim = _line_sim(o1_carriers=4, o2_carriers=2, o1_plan=100, o2_plan=100)
+    need = sim.capacity_planner._line_need_out()
+    assert need[("PPK001", "OPER002")] == 100
+    assert need[("PPK001", "OPER001")] == 50
+
+    # 최종 공정이 계획을 이미 다 들고 있으면 상류는 더 만들 필요가 없다
+    sim = _line_sim(o1_carriers=4, o2_carriers=4, o1_plan=100, o2_plan=100)
+    need = sim.capacity_planner._line_need_out()
+    assert need[("PPK001", "OPER001")] == 0
+
+
+def test_line_balance_matches_rate_not_count_when_st_differs():
+    """ST가 다르면 같은 처리율을 내기 위해 공정별 대수가 달라진다."""
+    # OPER001 ST 60, OPER002 ST 120 — 최종 100매 목표(하류 재공 0 → 상류도 100매)
+    sim = _line_sim(o1_carriers=8, o2_carriers=4, o1_plan=100, o2_plan=100,
+                    st1=60, st2=120)
+    caps = sim.capacity_planner.targets()
+    o1 = caps[("PPK001", "OPER001")]
+    o2 = caps[("PPK001", "OPER002")]
+    # OPER002는 100매, OPER001은 100−100(하류 보유)=0 … 이 아니라 하류 보유분만큼 차감
+    assert o2.remain_qty == 100
+    # 같은 목표 out이라도 ST가 2배면 필요 대수도 대략 2배가 된다
+    assert o2.req_cnt >= o1.req_cnt
+
+
+def test_line_balance_off_uses_own_plan_only():
+    """line_balance=False면 공정마다 자기 계획만 본다(기존 동작)."""
+    sim = _line_sim(o1_carriers=4, o2_carriers=4, o1_plan=100, o2_plan=100,
+                    line_balance=False)
+    cap = sim.capacity_planner.target_for("PPK001", "OPER001")
+    assert cap.remain_qty == 100          # 하류 재공을 빼지 않는다
+
+
+# ── 7. 배분 모드 (allocate) ──────────────────────────────────────────────────
+
+def test_allocate_mode_sums_to_fleet_and_masks_by_table():
+    """배분 모드에서는 배분표가 곧 마스크 — 배분 못 받은 장비는 그 버킷에서 빠진다."""
+    sim = _line_sim(mask=True, alloc_mode="allocate",
+                    o1_carriers=4, o2_carriers=4, o1_plan=100, o2_plan=100)
+    alloc, shortfalls = sim.capacity_planner.allocation()
+    assigned = [e for v in alloc.values() for e in v]
+    assert len(assigned) == len(set(assigned))          # 한 장비는 한 버킷에만
+    assert set(assigned) <= set(sim._env_data["eqp_ids"])
+
+    for bucket, eqps in alloc.items():
+        if not eqps:
+            continue
+        outsider = next(
+            (e for e in sim._env_data["eqp_ids"] if e not in eqps), None,
+        )
+        if outsider is not None:
+            assert sim.capacity_planner.blocks(outsider, *bucket)
+        for e in eqps:
+            assert not sim.capacity_planner.blocks(e, *bucket)
+
+
+def test_allocate_mode_scarcity_protects_dedicated_bucket():
+    """범용 버킷이 전용 버킷의 유일한 장비를 가져가 굶기지 않는다."""
+    CONFIG.env.eqp_capacity_mask_enabled = True
+    CONFIG.env.capacity_alloc_mode = "allocate"
+    # EQP001=모델 A(PPK001·PPK002 가능), EQP002=모델 B(PPK002만 가능)
+    # PPK002 잔여량을 더 크게 잡아 배분 순서에서 PPK002가 먼저 고르게 한다.
+    eligible = {"PPK001": {"A": 60}, "PPK002": {"A": 60, "B": 120}}
+    eqp_model = {"EQP001": "A", "EQP002": "B"}
+    carriers = {"PPK001": 2, "PPK002": 6}
+    discrete, n = [], 0
+    for ppk, models in eligible.items():
+        for _ in range(carriers[ppk]):
+            n += 1
+            for eid, m in eqp_model.items():
+                if m in models:
+                    discrete.append({
+                        "EQP_ID": eid, "LOT_ID": f"LOT{n:03d}", "CARRIER_ID": f"CAR{n:03d}",
+                        "PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": "OPER001", "ST": models[m],
+                        "EQP_MODEL_CD": m, "WF_QTY": 25, "SEQ": n})
+    raw = {
+        "discrete_arrange": discrete,
+        "plan": [{"PLAN_PROD_ATTR_VAL": p, "OPER_ID": "OPER001",
+                  "D0_PLAN_QTY": carriers[p] * 25, "D1_PLAN_QTY": 100,
+                  "PLAN_PRIORITY": 1} for p in eligible],
+        "flow": [{"PLAN_PROD_ATTR_VAL": p, "OPER_SEQ": 1, "OPER_ID": "OPER001"}
+                 for p in eligible],
+        "abstract_arrange": [
+            {"PLAN_PROD_ATTR_VAL": p, "OPER_ID": "OPER001", "EQP_MODEL_CD": m, "ST": st}
+            for p, ms in eligible.items() for m, st in ms.items()],
+    }
+    data = preprocess(raw, period_key=RULE_TIMEKEY)
+    data["termination_mode"] = "current_wip_assigned"
+    data["enable_wip_inflow"] = False
+    sim = SchedulingSimulator(data, record_history=False)
+
+    alloc, _short = sim.capacity_planner.allocation()
+    # PPK001은 EQP001 없이는 한 대도 못 돌린다 — 반드시 확보돼야 한다
+    assert alloc[("PPK001", "OPER001")] == ["EQP001"]
+    assert alloc[("PPK002", "OPER001")] == ["EQP002"]
+
+
+def test_allocate_rows_report_allocation_and_shortfall():
+    sim = _line_sim(mask=True, alloc_mode="allocate",
+                    o1_carriers=4, o2_carriers=4, o1_plan=100, o2_plan=100)
+    rows = sim.get_eqp_capacity_plan()
+    assert rows and all(r["ALLOC_MODE"] == "ALLOC" for r in rows)
+    assert all("SHORTFALL_RATIO" in r for r in rows)
+    # 배분 대수 합계는 보유 장비 수를 넘지 않는다
+    assert sum(r["PLAN_EQP_CNT"] for r in rows) <= len(sim._env_data["eqp_ids"])

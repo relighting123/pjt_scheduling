@@ -50,6 +50,7 @@ def run_inference(
     max_conversions_per_eqp: Optional[int] = None,
     conversion_minutes: Optional[int] = None,
     eqp_capacity_mask: Optional[bool] = None,
+    capacity_alloc_mode: Optional[str] = None,
     timeout_seconds: Optional[float] = None,
 ) -> dict:
     """
@@ -62,6 +63,8 @@ def run_inference(
         deterministic (bool): RL 예측 시 greedy 여부
         eqp_capacity_mask (bool|None): (PPK, OPER)별 적정 장비 대수 정원 마스킹.
             None이면 CONFIG.env.eqp_capacity_mask_enabled를 따른다.
+        capacity_alloc_mode (str|None): "cap"(버킷별 상한) | "allocate"(보유 장비 배분).
+            None이면 CONFIG.env.capacity_alloc_mode를 따른다.
         timeout_seconds (float|None): 이 호출에 허용된 남은 시간(초). 초과 시 그 시점까지의
             결과로 조기 종료 (truncated=True). 전체 파이프라인(DB 조회~DB 적재) 기준
             타임아웃은 호출측(api/server.py, main.py)이 남은 시간을 계산해 전달한다.
@@ -95,6 +98,8 @@ def run_inference(
         run_data["conversion_minutes"] = conversion_minutes
     if eqp_capacity_mask is not None:
         run_data["eqp_capacity_mask_enabled"] = bool(eqp_capacity_mask)
+    if capacity_alloc_mode is not None:
+        run_data["capacity_alloc_mode"] = capacity_alloc_mode
     if current_wip_only:
         run_data["termination_mode"] = "current_wip_assigned"
     if algorithm == "earliest_st":
@@ -387,6 +392,7 @@ def run_inference_compare(
     max_conversions_per_eqp: Optional[int] = None,
     conversion_minutes: Optional[int] = None,
     eqp_capacity_mask: Optional[bool] = None,
+    capacity_alloc_mode: Optional[str] = None,
     fac_id: Optional[str] = None,
 ) -> dict:
     """
@@ -423,6 +429,7 @@ def run_inference_compare(
                 max_conversions_per_eqp=max_conversions_per_eqp,
                 conversion_minutes=conversion_minutes,
                 eqp_capacity_mask=eqp_capacity_mask,
+                capacity_alloc_mode=capacity_alloc_mode,
             )
             result["prod_keys"] = env_data["prod_keys"]
             result["oper_ids"] = env_data["oper_ids"]

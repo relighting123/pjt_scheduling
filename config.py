@@ -560,6 +560,18 @@ class EnvConfig:
     # (재공 매수 × ST)을 이 값으로 나눈 대수가 재공 기준 상한이 된다. 기본값은
     # 전환 시간과 같다(전환보다 짧게 돌 거면 그 장비를 부르는 게 손해).
     capacity_min_run_minutes: int = 60
+    # "cap"  = 버킷별 상한만 건다(정원 합이 보유 장비를 넘을 수 있음 — 배분은 에이전트 몫)
+    # "allocate" = 보유 장비를 버킷에 실제로 나눠준다(부족률 water-filling). 배분표가
+    #   곧 마스크가 되어 "제품·공정·모델별 대수"가 합계까지 보유 장비와 맞는 계획이 된다.
+    capacity_alloc_mode: str = "cap"
+    # allocate 모드에서 계획 부족을 다 메우고도 장비가 남으면, 재공이 남은 버킷에
+    # 더 배분해 유휴를 막는다(계획 초과분은 다음 회차 재공이 되므로 버리는 것보다 낫다).
+    # False면 계획을 채우는 데 필요한 만큼만 배분하고 나머지는 놀린다.
+    capacity_alloc_fill_idle: bool = True
+    # 같은 PPK의 공정들은 직렬이라 최종 공정 out이 곧 제품 실적이다. True면 최종 공정
+    # 계획에서 역산해(pull) 각 공정의 목표 out을 잡아 공정 간 처리량(매/분)을 맞춘다.
+    # False면 공정마다 자기 계획만 보고 독립적으로 산출한다(공정 간 불균형 가능).
+    capacity_line_balance: bool = True
     # RTS_EQPCAPA_INF/HIS(필요 대수 vs 실제 배치 대수) 저장 여부. 마스킹을 끄고
     # 분석용으로만 적재할 수도 있어 마스킹 스위치와 분리돼 있다.
     capa_output_enabled: bool = True

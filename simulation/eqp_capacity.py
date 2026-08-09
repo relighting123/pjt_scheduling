@@ -54,9 +54,12 @@ class BucketCapacity:
     wip_carriers:   int                     # ready 재공 carrier 수
     req_cnt:        int                     # ST 기준 필요 대수(재공 미고려)
     target_cnt:     int                     # 재공 체크 후 확정 정원
+    wip_cap:        int                     # 재공만으로 본 상한(req_cnt와 min 취하기 전)
     capable_cnt:    int                     # 처리 가능(다운 제외) 장비 수
     runnable:       bool                    # 지금 구동 가능한 조건인가
     reason:         str = REASON_OK
+    # 우선순위 순 후보 [(EQP_ID, ST, EQP_MODEL_CD)] — 배분이 그대로 재사용한다
+    candidates:     List[Tuple[str, float, str]] = field(default_factory=list)
     req_eqps:       List[str] = field(default_factory=list)   # 필요 대수만큼의 우선순위 장비
     target_eqps:    List[str] = field(default_factory=list)   # 정원만큼의 우선순위 장비
     st_by_model:    Dict[str, float] = field(default_factory=dict)
@@ -71,6 +74,8 @@ class CapacityPlanner:
         self._sim = sim
         self._cache: Optional[Dict[Tuple[str, str], BucketCapacity]] = None
         self._cache_version: int = -1
+        self._alloc_cache = None
+        self._alloc_version: int = -1
 
     # ── 설정 ────────────────────────────────────────────────────────────────
 
@@ -115,6 +120,54 @@ class CapacityPlanner:
         }
         return sorted(keys)
 
+    # ── 라인 밸런스 (최종 out 기준) ─────────────────────────────────────────
+
+    @property
+    def line_balance(self) -> bool:
+        return bool(self._sim._env_data.get(
+            "capacity_line_balance", CONFIG.env.capacity_line_balance,
+        ))
+
+    def _line_need_out(self) -> Dict[Tuple[str, str], int]:
+        """PPK별 flow를 역방향으로 훑어 각 공정이 마감까지 '내보내야 할 양'을 구한다.
+
+        같은 PPK의 공정들은 직렬이라 최종 공정의 out이 곧 그 제품의 실적이다.
+        앞 공정에 장비를 몰아줘 봐야 뒤 공정이 못 받으면 재공만 쌓이고 최종 out은
+        늘지 않으므로, **최종 공정의 잔여 계획**을 기준으로 잡고 상류로 거슬러
+        올라가며 각 공정이 내보내야 할 양을 정한다.
+
+            최종 공정:  내보낼 양 = 계획 − 실적
+            앞 공정:    내보낼 양 = 뒤 공정이 내보낼 양 − 뒤 공정이 이미 들고 있는 재공
+                                   (대기 + 가공 중)
+
+        뒤 공정이 이미 재공을 들고 있으면 그만큼 앞 공정은 덜 만들어도 된다(pull).
+        각 공정의 목표 out이 정해지면 필요 대수는 `목표 out / 남은시간`이라는 **같은
+        처리율**을 내는 대수가 되므로, ST가 공정마다 달라도 결과적으로 공정 간
+        capa(매/분)가 맞춰진다 — 대수가 아니라 처리율이 맞는 것이 라인 밸런스다.
+        """
+        sim = self._sim
+        need: Dict[Tuple[str, str], int] = {}
+        flow = sim._env_data.get("flow", {})
+        plan_meta = sim._env_data.get("plan_meta", {})
+        for ppk, steps in flow.items():
+            ordered = [s["oper_id"] for s in sorted(steps, key=lambda x: x["seq_id"])]
+            if not ordered:
+                continue
+            downstream_need = None
+            for oper_id in reversed(ordered):
+                plan_qty = int(plan_meta.get((ppk, oper_id), {}).get("d0_plan_qty", 0))
+                done = int(sim.stats["completed_qty"].get((ppk, oper_id), 0))
+                own = max(plan_qty - done, 0)
+                if downstream_need is None:
+                    out = own                       # 최종 공정 — 계획이 곧 목표 out
+                else:
+                    out = max(downstream_need, 0)
+                need[(ppk, oper_id)] = out
+                # 이 공정이 이미 들고 있는 재공만큼은 앞 공정이 안 만들어도 된다
+                held = self._ready_wip(ppk, oper_id)[0] + self._in_flight_wafers(ppk, oper_id)
+                downstream_need = out - held
+        return need
+
     def _compute_bucket(self, ppk: str, oper_id: str) -> BucketCapacity:
         sim = self._sim
         # 마감시간 = soft_cutoff와 시뮬 종료 중 이른 쪽. 벤치마크처럼 sim_end를
@@ -129,19 +182,28 @@ class CapacityPlanner:
         wip_qty, wip_carriers = self._ready_wip(ppk, oper_id)
         in_flight_qty = self._in_flight_wafers(ppk, oper_id)
 
-        # 잔여량: 계획이 있으면 (계획 − 실적)을 실제로 만들 수 있는 재공까지만 인정하고,
-        # 계획이 없는 버킷은 남은 재공 자체가 마감까지 처리해야 할 양이다.
-        if plan_qty > 0:
-            remain_qty = min(max(plan_qty - done_qty, 0), wip_qty + in_flight_qty)
+        # 잔여량 = 마감까지 이 공정이 내보내야 할 양.
+        #  - 라인 밸런스: 최종 공정 계획에서 역산한 값(_line_need_out) — PPK 안의 공정들이
+        #    같은 처리율을 목표로 하게 되어 공정 간 capa가 맞는다.
+        #  - 그 외: 자기 공정 계획 − 실적.
+        # 어느 쪽이든 "실제로 만들 수 있는 양"(이 공정 재공 + 가공 중 + 상류 재공)까지만
+        # 인정한다 — 재공이 안 흘러온 만큼은 아무리 장비를 붙여도 못 만든다.
+        if self.line_balance:
+            need_out = self._line_need_out().get((ppk, oper_id))
         else:
-            remain_qty = wip_qty
+            need_out = None
+        if need_out is None:
+            need_out = max(plan_qty - done_qty, 0) if plan_qty > 0 else wip_qty
+        reachable = wip_qty + in_flight_qty + self._upstream_wip(ppk, oper_id)
+        remain_qty = min(need_out, reachable) if plan_qty > 0 or need_out > 0 else wip_qty
 
         candidates = self._ranked_candidates(ppk, oper_id)
         st_by_model = self._st_by_model(ppk, oper_id, candidates)
 
         req_cnt, fleet_short = self._required_count(candidates, remain_qty, horizon)
+        wip_cap = self._wip_cap(candidates, wip_qty, wip_carriers)
         target_cnt, reason = self._apply_wip_check(
-            req_cnt, remain_qty, wip_qty, wip_carriers, candidates,
+            req_cnt, remain_qty, wip_cap, wip_carriers, len(candidates),
             fleet_short=fleet_short,
         )
 
@@ -158,9 +220,11 @@ class CapacityPlanner:
             wip_carriers=wip_carriers,
             req_cnt=req_cnt,
             target_cnt=target_cnt,
+            wip_cap=wip_cap,
             capable_cnt=len(candidates),
             runnable=target_cnt > 0 and wip_carriers > 0,
             reason=reason,
+            candidates=candidates,
             req_eqps=req_eqps,
             target_eqps=target_eqps,
             st_by_model=st_by_model,
@@ -208,27 +272,35 @@ class CapacityPlanner:
             count += 1
         return count
 
+    def _wip_cap(
+        self, candidates: List[Tuple[str, float, str]], wip_qty: int, wip_carriers: int,
+    ) -> int:
+        """재공만으로 본 상한. 한 대는 최소 1 carrier를 받아야 하고(carrier 수 상한),
+        최소 가동시간도 채워야 한다(작업량 상한) — 둘 중 작은 쪽.
+
+        필요 대수와 min을 취하기 전의 값이라, 배분(allocate 모드)에서 "이 버킷에
+        최대 몇 대까지 줘도 되는가"의 한도로 쓸 수 있다.
+        """
+        if wip_carriers <= 0:
+            return 0
+        by_workload = self._wip_sustainable_count(candidates, wip_qty)
+        return min(wip_carriers, by_workload) if by_workload > 0 else min(wip_carriers, 1)
+
     def _apply_wip_check(
         self,
         req_cnt: int,
         remain_qty: int,
-        wip_qty: int,
+        wip_cap: int,
         wip_carriers: int,
-        candidates: List[Tuple[str, float, str]],
+        capable_cnt: int,
         *,
         fleet_short: bool = False,
     ) -> Tuple[int, str]:
         """재공이 그 대수를 먹일 수 있는지 사전 체크 → 구동 가능한 정원으로 축소."""
-        capable_cnt = len(candidates)
         if capable_cnt <= 0:
             return 0, REASON_NO_EQP
         if wip_carriers <= 0:
             return 0, REASON_NO_WIP
-
-        # 한 대는 최소 1 carrier를 받아야 하고(carrier 수 상한), 최소 가동시간도
-        # 채워야 한다(작업량 상한). 둘 중 작은 쪽이 재공 기준 상한이다.
-        by_workload = self._wip_sustainable_count(candidates, wip_qty)
-        wip_cap = min(wip_carriers, by_workload) if by_workload > 0 else min(wip_carriers, 1)
 
         target = min(req_cnt, wip_cap, capable_cnt)
         # 재공이 남아 있으면 최소 1대는 열어 둔다 — 계획을 이미 채웠거나(잔여 0)
@@ -335,11 +407,147 @@ class CapacityPlanner:
             carriers += 1
         return wafers, carriers
 
+    def _upstream_wip(self, ppk: str, oper_id: str) -> int:
+        """같은 PPK의 선행 공정들이 들고 있는 재공(대기 + 가공 중) 합.
+
+        이 공정으로 흘러들어올 수 있는 양이라, "마감까지 실제로 만들 수 있는 상한"에
+        포함된다. flow_prev를 따라 올라가며 순환은 seen으로 끊는다.
+        """
+        sim = self._sim
+        total = 0
+        seen = {oper_id}
+        prev = sim._env_data.get("flow_prev", {}).get(ppk, {}).get(oper_id)
+        while prev and prev not in seen:
+            seen.add(prev)
+            total += self._ready_wip(ppk, prev)[0] + self._in_flight_wafers(ppk, prev)
+            prev = sim._env_data.get("flow_prev", {}).get(ppk, {}).get(prev)
+        return total
+
     def _in_flight_wafers(self, ppk: str, oper_id: str) -> int:
         return sum(
             int(meta.get("wf_qty", 0))
             for meta in self._sim._in_flight.values()
             if meta.get("PLAN_PROD_ATTR_VAL") == ppk and meta.get("oper_id") == oper_id
+        )
+
+    # ── 배분 (allocate 모드) ────────────────────────────────────────────────
+
+    @property
+    def alloc_mode(self) -> str:
+        """'cap'(버킷별 상한) | 'allocate'(보유 장비를 버킷에 나눠줌)."""
+        mode = str(self._sim._env_data.get(
+            "capacity_alloc_mode", CONFIG.env.capacity_alloc_mode,
+        )).lower()
+        return mode if mode in ("cap", "allocate") else "cap"
+
+    def allocation(self) -> Tuple[Dict[Tuple[str, str], List[str]], Dict[Tuple[str, str], float]]:
+        """보유 장비를 버킷에 배분한 표와 배분 후 부족률. state_version 동안 캐시.
+
+        긴급도(부족률) water-filling — 한 대 줄 때마다 부족률을 다시 계산해
+        가장 아쉬운 버킷에 다음 한 대를 준다. 부족률(비율)을 쓰는 이유는 절대
+        부족분을 쓰면 잔여량이 큰 버킷 하나가 전부 독식하기 때문이다.
+        """
+        sim = self._sim
+        if self._alloc_cache is not None and self._alloc_version == sim._state_version:
+            return self._alloc_cache
+        result = self._compute_allocation()
+        self._alloc_cache = result
+        self._alloc_version = sim._state_version
+        return result
+
+    def _compute_allocation(self):
+        sim = self._sim
+        caps = self.targets()
+        horizon = max(min(sim.soft_cutoff, sim.sim_end) - sim.current_time, 0)
+        alloc: Dict[Tuple[str, str], List[str]] = {b: [] for b in caps}
+        free = {
+            eid for eid in sim._env_data.get("eqp_ids", [])
+            if sim.eqps.get(eid) is not None and sim.eqps[eid].status != "down"
+        }
+        st_of = {
+            (b, eid): st for b, c in caps.items() for eid, st, _m in c.candidates
+        }
+
+        def shortfall_ratio(b):
+            remain = caps[b].remain_qty
+            if remain <= 0:
+                return 0.0
+            # horizon이 0이면(마감 경과) 커버가 0이라 부족률은 항상 1 — 잔여량 기준
+            # 균등 분배로 수렴한다.
+            covered = sum(horizon / st_of[(b, e)] for e in alloc[b])
+            return max(remain - covered, 0) / remain
+
+        def critical_for_other(e, b):
+            """e가 '아직 한 대도 못 받은 다른 버킷'의 유일하게 남은 후보인가."""
+            for b2, c2 in caps.items():
+                if b2 == b or alloc[b2] or c2.remain_qty <= 0 or c2.wip_cap <= 0:
+                    continue
+                rest = [x for x, _s, _m in c2.candidates if x in free]
+                if rest == [e]:
+                    return True
+            return False
+
+        def next_eqp(b):
+            avail = [e for e, _s, _m in caps[b].candidates if e in free]
+            if not avail:
+                return None
+            # 남 몫의 유일한 장비는 건너뛴다 — 범용 버킷이 전용 버킷의 유일한 장비를
+            # 가져가 그 제품이 통째로 굶는 것을 막는다.
+            for e in avail:
+                if not critical_for_other(e, b):
+                    return e
+            return avail[0]
+
+        def fill(require_shortfall: bool) -> None:
+            while free:
+                best, best_key, best_eqp = None, None, None
+                for b, c in caps.items():
+                    if len(alloc[b]) >= c.wip_cap:
+                        continue
+                    sr = shortfall_ratio(b)
+                    if require_shortfall and sr <= 0:
+                        continue
+                    e = next_eqp(b)
+                    if e is None:
+                        continue
+                    lot_cd, temp = sim._bucket_lot_cd_temp(*b)
+                    key = (
+                        self._plan_priority(*b),      # ① 계획 우선순위(작을수록 먼저)
+                        -sr,                          # ② 부족률 큰 순
+                        c.capable_cnt,                # ③ 전용(처리 가능 장비 적은) 버킷 먼저
+                        int(sim._would_need_conversion(e, lot_cd, temp)),  # ④ 전환 불필요 먼저
+                        -c.remain_qty,                # ⑤ 잔여량 큰 순(첫 바퀴의 실질 기준)
+                        b,                            # ⑥ 결정성
+                    )
+                    if best_key is None or key < best_key:
+                        best, best_key, best_eqp = b, key, e
+                if best is None:
+                    return
+                alloc[best].append(best_eqp)
+                free.discard(best_eqp)
+
+        # 1차 — 계획 부족을 메운다(부족률 > 0인 버킷만)
+        fill(require_shortfall=True)
+        # 2차 — 그러고도 남는 장비는 재공이 남은 버킷에 더 준다. 정원의 목적은
+        # "한 버킷에 과도하게 몰리는 것"을 막는 것이지 장비를 놀리는 것이 아니다.
+        # (계획 초과분은 다음 회차 재공이 되므로 버리는 것보다 낫다.)
+        if self._alloc_fill_idle:
+            fill(require_shortfall=False)
+
+        shortfalls = {b: round(shortfall_ratio(b), 4) for b in caps}
+        return alloc, shortfalls
+
+    @property
+    def _alloc_fill_idle(self) -> bool:
+        return bool(self._sim._env_data.get(
+            "capacity_alloc_fill_idle", CONFIG.env.capacity_alloc_fill_idle,
+        ))
+
+    def _plan_priority(self, ppk: str, oper_id: str) -> int:
+        """PLAN_PRIORITY (작을수록 우선, 미지정 99) — MinProgressAgent와 같은 규약."""
+        return int(
+            self._sim._env_data.get("plan_meta", {})
+            .get((ppk, oper_id), {}).get("priority", 99)
         )
 
     # ── 마스킹 판정 ─────────────────────────────────────────────────────────
@@ -376,31 +584,85 @@ class CapacityPlanner:
         return occupied
 
     def blocks(self, eqp_id: str, ppk: str, oper_id: str) -> bool:
-        """정원 초과로 이 장비의 이 버킷 투입을 막아야 하면 True."""
+        """정원(또는 배분)을 넘어 이 장비의 이 버킷 투입을 막아야 하면 True."""
         if not self.mask_enabled:
             return False
         cap = self.target_for(ppk, oper_id)
-        if cap is None or cap.target_cnt <= 0:
+        if cap is None:
+            return False
+        if self.alloc_mode == "allocate":
+            return self._alloc_blocks(eqp_id, (ppk, oper_id))
+        if cap.target_cnt <= 0:
             return False
         occupied = self.occupancy(ppk, oper_id)
         if eqp_id in occupied:
             return False          # 이미 정원 안에 있는 장비 — 하던 대로 계속
         return len(occupied) >= cap.target_cnt
 
+    def _alloc_blocks(self, eqp_id: str, bucket: Tuple[str, str]) -> bool:
+        """배분표가 곧 마스크 — 배분받은 장비만 그 버킷에 들어간다."""
+        alloc, _short = self.allocation()
+        assigned = alloc.get(bucket, [])
+        if not assigned:
+            # 이번 회차 배분에서 한 대도 못 받은 버킷. 장비가 풀리면 재배분이
+            # 가져가므로(배분은 state_version마다 재계산) 지금은 열지 않는다.
+            return True
+        if eqp_id in assigned:
+            return False
+        # 안전 밸브: 배분받은 장비가 지금 아무도 이 버킷을 실제로 받을 수 없는 상태면
+        # (전부 다른 버킷에서 가공 중이거나 투입 자격 미달) 재공이 묶이므로 임시 허용한다.
+        return any(self._can_serve_now(a, bucket) for a in assigned)
+
+    def _can_serve_now(self, eqp_id: str, bucket: Tuple[str, str]) -> bool:
+        """이 장비가 지금 이 버킷을 실제로 돌리고 있거나 받을 수 있는가."""
+        sim = self._sim
+        eqp = sim.eqps.get(eqp_id)
+        if eqp is None or eqp.status == "down":
+            return False
+        pending = sim._eqp_pending_assign.get(eqp_id)
+        if pending is not None:
+            return (pending.get("ppk"), pending.get("oper_id")) == bucket
+        if eqp.status == "busy":
+            return (eqp.current_prod, eqp.current_oper) == bucket
+        if eqp.status != "idle":
+            return False
+        return bucket in sim._uncapped_feasible_bucket_keys(eqp_id)
+
     # ── 출력 스냅샷 ─────────────────────────────────────────────────────────
 
     def snapshot_rows(self) -> List[dict]:
-        """(PPK, OPER, MODEL)별 산출 결과 행. RULE_TIMEKEY 시점 스냅샷 저장용."""
+        """(PPK, OPER, MODEL)별 산출 결과 행. RULE_TIMEKEY 시점 스냅샷 저장용.
+
+        allocate 모드에서는 PLAN_EQP_CNT/LVAL이 '정원'이 아니라 '배분 결과'가 된다
+        (그 모드에서는 배분표가 곧 이번 회차에 그 버킷에 주기로 한 대수다).
+        어느 쪽인지는 ALLOC_MODE 컬럼으로 구분한다.
+        """
+        allocating = self.alloc_mode == "allocate"
+        alloc_map, shortfalls = self.allocation() if allocating else ({}, {})
         rows: List[dict] = []
         for (ppk, oper_id), cap in sorted(self.targets().items()):
             models = set(cap.st_by_model) | set(cap.req_by_model) | set(cap.target_by_model)
             eqp_model_map = self._sim._eqp_model_map
+            if allocating:
+                assigned = alloc_map.get((ppk, oper_id), [])
+                plan_by_model = self._count_by_model(
+                    [(e, 0.0, eqp_model_map.get(e, "")) for e in assigned]
+                )
+                plan_eqps_all = list(assigned)
+                bucket_plan_cnt = len(assigned)
+                shortfall = shortfalls.get((ppk, oper_id), 0.0)
+                models |= set(plan_by_model)
+            else:
+                plan_by_model = cap.target_by_model
+                plan_eqps_all = cap.target_eqps
+                bucket_plan_cnt = cap.target_cnt
+                shortfall = 0.0
             for model in sorted(models):
                 req = cap.req_by_model.get(model, 0)
-                target = cap.target_by_model.get(model, 0)
+                target = plan_by_model.get(model, 0)
                 if req <= 0 and target <= 0 and not cap.runnable:
                     continue
-                plan_eqps = [e for e in cap.target_eqps if eqp_model_map.get(e) == model]
+                plan_eqps = [e for e in plan_eqps_all if eqp_model_map.get(e) == model]
                 rows.append({
                     "PLAN_PROD_ATTR_VAL": ppk,
                     "OPER_ID":       oper_id,
@@ -416,10 +678,12 @@ class CapacityPlanner:
                     "PLAN_EQP_CNT":  target,
                     "PLAN_EQP_LVAL": ",".join(plan_eqps),
                     "BUCKET_REQ_EQP_CNT":  cap.req_cnt,
-                    "BUCKET_PLAN_EQP_CNT": cap.target_cnt,
+                    "BUCKET_PLAN_EQP_CNT": bucket_plan_cnt,
                     "CAPABLE_EQP_CNT": cap.capable_cnt,
                     "RUNNABLE_YN":   "Y" if cap.runnable else "N",
                     "MASK_APPLY_YN": "Y" if self.mask_enabled else "N",
+                    "ALLOC_MODE":    "ALLOC" if allocating else "CAP",
+                    "SHORTFALL_RATIO": round(float(shortfall), 4),
                     "REASON_CD":     cap.reason,
                 })
         return rows

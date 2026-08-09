@@ -399,6 +399,7 @@ def cmd_inference(
     max_conversions_per_eqp: int = None,
     conversion_minutes: int = None,
     eqp_capacity_mask: bool = None,
+    capacity_alloc_mode: str = None,
     strict_validate: bool = False,
     save_kpi: bool = False,
     timeout_seconds: float = None,
@@ -460,6 +461,8 @@ def cmd_inference(
             "[inference] 적정 장비 대수 정원 마스킹: "
             + ("ON" if eqp_capacity_mask else "OFF")
         )
+    if capacity_alloc_mode is not None:
+        print(f"[inference] 적정 대수 모드: {capacity_alloc_mode}")
     if save_kpi:
         print("[inference] KPI/검증 집계 저장: ON (RTS_PERFMON_HIS, RTS_VALIDATION)")
     if timeout_seconds is not None:
@@ -475,6 +478,7 @@ def cmd_inference(
         max_conversions_per_eqp=max_conversions_per_eqp,
         conversion_minutes=conversion_minutes,
         eqp_capacity_mask=eqp_capacity_mask,
+        capacity_alloc_mode=capacity_alloc_mode,
         timeout_seconds=remaining_seconds(),
     )
     print("=" * 60)
@@ -840,6 +844,12 @@ def parse_args():
         help="적정 장비 대수 정원 마스킹 해제(config 기본값이 켜져 있을 때)",
     )
     inf_p.add_argument(
+        "--capacity-alloc-mode",
+        choices=["cap", "allocate"],
+        default=None,
+        help="적정 대수 적용 방식: cap(버킷별 상한, 기본) | allocate(보유 장비를 버킷에 배분)",
+    )
+    inf_p.add_argument(
         "--strict-validate",
         action="store_true",
         help="결과 검증(장비 투입 가능성·처리시간·배정 완전성) 실패 시 종료코드 1로 종료",
@@ -1009,6 +1019,7 @@ def main():
                 max_conversions_per_eqp=args.max_conversions_per_eqp,
                 conversion_minutes=args.conversion_minutes,
                 eqp_capacity_mask=args.eqp_capacity_mask,
+                capacity_alloc_mode=args.capacity_alloc_mode,
                 strict_validate=args.strict_validate,
                 save_kpi=args.save_kpi,
                 timeout_seconds=args.timeout_seconds,
