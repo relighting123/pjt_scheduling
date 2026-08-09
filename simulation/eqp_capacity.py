@@ -258,18 +258,24 @@ class CapacityPlanner:
         """
         sim = self._sim
         lot_cd, temp = sim._bucket_lot_cd_temp(ppk, oper_id)
+        arrange_map = sim._env_data.get("abstract_arrange_map", {})
         rows: List[Tuple[tuple, str, float, str]] = []
         for eqp_id in sim._env_data.get("eqp_ids", []):
             eqp = sim.eqps.get(eqp_id)
             if eqp is None or eqp.status == "down":
                 continue
             # 모델이 없는 EQP(eqp_queue_init에만 등장 — EQP_MODEL_CD는
-            # discrete_arrange에서만 나온다)는 ST를 알 수 없어 정원 산출 대상이
-            # 아니다. _eqp_can_process()는 모델을 전제로 하므로 먼저 걸러낸다.
+            # discrete_arrange에서만 나온다)는 ST를 알 수 없어 정원 산출 대상이 아니다.
             model = sim._eqp_model_map.get(eqp_id)
             if not model:
                 continue
-            if not sim._eqp_can_process(eqp_id, ppk, oper_id):
+            # 이 버킷을 처리 가능한지는 (PPK, OPER, MODEL) arrange 행의 존재로 본다.
+            # _eqp_can_process()는 OPER 단위인 eqp_oper_cap(discrete)도 OR로 받아주는데,
+            # 그건 "이 장비가 이 공정을 한다"는 뜻일 뿐 "이 제품을 이 모델로 한다"는
+            # 보장이 아니다. 실제 배정 경로(_abstract_assignable_on_eqp)는 템플릿을
+            # eqp_model로 먼저 거르므로, 그 기준을 그대로 맞추지 않으면 실제로는 한 대도
+            # 못 돌리는 장비를 정원에 세고 ST도 모델 평균 폴백으로 잘못 잡게 된다.
+            if (ppk, oper_id, model) not in arrange_map:
                 continue
             st = sim._st_per_wafer_for_eqp(eqp_id, ppk, oper_id)
             if st is None or st <= 0:

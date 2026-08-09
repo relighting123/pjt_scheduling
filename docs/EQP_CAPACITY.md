@@ -285,6 +285,31 @@ abstract_arrange.json  →  abstract_arrange_map[(PPK, OPER, EQP_MODEL)] = ST
 자체를 모르는 장비 — `discrete_arrange`에 없고 `eqp_queue_init`에만 등장하는 장비 — 는
 어느 폴백도 탈 수 없어 대수 산출 대상이 아니다.
 
+### 모델별 가용 여부 — 3키 행이 곧 자격이다
+
+위 폴백은 `_st_per_wafer_for_eqp()`의 일반 동작이고, **정원 산출은 폴백을 타지 않는다.**
+`(PPK, OPER, MODEL)` 행이 없으면 그 모델은 ST가 다른 정도가 아니라 **아예 못 돌리는**
+것이므로, 후보 목록(`_ranked_candidates`)에서 3키 행의 존재로 자격을 판정한다.
+
+주의할 함정이 하나 있다. `_eqp_can_process()`는 3키 행과 **OPER 단위**인
+`eqp_oper_cap`(discrete)을 OR로 본다. 후자는 "이 장비가 이 공정을 한다"는 뜻일 뿐
+"이 제품을 이 모델로 한다"는 보장이 아니다.
+
+```
+PPK001: 모델 A만 arrange 행 있음      EQP001 = 모델 A
+PPK002: 모델 A·B 둘 다 있음           EQP002 = 모델 B
+
+_eqp_can_process(EQP002, PPK001, OPER001) = True          ← eqp_oper_cap 때문에 통과
+_st_per_wafer_for_eqp(EQP002, PPK001, OPER001) = 60.0     ← 모델 B인데 A의 ST(폴백 ③)
+EQP002 실제 feasible 마스크 = [(PPK002, OPER001)]          ← 실제로는 PPK001 불가
+```
+
+`_eqp_can_process()`만 보고 정원을 세면 **한 대도 못 돌리는 장비를 후보에 넣고** ST까지
+잘못 잡는다. 그래서 실제 배정 경로(`_abstract_assignable_on_eqp`가 템플릿을 `eqp_model`로
+거르는 것)와 같은 기준을 쓴다 — 위 예시에서 PPK001의 처리 가능 장비는 EQP001 한 대다.
+`tests/test_eqp_capacity.py::test_model_not_in_arrange_is_excluded_from_candidates`가
+두 경로의 일치를 회귀 테스트로 잡아둔다.
+
 ### 산출 ST vs 실제 가공 ST
 
 대수 산출은 **모델 ST(abstract)** 만 쓴다. 실제 배정에서는 그 carrier에 대한 discrete ST

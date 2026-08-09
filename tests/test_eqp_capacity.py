@@ -299,6 +299,64 @@ def test_wip_sustainable_count_uses_per_model_st():
     assert cap.target_by_model == {"A": 2}
 
 
+def test_model_not_in_arrange_is_excluded_from_candidates():
+    """(PPK, OPER, MODEL) arrange 행이 없는 모델은 그 버킷의 후보가 아니다.
+
+    회귀 테스트: _eqp_can_process()는 OPER 단위인 eqp_oper_cap(discrete)도 OR로
+    받아주기 때문에, 그것만 보면 "이 공정을 하는 장비"가 전부 통과해 실제로는 한 대도
+    못 돌리는 모델까지 정원에 잡히고 ST도 모델 평균 폴백으로 잘못 채워졌다.
+    실제 배정 경로(_abstract_assignable_on_eqp)는 템플릿을 eqp_model로 거르므로
+    정원 산출도 같은 기준이어야 한다.
+    """
+    CONFIG.env.eqp_capacity_mask_enabled = False
+    # EQP001=모델 A(PPK001·PPK002 가능), EQP002=모델 B(PPK002만 가능)
+    eligible = {"PPK001": {"A": 60}, "PPK002": {"A": 60, "B": 120}}
+    eqp_model = {"EQP001": "A", "EQP002": "B"}
+    discrete, n = [], 0
+    for ppk, models in eligible.items():
+        for _ in range(2):
+            n += 1
+            for eid, m in eqp_model.items():
+                if m in models:
+                    discrete.append({
+                        "EQP_ID": eid, "LOT_ID": f"LOT{n:03d}", "CARRIER_ID": f"CAR{n:03d}",
+                        "PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": "OPER001", "ST": models[m],
+                        "EQP_MODEL_CD": m, "WF_QTY": 25, "SEQ": n})
+    raw = {
+        "discrete_arrange": discrete,
+        "plan": [{"PLAN_PROD_ATTR_VAL": p, "OPER_ID": "OPER001", "D0_PLAN_QTY": 100,
+                  "D1_PLAN_QTY": 100, "PLAN_PRIORITY": 1} for p in eligible],
+        "flow": [{"PLAN_PROD_ATTR_VAL": p, "OPER_SEQ": 1, "OPER_ID": "OPER001"}
+                 for p in eligible],
+        "abstract_arrange": [
+            {"PLAN_PROD_ATTR_VAL": p, "OPER_ID": "OPER001", "EQP_MODEL_CD": m, "ST": st}
+            for p, ms in eligible.items() for m, st in ms.items()],
+    }
+    data = preprocess(raw, period_key=RULE_TIMEKEY)
+    data["termination_mode"] = "current_wip_assigned"
+    data["enable_wip_inflow"] = False
+    sim = SchedulingSimulator(data, record_history=False)
+
+    # eqp_oper_cap 경로만 보면 EQP002도 PPK001을 할 수 있는 것처럼 보이지만,
+    assert sim._eqp_can_process("EQP002", "PPK001", "OPER001") is True
+    # 실제 배정에서는 PPK002만 받을 수 있다.
+    assert sorted(
+        sim.ppk_oper_from_flat(f) for f in sim.get_feasible_ppk_oper("EQP002")
+    ) == [("PPK002", "OPER001")]
+
+    # 정원 산출도 같은 기준이어야 한다 — PPK001 후보는 EQP001 한 대뿐.
+    cap1 = sim.capacity_planner.target_for("PPK001", "OPER001")
+    assert [e for e, _st, _m in sim.capacity_planner._ranked_candidates(
+        "PPK001", "OPER001")] == ["EQP001"]
+    assert cap1.capable_cnt == 1
+    assert set(cap1.st_by_model) == {"A"}          # 모델 B는 아예 등장하지 않음
+    assert cap1.req_by_model.get("B", 0) == 0
+
+    cap2 = sim.capacity_planner.target_for("PPK002", "OPER001")
+    assert cap2.capable_cnt == 2
+    assert cap2.st_by_model == {"A": 60.0, "B": 120.0}
+
+
 # ── 4. 배치 우선순위 ─────────────────────────────────────────────────────────
 
 def test_target_prefers_eqp_already_set_up_for_the_bucket():
