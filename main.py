@@ -400,6 +400,7 @@ def cmd_inference(
     conversion_minutes: int = None,
     eqp_capacity_mask: bool = None,
     capacity_alloc_mode: str = None,
+    capacity_line_balance: bool = None,
     strict_validate: bool = False,
     save_kpi: bool = False,
     timeout_seconds: float = None,
@@ -463,6 +464,11 @@ def cmd_inference(
         )
     if capacity_alloc_mode is not None:
         print(f"[inference] 적정 대수 모드: {capacity_alloc_mode}")
+    if capacity_line_balance is not None:
+        print(
+            "[inference] 공정 간 라인 밸런스: "
+            + ("ON" if capacity_line_balance else "OFF")
+        )
     if save_kpi:
         print("[inference] KPI/검증 집계 저장: ON (RTS_PERFMON_HIS, RTS_VALIDATION)")
     if timeout_seconds is not None:
@@ -479,6 +485,7 @@ def cmd_inference(
         conversion_minutes=conversion_minutes,
         eqp_capacity_mask=eqp_capacity_mask,
         capacity_alloc_mode=capacity_alloc_mode,
+        capacity_line_balance=capacity_line_balance,
         timeout_seconds=remaining_seconds(),
     )
     print("=" * 60)
@@ -850,6 +857,19 @@ def parse_args():
         help="적정 대수 적용 방식: cap(버킷별 상한, 기본) | allocate(보유 장비를 버킷에 배분)",
     )
     inf_p.add_argument(
+        "--capacity-line-balance",
+        dest="capacity_line_balance",
+        action="store_true",
+        default=None,
+        help="PPK 내 공정 간 최종 out 기준 목표 역산(pull, 기본 켜짐)",
+    )
+    inf_p.add_argument(
+        "--no-capacity-line-balance",
+        dest="capacity_line_balance",
+        action="store_false",
+        help="공정 간 라인 밸런스 해제 — 공정마다 자기 계획만 독립적으로 산출",
+    )
+    inf_p.add_argument(
         "--strict-validate",
         action="store_true",
         help="결과 검증(장비 투입 가능성·처리시간·배정 완전성) 실패 시 종료코드 1로 종료",
@@ -1020,6 +1040,7 @@ def main():
                 conversion_minutes=args.conversion_minutes,
                 eqp_capacity_mask=args.eqp_capacity_mask,
                 capacity_alloc_mode=args.capacity_alloc_mode,
+                capacity_line_balance=args.capacity_line_balance,
                 strict_validate=args.strict_validate,
                 save_kpi=args.save_kpi,
                 timeout_seconds=args.timeout_seconds,

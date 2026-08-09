@@ -1765,6 +1765,17 @@
   border-bottom: none;
 }
 
+/* 적정 장비 대수 매트릭스 (CapacityPanel) */
+.capacity-matrix-table .cell-dim {
+  color: var(--text-muted);
+}
+
+.capacity-matrix-total td {
+  border-top: 2px solid var(--border-mid);
+  background: var(--bg-raised);
+  font-weight: 700;
+}
+
 .gantt-production-panel {
   padding: 0.85rem 1rem;
 }

@@ -244,6 +244,9 @@ export interface InferRunOptions {
   max_conversions_per_eqp?: number;
   conversion_minutes?: number;
   discrete_wait_enabled?: boolean;
+  eqp_capacity_mask?: boolean;
+  capacity_alloc_mode?: CapacityAllocMode;
+  capacity_line_balance?: boolean;
 }
 
 export interface InferenceResult {
@@ -253,6 +256,7 @@ export interface InferenceResult {
   decision_log?: DecisionLogEntry[];
   conversion_plans?: ConversionPlan[];
   down_windows?: DowntimePlan[];
+  capacity_plan?: CapacityPlanRow[];
   stats: InferenceStats;
   plan: PlanRecord[];
   prod_keys: string[];
@@ -310,6 +314,38 @@ export interface EnvDefaults {
   max_conversions: number | null;
   max_conversions_per_eqp: number | null;
   discrete_wait_enabled: boolean;
+  eqp_capacity_mask_enabled?: boolean;
+  capacity_alloc_mode?: CapacityAllocMode;
+  capacity_line_balance?: boolean;
+  capacity_min_run_minutes?: number;
+}
+
+export type CapacityAllocMode = "cap" | "allocate";
+
+/** (PPK, OPER, EQP_MODEL_CD)별 적정 장비 대수 산출 + 실제 배치 (RTS_EQPCAPA_INF와 동일 스키마). */
+export interface CapacityPlanRow {
+  PLAN_PROD_ATTR_VAL: string;
+  OPER_ID: string;
+  EQP_MODEL_CD: string;
+  ST: number;
+  HORIZON_MIN: number;
+  PLAN_QTY: number;
+  DONE_QTY: number;
+  REMAIN_QTY: number;
+  WIP_QTY: number;
+  WIP_CARRIER_CNT: number;
+  CAPABLE_EQP_CNT: number;
+  REQ_EQP_CNT: number;
+  PLAN_EQP_CNT: number;
+  ALLOC_EQP_CNT: number;
+  PLAN_EQP_LVAL: string;
+  ALLOC_EQP_LVAL: string;
+  RUN_QTY: number;
+  RUNNABLE_YN: "Y" | "N";
+  MASK_APPLY_YN: "Y" | "N";
+  ALLOC_MODE: "CAP" | "ALLOC";
+  SHORTFALL_RATIO: number;
+  REASON_CD: string;
 }
 
 export interface AppConfig {

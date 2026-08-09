@@ -5,6 +5,7 @@ import FullscreenPanel from "../components/FullscreenPanel";
 import GanttKpiPanel from "../components/GanttKpiPanel";
 import GanttLegendPanel from "../components/GanttLegendPanel";
 import GanttSummaryPanel from "../components/GanttSummaryPanel";
+import CapacityPanel from "../components/CapacityPanel";
 import StepDebugger from "../components/StepDebugger";
 import { EventTimeline } from "../components/EventTimeline";
 import { api } from "../lib/api";
@@ -32,7 +33,7 @@ import { useTableFilterSort, compareStrings, compareNumbers, type SortDir } from
 import { ruleTimekeyFromFolder, simBaseTimeFromRuleTimekey, parseSimBaseMs } from "../lib/ganttTime";
 import type {
   AlgorithmId, AlgorithmInfo,
-  AppConfig, DataSummary, InferenceResult, DecisionLogEntry,
+  AppConfig, CapacityAllocMode, DataSummary, InferenceResult, DecisionLogEntry,
 } from "../types";
 
 interface Props {
@@ -70,6 +71,9 @@ function buildInferOptions(
     maxConversionsPerEqp: string;
     conversionMinutes: string;
     discreteWaitEnabled: boolean;
+    eqpCapacityMask: boolean;
+    capacityAllocMode: CapacityAllocMode;
+    capacityLineBalance: boolean;
   },
 ) {
   const facId = opts.facIdOverride.trim() || facIdFromFolder(selectedFolder);
@@ -91,10 +95,16 @@ function buildInferOptions(
     ...(maxConvEqp != null ? { max_conversions_per_eqp: maxConvEqp } : {}),
     ...(convMin != null ? { conversion_minutes: convMin } : {}),
     discrete_wait_enabled: opts.discreteWaitEnabled,
+    // capacity_alloc_mode/capacity_line_balance는 마스킹(정원 강제) 여부와 별개로
+    // 「적정 대수」 산출 결과(capacity_plan) 자체에 항상 반영된다 — 마스킹을 꺼도
+    // "이 설정이면 정원이 어떻게 나올지"를 미리 볼 수 있게 항상 함께 보낸다.
+    eqp_capacity_mask: opts.eqpCapacityMask,
+    capacity_alloc_mode: opts.capacityAllocMode,
+    capacity_line_balance: opts.capacityLineBalance,
   };
 }
 
-type MainTab = "gantt" | "events" | "table" | "debug";
+type MainTab = "gantt" | "events" | "table" | "capacity" | "debug";
 const ROWS = 200;
 
 type ScheduleRow = InferenceResult["schedule"][number];
@@ -246,6 +256,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   const [maxConversionsPerEqp, setMaxConversionsPerEqp] = useState("");
   const [conversionMinutes, setConversionMinutes] = useState("");
   const [discreteWaitEnabled, setDiscreteWaitEnabled] = useState(true);
+  const [eqpCapacityMask, setEqpCapacityMask] = useState(false);
+  const [capacityAllocMode, setCapacityAllocMode] = useState<CapacityAllocMode>("cap");
+  const [capacityLineBalance, setCapacityLineBalance] = useState(true);
   const [lastInferMeta, setLastInferMeta]   = useState<string | null>(null);
 
   const defaultConversionMinutes = config?.default_env?.conversion_minutes ?? 60;
@@ -448,6 +461,9 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
           maxConversionsPerEqp,
           conversionMinutes,
           discreteWaitEnabled,
+          eqpCapacityMask,
+          capacityAllocMode,
+          capacityLineBalance,
         }),
       });
       setResult(res); setFileSource(null); setTab("gantt");
@@ -469,7 +485,8 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
   }, [
     algorithm, selectedFolder, facIdOverride, decisionLog, wipInflow, ruleTimekey,
     lotCd, includeHistory, dbAlias, noHistory, saveKpi, maxConversions,
-    maxConversionsPerEqp, conversionMinutes, discreteWaitEnabled, syncInferFolder,
+    maxConversionsPerEqp, conversionMinutes, discreteWaitEnabled,
+    eqpCapacityMask, capacityAllocMode, capacityLineBalance, syncInferFolder,
   ]);
 
   const loadSaved = useCallback(async () => {
@@ -789,6 +806,66 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
         </div>
 
         <div className="card">
+          <div className="card-title">적정 장비 대수</div>
+          <p className="hint mb-2">
+            제품·공정별로 마감까지 잔여량을 처리하는 데 필요한 장비 대수를 산출합니다.
+            결과는 항상 「적정 대수」 탭에서 볼 수 있고, 아래 마스킹을 켜면 그 대수까지로
+            실제 배정을 제한합니다.
+          </p>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={eqpCapacityMask}
+              onChange={e => setEqpCapacityMask(e.target.checked)}
+              disabled={loading}
+            />
+            정원 마스킹 (eqp_capacity_mask)
+          </label>
+          <p className="hint" style={{ marginTop: "-0.25rem" }}>
+            꺼도 아래 설정으로 산출되는 대수는 「적정 대수」 탭에서 그대로 볼 수 있습니다.
+            켜야만 실제 배정이 그 대수로 제한됩니다.
+          </p>
+
+          <label className="field-label mt-2">적용 방식 (capacity_alloc_mode)</label>
+          <div className="label-mode-group">
+            {([
+              { id: "cap" as const, label: "CAP" },
+              { id: "allocate" as const, label: "ALLOCATE" },
+            ]).map(m => (
+              <label key={m.id} className={`label-pill${capacityAllocMode === m.id ? " active" : ""}`}>
+                <input
+                  type="radio"
+                  name="capacity-alloc-mode"
+                  value={m.id}
+                  checked={capacityAllocMode === m.id}
+                  onChange={() => setCapacityAllocMode(m.id)}
+                  disabled={loading}
+                />
+                {m.label}
+              </label>
+            ))}
+          </div>
+          <p className="hint mt-1">
+            <strong>cap</strong>: 버킷별 상한만 겁니다(정원 합이 보유 장비를 넘을 수 있음).{" "}
+            <strong>allocate</strong>: 보유 장비를 버킷에 실제로 나눠줍니다(부족률이 큰 버킷부터).
+          </p>
+
+          <label className="check-label mt-2">
+            <input
+              type="checkbox"
+              checked={capacityLineBalance}
+              onChange={e => setCapacityLineBalance(e.target.checked)}
+              disabled={loading}
+            />
+            공정 간 라인 밸런스 (capacity_line_balance)
+          </label>
+          <p className="hint" style={{ marginTop: "-0.25rem" }}>
+            같은 제품(PPK) 안 공정들은 최종 공정 계획에서 역산(pull)해 목표를 맞춥니다.
+            끄면 공정마다 자기 계획만 독립적으로 봅니다.
+          </p>
+        </div>
+
+        <div className="card">
           <div className="card-title">알고리즘</div>
           <div className="algo-list mb-2">
             {algoList.map(a => {
@@ -897,6 +974,15 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
                 이벤트 이력
               </button>
               <button type="button" className={`tab-btn${tab === "table" ? " active" : ""}`} onClick={() => setTab("table")} disabled={!result}>간트 테이블</button>
+              <button
+                type="button"
+                className={`tab-btn${tab === "capacity" ? " active" : ""}`}
+                onClick={() => setTab("capacity")}
+                disabled={!result?.capacity_plan?.length}
+                title={result?.capacity_plan?.length ? undefined : "이번 결과에는 적정 장비 대수 산출 데이터가 없습니다."}
+              >
+                적정 대수
+              </button>
               <button
                 type="button"
                 className={`tab-btn${tab === "debug" ? " active" : ""}`}
@@ -1078,6 +1164,13 @@ export default function InferencePage({ modelExists, config, summary, folderLoad
               >
                 <VirtualTable rows={result.schedule} />
               </FullscreenPanel>
+            )}
+
+            {/* CAPACITY TAB */}
+            {tab === "capacity" && result && (
+              <div className="tab-panel">
+                <CapacityPanel rows={result.capacity_plan ?? []} />
+              </div>
             )}
 
             {/* STEP DEBUGGER TAB */}

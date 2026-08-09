@@ -428,6 +428,13 @@ class InferFetchOptions(BaseModel):
             "미지정 시 config.env.capacity_alloc_mode"
         ),
     )
+    capacity_line_balance: Optional[bool] = Field(
+        default=None,
+        description=(
+            "PPK 내 공정 간 최종 out 기준 목표 역산(pull) 여부 "
+            "(미지정 시 config.env.capacity_line_balance)"
+        ),
+    )
     discrete_wait_enabled: Optional[bool] = Field(
         default=None,
         description=(
@@ -952,6 +959,7 @@ def inference(req: InferenceRequest):
             conversion_minutes=req.conversion_minutes,
             eqp_capacity_mask=req.eqp_capacity_mask,
             capacity_alloc_mode=req.capacity_alloc_mode,
+            capacity_line_balance=req.capacity_line_balance,
             timeout_seconds=remaining_seconds(),
         )
         if result["stats"].get("timed_out"):
@@ -1132,6 +1140,9 @@ def inference_compare(req: CompareRequest):
             max_conversions=req.max_conversions,
             max_conversions_per_eqp=req.max_conversions_per_eqp,
             conversion_minutes=req.conversion_minutes,
+            eqp_capacity_mask=req.eqp_capacity_mask,
+            capacity_alloc_mode=req.capacity_alloc_mode,
+            capacity_line_balance=req.capacity_line_balance,
             fac_id=infer_meta["fac_id"],
         )
     finally:
@@ -1158,7 +1169,12 @@ def _minutes_from_timekey(value: str, base: datetime) -> int:
 
 
 def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
-    """RTS output.json만 있을 때 UI 간트용 result 구조로 복원."""
+    """RTS output.json만 있을 때 UI 간트용 result 구조로 복원.
+
+    RTS_EQPCAPA_INF는 capacity_plan과 필드명이 동일해(PLAN_PROD_ATTR_VAL, REQ_EQP_CNT 등)
+    별도 리매핑 없이 그대로 통과시킨다 — FAC_ID/RULE_TIMEKEY/CRT_USER_ID/CRT_TM이 더
+    붙어 있지만 프론트는 필요한 필드만 읽으므로 무해하다.
+    """
     base = env_data["sim_base_time"]
     schedule = []
     for row in payload.get("RTS_RSLT_MAS", []):
@@ -1214,6 +1230,7 @@ def _result_from_rts_output(payload: dict, env_data: dict) -> dict:
         "decision_log":     [],
         "conversion_plans": conversion_plans,
         "down_windows":     [],
+        "capacity_plan":    payload.get("RTS_EQPCAPA_INF", []),
         "stats": {
             "idle_total": 0,
             "oper_switches": 0,
@@ -1263,6 +1280,7 @@ def get_inference_result(input_folder: Optional[str] = None):
             "decision_log": saved.get("decision_log", []),
             "conversion_plans": saved.get("conversion_plans", []),
             "down_windows": saved.get("down_windows", []),
+            "capacity_plan": saved.get("capacity_plan", []),
             "stats": {**saved.get("stats", {}), "source_file": "result_full.json"},
             "plan": saved.get("plan", env_data["plan"]),
             "prod_keys": env_data["prod_keys"],

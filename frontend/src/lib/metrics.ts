@@ -1,4 +1,6 @@
-import type { ConversionPlan, DowntimePlan, InferenceResult, PlanRecord, ScheduleRecord, SimEvent } from "../types";
+import type {
+  CapacityPlanRow, ConversionPlan, DowntimePlan, InferenceResult, PlanRecord, ScheduleRecord, SimEvent,
+} from "../types";
 
 /** 무제한 다운(down_end_min 없음)의 통계용 종료 시각(분). */
 function downEffectiveEnd(p: DowntimePlan, simEndMin: number): number {
@@ -351,4 +353,106 @@ export function computeInferenceKpi(
     avgAchPct: computeAvgAchievement(ach),
     avgTargetAchPct: computeAvgTargetAchievement(ach),
   };
+}
+
+// ── 적정 장비 대수 (simulation/eqp_capacity.py) ─────────────────────────────
+
+export interface CapacityBucketRow {
+  key: string;
+  ppk: string;
+  oper: string;
+  st: Record<string, number>;
+  horizonMin: number;
+  planQty: number;
+  doneQty: number;
+  remainQty: number;
+  wipQty: number;
+  wipCarrierCnt: number;
+  capableCnt: number;
+  /** 실적 + 잔여량×(1−부족률) — 지금 배분/정원으로 마감까지 실제 만들 수 있는 매수. */
+  capaQty: number;
+  reqTotal: number;
+  planTotal: number;
+  allocTotal: number;
+  runQty: number;
+  perModel: Record<string, { req: number; plan: number; alloc: number }>;
+  runnable: boolean;
+  maskApplied: boolean;
+  allocMode: "CAP" | "ALLOC";
+  shortfallRatio: number;
+  reasonCd: string;
+}
+
+export interface CapacityMatrix {
+  models: string[];
+  buckets: CapacityBucketRow[];
+}
+
+const CAPACITY_REASON_LABEL: Record<string, string> = {
+  OK: "필요 대수 그대로 정원",
+  WIP: "재공 부족으로 정원 축소",
+  EQP: "다 붙여도 마감 내 계획 미달",
+  NO_WIP: "재공 없음 · 구동 불가",
+  NO_EQP: "처리 가능 장비 없음",
+  DONE: "계획 달성 · 재공 잔존 1대 유지",
+  INFLOW: "산출 시점 이후 유입된 재공",
+};
+
+export function capacityReasonLabel(code: string): string {
+  return CAPACITY_REASON_LABEL[code] ?? code;
+}
+
+/** RTS_EQPCAPA_INF 스키마 원시 행(모델 단위) → (PPK,OPER) 버킷 피벗. */
+export function buildCapacityMatrix(rows: CapacityPlanRow[]): CapacityMatrix {
+  const models = new Set<string>();
+  const byBucket = new Map<string, CapacityBucketRow>();
+
+  rows.forEach((r) => {
+    const key = `${r.PLAN_PROD_ATTR_VAL}|${r.OPER_ID}`;
+    models.add(r.EQP_MODEL_CD);
+    let b = byBucket.get(key);
+    if (!b) {
+      const remain = r.REMAIN_QTY;
+      const capa = r.DONE_QTY + remain * (1 - r.SHORTFALL_RATIO);
+      b = {
+        key,
+        ppk: r.PLAN_PROD_ATTR_VAL,
+        oper: r.OPER_ID,
+        st: {},
+        horizonMin: r.HORIZON_MIN,
+        planQty: r.PLAN_QTY,
+        doneQty: r.DONE_QTY,
+        remainQty: remain,
+        wipQty: r.WIP_QTY,
+        wipCarrierCnt: r.WIP_CARRIER_CNT,
+        capableCnt: r.CAPABLE_EQP_CNT,
+        capaQty: capa,
+        reqTotal: 0,
+        planTotal: 0,
+        allocTotal: 0,
+        runQty: 0,
+        perModel: {},
+        runnable: r.RUNNABLE_YN === "Y",
+        maskApplied: r.MASK_APPLY_YN === "Y",
+        allocMode: r.ALLOC_MODE,
+        shortfallRatio: r.SHORTFALL_RATIO,
+        reasonCd: r.REASON_CD,
+      };
+      byBucket.set(key, b);
+    }
+    b.st[r.EQP_MODEL_CD] = r.ST;
+    b.perModel[r.EQP_MODEL_CD] = {
+      req: r.REQ_EQP_CNT, plan: r.PLAN_EQP_CNT, alloc: r.ALLOC_EQP_CNT,
+    };
+    b.reqTotal += r.REQ_EQP_CNT;
+    b.planTotal += r.PLAN_EQP_CNT;
+    b.allocTotal += r.ALLOC_EQP_CNT;
+    b.runQty += r.RUN_QTY;
+  });
+
+  const buckets = [...byBucket.values()].sort(
+    (a, b) => a.ppk.localeCompare(b.ppk, undefined, { numeric: true })
+      || a.oper.localeCompare(b.oper, undefined, { numeric: true }),
+  );
+  return { models: [...models].sort(), buckets };
 }

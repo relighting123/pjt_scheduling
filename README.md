@@ -732,6 +732,13 @@ Inference 탭: 단일 추론·알고리즘 비교·`output.json` 오프라인 �
 추론 결과는 항상 Oracle RTS 테이블에 적재되며(`db_alias`/`no_history`로 대상 DB·HIS 테이블 적재 여부만 조정),
 적재 성공 여부는 응답의 `infer_meta.db_loaded`로 확인할 수 있습니다.
 
+좌측 「적정 장비 대수」 카드에서 `eqp_capacity_mask`(정원 마스킹) · `capacity_alloc_mode`
+(cap/allocate) · `capacity_line_balance`(공정 간 라인 밸런스)를 켜고 추론하면, 결과의
+「적정 대수」 탭에서 제품·공정별 계획 대비 산출 대수와 PPK/OPER × 모델 매트릭스를
+확인할 수 있습니다(모델별 배분 대수는 마스킹을 꺼도 항상 계산·표시됩니다 — 마스킹은
+그 대수로 실제 배정을 제한할지만 결정합니다). 산출식·케이스별 예시는
+[docs/EQP_CAPACITY.md](docs/EQP_CAPACITY.md) 참고.
+
 ---
 
 ## 벤치마크 (증명된 최적해)

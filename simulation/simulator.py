@@ -1168,6 +1168,8 @@ class SchedulingSimulator:
                 "CAPABLE_EQP_CNT": 0,
                 "RUNNABLE_YN":   "N",
                 "MASK_APPLY_YN": "Y" if self.capacity_planner.mask_enabled else "N",
+                "ALLOC_MODE":    "ALLOC" if self.capacity_planner.alloc_mode == "allocate" else "CAP",
+                "SHORTFALL_RATIO": 0.0,
                 "REASON_CD":     "INFLOW",
                 "ALLOC_EQP_CNT": len(entry["eqp_ids"]),
                 "ALLOC_EQP_LVAL": ",".join(sorted(entry["eqp_ids"])),

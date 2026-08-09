@@ -3,6 +3,7 @@ import type {
   AlgorithmId,
   AlgorithmInfo,
   AppConfig,
+  CapacityAllocMode,
   DataSummary,
   InferenceResult,
   OptimalBenchResponse,
@@ -161,6 +162,9 @@ export const api = {
     max_conversions_per_eqp?: number;
     conversion_minutes?: number;
     discrete_wait_enabled?: boolean;
+    eqp_capacity_mask?: boolean;
+    capacity_alloc_mode?: CapacityAllocMode;
+    capacity_line_balance?: boolean;
     timeout?: number; // 밀리초
   } = {}) =>
     request<InferenceResult>("/api/inference", {
@@ -189,6 +193,11 @@ export const api = {
         ...(opts.discrete_wait_enabled != null
           ? { discrete_wait_enabled: opts.discrete_wait_enabled }
           : {}),
+        ...(opts.eqp_capacity_mask != null ? { eqp_capacity_mask: opts.eqp_capacity_mask } : {}),
+        ...(opts.capacity_alloc_mode ? { capacity_alloc_mode: opts.capacity_alloc_mode } : {}),
+        ...(opts.capacity_line_balance != null
+          ? { capacity_line_balance: opts.capacity_line_balance }
+          : {}),
         ...(opts.timeout != null ? { timeout: opts.timeout } : {}),
       }),
     }),
@@ -209,6 +218,9 @@ export const api = {
       max_conversions_per_eqp?: number;
       conversion_minutes?: number;
       discrete_wait_enabled?: boolean;
+      eqp_capacity_mask?: boolean;
+      capacity_alloc_mode?: CapacityAllocMode;
+      capacity_line_balance?: boolean;
     } = {},
   ) =>
     request<AlgorithmCompareResponse>("/api/inference/compare", {
@@ -233,6 +245,11 @@ export const api = {
         ...(opts.conversion_minutes != null ? { conversion_minutes: opts.conversion_minutes } : {}),
         ...(opts.discrete_wait_enabled != null
           ? { discrete_wait_enabled: opts.discrete_wait_enabled }
+          : {}),
+        ...(opts.eqp_capacity_mask != null ? { eqp_capacity_mask: opts.eqp_capacity_mask } : {}),
+        ...(opts.capacity_alloc_mode ? { capacity_alloc_mode: opts.capacity_alloc_mode } : {}),
+        ...(opts.capacity_line_balance != null
+          ? { capacity_line_balance: opts.capacity_line_balance }
           : {}),
       }),
     }),
