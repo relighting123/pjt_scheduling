@@ -57,6 +57,7 @@ class BucketCapacity:
     wip_cap:        int                     # 재공만으로 본 상한(req_cnt와 min 취하기 전)
     capable_cnt:    int                     # 처리 가능(다운 제외) 장비 수
     runnable:       bool                    # 지금 구동 가능한 조건인가
+    mandatory_cnt:  int = 0                 # 그 장비에만 투입 가능한 carrier가 있는 장비 수
     reason:         str = REASON_OK
     # 우선순위 순 후보 [(EQP_ID, ST, EQP_MODEL_CD)] — 배분이 그대로 재사용한다
     candidates:     List[Tuple[str, float, str]] = field(default_factory=list)
@@ -76,6 +77,7 @@ class CapacityPlanner:
         self._cache_version: int = -1
         self._alloc_cache = None
         self._alloc_version: int = -1
+        self.alloc_trace: List[dict] = []
         self._discrete_index: Optional[Dict[Tuple[str, str], set]] = None
 
     # ── 설정 ────────────────────────────────────────────────────────────────
@@ -228,6 +230,7 @@ class CapacityPlanner:
             req_cnt=req_cnt,
             target_cnt=target_cnt,
             wip_cap=wip_cap,
+            mandatory_cnt=len(mandatory),
             capable_cnt=len(candidates),
             runnable=target_cnt > 0 and wip_carriers > 0,
             reason=reason,
@@ -533,6 +536,10 @@ class CapacityPlanner:
         caps = self.targets()
         horizon = max(min(sim.soft_cutoff, sim.sim_end) - sim.current_time, 0)
         alloc: Dict[Tuple[str, str], List[str]] = {b: [] for b in caps}
+        # 배분 근거 추적 — "왜 이 장비가 이 버킷에 갔나"를 사후에 설명하기 위한 기록.
+        # 마지막 배분 계산의 부여 순서만 남긴다(가벼운 리스트).
+        trace: List[dict] = []
+        self.alloc_trace = trace
         free = {
             eid for eid in sim._env_data.get("eqp_ids", [])
             if sim.eqps.get(eid) is not None and sim.eqps[eid].status != "down"
@@ -575,7 +582,10 @@ class CapacityPlanner:
             while free:
                 best, best_key, best_eqp = None, None, None
                 for b, c in caps.items():
-                    if len(alloc[b]) >= c.wip_cap:
+                    # 유일 장비는 재공 상한과 무관하게 반드시 배분돼야 한다
+                    # (그 carrier를 만질 다른 장비가 없다).
+                    limit = max(c.wip_cap, min(c.mandatory_cnt, c.capable_cnt))
+                    if len(alloc[b]) >= limit:
                         continue
                     sr = shortfall_ratio(b)
                     if require_shortfall and sr <= 0:
@@ -598,6 +608,14 @@ class CapacityPlanner:
                     return
                 alloc[best].append(best_eqp)
                 free.discard(best_eqp)
+                trace.append({
+                    "round": "부족 해소" if require_shortfall else "유휴 방지",
+                    "bucket": best,
+                    "eqp": best_eqp,
+                    "model": sim._eqp_model_map.get(best_eqp, ""),
+                    "shortfall_before": round(float(-best_key[1]), 4),
+                    "shortfall_after": round(shortfall_ratio(best), 4),
+                })
 
         # 1차 — 계획 부족을 메운다(부족률 > 0인 버킷만)
         fill(require_shortfall=True)

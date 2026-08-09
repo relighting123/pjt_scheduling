@@ -648,3 +648,35 @@ def test_no_mandatory_when_carriers_are_broadly_declared():
     cands = planner._ranked_candidates("PPK001", "OPER001")
     assert planner._mandatory_eqps("PPK001", "OPER001", cands) == []
     assert planner.target_for("PPK001", "OPER001").req_cnt == 1
+
+
+def test_allocate_mode_also_honours_mandatory_floor():
+    """배분 모드에서도 유일 장비는 재공 상한과 무관하게 배분된다."""
+    CONFIG.env.eqp_capacity_mask_enabled = True
+    CONFIG.env.capacity_alloc_mode = "allocate"
+    discrete = [
+        {"EQP_ID": f"EQP{i:03d}", "LOT_ID": f"LOT{i:03d}", "CARRIER_ID": f"CAR{i:03d}",
+         "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "ST": 1,
+         "EQP_MODEL_CD": "A", "WF_QTY": 1, "SEQ": i}
+        for i in range(1, 5)
+    ]
+    raw = {
+        "discrete_arrange": discrete,
+        "plan": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+                  "D0_PLAN_QTY": 4, "D1_PLAN_QTY": 4, "PLAN_PRIORITY": 1}],
+        "flow": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
+        "abstract_arrange": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+                              "EQP_MODEL_CD": "A", "ST": 1}],
+    }
+    data = preprocess(raw, period_key=RULE_TIMEKEY)
+    data["termination_mode"] = "current_wip_assigned"
+    data["enable_wip_inflow"] = False
+    sim = SchedulingSimulator(data, record_history=False)
+
+    cap = sim.capacity_planner.target_for("PPK001", "OPER001")
+    assert cap.mandatory_cnt == 4
+    assert cap.wip_cap == 1                 # 작업량(4분)이 최소 가동시간에 못 미침
+    alloc, _short = sim.capacity_planner.allocation()
+    # 그럼에도 4대가 모두 배분돼야 한다 — 각자 자기에게만 묶인 carrier가 있다
+    assert sorted(alloc[("PPK001", "OPER001")]) == [
+        "EQP001", "EQP002", "EQP003", "EQP004"]
