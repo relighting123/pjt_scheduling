@@ -76,6 +76,7 @@ class CapacityPlanner:
         self._cache_version: int = -1
         self._alloc_cache = None
         self._alloc_version: int = -1
+        self._discrete_index: Optional[Dict[Tuple[str, str], set]] = None
 
     # ── 설정 ────────────────────────────────────────────────────────────────
 
@@ -200,11 +201,17 @@ class CapacityPlanner:
         candidates = self._ranked_candidates(ppk, oper_id)
         st_by_model = self._st_by_model(ppk, oper_id, candidates)
 
-        req_cnt, fleet_short = self._required_count(candidates, remain_qty, horizon)
+        # 필요 대수는 처리율만으로는 부족하다 — carrier가 특정 장비에만 투입 가능하게
+        # 선언돼 있으면(discrete_arrange), 그 장비 없이는 아무리 대수를 늘려도 그 재공을
+        # 못 만진다. 그런 '유일 장비'는 반드시 정원에 들어가야 한다.
+        mandatory = self._mandatory_eqps(ppk, oper_id, candidates)
+        candidates = self._promote_mandatory(candidates, mandatory)
+        req_by_rate, fleet_short = self._required_count(candidates, remain_qty, horizon)
+        req_cnt = max(req_by_rate, len(mandatory))
         wip_cap = self._wip_cap(candidates, wip_qty, wip_carriers)
         target_cnt, reason = self._apply_wip_check(
             req_cnt, remain_qty, wip_cap, wip_carriers, len(candidates),
-            fleet_short=fleet_short,
+            fleet_short=fleet_short, mandatory_cnt=len(mandatory),
         )
 
         req_eqps = [eid for eid, _st, _m in candidates[:req_cnt]]
@@ -272,6 +279,68 @@ class CapacityPlanner:
             count += 1
         return count
 
+    def _discrete_eqp_index(self) -> Dict[Tuple[str, str], set]:
+        """(LOT_ID, OPER_ID) → 그 carrier가 투입 가능하다고 선언된 EQP 집합.
+
+        proc_time_matrix(discrete_arrange)는 시뮬 내내 불변이라 한 번만 만든다.
+        """
+        if self._discrete_index is None:
+            index: Dict[Tuple[str, str], set] = {}
+            for (lot_id, eqp_id, oper_id) in self._sim._env_data.get("proc_time_matrix", {}):
+                index.setdefault((lot_id, oper_id), set()).add(eqp_id)
+            self._discrete_index = index
+        return self._discrete_index
+
+    def _mandatory_eqps(
+        self, ppk: str, oper_id: str, candidates: List[Tuple[str, float, str]],
+    ) -> List[str]:
+        """이 버킷의 남은 재공 중 '그 장비에만' 투입 가능한 carrier가 있는 장비들.
+
+        carrier는 쪼갤 수 없고 discrete_arrange가 투입 가능 장비를 좁게 선언할 수 있어서,
+        처리율만으로 대수를 정하면 그 carrier를 만질 수 있는 유일한 장비가 정원 밖으로
+        밀려 재공이 통째로 남는다. 그런 장비는 필요 대수의 하한이 되어야 한다.
+
+        선언이 없는(순수 abstract) 재공은 모델만 맞으면 아무 장비나 가능하므로 해당 없음.
+        """
+        sim = self._sim
+        wip = sim._wip_for(ppk, oper_id)
+        if not wip or wip.get("wip_qty", 0) <= 0:
+            return []
+        index = self._discrete_eqp_index()
+        eligible = {eid for eid, _st, _m in candidates}
+        mandatory: List[str] = []
+        seen = set()
+        for lid in wip.get("lot_ids", []):
+            if not sim._is_current_wip_lot(lid, ppk, oper_id):
+                continue
+            meta = sim._wip_lot_meta.get(lid, {})
+            if not sim._lot_ready(lid, meta.get("oper_in_time", wip.get("oper_in_time", 0))):
+                continue
+            declared = index.get((lid, oper_id))
+            if not declared:
+                continue                       # 선언 없음 = abstract, 아무 장비나 가능
+            usable = declared & eligible
+            if len(usable) == 1:
+                only = next(iter(usable))
+                if only not in seen:
+                    seen.add(only)
+                    mandatory.append(only)
+        return mandatory
+
+    @staticmethod
+    def _promote_mandatory(
+        candidates: List[Tuple[str, float, str]], mandatory: List[str],
+    ) -> List[Tuple[str, float, str]]:
+        """유일 장비를 후보 목록 앞으로 — 정원/배분이 반드시 이들을 포함하게 한다."""
+        if not mandatory:
+            return candidates
+        order = {eid: i for i, eid in enumerate(mandatory)}
+        head = sorted(
+            (c for c in candidates if c[0] in order), key=lambda c: order[c[0]],
+        )
+        tail = [c for c in candidates if c[0] not in order]
+        return head + tail
+
     def _wip_cap(
         self, candidates: List[Tuple[str, float, str]], wip_qty: int, wip_carriers: int,
     ) -> int:
@@ -295,6 +364,7 @@ class CapacityPlanner:
         capable_cnt: int,
         *,
         fleet_short: bool = False,
+        mandatory_cnt: int = 0,
     ) -> Tuple[int, str]:
         """재공이 그 대수를 먹일 수 있는지 사전 체크 → 구동 가능한 정원으로 축소."""
         if capable_cnt <= 0:
@@ -303,6 +373,9 @@ class CapacityPlanner:
             return 0, REASON_NO_WIP
 
         target = min(req_cnt, wip_cap, capable_cnt)
+        # 유일 장비(그 장비에만 투입 가능한 carrier가 있는 장비)는 재공 상한보다 우선한다
+        # — 최소 가동시간이 안 나온다는 이유로 빼면 그 carrier를 만질 방법이 아예 없다.
+        target = max(target, min(mandatory_cnt, capable_cnt))
         # 재공이 남아 있으면 최소 1대는 열어 둔다 — 계획을 이미 채웠거나(잔여 0)
         # 산출 대수가 0이라는 이유로 남은 재공이 통째로 묶이면 안 된다.
         target = max(target, 1)

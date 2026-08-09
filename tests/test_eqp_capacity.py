@@ -595,3 +595,56 @@ def test_allocate_rows_report_allocation_and_shortfall():
     assert all("SHORTFALL_RATIO" in r for r in rows)
     # 배분 대수 합계는 보유 장비 수를 넘지 않는다
     assert sum(r["PLAN_EQP_CNT"] for r in rows) <= len(sim._env_data["eqp_ids"])
+
+
+# ── 8. carrier 투입 가능성(커버리지) 하한 ────────────────────────────────────
+
+def test_required_count_covers_carriers_declared_to_single_eqp():
+    """carrier가 특정 장비에만 투입 가능하면 그 장비는 필요 대수의 하한이 된다.
+
+    회귀 테스트: 처리율만으로 대수를 정하면(잔여량/남은시간) 그 carrier를 만질 수 있는
+    유일한 장비가 정원 밖으로 밀려, 아무리 다른 장비를 붙여도 그 재공이 통째로 남는다.
+    """
+    CONFIG.env.eqp_capacity_mask_enabled = False
+    # carrier 4개를 EQP001~004에 1개씩만 선언(라운드로빈) → 전부 처리하려면 4대가 필요.
+    # 처리율만 보면 잔여 100매 / 1320분 = 0.0758, ST 60이면 5대... 가 아니라
+    # ST 600으로 크게 잡아 처리율 기준으로는 1대면 충분하게 만든다.
+    discrete = [
+        {"EQP_ID": f"EQP{i:03d}", "LOT_ID": f"LOT{i:03d}", "CARRIER_ID": f"CAR{i:03d}",
+         "PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001", "ST": 1,
+         "EQP_MODEL_CD": "A", "WF_QTY": 1, "SEQ": i}
+        for i in range(1, 5)
+    ]
+    raw = {
+        "discrete_arrange": discrete,
+        "plan": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+                  "D0_PLAN_QTY": 4, "D1_PLAN_QTY": 4, "PLAN_PRIORITY": 1}],
+        "flow": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_SEQ": 1, "OPER_ID": "OPER001"}],
+        "abstract_arrange": [{"PLAN_PROD_ATTR_VAL": "PPK001", "OPER_ID": "OPER001",
+                              "EQP_MODEL_CD": "A", "ST": 1}],
+    }
+    data = preprocess(raw, period_key=RULE_TIMEKEY)
+    data["termination_mode"] = "current_wip_assigned"
+    data["enable_wip_inflow"] = False
+    sim = SchedulingSimulator(data, record_history=False)
+    planner = sim.capacity_planner
+
+    cap = planner.target_for("PPK001", "OPER001")
+    # 처리율 기준으로는 1대면 충분(4매 / 1320분 vs 1/1매·분)
+    cands = planner._ranked_candidates("PPK001", "OPER001")
+    assert planner._required_count(cands, cap.remain_qty, cap.horizon_min)[0] == 1
+    # 그러나 carrier가 장비별로 하나씩 묶여 있으므로 4대가 모두 필요하다
+    assert sorted(planner._mandatory_eqps("PPK001", "OPER001", cands)) == [
+        "EQP001", "EQP002", "EQP003", "EQP004"]
+    assert cap.req_cnt == 4
+    assert cap.target_cnt == 4
+
+
+def test_no_mandatory_when_carriers_are_broadly_declared():
+    """모든 장비에 투입 가능하게 선언된 재공은 유일 장비가 없다(하한 없음)."""
+    CONFIG.env.eqp_capacity_mask_enabled = False
+    sim = _sim(plan_qty=20, n_carrier=8)          # 전 carrier × 전 EQP 선언
+    planner = sim.capacity_planner
+    cands = planner._ranked_candidates("PPK001", "OPER001")
+    assert planner._mandatory_eqps("PPK001", "OPER001", cands) == []
+    assert planner.target_for("PPK001", "OPER001").req_cnt == 1
