@@ -488,7 +488,8 @@ load_output_sql_files("data/dataset/FAC001/infer/output", db_alias="Prd")
 DB 연결: `config/databases.yaml` + `python main.py db-check`
 
 운영/개발 서버를 별도 DB로 분리하려면 `config/databases.prd.yaml` / `config/databases.dev.yaml`
-을 각각 준비하고 `APP_ENV=production` / `APP_ENV=development` 로 실행하세요
+을 각각 준비하고 `APP_ENV=production` / `APP_ENV=development` 로 실행하세요. 파일을 나누기
+싫으면 `config/databases.yaml` 하나에 `envs:` 블록으로 prd/dev 를 함께 넣어도 됩니다
 (자세한 내용은 `docs/DEPLOYMENT.md` 1.2절 참고).
 
 실행된 SQL은 `logs/sql_fetch.log`(SELECT, 입력 fetch)와 `logs/sql_load.log`(INSERT/DELETE/DDL,

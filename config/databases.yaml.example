@@ -20,3 +20,21 @@ Dev:
 # Prd:
 #   User: ...
 #   Pw: ...
+
+# ── 운영/개발을 파일 하나로 (선택) ────────────────────────────────────────────
+# databases.prd.yaml / databases.dev.yaml 로 파일을 나누지 않고, 이 파일 하나에
+# envs: 블록으로 prd/dev 접속정보를 함께 넣을 수도 있습니다. APP_ENV 값에 따라
+# 아래 섹션 중 하나가 위 Prd/Dev 와 같은 방식으로 병합됩니다(같은 alias 는 덮어씀).
+# 섹션 키는 production/development 대신 prd/dev, prod 도 동일하게 인식합니다.
+#
+# envs:
+#   production:
+#     Prd:
+#       user: prd_user
+#       password: prd_password
+#       dsn: prd-host:1521/ORCL
+#   development:
+#     Prd:
+#       user: dev_user
+#       password: dev_password
+#       dsn: dev-host:1521/ORCL
