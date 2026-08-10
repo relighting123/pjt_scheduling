@@ -175,50 +175,6 @@ def _insert_rts_perfmon_his(rows: List[dict]) -> List[str]:
     return lines
 
 
-def _insert_rts_eqpalloc(rows: List[dict], *, history: bool) -> List[str]:
-    table = "RTS_EQPALLOC_HIS" if history else "RTS_EQPALLOC_PLAN"
-    lines: List[str] = []
-    exec_timekey = datetime.now().strftime(RULE_TIMEKEY_FMT)
-    for r in rows:
-        cols = [
-            "FAC_ID", "RULE_TIMEKEY", "PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD",
-            "PLAN_PRIORITY", "IS_EXCLUSIVE_MODEL", "WINDOW_START_TM", "WINDOW_END_TM",
-            "WINDOW_MINUTES", "PLAN_QTY", "WIP_QTY", "TARGET_QTY", "ST", "CAPA_PER_EQP",
-            "ALLOC_EQP_CNT", "NEEDS_CONV_EQP_CNT", "ALLOC_CAPA_QTY", "TOTAL_EQP_CNT", "CRT_USER_ID",
-        ]
-        vals = [
-            _sql_str(r["FAC_ID"]),
-            _sql_str(r["RULE_TIMEKEY"]),
-            _sql_str(r["PLAN_PROD_ATTR_VAL"]),
-            _sql_str(r["OPER_ID"]),
-            _sql_str(r["EQP_MODEL_CD"]),
-            _sql_num(r.get("PLAN_PRIORITY", 1)),
-            _sql_str(r.get("IS_EXCLUSIVE_MODEL", "N")),
-            _sql_str(r["WINDOW_START_TM"]),
-            _sql_str(r["WINDOW_END_TM"]),
-            _sql_num(r["WINDOW_MINUTES"]),
-            _sql_float(r.get("PLAN_QTY", 0)),
-            _sql_num(r.get("WIP_QTY", 0)),
-            _sql_float(r.get("TARGET_QTY", 0)),
-            _sql_float(r.get("ST", 0)),
-            _sql_float(r.get("CAPA_PER_EQP", 0)),
-            _sql_num(r["ALLOC_EQP_CNT"]),
-            _sql_num(r.get("NEEDS_CONV_EQP_CNT", 0)),
-            _sql_float(r.get("ALLOC_CAPA_QTY", 0)),
-            _sql_num(r.get("TOTAL_EQP_CNT", 0)),
-            _sql_str(r.get("CRT_USER_ID", "RTS")),
-        ]
-        cols.append("CRT_TM")
-        vals.append("SYSTIMESTAMP")
-        if history:
-            cols.append("EXEC_TIMEKEY")
-            vals.append(_sql_str(exec_timekey))
-        lines.append(
-            f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
-        )
-    return lines
-
-
 def _insert_rts_validation(rows: List[dict]) -> List[str]:
     lines: List[str] = []
     for r in rows:
@@ -252,7 +208,6 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
     perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
     validation_rows = payload.get("RTS_VALIDATION", [])
-    alloc_rows = payload.get("RTS_EQPALLOC_PLAN", [])
 
     scripts: Dict[str, str] = {}
 
@@ -269,13 +224,6 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     conv_inf_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=False))
     scripts["rts_eqpconvplan_inf.sql"] = "\n".join(conv_inf_lines) + "\n"
 
-    alloc_plan_lines = [f"-- RTS_EQPALLOC_PLAN FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
-    if rule_timekey:
-        alloc_plan_lines.append(_delete_inf_for_rule_timekey("RTS_EQPALLOC_PLAN", fac_id, rule_timekey))
-        alloc_plan_lines.append("")
-    alloc_plan_lines.extend(_insert_rts_eqpalloc(alloc_rows, history=False))
-    scripts["rts_eqpalloc_plan.sql"] = "\n".join(alloc_plan_lines) + "\n"
-
     if include_history:
         his_lines = [f"-- RTS_RSLT_HIS RULE_TIMEKEY={rule_timekey}", ""]
         his_lines.extend(_insert_rts_rslt_rows(rslt_rows, history=True))
@@ -284,10 +232,6 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
         conv_his_lines = [f"-- RTS_EQPCONVPLAN_HIS RULE_TIMEKEY={rule_timekey}", ""]
         conv_his_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=True))
         scripts["rts_eqpconvplan_his.sql"] = "\n".join(conv_his_lines) + "\n"
-
-        alloc_his_lines = [f"-- RTS_EQPALLOC_HIS RULE_TIMEKEY={rule_timekey}", ""]
-        alloc_his_lines.extend(_insert_rts_eqpalloc(alloc_rows, history=True))
-        scripts["rts_eqpalloc_his.sql"] = "\n".join(alloc_his_lines) + "\n"
 
     if perfmon_rows:
         perfmon_lines = [f"-- RTS_PERFMON_HIS RULE_TIMEKEY={rule_timekey}", ""]

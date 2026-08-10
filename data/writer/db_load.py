@@ -18,8 +18,8 @@ from data.writer.rts_sql import build_writer_sql_scripts, write_sql
 from utils.file_logger import get_daily_file_logger
 
 _DDL_FILE = "rts_output_tables.sql"
-_INF_SCRIPTS = ("rts_rslt_mas.sql", "rts_eqpconvplan_inf.sql", "rts_eqpalloc_plan.sql")
-_HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql", "rts_eqpalloc_his.sql")
+_INF_SCRIPTS = ("rts_rslt_mas.sql", "rts_eqpconvplan_inf.sql")
+_HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
 # save_kpi 옵션 켰을 때만 생성되는 스크립트 — 있으면 적재, 없으면 조용히 생략
 _OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql")
 
@@ -29,8 +29,6 @@ _SCRIPT_TABLE = {
     "rts_rslt_his.sql":         "RTS_RSLT_HIS",
     "rts_eqpconvplan_inf.sql":  "RTS_EQPCONVPLAN_INF",
     "rts_eqpconvplan_his.sql":  "RTS_EQPCONVPLAN_HIS",
-    "rts_eqpalloc_plan.sql":    "RTS_EQPALLOC_PLAN",
-    "rts_eqpalloc_his.sql":     "RTS_EQPALLOC_HIS",
     "rts_perfmon_his.sql":      "RTS_PERFMON_HIS",
     "rts_validation.sql":       "RTS_VALIDATION",
 }

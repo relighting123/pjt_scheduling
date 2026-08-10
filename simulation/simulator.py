@@ -1364,24 +1364,6 @@ class SchedulingSimulator:
             return sum(s for _, s in lst) / len(lst)
         return None
 
-    def _alloc_mask_allows(self, eqp_id: str, ppk: str, oper_id: str) -> bool:
-        """PPK/OPER × EQP_MODEL_CD 사전 할당(allocation.eqp_allocator) 결과로
-        액션 마스크를 추가로 좁힌다.
-
-        (ppk,oper) 키가 eqp_alloc_map에 아예 없으면(계획/재공 부재 등으로 이번
-        회차 할당 계산 대상이 아니었음) 제약 없이 허용한다(fail-open) — 기존
-        abstract_arrange 모델 매칭 결과가 그대로 최종 판단이 된다. 키가 있으면
-        이 EQP의 모델이 ALLOC_EQP_CNT>0으로 배정된 모델일 때만 허용한다.
-        """
-        alloc_map = self._env_data.get("eqp_alloc_map")
-        if not alloc_map:
-            return True
-        models = alloc_map.get((ppk, oper_id))
-        if models is None:
-            return True
-        model = self._eqp_model_map.get(eqp_id)
-        return bool(model) and models.get(model, 0) > 0
-
     def _eqp_feasible_bucket_keys(self, eqp_id: str) -> set:
         """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합.
 
@@ -1400,8 +1382,6 @@ class SchedulingSimulator:
             feasible: set = set()
             buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
             for bucket_ppk, bucket_oper in buckets:
-                if not self._alloc_mask_allows(eqp_id, bucket_ppk, bucket_oper):
-                    continue
                 bucket_lots = [
                     l for l in lots
                     if l["PLAN_PROD_ATTR_VAL"] == bucket_ppk and l["oper_id"] == bucket_oper
