@@ -549,6 +549,13 @@ class EnvConfig:
     # 아니라 eqp_queue_init 입력으로 별도 처리되며 이 옵션과 무관하게 항상 그대로
     # 반영된다.
     discrete_wait_enabled: bool = True
+    # PPK/OPER × EQP_MODEL_CD 사전 할당(장비 댓수) 계산 여부(옵션, 기본 True).
+    # True면 preprocess()가 allocation.eqp_allocator로 이번 RULE_TIMEKEY 회차의
+    # 할당을 계산해 env_data["eqp_alloc_map"]/["eqp_alloc_rows"]에 채우고,
+    # 시뮬레이터가 이를 참조해 get_feasible_ppk_oper()의 액션 마스크를 추가로
+    # 좁힌다(모델이 배정 안 된 (PPK,OPER)는 그 모델 EQP에서 제외). False면 기존
+    # abstract_arrange 매칭 결과만으로 마스킹한다(하위 호환).
+    eqp_alloc_enabled: bool = True
 
 
 @dataclass

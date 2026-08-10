@@ -173,3 +173,63 @@ CREATE TABLE RTS_VALIDATION (
 );
 
 CREATE INDEX IX_RTS_VALIDATION_FAC ON RTS_VALIDATION (FAC_ID, RULE_TIMEKEY);
+
+-- ── PPK/OPER × EQP_MODEL_CD 사전 할당(장비 댓수) — action masking 근거 데이터 ──
+-- (RTS_EQPALLOC_PLAN: 매 회차 동일 FAC_ID+RULE_TIMEKEY 기존 행만 교체, HIS: 누적)
+-- allocation.eqp_allocator.compute_eqp_allocation() 산출물을 그대로 적재한다.
+CREATE TABLE RTS_EQPALLOC_PLAN (
+    FAC_ID                  VARCHAR2(32)   NOT NULL,
+    RULE_TIMEKEY            VARCHAR2(14)   NOT NULL,
+    PLAN_PROD_ATTR_VAL      VARCHAR2(64)   NOT NULL,   -- PPK
+    OPER_ID                 VARCHAR2(64)   NOT NULL,
+    EQP_MODEL_CD            VARCHAR2(32)   NOT NULL,
+    PLAN_PRIORITY           NUMBER(10),                -- PPK 우선순위(작을수록 우선)
+    IS_EXCLUSIVE_MODEL      CHAR(1)        DEFAULT 'N' NOT NULL,  -- 이 PPK/OPER가 이 모델만 가능(전용)한지
+    WINDOW_START_TM         VARCHAR2(14)   NOT NULL,    -- = RULE_TIMEKEY
+    WINDOW_END_TM           VARCHAR2(14)   NOT NULL,    -- 익일 05:00 (CONFIG.env.soft_cutoff_minutes)
+    WINDOW_MINUTES          NUMBER(10)     NOT NULL,
+    PLAN_QTY                NUMBER(18,2),               -- 창 내 계획 수량(D0_PLAN_QTY)
+    WIP_QTY                 NUMBER(18,0),               -- 해당 PPK/OPER 도달 가능 재공(현재 + 선행 공정 유입)
+    TARGET_QTY              NUMBER(18,2),               -- min(PLAN_QTY, WIP_QTY)
+    ST                      NUMBER(10,2),               -- 모델별 ST(분/장)
+    CAPA_PER_EQP            NUMBER(18,4),               -- WINDOW_MINUTES / ST
+    ALLOC_EQP_CNT           NUMBER(10)     NOT NULL,    -- 할당 대수
+    NEEDS_CONV_EQP_CNT      NUMBER(10)     DEFAULT 0 NOT NULL,  -- ALLOC_EQP_CNT 중 전환이 필요했던 대수
+    ALLOC_CAPA_QTY          NUMBER(18,4),               -- ALLOC_EQP_CNT * CAPA_PER_EQP
+    TOTAL_EQP_CNT           NUMBER(10),                 -- 해당 모델 전체 보유 대수
+    CRT_USER_ID             VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
+    CRT_TM                  TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT PK_RTS_EQPALLOC_PLAN PRIMARY KEY
+        (FAC_ID, RULE_TIMEKEY, PLAN_PROD_ATTR_VAL, OPER_ID, EQP_MODEL_CD)
+);
+
+CREATE INDEX IX_RTS_EQPALLOC_PLAN_FAC ON RTS_EQPALLOC_PLAN (FAC_ID, RULE_TIMEKEY);
+
+CREATE TABLE RTS_EQPALLOC_HIS (
+    FAC_ID                  VARCHAR2(32)   NOT NULL,
+    RULE_TIMEKEY            VARCHAR2(14)   NOT NULL,
+    PLAN_PROD_ATTR_VAL      VARCHAR2(64)   NOT NULL,
+    OPER_ID                 VARCHAR2(64)   NOT NULL,
+    EQP_MODEL_CD            VARCHAR2(32)   NOT NULL,
+    PLAN_PRIORITY           NUMBER(10),
+    IS_EXCLUSIVE_MODEL      CHAR(1)        DEFAULT 'N' NOT NULL,
+    WINDOW_START_TM         VARCHAR2(14)   NOT NULL,
+    WINDOW_END_TM           VARCHAR2(14)   NOT NULL,
+    WINDOW_MINUTES          NUMBER(10)     NOT NULL,
+    PLAN_QTY                NUMBER(18,2),
+    WIP_QTY                 NUMBER(18,0),
+    TARGET_QTY              NUMBER(18,2),
+    ST                      NUMBER(10,2),
+    CAPA_PER_EQP            NUMBER(18,4),
+    ALLOC_EQP_CNT           NUMBER(10)     NOT NULL,
+    NEEDS_CONV_EQP_CNT      NUMBER(10)     DEFAULT 0 NOT NULL,
+    ALLOC_CAPA_QTY          NUMBER(18,4),
+    TOTAL_EQP_CNT           NUMBER(10),
+    CRT_USER_ID             VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
+    CRT_TM                  TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
+    EXEC_TIMEKEY            VARCHAR2(14)   NOT NULL,
+    CONSTRAINT PK_RTS_EQPALLOC_HIS PRIMARY KEY
+        (FAC_ID, EXEC_TIMEKEY, RULE_TIMEKEY, PLAN_PROD_ATTR_VAL, OPER_ID, EQP_MODEL_CD)
+);
+
+CREATE INDEX IX_RTS_EQPALLOC_HIS_RTK ON RTS_EQPALLOC_HIS (RULE_TIMEKEY);

@@ -310,6 +310,12 @@ def build_rts_output(
         "meta": meta,
         "RTS_RSLT_MAS": _build_rts_rslt_rows(schedule, meta, base_time, env_data),
         "RTS_EQPCONVPLAN_INF": _build_rts_conv_rows(conversion_plans, meta, base_time),
+        # FAC_ID/RULE_TIMEKEY는 preprocess 시점이 아니라 이 함수의 meta(호출측이
+        # 넘긴 fac_id/rule_timekey 우선)로 맞춰 output.json 전체 일관성을 보장한다.
+        "RTS_EQPALLOC_PLAN": [
+            {**row, "FAC_ID": meta["FAC_ID"], "RULE_TIMEKEY": meta["RULE_TIMEKEY"]}
+            for row in env_data.get("eqp_alloc_rows", [])
+        ],
     }
     if include_kpi:
         payload["RTS_PERFMON_HIS"] = _build_rts_perfmon_rows(result, meta)
