@@ -276,8 +276,8 @@ APP_ENV=production python api/start_production.py --host 0.0.0.0 --port 8001
 APP_ENV=production python api/start_production.py --host 0.0.0.0 --port 8001 --workers 4
 ```
 
-`APP_ENV` 는 `config/databases.prd.yaml` / `config/databases.dev.yaml` 중 어느 DB 설정을 로드할지 결정합니다
-(운영/개발 DB 를 분리하지 않는다면 생략해도 되며, 이 경우 기존처럼 `config/databases.yaml` 을 사용합니다).
+`APP_ENV` 는 `config/databases.yaml` 의 `envs:` 블록에서 어느 DB 설정을 로드할지 결정합니다
+(운영/개발 DB 를 분리하지 않는다면 생략해도 되며, 이 경우 `envs:` 없이 `config/databases.yaml` 을 그대로 사용합니다).
 자세한 설정은 `docs/DEPLOYMENT.md` 1.2절을 참고하세요.
 
 ### HTTPS 지원

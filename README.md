@@ -487,9 +487,8 @@ load_output_sql_files("data/dataset/FAC001/infer/output", db_alias="Prd")
 
 DB 연결: `config/databases.yaml` + `python main.py db-check`
 
-운영/개발 서버를 별도 DB로 분리하려면 `config/databases.prd.yaml` / `config/databases.dev.yaml`
-을 각각 준비하고 `APP_ENV=production` / `APP_ENV=development` 로 실행하세요. 파일을 나누기
-싫으면 `config/databases.yaml` 하나에 `envs:` 블록으로 prd/dev 를 함께 넣어도 됩니다
+운영/개발 서버를 별도 DB로 분리하려면 `config/databases.yaml` 최상위에 `envs:` 블록을 추가해
+prd/dev 접속정보를 함께 넣고 `APP_ENV=production` / `APP_ENV=development` 로 실행하세요
 (자세한 내용은 `docs/DEPLOYMENT.md` 1.2절 참고).
 
 실행된 SQL은 `logs/sql_fetch.log`(SELECT, 입력 fetch)와 `logs/sql_load.log`(INSERT/DELETE/DDL,
@@ -579,12 +578,11 @@ DB 적재)에 남습니다. 두 로그 모두 자정에 자동 회전되고 백�
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
-cp config/databases.prd.yaml.example config/databases.prd.yaml   # 운영 DB 정보 입력
-cp config/databases.dev.yaml.example config/databases.dev.yaml   # 개발 DB 정보 입력
+cp config/databases.yaml.example config/databases.yaml   # envs: 블록에 운영/개발 DB 정보 입력
 ```
 
-`APP_ENV`로 운영/개발 DB 설정을 선택합니다 (`config/databases.prd.yaml` / `databases.dev.yaml`,
-미지정 시 레거시 `config/databases.yaml` 사용 — 자세한 내용은 `docs/DEPLOYMENT.md` 1.2절).
+`APP_ENV`로 `config/databases.yaml`의 `envs:` 블록 안에서 운영/개발 DB 설정을 선택합니다
+(자세한 내용은 `docs/DEPLOYMENT.md` 1.2절).
 
 ```bash
 # 개발 서버 (자동 리로드)

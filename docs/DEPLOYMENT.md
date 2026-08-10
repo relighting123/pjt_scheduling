@@ -40,29 +40,9 @@ python main.py db-load --ddl-only
 #### 운영(prd) / 개발(dev) 서버를 분리해 띄우는 경우
 
 같은 코드베이스로 운영 서버와 개발 서버를 각각 다른 DB에 붙여 실행하려면
-`config/databases.prd.yaml` 과 `config/databases.dev.yaml` 을 따로 준비하세요.
-`DB_CONFIG` 를 비워두면 `APP_ENV` 값에 따라 자동으로 선택됩니다
-(`APP_ENV=production` → `databases.prd.yaml`, `APP_ENV=development` → `databases.dev.yaml`).
-`DB_CONFIG` 를 명시하면 항상 그 값이 우선합니다.
-
-```bash
-cp config/databases.prd.yaml.example config/databases.prd.yaml
-cp config/databases.dev.yaml.example config/databases.dev.yaml
-
-# 각 파일에 운영/개발 DB 접속 정보 입력
-# vi config/databases.prd.yaml
-# vi config/databases.dev.yaml
-
-# 연결 테스트 (환경별로 확인)
-APP_ENV=production python main.py db-check
-APP_ENV=development python main.py db-check
-```
-
-#### 파일을 나누지 않고 하나의 `databases.yaml`에 prd/dev 를 함께 넣는 경우
-
-파일 두 개를 관리하기 번거로우면 `config/databases.yaml` 하나에 `envs:` 블록으로
-운영/개발 접속 정보를 함께 넣을 수 있습니다. `APP_ENV` 로 그 안에서 매칭되는
-섹션만 골라 다른 alias(공용 DB 등)와 병합합니다.
+`config/databases.yaml` 하나에 `envs:` 블록으로 운영/개발 접속 정보를 함께
+넣으세요. `APP_ENV` 로 그 안에서 매칭되는 섹션만 골라 다른 alias(공용 DB 등)와
+병합합니다.
 
 ```bash
 cp config/databases.yaml.example config/databases.yaml
@@ -91,10 +71,7 @@ APP_ENV=production python main.py db-check
 APP_ENV=development python main.py db-check
 ```
 
-`APP_ENV` 에 대응하는 전용 파일(`databases.prd.yaml`/`databases.dev.yaml`)이 없으면
-자동으로 이 단일 `databases.yaml`을 읽어 `envs:` 블록에서 선택하므로, 두 방식을
-섞어 쓰다가 파일 두 개로 나누고 싶어지면 `databases.prd.yaml`/`databases.dev.yaml`을
-새로 만들기만 하면 됩니다(우선순위가 더 높음).
+`DB_CONFIG` 를 명시하면 항상 그 값이 우선합니다(예: 다른 경로의 YAML 파일을 직접 지정).
 
 ### 1.3 환경 변수 설정
 
@@ -208,7 +185,7 @@ sudo systemctl status scheduling-api
 
 운영(prd)과 개발(dev) 서버를 같은 머신(또는 각자 머신)에 별도 서비스·포트로 나란히 띄우는 경우,
 `APP_ENV` 값만 다른 두 개의 서비스 유닛을 만듭니다
-(`APP_ENV` 는 `config/databases.prd.yaml` / `config/databases.dev.yaml` 중 어떤 파일을 로드할지 결정합니다. 1.2절 참고):
+(`APP_ENV` 는 `config/databases.yaml` 의 `envs:` 블록에서 어느 섹션을 쓸지 결정합니다. 1.2절 참고):
 
 ```bash
 # /etc/systemd/system/scheduling-api-prd.service
