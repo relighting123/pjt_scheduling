@@ -928,10 +928,29 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             flow_prev.setdefault(ppk, {})[op] = ordered[i - 1] if i > 0 else None
             flow_post.setdefault(ppk, {})[op] = ordered[i + 1] if i + 1 < len(ordered) else None
 
+    # PPK/OPER × EQP_MODEL_CD 사전 할당(장비 댓수) — action masking 추가 좁히기용.
+    # CONFIG.env.eqp_alloc_enabled=False면 계산을 건너뛰고 빈 맵을 둔다(기존
+    # abstract_arrange 매칭 기준 마스킹만 적용, 하위 호환).
+    eqp_alloc_rows: List[dict] = []
+    eqp_alloc_map: Dict[Tuple[str, str], Dict[str, int]] = {}
+    if CONFIG.env.eqp_alloc_enabled:
+        from allocation.eqp_allocator import build_eqp_alloc_map, compute_eqp_allocation
+
+        eqp_alloc_rows = compute_eqp_allocation(
+            raw,
+            fac_id=CONFIG.path.fac_id,
+            rule_timekey=base_time.strftime(RULE_TIMEKEY_FMT),
+            window_minutes=soft_cutoff_minutes,
+            wip_skew_release_factor=CONFIG.env.eqp_alloc_wip_skew_release_factor,
+        )
+        eqp_alloc_map = build_eqp_alloc_map(eqp_alloc_rows)
+
     return {
         "sim_base_time":    base_time,
         "sim_end_minutes":  sim_end_minutes,
         "soft_cutoff_minutes": soft_cutoff_minutes,
+        "eqp_alloc_rows":   eqp_alloc_rows,
+        "eqp_alloc_map":    eqp_alloc_map,
         "conversion_minutes": CONFIG.env.conversion_minutes,
         "max_conversions": CONFIG.env.max_conversions,
         "max_conversions_per_eqp": CONFIG.env.max_conversions_per_eqp,

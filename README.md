@@ -194,6 +194,86 @@ Earliest-ST는 idle EQP 전체 × feasible LOT을 한 번에 비교해 예상 �
 
 ---
 
+## 장비 사전 할당 (PPK/OPER × EQP_MODEL_CD, Action Masking)
+
+`allocation/eqp_allocator.py`는 스케줄링(RL/휴리스틱) 실행 **이전에** "이번
+RULE_TIMEKEY 회차에 어느 PPK/OPER가 어느 `EQP_MODEL_CD`를 몇 대(댓수) 쓸 수
+있는지"를 결정론적 규칙으로 미리 계산해 `RTS_EQPALLOC_PLAN`/`RTS_EQPALLOC_HIS`에
+저장한다. 이 결과는 시뮬레이터의 기존 액션 마스크(`get_feasible_ppk_oper` →
+`_eqp_feasible_bucket_keys`)를 한 단계 더 좁히는 데 쓰인다 — "이 장비 모델은 이
+PPK/OPER 몫이 아니다"를 RL이 매번 롤아웃으로 학습해 알아내는 대신, 사전 배분
+규칙으로 행동 공간 자체를 줄여준다.
+
+### 입력 → 산출
+
+| 입력 | 쓰임 |
+|------|------|
+| `abstract_arrange` (PPK, OPER, EQP_MODEL_CD, ST) | (PPK,OPER)별 투입 가능 모델 집합 + 모델별 ST(분/장) |
+| `discrete_arrange` (EQP_ID, EQP_MODEL_CD, WF_QTY, ...) | 모델별 전체 보유 대수, (PPK,OPER)별 전체 재공(WIP, carrier 단위 dedup) |
+| `plan` (PLAN_PRIORITY, D0_PLAN_QTY) | PPK 우선순위(작을수록 우선), 계획 수량 |
+| `flow` (OPER_SEQ) | 같은 PPK 안에서 OPER 처리 순서(균등 배분 기준) |
+
+### 산정 규칙
+
+1. **시간창**: CAPA/계획 모두 `[RULE_TIMEKEY, RULE_TIMEKEY + window)` 기준.
+   `window`는 시뮬레이터가 이미 achievable-target/takt 계산에 쓰는
+   `CONFIG.env.soft_cutoff_minutes`(기본 1320분 = 07:00 기준 익일 05:00)를
+   그대로 재사용한다 — 새 상수를 만들지 않고 기존 관례(D0_PLAN_QTY를 이 창의
+   목표량으로 그대로 쓰는 `_achievable_qty`/`_carrier_takt_minutes`)를 따른다.
+2. `CAPA_PER_EQP = window_minutes / ST` (= UPH × 잔여시간과 동일값, UPH=60/ST).
+3. `TARGET_QTY(ppk,oper) = min(D0_PLAN_QTY, WIP_QTY)`. 계획·재공 중 하나라도
+   없으면(target=0) 해당 (PPK,OPER)는 이번 회차 할당 대상에서 제외된다 —
+   마스킹 단계에서 "제약 없음"으로 폴백해, 일시적 계획 누락이 정당한 WIP
+   배정까지 막는 부작용을 피한다(fail-open).
+4. PPK 우선순위(`PLAN_PRIORITY`, 작을수록 우선) 오름차순으로 처리한다.
+5. **전용 모델 우선**: 해당 (PPK,OPER)에 투입 가능한 모델이 1개뿐이면(대체
+   불가) 공용 모델 수요보다 먼저 배정한다 — 전용 수요는 다른 곳으로 갈 곳이
+   없기 때문이다.
+6. **공용 모델은 PPK 안에서 OPER별로 균등 배분**한다(마지막 OPER 달성을 위해
+   상류 공정도 CAPA가 유사해야 꾸준히 생산·매핑할 수 있다는 원칙). 단, 특정
+   OPER의 WIP가 균등 배분 기준(1/n) 대비 `eqp_alloc_wip_skew_release_factor`
+   배(기본 1.5배) 이상 몰려 있으면 그 OPER은 균등 상한 없이 먼저 그리디로
+   채운다(정체 해소 예외). 모델 선택은 "지금까지 전체 보유 대수 대비 가장
+   적게 쓰인 모델"부터 우선해 같은 모델로 수요가 쏠리지 않게 분산한다.
+
+### Action masking 적용 범위
+
+`_eqp_feasible_bucket_keys()`에서 산출한 `(PPK,OPER)` 버킷마다, 이 EQP의 모델이
+`RTS_EQPALLOC_PLAN`(→ `env_data["eqp_alloc_map"]`)에서 그 (PPK,OPER)에 대수>0으로
+배정된 모델이 아니면 버킷을 제외한다. 이 훅은 RL(`action_masks`)·`minprogress`·
+`dedication`처럼 (PPK,OPER) 버킷 단위로 결정하는 알고리즘에 공통 적용된다.
+`earliest_st`는 LOT(carrier) 단위로 직접 비교하는 별도 알고리즘이라 이 마스킹
+대상이 아니다(기존 `get_idle_eqps()` 필터만 공유).
+
+`(ppk,oper)` 키가 `eqp_alloc_map`에 아예 없으면(할당 계산 대상이 아니었던
+경우) 제약 없이 기존 `abstract_arrange` 모델 매칭 결과를 그대로 쓴다.
+
+### 옵션 (`config.py` `EnvConfig`)
+
+| 옵션 | 기본 | 의미 |
+|------|------|------|
+| `eqp_alloc_enabled` | `True` | 사전 할당 계산 여부. `False`면 기존 abstract 매칭 마스킹만(하위 호환) |
+| `eqp_alloc_wip_skew_release_factor` | `1.5` | OPER 균등 배분 예외(정체 해소) 임계 배수 |
+
+### DB 저장 (`RTS_EQPALLOC_PLAN` / `RTS_EQPALLOC_HIS`)
+
+기존 `RTS_EQPCONVPLAN_INF`/`HIS`와 동일한 네이밍·구조 원칙을 따른다: PLAN은
+동일 `FAC_ID`+`RULE_TIMEKEY` 기존 행만 DELETE 후 INSERT(같은 회차 재실행 시
+PK 충돌 방지, 다른 회차는 누적), HIS는 삭제 없이 INSERT만 누적한다
+(`EXEC_TIMEKEY`가 PK에 포함). DDL은 `data/sql.example/rts_output_tables.sql`에
+다른 RTS 출력 테이블과 함께 있으며, `python main.py db-load --ddl-only`로
+함께 생성된다. `python main.py infer`가 추론 결과를 적재할 때
+`RTS_EQPALLOC_PLAN`/`HIS`도 `RTS_RSLT_MAS`/`RTS_EQPCONVPLAN_INF`와 같은
+파이프라인으로 함께 적재된다(옵션 분리 없음 — 마스킹 근거 데이터라 결과와
+분리되면 안 됨).
+
+컬럼: `PLAN_PROD_ATTR_VAL`(PPK), `OPER_ID`, `EQP_MODEL_CD`, `PLAN_PRIORITY`,
+`IS_EXCLUSIVE_MODEL`(전용 모델 여부), `WINDOW_START_TM`/`WINDOW_END_TM`/
+`WINDOW_MINUTES`, `PLAN_QTY`, `WIP_QTY`, `TARGET_QTY`, `ST`, `CAPA_PER_EQP`,
+`ALLOC_EQP_CNT`(할당 대수), `ALLOC_CAPA_QTY`, `TOTAL_EQP_CNT`(모델 전체 보유 대수).
+
+---
+
 ## 알고리즘
 
 | ID | 설명 |
@@ -431,6 +511,8 @@ python main.py db-load --ddl --facid FAC001 --split infer
 | `RTS_RSLT_HIS` | 스케줄 이력 (삭제 없이 INSERT만 누적, `EXEC_TIMEKEY`가 PK에 포함되어 같은 회차 재실행도 별도 행으로 쌓임) |
 | `RTS_EQPCONVPLAN_INF` | Conversion 계획 (동일 FAC_ID+RULE_TIMEKEY 기존 행만 교체, 다른 회차는 누적. 옵션: `CONFIG.env.conv_output_enabled`, 기본 True. RULE_TIMEKEY 기준 `CONFIG.env.conv_output_window_minutes`, 기본 60분 이내에 시작하는 건만) |
 | `RTS_EQPCONVPLAN_HIS` | Conversion 이력(위와 동일한 옵션/window 적용, 삭제 없이 INSERT만 누적, `EXEC_TIMEKEY`가 PK에 포함) |
+| `RTS_EQPALLOC_PLAN` | PPK/OPER × EQP_MODEL_CD 사전 할당(장비 댓수, action masking 근거) — 동일 FAC_ID+RULE_TIMEKEY 기존 행만 교체. 옵션: `CONFIG.env.eqp_alloc_enabled`, 기본 True. [상세](#장비-사전-할당-ppkoper--eqp_model_cd-action-masking) |
+| `RTS_EQPALLOC_HIS` | 사전 할당 이력(삭제 없이 INSERT만 누적, `EXEC_TIMEKEY`가 PK에 포함) |
 | `RTS_PERFMON_HIS` | KPI 이력 (옵션: `--save-kpi` / `save_kpi=true`) |
 | `RTS_VALIDATION` | 투입 불가 장비 재공 선택 건수 집계, EQP/PPK/OPER 조합별 (옵션: `--save-kpi` / `save_kpi=true`) |
 
