@@ -25,18 +25,12 @@ SQL: ``-- @db: Prd`` / ``@db:WT_RTS`` / ``-- @db: Dev.Mes`` (``@db`` 대소문�
     DB_CONFIG=config/databases.yaml
     DB_DEFAULT_ALIAS=Prd
 
-운영/개발 서버 분리 — 파일 두 개 (기존 방식):
-    DB_CONFIG 를 지정하지 않으면 APP_ENV 값으로 설정 파일을 자동 선택합니다.
-        APP_ENV=production → config/databases.prd.yaml
-        APP_ENV=development → config/databases.dev.yaml
-        (해당 파일이 없으면) → config/databases.yaml (아래 envs: 블록 또는 레거시 단일 파일)
-    DB_CONFIG 를 명시하면 항상 그 값이 우선합니다.
-
-운영/개발 서버 분리 — 파일 하나 (``envs:`` 블록):
-    파일을 나누지 않고 ``config/databases.yaml`` 하나에 prd/dev 접속정보를
-    모두 넣고 싶으면 최상위에 ``envs:`` (또는 ``environments:``) 블록을 쓰세요.
+운영/개발 서버 분리 (``envs:`` 블록):
+    ``config/databases.yaml`` 하나에 prd/dev 접속정보를 모두 넣고 싶으면
+    최상위에 ``envs:`` (또는 ``environments:``) 블록을 쓰세요.
     APP_ENV 로 그 안에서 매칭되는 섹션만 골라 다른 alias 들과 병합합니다
     (섹션 키는 prd/prod/production, dev/development 를 서로 같은 것으로 인식).
+    DB_CONFIG 를 명시하면 그 값이 항상 우선합니다(다른 파일 경로를 직접 지정).
     ```yaml
     default: Prd
 
@@ -237,37 +231,17 @@ def scan_sql_db_aliases(sql_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     return rows
 
 
-_APP_ENV_CONFIG_FILES = {
-    "prd": "config/databases.prd.yaml",
-    "prod": "config/databases.prd.yaml",
-    "production": "config/databases.prd.yaml",
-    "dev": "config/databases.dev.yaml",
-    "development": "config/databases.dev.yaml",
-}
-
-
 def default_db_config_path() -> Path:
     """DB 설정 YAML 경로.
 
-    우선순위: DB_CONFIG(명시 지정) > APP_ENV(prd/dev 전용 파일이 있으면 그 파일)
-    > config/databases.yaml(단일 파일 — 레거시 또는 ``envs:`` 블록으로 prd/dev 를
-    함께 담은 경우 모두 여기로 떨어진다).
-
-    APP_ENV 에 대응하는 전용 파일(``databases.prd.yaml``/``databases.dev.yaml``)이
-    없으면 단일 파일로 폴백한다 — 그 파일이 ``envs:`` 블록을 갖고 있으면
-    ``load_db_aliases_from_yaml()`` 이 APP_ENV 로 그 안에서 prd/dev 섹션을 고른다.
+    우선순위: DB_CONFIG(명시 지정) > config/databases.yaml(단일 파일).
+    prd/dev 는 파일을 나누지 않고 이 단일 파일의 ``envs:`` 블록에서
+    APP_ENV 로 선택한다 (``load_db_aliases_from_yaml()`` 참고).
     """
     raw = os.environ.get("DB_CONFIG", "").strip()
     if raw:
         path = Path(raw)
         return path if path.is_absolute() else BASE_DIR / path
-
-    app_env = os.environ.get("APP_ENV", "").strip().lower()
-    mapped = _APP_ENV_CONFIG_FILES.get(app_env)
-    if mapped:
-        mapped_path = BASE_DIR / mapped
-        if mapped_path.exists():
-            return mapped_path
 
     return BASE_DIR / "config" / "databases.yaml"
 

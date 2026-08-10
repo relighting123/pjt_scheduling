@@ -6,7 +6,7 @@
 # 씁니다 — 즉 다른 DB로 보낼 테이블만 적으면 됩니다.
 #
 # 테이블명은 대소문자 구분 없이 인식됩니다. alias는 config/databases.yaml
-# (또는 databases.prd.yaml/databases.dev.yaml)에 정의된 것과 같은 값을 씁니다.
+# 에 정의된 것과 같은 값을 씁니다.
 
 RTS_PERFMON_HIS: Dev
 RTS_VALIDATION: Dev

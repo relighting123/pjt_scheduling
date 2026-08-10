@@ -2,8 +2,7 @@
 tests/test_db_registry_envs.py
 
 config/databases.yaml 하나에 envs: 블록으로 prd/dev 접속정보를 함께 넣고
-APP_ENV 로 골라 쓸 수 있어야 한다 (파일을 databases.prd.yaml/databases.dev.yaml
-로 나누지 않아도 됨). 기존 2-파일 방식과 레거시 단일 파일 방식은 그대로 동작해야 한다.
+APP_ENV 로 골라 쓸 수 있어야 한다. envs: 없는 레거시 단일 파일도 그대로 동작해야 한다.
 """
 from pathlib import Path
 
@@ -91,9 +90,7 @@ def test_diagnose_flags_app_env_missing_when_envs_section_present(tmp_path, monk
     assert any("envs:" in issue and "APP_ENV" in issue for issue in report["issues"])
 
 
-def test_default_db_config_path_falls_back_to_single_file_when_per_env_file_missing(
-    tmp_path, monkeypatch,
-):
+def test_default_db_config_path_is_always_the_single_file(tmp_path, monkeypatch):
     monkeypatch.setattr(db_registry, "BASE_DIR", tmp_path)
     _write(tmp_path, _SINGLE_FILE_WITH_ENVS)
     monkeypatch.delenv("DB_CONFIG", raising=False)
@@ -104,16 +101,12 @@ def test_default_db_config_path_falls_back_to_single_file_when_per_env_file_miss
     assert resolved == tmp_path / "config" / "databases.yaml"
 
 
-def test_default_db_config_path_prefers_dedicated_prd_file_when_present(
-    tmp_path, monkeypatch,
-):
+def test_db_config_env_var_overrides_the_default_path(tmp_path, monkeypatch):
     monkeypatch.setattr(db_registry, "BASE_DIR", tmp_path)
-    prd_path = tmp_path / "config" / "databases.prd.yaml"
-    prd_path.parent.mkdir(parents=True, exist_ok=True)
-    prd_path.write_text("default: Prd\nPrd:\n  user: u\n  password: p\n  dsn: d\n", encoding="utf-8")
-    monkeypatch.delenv("DB_CONFIG", raising=False)
+    other_path = tmp_path / "elsewhere" / "custom.yaml"
+    monkeypatch.setenv("DB_CONFIG", str(other_path))
     monkeypatch.setenv("APP_ENV", "production")
 
     resolved = db_registry.default_db_config_path()
 
-    assert resolved == prd_path
+    assert resolved == other_path
