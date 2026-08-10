@@ -25,12 +25,34 @@ SQL: ``-- @db: Prd`` / ``@db:WT_RTS`` / ``-- @db: Dev.Mes`` (``@db`` 대소문�
     DB_CONFIG=config/databases.yaml
     DB_DEFAULT_ALIAS=Prd
 
-운영/개발 서버 분리:
+운영/개발 서버 분리 — 파일 두 개 (기존 방식):
     DB_CONFIG 를 지정하지 않으면 APP_ENV 값으로 설정 파일을 자동 선택합니다.
         APP_ENV=production → config/databases.prd.yaml
         APP_ENV=development → config/databases.dev.yaml
-        (미설정) → config/databases.yaml (레거시 단일 파일)
+        (해당 파일이 없으면) → config/databases.yaml (아래 envs: 블록 또는 레거시 단일 파일)
     DB_CONFIG 를 명시하면 항상 그 값이 우선합니다.
+
+운영/개발 서버 분리 — 파일 하나 (``envs:`` 블록):
+    파일을 나누지 않고 ``config/databases.yaml`` 하나에 prd/dev 접속정보를
+    모두 넣고 싶으면 최상위에 ``envs:`` (또는 ``environments:``) 블록을 쓰세요.
+    APP_ENV 로 그 안에서 매칭되는 섹션만 골라 다른 alias 들과 병합합니다
+    (섹션 키는 prd/prod/production, dev/development 를 서로 같은 것으로 인식).
+    ```yaml
+    default: Prd
+
+    envs:
+      production:
+        Prd:
+          user: prd_user
+          password: prd_password
+          dsn: prd-host:1521/ORCL
+      development:
+        Prd:
+          user: dev_user
+          password: dev_password
+          dsn: dev-host:1521/ORCL
+    ```
+    envs: 밖에 정의된 alias(공용 DB 등)는 환경에 관계없이 항상 포함됩니다.
 
 하위 호환: ORACLE_USER/PASSWORD/DSN → alias ``main``
 """
@@ -52,6 +74,11 @@ _DB_HEADER_RE = re.compile(
 )
 _ALIAS_ENV_RE = re.compile(r"^DB_([A-Z][A-Z0-9_]*)_(USER|PASSWORD|DSN)$")
 _META_KEYS = frozenset({"default", "_default"})
+_ENV_SECTION_KEYS = frozenset({"envs", "environments"})
+_ENV_NAME_CANON = {
+    "prd": "prd", "prod": "prd", "production": "prd",
+    "dev": "dev", "development": "dev",
+}
 _FIELD_ALIASES = {
     "user": "user",
     "userid": "user",
@@ -104,6 +131,12 @@ def _normalize_alias(name: str) -> str:
 
 def _normalize_field(key: str) -> Optional[str]:
     return _FIELD_ALIASES.get(key.strip().lower().replace("-", "_"))
+
+
+def _canonical_app_env(raw_env: str) -> str:
+    """prd/prod/production → "prd", dev/development → "dev" (그 외는 소문자 그대로)."""
+    key = raw_env.strip().lower()
+    return _ENV_NAME_CANON.get(key, key)
 
 
 def _walk_yaml_node(
@@ -216,16 +249,27 @@ _APP_ENV_CONFIG_FILES = {
 def default_db_config_path() -> Path:
     """DB 설정 YAML 경로.
 
-    우선순위: DB_CONFIG(명시 지정) > APP_ENV(prd/dev 자동 선택) > config/databases.yaml(레거시 단일 파일).
+    우선순위: DB_CONFIG(명시 지정) > APP_ENV(prd/dev 전용 파일이 있으면 그 파일)
+    > config/databases.yaml(단일 파일 — 레거시 또는 ``envs:`` 블록으로 prd/dev 를
+    함께 담은 경우 모두 여기로 떨어진다).
+
+    APP_ENV 에 대응하는 전용 파일(``databases.prd.yaml``/``databases.dev.yaml``)이
+    없으면 단일 파일로 폴백한다 — 그 파일이 ``envs:`` 블록을 갖고 있으면
+    ``load_db_aliases_from_yaml()`` 이 APP_ENV 로 그 안에서 prd/dev 섹션을 고른다.
     """
     raw = os.environ.get("DB_CONFIG", "").strip()
-    if not raw:
-        app_env = os.environ.get("APP_ENV", "").strip().lower()
-        raw = _APP_ENV_CONFIG_FILES.get(app_env, "config/databases.yaml")
-    path = Path(raw)
-    if not path.is_absolute():
-        path = BASE_DIR / path
-    return path
+    if raw:
+        path = Path(raw)
+        return path if path.is_absolute() else BASE_DIR / path
+
+    app_env = os.environ.get("APP_ENV", "").strip().lower()
+    mapped = _APP_ENV_CONFIG_FILES.get(app_env)
+    if mapped:
+        mapped_path = BASE_DIR / mapped
+        if mapped_path.exists():
+            return mapped_path
+
+    return BASE_DIR / "config" / "databases.yaml"
 
 
 def load_db_aliases_from_yaml(
@@ -264,11 +308,35 @@ def load_db_aliases_from_yaml(
     if root_fields and yaml_default:
         buckets.setdefault(_normalize_alias(str(yaml_default)), {}).update(root_fields)
 
+    envs_node: Optional[dict] = None
     for key, value in raw.items():
         if key in _META_KEYS:
             continue
+        if str(key).strip().lower() in _ENV_SECTION_KEYS and isinstance(value, dict):
+            envs_node = value
+            continue
         if isinstance(value, dict):
             _walk_yaml_node(value, [str(key)], buckets)
+
+    if envs_node:
+        app_env = os.environ.get("APP_ENV", "").strip()
+        canon = _canonical_app_env(app_env) if app_env else ""
+        selected: Optional[dict] = None
+        if canon:
+            for env_key, env_value in envs_node.items():
+                if isinstance(env_value, dict) and _canonical_app_env(str(env_key)) == canon:
+                    selected = env_value
+                    break
+        if selected is not None:
+            env_default = selected.get("default") or selected.get("_default")
+            if env_default:
+                yaml_default = env_default
+            for key, value in selected.items():
+                if key in _META_KEYS:
+                    continue
+                if isinstance(value, dict):
+                    # envs 섹션 값이 같은 alias 의 공용(envs 밖) 설정을 덮어쓴다.
+                    _walk_yaml_node(value, [str(key)], buckets)
 
     return buckets, (
         _normalize_alias(str(yaml_default)) if yaml_default else None
@@ -324,6 +392,51 @@ def load_db_aliases(
     return merged, yaml_default
 
 
+def _envs_section_issue(
+    cfg_path: Path,
+    environ: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
+    """단일 YAML 안의 ``envs:`` 블록이 APP_ENV 와 매칭되는지 점검 (진단 전용)."""
+    if not cfg_path.exists():
+        return None
+    try:
+        import yaml
+        with open(cfg_path, encoding="utf-8") as f:
+            raw: Any = yaml.safe_load(f)
+    except Exception:
+        return None
+    if not isinstance(raw, dict):
+        return None
+
+    envs_node = None
+    for key, value in raw.items():
+        if str(key).strip().lower() in _ENV_SECTION_KEYS and isinstance(value, dict):
+            envs_node = value
+            break
+    if envs_node is None:
+        return None
+
+    env = environ if environ is not None else os.environ
+    app_env = env.get("APP_ENV", "").strip()
+    known = ", ".join(sorted(str(k) for k in envs_node)) or "(없음)"
+    if not app_env:
+        return (
+            f"{cfg_path.name} 에 envs: 블록이 있지만 APP_ENV 가 설정되지 않았습니다 "
+            f"(등록된 envs: {known}). APP_ENV=production 또는 APP_ENV=development 로 실행하세요."
+        )
+    canon = _canonical_app_env(app_env)
+    matched = any(
+        isinstance(v, dict) and _canonical_app_env(str(k)) == canon
+        for k, v in envs_node.items()
+    )
+    if not matched:
+        return (
+            f"{cfg_path.name} 의 envs: 블록에 APP_ENV={app_env!r} 와 일치하는 섹션이 없습니다 "
+            f"(등록된 envs: {known})."
+        )
+    return None
+
+
 def diagnose_db_config(
     yaml_path: Optional[Path] = None,
     environ: Optional[Dict[str, str]] = None,
@@ -364,6 +477,10 @@ def diagnose_db_config(
             f"YAML 은 있으나 DB alias 가 비어 있습니다: {cfg_path} "
             "(Prd: 아래에 user/password/dsn 이 Prd 블록 안에 있어야 합니다)"
         )
+
+    envs_issue = _envs_section_issue(cfg_path, environ)
+    if envs_issue:
+        issues.append(envs_issue)
 
     if default_alias not in buckets and not any(
         anc in buckets for anc in alias_ancestors(default_alias)

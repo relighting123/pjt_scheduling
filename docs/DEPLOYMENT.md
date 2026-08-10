@@ -58,6 +58,44 @@ APP_ENV=production python main.py db-check
 APP_ENV=development python main.py db-check
 ```
 
+#### 파일을 나누지 않고 하나의 `databases.yaml`에 prd/dev 를 함께 넣는 경우
+
+파일 두 개를 관리하기 번거로우면 `config/databases.yaml` 하나에 `envs:` 블록으로
+운영/개발 접속 정보를 함께 넣을 수 있습니다. `APP_ENV` 로 그 안에서 매칭되는
+섹션만 골라 다른 alias(공용 DB 등)와 병합합니다.
+
+```bash
+cp config/databases.yaml.example config/databases.yaml
+# vi config/databases.yaml — envs: 블록에 production/development 각각 입력
+```
+
+```yaml
+default: Prd
+
+envs:
+  production:
+    Prd:
+      user: prd_user
+      password: prd_password
+      dsn: prd-host:1521/ORCL
+  development:
+    Prd:
+      user: dev_user
+      password: dev_password
+      dsn: dev-host:1521/ORCL
+```
+
+```bash
+# 연결 테스트 (환경별로 확인)
+APP_ENV=production python main.py db-check
+APP_ENV=development python main.py db-check
+```
+
+`APP_ENV` 에 대응하는 전용 파일(`databases.prd.yaml`/`databases.dev.yaml`)이 없으면
+자동으로 이 단일 `databases.yaml`을 읽어 `envs:` 블록에서 선택하므로, 두 방식을
+섞어 쓰다가 파일 두 개로 나누고 싶어지면 `databases.prd.yaml`/`databases.dev.yaml`을
+새로 만들기만 하면 됩니다(우선순위가 더 높음).
+
 ### 1.3 환경 변수 설정
 
 ```bash
