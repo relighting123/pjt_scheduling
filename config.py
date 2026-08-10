@@ -556,9 +556,6 @@ class EnvConfig:
     # 좁힌다(모델이 배정 안 된 (PPK,OPER)는 그 모델 EQP에서 제외). False면 기존
     # abstract_arrange 매칭 결과만으로 마스킹한다(하위 호환).
     eqp_alloc_enabled: bool = True
-    # 같은 PPK 안에서 OPER별 균등 배분 예외 임계값(배수). 특정 OPER의 WIP 비중이
-    # 균등 배분 기준(1/n) 대비 이 배수 이상이면 균등 상한 없이 그 OPER을 먼저 채운다.
-    eqp_alloc_wip_skew_release_factor: float = 1.5
 
 
 @dataclass

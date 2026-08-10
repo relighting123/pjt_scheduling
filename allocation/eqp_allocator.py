@@ -33,14 +33,14 @@ LOT_CD, TEMP, ...).
 5. 전용 모델(abstract_arrange 상 해당 (PPK,OPER)에 모델이 1개뿐인 경우) 수요를
    공용 모델 수요보다 먼저 배정한다 — 대체 불가능한 수요이므로.
 6. 공용 모델(PPK,OPER에 모델이 2개 이상 가능)은 같은 PPK 안에서 OPER별 목표 수량을
-   균등 배분한다(공정별 CAPA 편차 방지, 마지막 OPER 달성을 위해 상류 공정도 꾸준히
-   생산). 단, 특정 OPER의 "지금 당장의"(도달 가능 재공이 아닌 현재 재공) WIP가
-   나머지 대비 과도하게 몰려 있으면(기본 1.5배 이상) 그 OPER은 균등 상한 없이
-   목표 수량 전체를 배정 대상으로 푼다(정체 해소 예외) — 도달 가능 재공을 쓰면
-   상류의 재공이 하류 OPER에도 "이미 있는 것처럼" 반영돼 몰림 신호 자체가
-   희석되므로, 이 판단만은 현재 재공 기준으로 한다. 모델 선택은 "지금까지 전체
-   보유 대수 대비 가장 적게 쓰인 모델"부터 우선해 같은 모델로 수요가 쏠리지
-   않도록 분산한다.
+   예외 없이 균등 배분한다(공정별 CAPA 편차 방지, 마지막 OPER 달성을 위해 상류
+   공정도 꾸준히 생산) — 목표 수량(TARGET_QTY) 자체가 이미 도달 가능 재공(점 3,
+   상류에서 흘러들어올 재공 포함)을 반영하므로, 상류 공정이 병목이라 재공이
+   쌓여 있는 흔한 경우는 하류 OPER의 목표도 함께 커져 있어 균등 배분이 특정
+   OPER을 부당하게 캡하지 않는다. 재공이 한쪽에 쏠려도 별도 예외 없이 동일한
+   규칙을 적용한다(과거의 WIP 쏠림 배수 기반 예외는 절벽 현상·처리 순서 편향
+   등 부작용이 있어 제거했다). 모델 선택은 "지금까지 전체 보유 대수 대비 가장
+   적게 쓰인 모델"부터 우선해 같은 모델로 수요가 쏠리지 않도록 분산한다.
 7. 실제 대수를 확보할 때는 EQP_ID 단위로, 이미 그 (PPK,OPER)의 배치(batch_info의
    LOT_CD/TEMP)로 셋업돼 있어 전환이 필요 없는 장비를 우선 쓰고, 모자랄 때만
    전환이 필요한 장비를 CONFIG.env.max_conversions(전체 상한)/
@@ -57,10 +57,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from config import CONFIG, RULE_TIMEKEY_FMT, normalize_rule_timekey
-
-# WIP가 (PPK 안의) 균등 배분 기준 대비 이 배수 이상 한 OPER에 몰려 있으면
-# 그 OPER은 균등 상한 없이 목표 수량 전체를 배정 후보로 푼다(점 6의 예외 케이스).
-DEFAULT_WIP_SKEW_RELEASE_FACTOR = 1.5
 
 PpkOper = Tuple[str, str]
 LotBatch = Tuple[str, str]  # (LOT_CD, TEMP)
@@ -235,7 +231,6 @@ def compute_eqp_allocation(
     fac_id: str,
     rule_timekey: str,
     window_minutes: Optional[int] = None,
-    wip_skew_release_factor: Optional[float] = None,
 ) -> List[dict]:
     """
     목적: PPK/OPER × EQP_MODEL_CD 할당 대수 산출 (DB RTS_EQPALLOC_PLAN 행 포맷)
@@ -245,7 +240,6 @@ def compute_eqp_allocation(
              (모두 SQL 원본 컬럼명 그대로 — data/loader/preprocess.preprocess()와 동일 입력)
         fac_id, rule_timekey: 이번 회차 식별자
         window_minutes: 계획/CAPA 산정 창 길이(분). 기본 CONFIG.env.soft_cutoff_minutes.
-        wip_skew_release_factor: OPER 균등 배분 예외 임계값 배수. 기본 1.5.
     Output:
         List[dict] — RTS_EQPALLOC_PLAN 컬럼과 1:1 대응하는 행 목록(정렬됨:
         PLAN_PROD_ATTR_VAL, OPER_ID, EQP_MODEL_CD 순)
@@ -256,11 +250,6 @@ def compute_eqp_allocation(
     전환 불필요로 취급한다(하위 호환, fail-open).
     """
     window_minutes = window_minutes or CONFIG.env.soft_cutoff_minutes
-    skew_factor = (
-        wip_skew_release_factor
-        if wip_skew_release_factor is not None
-        else DEFAULT_WIP_SKEW_RELEASE_FACTOR
-    )
     rule_timekey = normalize_rule_timekey(rule_timekey)
     window_start_dt = datetime.strptime(rule_timekey, RULE_TIMEKEY_FMT)
     window_end_dt = window_start_dt + timedelta(minutes=window_minutes)
@@ -431,42 +420,23 @@ def compute_eqp_allocation(
 
     for ppk in sorted(shared_by_ppk, key=lambda p: (ppk_priority.get(p, 1), p)):
         opers = sorted(shared_by_ppk[ppk], key=lambda k: (flow_seq.get(ppk, {}).get(k[1], 0), k[1]))
-        n = len(opers)
-        # 스큐(정체 해소) 판단은 도달 가능 재공이 아니라 "지금 당장의" 재공
-        # 기준이어야 한다 — 도달 가능 재공을 쓰면 상류 재공이 하류 OPER에도
-        # 이미 있는 것처럼 반영돼 몰림 신호 자체가 희석된다.
-        total_wip_now = sum(wip_current.get(k, 0) for k in opers) or 1
 
-        released = [k for k in opers if (wip_current.get(k, 0) / total_wip_now) >= skew_factor / n]
-        capped = [k for k in opers if k not in released]
-
-        # 서브페이즈 1: 몰린 OPER부터 그리디로 자기 목표량까지 채운다(대체 모델
-        # 있는 채로도 정체 해소가 우선이므로 균등 배분 대상에서 뺀다).
-        for key in released:
-            qty_covered = 0.0
-            while qty_covered < demand[key]:
+        # 모든 OPER을 예외 없이 균등 배분한다 — 라운드로빈(1대씩 순환 배정)으로
+        # 특정 OPER이 먼저 처리된다고 물량을 독식하지 않도록 함(점 6: 공정별
+        # CAPA 편차 방지).
+        equal_share = sum(demand[k] for k in opers) / len(opers)
+        remaining_qty = {k: min(demand[k], equal_share) for k in opers}
+        progressed = True
+        while progressed:
+            progressed = False
+            for key in opers:
+                if remaining_qty[key] <= 0:
+                    continue
                 gained = _take_one_unit(key)
                 if gained <= 0:
-                    break
-                qty_covered += gained
-
-        # 서브페이즈 2: 나머지 OPER은 남은 풀을 라운드로빈(1대씩 순환 배정)으로
-        # 균등하게 나눠 가진다 — 특정 OPER이 먼저 처리된다고 물량을 독식하지
-        # 않도록 함(점 6: 공정별 CAPA 편차 방지).
-        if capped:
-            equal_share = sum(demand[k] for k in capped) / len(capped)
-            remaining_qty = {k: min(demand[k], equal_share) for k in capped}
-            progressed = True
-            while progressed:
-                progressed = False
-                for key in capped:
-                    if remaining_qty[key] <= 0:
-                        continue
-                    gained = _take_one_unit(key)
-                    if gained <= 0:
-                        continue
-                    remaining_qty[key] -= gained
-                    progressed = True
+                    continue
+                remaining_qty[key] -= gained
+                progressed = True
 
     rows.sort(key=lambda r: (r["PLAN_PROD_ATTR_VAL"], r["OPER_ID"], r["EQP_MODEL_CD"]))
     return _merge_rows(rows)

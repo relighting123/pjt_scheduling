@@ -941,7 +941,6 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
             fac_id=CONFIG.path.fac_id,
             rule_timekey=base_time.strftime(RULE_TIMEKEY_FMT),
             window_minutes=soft_cutoff_minutes,
-            wip_skew_release_factor=CONFIG.env.eqp_alloc_wip_skew_release_factor,
         )
         eqp_alloc_map = build_eqp_alloc_map(eqp_alloc_rows)
 

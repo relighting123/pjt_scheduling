@@ -188,9 +188,10 @@ def test_shared_model_balanced_across_opers_of_same_ppk():
     assert total_by_oper["OPER001"] == total_by_oper["OPER002"]
 
 
-def test_wip_skew_exception_releases_equal_cap():
-    # OPER001에 재공이 압도적으로 몰려 있으면(임계 1.5배 이상) 균등 상한 없이
-    # 그 OPER을 우선 풀어줘야 한다.
+def test_wip_skew_no_longer_triggers_special_release():
+    # 과거에는 WIP가 압도적으로 몰린 OPER에 균등 상한 없는 예외(1.5배 release)가
+    # 적용됐지만, 그 로직을 제거한 뒤로는 몰림 여부와 무관하게 항상 라운드로빈
+    # 균등 배분만 적용되어야 한다.
     raw = {
         "abstract_arrange": [
             _abstract_row("PPK001", "OPER001", "M1", 60),
@@ -215,9 +216,7 @@ def test_wip_skew_exception_releases_equal_cap():
     for r in rows:
         total_by_oper.setdefault(r["OPER_ID"], 0)
         total_by_oper[r["OPER_ID"]] += r["ALLOC_EQP_CNT"]
-    # WIP가 몰린 OPER001이 OPER002보다 확실히 더 많이 배정받아야 한다
-    # (극단적으로 몰리면 OPER002는 0대일 수도 있음 — 그것도 정상).
-    assert total_by_oper.get("OPER001", 0) > total_by_oper.get("OPER002", 0)
+    assert total_by_oper.get("OPER001", 0) == total_by_oper.get("OPER002", 0) == 2
 
 
 def test_build_eqp_alloc_map_filters_zero_and_groups_by_ppk_oper():
@@ -265,38 +264,6 @@ def test_downstream_oper_target_includes_upstream_reachable_wip():
     assert by_oper["OPER002"]["ALLOC_EQP_CNT"] == 10
     # OPER001 자신의 값은 상류가 없으니 그대로.
     assert by_oper["OPER001"]["WIP_QTY"] == 900
-
-
-def test_skew_detection_uses_current_wip_not_reachable_inflow():
-    # OPER002는 현재 재공이 0이지만(도달가능재공 덕분에 target은 생김), 물리
-    # 장비 풀이 2대뿐이라 부족한 상황을 만든다. 스큐(정체 해소) 판단이 도달
-    # 가능 재공을 썼다면 OPER001·OPER002가 재공 비율상 동률로 보여 "몰림
-    # 없음" → 라운드로빈으로 사이좋게 나눠 가졌을 것이다. 지금 당장의 재공
-    # 기준이 맞다면 OPER001만 released 되어 그리디로 풀을 먼저 전부
-    # 가져가므로, OPER002는 거의(혹은 전혀) 못 받는다.
-    raw = {
-        "abstract_arrange": [
-            _abstract_row("PPK001", "OPER001", "M1", 60),
-            _abstract_row("PPK001", "OPER001", "M2", 60),
-            _abstract_row("PPK001", "OPER002", "M1", 60),
-            _abstract_row("PPK001", "OPER002", "M2", 60),
-        ],
-        "discrete_arrange": [
-            _discrete_row("EQP001", "L1", "PPK001", "OPER001", "M1", wf_qty=900),
-            _discrete_row("EQP002", "L2", "PPK001", "OPER001", "M2", wf_qty=900),
-        ],
-        "plan": [
-            _plan_row("PPK001", "OPER001", d0=1000, priority=1),
-            _plan_row("PPK001", "OPER002", d0=1000, priority=1),
-        ],
-        "flow": [_flow_row("PPK001", 1, "OPER001"), _flow_row("PPK001", 2, "OPER002")],
-    }
-    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
-    total_by_oper = {}
-    for r in rows:
-        total_by_oper.setdefault(r["OPER_ID"], 0)
-        total_by_oper[r["OPER_ID"]] += r["ALLOC_EQP_CNT"]
-    assert total_by_oper.get("OPER001", 0) > total_by_oper.get("OPER002", 0)
 
 
 # ── 전환(conversion) 인지 배정 ───────────────────────────────────────────────
