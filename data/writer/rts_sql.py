@@ -184,7 +184,7 @@ def _insert_rts_eqpalloc(rows: List[dict], *, history: bool) -> List[str]:
             "FAC_ID", "RULE_TIMEKEY", "PLAN_PROD_ATTR_VAL", "OPER_ID", "EQP_MODEL_CD",
             "PLAN_PRIORITY", "IS_EXCLUSIVE_MODEL", "WINDOW_START_TM", "WINDOW_END_TM",
             "WINDOW_MINUTES", "PLAN_QTY", "WIP_QTY", "TARGET_QTY", "ST", "CAPA_PER_EQP",
-            "ALLOC_EQP_CNT", "ALLOC_CAPA_QTY", "TOTAL_EQP_CNT", "CRT_USER_ID",
+            "ALLOC_EQP_CNT", "NEEDS_CONV_EQP_CNT", "ALLOC_CAPA_QTY", "TOTAL_EQP_CNT", "CRT_USER_ID",
         ]
         vals = [
             _sql_str(r["FAC_ID"]),
@@ -203,6 +203,7 @@ def _insert_rts_eqpalloc(rows: List[dict], *, history: bool) -> List[str]:
             _sql_float(r.get("ST", 0)),
             _sql_float(r.get("CAPA_PER_EQP", 0)),
             _sql_num(r["ALLOC_EQP_CNT"]),
+            _sql_num(r.get("NEEDS_CONV_EQP_CNT", 0)),
             _sql_float(r.get("ALLOC_CAPA_QTY", 0)),
             _sql_num(r.get("TOTAL_EQP_CNT", 0)),
             _sql_str(r.get("CRT_USER_ID", "RTS")),

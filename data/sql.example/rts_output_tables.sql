@@ -189,11 +189,12 @@ CREATE TABLE RTS_EQPALLOC_PLAN (
     WINDOW_END_TM           VARCHAR2(14)   NOT NULL,    -- 익일 05:00 (CONFIG.env.soft_cutoff_minutes)
     WINDOW_MINUTES          NUMBER(10)     NOT NULL,
     PLAN_QTY                NUMBER(18,2),               -- 창 내 계획 수량(D0_PLAN_QTY)
-    WIP_QTY                 NUMBER(18,0),               -- 해당 PPK/OPER 전체 재공
+    WIP_QTY                 NUMBER(18,0),               -- 해당 PPK/OPER 도달 가능 재공(현재 + 선행 공정 유입)
     TARGET_QTY              NUMBER(18,2),               -- min(PLAN_QTY, WIP_QTY)
     ST                      NUMBER(10,2),               -- 모델별 ST(분/장)
     CAPA_PER_EQP            NUMBER(18,4),               -- WINDOW_MINUTES / ST
     ALLOC_EQP_CNT           NUMBER(10)     NOT NULL,    -- 할당 대수
+    NEEDS_CONV_EQP_CNT      NUMBER(10)     DEFAULT 0 NOT NULL,  -- ALLOC_EQP_CNT 중 전환이 필요했던 대수
     ALLOC_CAPA_QTY          NUMBER(18,4),               -- ALLOC_EQP_CNT * CAPA_PER_EQP
     TOTAL_EQP_CNT           NUMBER(10),                 -- 해당 모델 전체 보유 대수
     CRT_USER_ID             VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
@@ -221,6 +222,7 @@ CREATE TABLE RTS_EQPALLOC_HIS (
     ST                      NUMBER(10,2),
     CAPA_PER_EQP            NUMBER(18,4),
     ALLOC_EQP_CNT           NUMBER(10)     NOT NULL,
+    NEEDS_CONV_EQP_CNT      NUMBER(10)     DEFAULT 0 NOT NULL,
     ALLOC_CAPA_QTY          NUMBER(18,4),
     TOTAL_EQP_CNT           NUMBER(10),
     CRT_USER_ID             VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,

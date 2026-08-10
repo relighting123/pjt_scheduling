@@ -209,9 +209,11 @@ PPK/OPER 몫이 아니다"를 RL이 매번 롤아웃으로 학습해 알아내�
 | 입력 | 쓰임 |
 |------|------|
 | `abstract_arrange` (PPK, OPER, EQP_MODEL_CD, ST) | (PPK,OPER)별 투입 가능 모델 집합 + 모델별 ST(분/장) |
-| `discrete_arrange` (EQP_ID, EQP_MODEL_CD, WF_QTY, ...) | 모델별 전체 보유 대수, (PPK,OPER)별 전체 재공(WIP, carrier 단위 dedup) |
+| `discrete_arrange` (EQP_ID, EQP_MODEL_CD, WF_QTY, ...) | 모델별 전체 보유 EQP_ID 목록, (PPK,OPER)별 현재 재공(WIP, carrier 단위 dedup) |
 | `plan` (PLAN_PRIORITY, D0_PLAN_QTY) | PPK 우선순위(작을수록 우선), 계획 수량 |
-| `flow` (OPER_SEQ) | 같은 PPK 안에서 OPER 처리 순서(균등 배분 기준) |
+| `flow` (OPER_SEQ) | 같은 PPK 안에서 OPER 처리 순서(균등 배분 기준) + 도달 가능 재공 계산용 선행 공정 체인 |
+| `batch_info` (PPK, OPER, LOT_CD, TEMP) (선택) | (PPK,OPER)를 처리하려면 필요한 배치 — 전환 필요 여부 판단 기준 |
+| `eqp_initial_state` (EQP_ID, LOT_CD, TEMP) (선택) | 장비별 현재 셋업 배치 — 전환 필요 여부 판단 기준 |
 
 ### 산정 규칙
 
@@ -221,7 +223,12 @@ PPK/OPER 몫이 아니다"를 RL이 매번 롤아웃으로 학습해 알아내�
    그대로 재사용한다 — 새 상수를 만들지 않고 기존 관례(D0_PLAN_QTY를 이 창의
    목표량으로 그대로 쓰는 `_achievable_qty`/`_carrier_takt_minutes`)를 따른다.
 2. `CAPA_PER_EQP = window_minutes / ST` (= UPH × 잔여시간과 동일값, UPH=60/ST).
-3. `TARGET_QTY(ppk,oper) = min(D0_PLAN_QTY, WIP_QTY)`. 계획·재공 중 하나라도
+3. `TARGET_QTY(ppk,oper) = min(D0_PLAN_QTY, 도달 가능 재공)`. 도달 가능 재공은
+   그 (PPK,OPER)에 지금 있는 재공 + flow 상 선행 공정들에서 이 창 안에
+   흘러들어올 수 있는 재공까지 합산한다(`simulator._achievable_qty()`와 동일한
+   `flow_prev` 체인 합산 방식, 시간 할인 없음) — 그렇지 않으면 하류 공정이
+   "지금 당장은 비어 있지만 곧 채워질" 재공을 과소평가해 장비를 덜 받는 쪽으로
+   치우친다. `WIP_QTY` 컬럼도 이 값을 저장한다. 계획·재공 중 하나라도
    없으면(target=0) 해당 (PPK,OPER)는 이번 회차 할당 대상에서 제외된다 —
    마스킹 단계에서 "제약 없음"으로 폴백해, 일시적 계획 누락이 정당한 WIP
    배정까지 막는 부작용을 피한다(fail-open).
@@ -231,10 +238,24 @@ PPK/OPER 몫이 아니다"를 RL이 매번 롤아웃으로 학습해 알아내�
    없기 때문이다.
 6. **공용 모델은 PPK 안에서 OPER별로 균등 배분**한다(마지막 OPER 달성을 위해
    상류 공정도 CAPA가 유사해야 꾸준히 생산·매핑할 수 있다는 원칙). 단, 특정
-   OPER의 WIP가 균등 배분 기준(1/n) 대비 `eqp_alloc_wip_skew_release_factor`
-   배(기본 1.5배) 이상 몰려 있으면 그 OPER은 균등 상한 없이 먼저 그리디로
-   채운다(정체 해소 예외). 모델 선택은 "지금까지 전체 보유 대수 대비 가장
-   적게 쓰인 모델"부터 우선해 같은 모델로 수요가 쏠리지 않게 분산한다.
+   OPER의 **지금 당장의**(도달 가능 재공이 아닌 현재 재공) WIP가 균등 배분
+   기준(1/n) 대비 `eqp_alloc_wip_skew_release_factor`배(기본 1.5배) 이상
+   몰려 있으면 그 OPER은 균등 상한 없이 먼저 그리디로 채운다(정체 해소
+   예외) — 도달 가능 재공을 skew 판단에 쓰면 상류 재공이 하류 OPER에도 "이미
+   있는 것처럼" 반영돼 몰림 신호가 희석되므로, 이 판단만은 현재 재공 기준으로
+   한다. 모델 선택은 "지금까지 전체 보유 대수 대비 가장 적게 쓰인 모델"부터
+   우선해 같은 모델로 수요가 쏠리지 않게 분산한다.
+7. **전환(conversion) 인지 배정**: 실제 대수를 확보할 때는 EQP_ID 단위로,
+   이미 그 (PPK,OPER)의 배치(`batch_info`의 LOT_CD/TEMP)로 셋업돼 있어
+   전환이 필요 없는 장비를 우선 쓰고, 모자랄 때만 전환이 필요한 장비를
+   `CONFIG.env.max_conversions`(전체 상한)/`max_conversions_per_eqp`(장비별
+   상한, `0`이면 전환 자체를 아예 허용하지 않음) 예산 안에서 추가로 끌어쓴다
+   — 시뮬레이터의 `_would_need_conversion`/`_conversion_limit_blocks`와 동일한
+   판단 기준(`eqp_initial_state` 대비 `batch_info`)을 미리 반영해, 실제로는
+   전환 예산이 없어 못 돌릴 장비까지 `ALLOC_EQP_CNT`/`ALLOC_CAPA_QTY`에
+   낙관적으로 잡히는 것을 막는다. `batch_info`/`eqp_initial_state`가 없으면
+   (둘 다 선택 입력) 전환 판단을 생략하고 모든 장비를 전환 불필요로
+   취급한다(하위 호환).
 
 ### Action masking 적용 범위
 
@@ -269,8 +290,10 @@ PK 충돌 방지, 다른 회차는 누적), HIS는 삭제 없이 INSERT만 누�
 
 컬럼: `PLAN_PROD_ATTR_VAL`(PPK), `OPER_ID`, `EQP_MODEL_CD`, `PLAN_PRIORITY`,
 `IS_EXCLUSIVE_MODEL`(전용 모델 여부), `WINDOW_START_TM`/`WINDOW_END_TM`/
-`WINDOW_MINUTES`, `PLAN_QTY`, `WIP_QTY`, `TARGET_QTY`, `ST`, `CAPA_PER_EQP`,
-`ALLOC_EQP_CNT`(할당 대수), `ALLOC_CAPA_QTY`, `TOTAL_EQP_CNT`(모델 전체 보유 대수).
+`WINDOW_MINUTES`, `PLAN_QTY`, `WIP_QTY`(도달 가능 재공), `TARGET_QTY`, `ST`,
+`CAPA_PER_EQP`, `ALLOC_EQP_CNT`(할당 대수), `NEEDS_CONV_EQP_CNT`
+(`ALLOC_EQP_CNT` 중 전환이 필요했던 대수), `ALLOC_CAPA_QTY`, `TOTAL_EQP_CNT`
+(모델 전체 보유 대수).
 
 ---
 

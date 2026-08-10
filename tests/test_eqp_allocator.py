@@ -5,10 +5,22 @@ allocation/eqp_allocator.py – PPK/OPER × EQP_MODEL_CD 사전 할당(장비 �
 알고리즘 단위 테스트. raw 입력 포맷은 data/loader/preprocess.preprocess()와
 동일(SQL 원본 컬럼명)하다.
 """
+import pytest
+
 from allocation.eqp_allocator import build_eqp_alloc_map, compute_eqp_allocation
+from config import CONFIG
 
 RULE_TIMEKEY = "20260810070000"
 WINDOW = 600  # 테스트 편의를 위한 짧은 창(분) — capa = 600/ST
+
+
+@pytest.fixture(autouse=True)
+def _restore_conversion_config():
+    orig_max = CONFIG.env.max_conversions
+    orig_per_eqp = CONFIG.env.max_conversions_per_eqp
+    yield
+    CONFIG.env.max_conversions = orig_max
+    CONFIG.env.max_conversions_per_eqp = orig_per_eqp
 
 
 def _discrete_row(eqp_id, lot_id, ppk, oper_id, model, wf_qty=10, carrier_id=None):
@@ -215,3 +227,157 @@ def test_build_eqp_alloc_map_filters_zero_and_groups_by_ppk_oper():
     ]
     m = build_eqp_alloc_map(rows)
     assert m == {("PPK001", "OPER001"): {"M1": 3}}
+
+
+# ── 도달 가능 재공(유입) 반영 ─────────────────────────────────────────────────
+
+def test_downstream_oper_target_includes_upstream_reachable_wip():
+    # OPER002는 discrete_arrange에 재공이 전혀 없지만(현재 재공 0), 선행 공정
+    # OPER001에 900장이 쌓여 있다 — 이 창(WINDOW) 안에 흘러들어올 수 있으므로
+    # OPER002의 TARGET_QTY에도 반영돼야 한다(그렇지 않으면 target=0으로 아예
+    # 할당 대상에서 빠짐).
+    raw = {
+        "abstract_arrange": [
+            _abstract_row("PPK001", "OPER001", "M1", 60),
+            _abstract_row("PPK001", "OPER002", "M1", 60),
+        ],
+        "discrete_arrange": [
+            _discrete_row("EQP001", "L1", "PPK001", "OPER001", "M1", wf_qty=900),
+        ] + [
+            # 풀을 넉넉히(30대) 둬서 재공 반영 여부만 경쟁 없이 순수하게 검증한다.
+            _discrete_row(f"EQP{i:03d}", f"LX{i}", "PPK001", "OPER001", "M1", wf_qty=0)
+            for i in range(2, 31)
+        ],
+        "plan": [
+            # 계획을 작게 둬서(target=100→10대) 물리 대수 경쟁 없이 둘 다 완전히
+            # 채워지게 하고, target 값 자체(inflow 반영 여부)만 확인한다.
+            _plan_row("PPK001", "OPER001", d0=100, priority=1),
+            _plan_row("PPK001", "OPER002", d0=100, priority=1),
+        ],
+        "flow": [_flow_row("PPK001", 1, "OPER001"), _flow_row("PPK001", 2, "OPER002")],
+    }
+    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
+    by_oper = {r["OPER_ID"]: r for r in rows}
+    # OPER002는 현재 재공이 0이지만 선행 공정(OPER001)의 900장이 도달 가능
+    # 재공으로 잡혀 target이 plan(100)까지 온전히 인정된다.
+    assert by_oper["OPER002"]["WIP_QTY"] == 900
+    assert by_oper["OPER002"]["TARGET_QTY"] == 100
+    assert by_oper["OPER002"]["ALLOC_EQP_CNT"] == 10
+    # OPER001 자신의 값은 상류가 없으니 그대로.
+    assert by_oper["OPER001"]["WIP_QTY"] == 900
+
+
+def test_skew_detection_uses_current_wip_not_reachable_inflow():
+    # OPER002는 현재 재공이 0이지만(도달가능재공 덕분에 target은 생김), 물리
+    # 장비 풀이 2대뿐이라 부족한 상황을 만든다. 스큐(정체 해소) 판단이 도달
+    # 가능 재공을 썼다면 OPER001·OPER002가 재공 비율상 동률로 보여 "몰림
+    # 없음" → 라운드로빈으로 사이좋게 나눠 가졌을 것이다. 지금 당장의 재공
+    # 기준이 맞다면 OPER001만 released 되어 그리디로 풀을 먼저 전부
+    # 가져가므로, OPER002는 거의(혹은 전혀) 못 받는다.
+    raw = {
+        "abstract_arrange": [
+            _abstract_row("PPK001", "OPER001", "M1", 60),
+            _abstract_row("PPK001", "OPER001", "M2", 60),
+            _abstract_row("PPK001", "OPER002", "M1", 60),
+            _abstract_row("PPK001", "OPER002", "M2", 60),
+        ],
+        "discrete_arrange": [
+            _discrete_row("EQP001", "L1", "PPK001", "OPER001", "M1", wf_qty=900),
+            _discrete_row("EQP002", "L2", "PPK001", "OPER001", "M2", wf_qty=900),
+        ],
+        "plan": [
+            _plan_row("PPK001", "OPER001", d0=1000, priority=1),
+            _plan_row("PPK001", "OPER002", d0=1000, priority=1),
+        ],
+        "flow": [_flow_row("PPK001", 1, "OPER001"), _flow_row("PPK001", 2, "OPER002")],
+    }
+    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
+    total_by_oper = {}
+    for r in rows:
+        total_by_oper.setdefault(r["OPER_ID"], 0)
+        total_by_oper[r["OPER_ID"]] += r["ALLOC_EQP_CNT"]
+    assert total_by_oper.get("OPER001", 0) > total_by_oper.get("OPER002", 0)
+
+
+# ── 전환(conversion) 인지 배정 ───────────────────────────────────────────────
+
+def _batch_info_row(ppk, oper_id, lot_cd, temp):
+    return {"PLAN_PROD_ATTR_VAL": ppk, "OPER_ID": oper_id, "LOT_CD": lot_cd, "TEMP": temp}
+
+
+def _eqp_initial_state_row(eqp_id, lot_cd, temp):
+    return {"EQP_ID": eqp_id, "LOT_CD": lot_cd, "TEMP": temp}
+
+
+def _conv_test_raw(target_d0):
+    # PPK001/OPER001 전용모델 M1, 물리 대수 4대: EQP001/002는 이미 목표 배치
+    # (LC1/T1)로 셋업(전환 불필요), EQP003은 다른 배치(전환 필요),
+    # EQP004는 초기 셋업 정보 자체가 없음(첫 배정 = 전환 불필요로 취급).
+    return {
+        "abstract_arrange": [_abstract_row("PPK001", "OPER001", "M1", 60)],
+        "discrete_arrange": [
+            _discrete_row("EQP001", "L1", "PPK001", "OPER001", "M1", wf_qty=1000),
+            _discrete_row("EQP002", "L2", "PPK001", "OPER001", "M1", wf_qty=1000),
+            _discrete_row("EQP003", "L3", "PPK001", "OPER001", "M1", wf_qty=1000),
+            _discrete_row("EQP004", "L4", "PPK001", "OPER001", "M1", wf_qty=1000),
+        ],
+        "plan": [_plan_row("PPK001", "OPER001", d0=target_d0, priority=1)],
+        "flow": [_flow_row("PPK001", 1, "OPER001")],
+        "batch_info": [_batch_info_row("PPK001", "OPER001", "LC1", "T1")],
+        "eqp_initial_state": [
+            _eqp_initial_state_row("EQP001", "LC1", "T1"),   # 무전환
+            _eqp_initial_state_row("EQP002", "LC1", "T1"),   # 무전환
+            _eqp_initial_state_row("EQP003", "LC2", "T2"),   # 전환 필요
+            # EQP004: 초기 셋업 정보 없음 → 무전환 취급
+        ],
+    }
+
+
+def test_prefers_already_setup_equipment_over_conversion_needed():
+    # target=20 → capa/대=10 → 2대만 필요. 무전환 후보(EQP001,002,004)가 3대나
+    # 있으니 전환이 필요한 EQP003은 전혀 안 써야 한다.
+    raw = _conv_test_raw(target_d0=20)
+    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
+    row = rows[0]
+    assert row["ALLOC_EQP_CNT"] == 2
+    assert row["NEEDS_CONV_EQP_CNT"] == 0
+
+
+def test_draws_conversion_needed_unit_when_free_pool_insufficient():
+    # target=40 → 4대 필요. 무전환 후보는 3대뿐이라 1대는 전환이 필요한
+    # EQP003에서 끌어와야 한다(전환 예산 무제한 기본값).
+    raw = _conv_test_raw(target_d0=40)
+    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
+    row = rows[0]
+    assert row["ALLOC_EQP_CNT"] == 4
+    assert row["NEEDS_CONV_EQP_CNT"] == 1
+
+
+def test_max_conversions_budget_caps_conversion_needed_allocation():
+    CONFIG.env.max_conversions = 0  # 전체 전환 예산 0 → 전환이 필요한 장비는 아예 못 씀
+    raw = _conv_test_raw(target_d0=40)
+    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
+    row = rows[0]
+    assert row["ALLOC_EQP_CNT"] == 3  # 무전환 후보(EQP001,002,004)만
+    assert row["NEEDS_CONV_EQP_CNT"] == 0
+
+
+def test_max_conversions_per_eqp_zero_forbids_any_conversion():
+    CONFIG.env.max_conversions_per_eqp = 0
+    raw = _conv_test_raw(target_d0=40)
+    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
+    row = rows[0]
+    assert row["ALLOC_EQP_CNT"] == 3
+    assert row["NEEDS_CONV_EQP_CNT"] == 0
+
+
+def test_no_batch_info_or_initial_state_is_backward_compatible():
+    # batch_info/eqp_initial_state를 아예 안 주면(기존 입력) 전환 판단 자체를
+    # 생략하고 모든 장비를 무전환으로 취급한다 — 기존 동작 그대로.
+    raw = _conv_test_raw(target_d0=40)
+    del raw["batch_info"]
+    del raw["eqp_initial_state"]
+    rows = compute_eqp_allocation(raw, fac_id="FAC001", rule_timekey=RULE_TIMEKEY, window_minutes=WINDOW)
+    row = rows[0]
+    assert row["ALLOC_EQP_CNT"] == 4
+    assert row["NEEDS_CONV_EQP_CNT"] == 0
