@@ -748,7 +748,12 @@ class RewardConfig:
     # (회피 가능한 전환과 불가피한 전환이 똑같이 -10.0으로만 보임). |w_conversion|
     # + |w_avoidable_conversion| = 18.0 을 clip 안에 넣어 그 차이가 실제로
     # 보상에 반영되게 한다.
-    reward_clip:       float = 20.0
+    # 이후 Bulk-Fill 페널티(w_dedication_misuse=-4.0, w_redundant_cover=-5.0)가
+    # 추가되면서 동시에 다 걸리는 최악의 스텝은 실제로 -27~-28까지 내려간다
+    # (BENCH_SUITE+HOLDOUT 16개 시나리오 실측: raw 최댓값 28.0, clip=20에서 스텝의
+    # 9.7%가 잘려 페널티 조합별 차이가 다시 뭉개짐). 20→30으로 올려 그 조합이
+    # 클립 없이 반영되게 한다.
+    reward_clip:       float = 30.0
     # --- Step C: achievable target 사용 여부 (재공 한계까지만 계획 추종) ---
     use_achievable_target: bool = True
 
