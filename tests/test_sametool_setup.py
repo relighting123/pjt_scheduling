@@ -107,3 +107,19 @@ def test_first_assignment_no_prior_batch_is_not_sametool_setup(sim):
 
     assert reward == 0.0
     assert sim.stats["sametool_setup_count"] == before
+
+
+def test_history_snapshot_exposes_sametool_setup(sim):
+    """history를 켠 시뮬에서 스냅샷마다 sametool_setup 키가 stats와 일치해야 한다."""
+    sim._record_history = True
+    eqp_id = sim.current_idle_eqp()
+    assert eqp_id is not None
+    lots = sim.available_lots(eqp_id)
+    assert lots
+    sim.assign_lot(eqp_id, lots[0]["lot_id"])
+    sim.save_history_step()
+
+    assert sim.history, "assign_lot 이후 history가 최소 1건 기록돼야 함"
+    last = sim.history[-1]
+    assert "sametool_setup" in last
+    assert last["sametool_setup"] == sim.stats["sametool_setup_count"]

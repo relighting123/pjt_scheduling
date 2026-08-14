@@ -2558,6 +2558,7 @@ class SchedulingSimulator:
             "idle_total": self.stats["idle_total"],
             "oper_sw":    self.stats["oper_switches"],
             "prod_sw":    self.stats["prod_switches"],
+            "sametool_setup": self.stats["sametool_setup_count"],
             "arrange":    actual,
             "arrange_actual":   actual,
             "arrange_abstract": abstract,
