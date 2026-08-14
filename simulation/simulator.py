@@ -296,6 +296,7 @@ class SchedulingSimulator:
             "oper_switches": 0,
             "prod_switches": 0,
             "conversions":   0,
+            "sametool_setup_count": 0,
             "completed_qty": {},   # {(prod, oper): qty} — 배정 시점 증가(완료+처리중 포함)
         }
 
@@ -1688,13 +1689,22 @@ class SchedulingSimulator:
                 return True
         return False
 
-    def _same_setup_reward(self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int) -> float:
+    def _same_setup_reward(
+        self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int,
+        lot_cd: str, temp: str,
+    ) -> float:
         """제품·공정이 '모두' 직전과 동일할 때만 연속 보너스.
 
         공정 전환·제품 전환을 따로 보상하지 않고, 둘 다 같은 경우(=전환 없음,
         동일 라우트 단계 유지)에만 +를 준다. switch 통계는 그대로 집계.
         해당 PPK 재공 고갈(투입 불가) 시에는 보너스를 죽인다.
         식: same_oper AND same_prod AND ppk_has_feasible_assignment → +w_same_setup, 아니면 0
+
+        배치(BATCHID=LOT_CD/TEMP)는 그대로인데 PPK/OPER만 바뀌는 경우
+        (=sametool_setup, TOOL 전환은 없음)는 별도로 소액 페널티를 주고
+        stats["sametool_setup_count"]에 집계한다. 배치 자체가 바뀌는 실제
+        TOOL 전환은 여기서 다루지 않는다(기존 stats["conversions"] 경로에서
+        이미 카운트됨).
         """
         cfg = self._reward_cfg
         same_oper = (eqp.prev_oper == oper_id)
@@ -1705,11 +1715,21 @@ class SchedulingSimulator:
         if eqp.prev_prod is not None and not same_prod:
             eqp.prod_switches += 1
             self.stats["prod_switches"] += 1
-        if not (same_oper and same_prod):
-            return 0.0
-        if not self._ppk_has_feasible_assignment(ppk):
-            return 0.0
-        return cfg.w_same_setup
+
+        if same_oper and same_prod:
+            if not self._ppk_has_feasible_assignment(ppk):
+                return 0.0
+            return cfg.w_same_setup
+
+        same_batch = (
+            eqp.prev_lot_cd is not None
+            and eqp.prev_lot_cd == lot_cd
+            and (eqp.prev_temp or "") == (temp or "")
+        )
+        if same_batch:
+            self.stats["sametool_setup_count"] += 1
+            return -cfg.w_sametool_setup
+        return 0.0
 
     def _flow_balance_reward(self, ppk: str, oper_id: str) -> float:
         """
@@ -2321,7 +2341,7 @@ class SchedulingSimulator:
 
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
         terms: Dict[str, float] = {}
-        t = self._same_setup_reward(eqp, ppk, oper_id, wf_qty)
+        t = self._same_setup_reward(eqp, ppk, oper_id, wf_qty, lot_cd, temp)
         if t: terms["same_setup"] = round(float(t), 4)
         reward += t
         t = self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
