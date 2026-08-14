@@ -711,6 +711,10 @@ class RewardConfig:
     # --- Step A: 스케일 재정규화 (모든 항을 ±5 band로, step reward clip) ---
     # 제품·공정이 '모두' 직전과 동일할 때만 주는 연속 보너스 (전환 회피와 정렬).
     w_same_setup:      float = 1.0
+    # 배치(BATCHID=LOT_CD/TEMP)는 유지한 채 PPK/OPER만 바뀌는 경우(=sametool_setup,
+    # TOOL 전환 없음)의 소액 페널티. w_same_setup과 별개 축 — 직전과 완전히
+    # 동일하면 보너스(w_same_setup), 배치만 같고 PPK/OPER가 바뀌면 이 페널티.
+    w_sametool_setup:  float = 0.5
     w_idle_per_min:    float = 0.0       # [제거] idle 분당 (1·2·6·7만 유지)
     w_plan_hit:        float = 0.0       # [제거] 달성 진척 (cover 무시 → 전담 방해 1위라 제거)
     w_pacing:          float = 0.0       # [제거] 선형 takt 추종 (achievable 기준; Step C)
@@ -776,6 +780,7 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
     r = reward or CONFIG.reward
     return {
         "w_same_setup": r.w_same_setup,
+        "w_sametool_setup": r.w_sametool_setup,
         "w_idle_per_min": r.w_idle_per_min,
         "w_plan_hit": r.w_plan_hit,
         "w_pacing": r.w_pacing,
@@ -800,7 +805,7 @@ def apply_reward_params(params: dict) -> None:
     """학습 요청 파라미터 → CONFIG.reward 반영."""
     r = CONFIG.reward
     float_keys = (
-        "w_same_setup", "w_idle_per_min",
+        "w_same_setup", "w_sametool_setup", "w_idle_per_min",
         "w_plan_hit", "w_pacing", "pacing_coverage_scale", "w_conversion",
         "w_avoidable_conversion", "conversion_amortize_factor",
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
