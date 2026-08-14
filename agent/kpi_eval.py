@@ -41,6 +41,7 @@ class KPI:
     produced: int = 0
     producible: int = 0
     conversions: int = 0
+    sametool_setup: int = 0
     reward: float = 0.0
     steps: int = 0
 
@@ -52,6 +53,7 @@ class KPI:
             "produced": self.produced,
             "producible": self.producible,
             "conversions": self.conversions,
+            "sametool_setup": self.sametool_setup,
             "reward": round(float(self.reward), 3),
             "score": round(self.score(conv_weight), 3),
         }
@@ -76,6 +78,10 @@ class KPIResult:
         return sum(k.conversions for k in self.per_dataset)
 
     @property
+    def sametool_setup(self) -> int:
+        return sum(k.sametool_setup for k in self.per_dataset)
+
+    @property
     def reward(self) -> float:
         return float(sum(k.reward for k in self.per_dataset))
 
@@ -87,6 +93,7 @@ class KPIResult:
             "produced": self.produced,
             "producible": self.producible,
             "conversions": self.conversions,
+            "sametool_setup": self.sametool_setup,
             "reward": round(self.reward, 3),
             "score": round(self.score(conv_weight), 3),
             "prod_pct": round(100 * self.produced / max(self.producible, 1), 1),
@@ -104,6 +111,7 @@ def _episode_kpi(env, produced_from_schedule: bool = True) -> KPI:
         produced=produced,
         producible=env.producible_carriers(),
         conversions=int(sim.stats.get("conversions", 0)),
+        sametool_setup=int(sim.stats.get("sametool_setup_count", 0)),
     )
 
 

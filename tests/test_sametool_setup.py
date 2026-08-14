@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from agent.kpi_eval import KPI, KPIResult
 from config import CONFIG, apply_reward_params, reward_params_dict
 from data.generator import generate_sample_data
 from data.loader.fetch import load_data
@@ -123,3 +124,16 @@ def test_history_snapshot_exposes_sametool_setup(sim):
     last = sim.history[-1]
     assert "sametool_setup" in last
     assert last["sametool_setup"] == sim.stats["sametool_setup_count"]
+
+
+def test_kpi_as_dict_includes_sametool_setup():
+    k = KPI(produced=5, producible=10, conversions=2, sametool_setup=3, reward=1.0, steps=5)
+    assert k.as_dict()["sametool_setup"] == 3
+
+
+def test_kpi_result_aggregates_sametool_setup():
+    k1 = KPI(produced=5, producible=10, conversions=2, sametool_setup=3, reward=1.0, steps=5)
+    k2 = KPI(produced=4, producible=10, conversions=1, sametool_setup=1, reward=0.5, steps=4)
+    result = KPIResult(per_dataset=[k1, k2])
+    assert result.sametool_setup == 4
+    assert result.as_dict()["sametool_setup"] == 4
