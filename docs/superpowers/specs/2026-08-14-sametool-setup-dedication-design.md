@@ -28,9 +28,25 @@
 
 | 대상 | 적용 여부 |
 |---|---|
-| 휴리스틱/dedication 배정 경로 (idle EQP → 다음 버킷 선택) | O (이번 설계의 본체) |
+| 휴리스틱/dedication 배정 경로 (idle EQP → 다음 버킷 선택) | **X (신규 로직 불필요 — 이미 `agent/dedication_agent.py`가 구현)** |
 | RL 액션 마스킹 | X (건드리지 않음. #277이 이 경로에서 복잡해졌던 지점) |
-| RL 리워드 shaping | O (`_same_setup_reward` 확장, 간접 신호로만 사용) |
+| 지표 계측 + RL 리워드 shaping | O (`simulator.py::_same_setup_reward` 확장, 아래 6.5 참고) |
+
+**중요 — 계획 단계에서 발견**: `agent/dedication_agent.py`의 `DedicationAgent`가 이미 알고리즘 B와
+사실상 동일한 로직을 구현하고 있다.
+
+| 이 설계서의 개념 | `DedicationAgent`의 대응 구현 |
+|---|---|
+| `covered_by_others` (6.1) | `_committed_cover_wafers()` |
+| `gap` (6.1) | `b["uncovered"]` (`_bucket_info()`) |
+| Tier1(직전 유지) | `committed` 장부 — 유지가 기본값, `_urgent_pull_target()`이 슬랙 소진 시에만 예외적으로 뺌 |
+| Tier1+2 vs Tier3(전환 회피 우선) | `_choose_new()`의 `free`(무전환) vs `conv`(전환) 분리 — 이미 무전환을 항상 우선 |
+| grade 등급화(진동 방지) | `committed` 고정 + `urgent_pull` 조건(슬랙 임계) — 다른 메커니즘으로 이미 진동 방지 달성 |
+
+**따라서 5절(알고리즘 A)·6절(알고리즘 B)은 새 코드로 옮기지 않는다.** 이미 운영 중인
+`DedicationAgent`와 중복 로직을 만드는 것 자체가 #277 revert 사유(복잡도/중복)를 반복하는
+길이기 때문이다. 두 절은 "왜 이 설계가 타당한가"를 보여주는 **분석 프레임워크**로만 남기고,
+실제 구현 범위는 6.5절(신규)로 좁힌다.
 
 ## 3. 핵심 개념 정의
 
@@ -147,7 +163,7 @@ def decide_next_bucket(eqp, candidates):
 - 하드 마스킹이 아니라 **후보 정렬**이다. 후보가 하나뿐이면 grade와 무관하게 그것을 선택해
   계획 미달을 막는다(Tier 1~3에 걸리지 않아도 Tier 4 fallback이 항상 하나를 반환).
 
-### 6.4 카운터 판정
+### 6.4 카운터 판정 (분석 프레임워크상의 정의 — 6.5의 실제 구현과 동일)
 
 ```
 tool_conversion = (eqp.batch is not None) and (선택된 버킷의 batch != eqp.batch)
@@ -155,33 +171,77 @@ sametool_setup   = (not tool_conversion) and (eqp.batch is not None)
                     and (선택된 버킷의 (ppk,oper) != (eqp.prev_prod, eqp.prev_oper))
 ```
 
+### 6.5 실제 구현 지점 — `simulator.py::_same_setup_reward` 확장
+
+`_execute_assignment()`(`simulator.py:2294`)는 RL/휴리스틱/DedicationAgent 등 **어느 에이전트가
+액션을 골랐든 공통으로 거치는** 배정 실행 경로다. 여기서 `lot_cd, temp`(=새 BATCHID)를
+계산한 직후(`simulator.py:2314`), `eqp.prev_lot_cd`/`prev_temp`(=아직 갱신되지 않은 **이전**
+BATCHID)를 가진 채로 `_same_setup_reward(eqp, ppk, oper_id, wf_qty)`가 호출된다
+(`simulator.py:2324`). 즉 이 시점에 이미 "전환 전 배치 vs 전환 후 배치"를 비교할 수 있는
+모든 값이 준비돼 있다 — 새 함수나 새 판단 로직 없이, **이 함수에 배치 비교 한 줄만 추가**하면 된다.
+
+```python
+def _same_setup_reward(
+    self, eqp: Equipment, ppk: str, oper_id: str, wf_qty: int,
+    lot_cd: str, temp: str,                       # 신규 인자 — 호출부에서 이미 계산됨
+) -> float:
+    cfg = self._reward_cfg
+    same_oper = (eqp.prev_oper == oper_id)
+    same_prod = (eqp.prev_prod == ppk)
+    same_batch = (
+        eqp.prev_lot_cd is not None
+        and eqp.prev_lot_cd == lot_cd
+        and (eqp.prev_temp or "") == (temp or "")
+    )
+    if eqp.prev_oper is not None and not same_oper:
+        eqp.oper_switches += 1
+        self.stats["oper_switches"] += 1
+    if eqp.prev_prod is not None and not same_prod:
+        eqp.prod_switches += 1
+        self.stats["prod_switches"] += 1
+
+    if same_oper and same_prod:
+        if not self._ppk_has_feasible_assignment(ppk):
+            return 0.0
+        return cfg.w_same_setup
+
+    # 신규: 배치는 동일(=TOOL 전환 없음)한데 PPK/OPER만 바뀐 경우
+    if same_batch and eqp.prev_lot_cd is not None:
+        self.stats["sametool_setup_count"] += 1
+        return -cfg.w_sametool_setup
+
+    return 0.0
+```
+
+- `same_batch`가 아니면(=진짜 TOOL 전환) 이 함수에서는 아무 것도 하지 않는다 — 그 경우는 이미
+  기존 conversion 이벤트 경로(`simulator.py:506` `self.stats["conversions"] += 1`)에서 별도로
+  카운트되고 있으므로 중복 계측하지 않는다. 즉 `tool_conversion_count`는 **신규 카운터가 아니라
+  기존 `stats["conversions"]`를 그대로 사용**한다.
+- 호출부(`simulator.py:2324`)만 `t = self._same_setup_reward(eqp, ppk, oper_id, wf_qty, lot_cd, temp)`로
+  인자 2개 추가하면 된다(`lot_cd, temp`는 바로 윗줄 2314에서 이미 계산돼 있음).
+
 ## 7. Config 확장 (`config.py`)
 
 ```python
-# EnvConfig
-eqp_dedication_enabled: bool = True   # 기능 on/off. False면 기존 동작 그대로(하위호환)
-dedication_grade_max: int = 3         # 등급 상한(GRADE_MAX)
-
 # RewardConfig
 w_sametool_setup: float = 0.5         # sametool_setup 발생 시 페널티(소액). 기존 w_same_setup과 별개 축
 ```
 
 `w_same_setup`(직전과 완전 동일할 때 보너스, 기존 유지)과 `w_sametool_setup`(같은 배치·다른
-PPK/OPER 전환 페널티, 신규)은 서로 다른 축이다. 기존 필드/동작은 변경하지 않는다.
+PPK/OPER 전환 페널티, 신규)은 서로 다른 축이다. 기존 필드/동작은 변경하지 않는다. 새 on/off
+플래그나 grade 상한 설정은 필요 없다(6절 참고 — DedicationAgent가 이미 안정성을 담당).
 
 ## 8. 통합 지점
 
 | 위치 | 내용 |
 |---|---|
-| `simulator.py` 신규 함수 | `_dedication_grade(ppk, oper, eqp) -> int` (6.1~6.2 구현) |
-| `simulator.py` 신규 함수 | `_decide_next_bucket(eqp, candidates) -> bucket` (6.3 구현) |
-| `simulator.py` 적용 지점 | 휴리스틱/dedication 배정 경로에서 버킷 후보 정렬 시 사용 |
-| `simulator.py::_same_setup_reward` 확장 | `same_batch and not (same_oper and same_prod)` 케이스에 `w_sametool_setup` 페널티 추가 (RL 간접 신호) |
-| `simulator.py::stats` 신규 카운터 | `stats["sametool_setup_count"]`, `stats["tool_conversion_count"]`(기존 conversion 카운트 재사용 가능 여부 확인 후 정합) |
-| `config.py::EnvConfig/RewardConfig` | 7절 필드 추가 |
+| `simulator.py::_same_setup_reward` (1691~1712) | 6.5절대로 `lot_cd, temp` 인자 추가, `same_batch` 분기 추가 |
+| `simulator.py::_execute_assignment` 호출부 (2324) | `_same_setup_reward` 호출에 `lot_cd, temp` 전달 |
+| `simulator.py::stats` 초기화 (296~297 부근) | `stats["sametool_setup_count"] = 0` 추가 |
+| `simulator.py` 리포트 출력 (2539~2540 부근) | 기존 `oper_sw`/`prod_sw`처럼 `"sametool_setup": self.stats["sametool_setup_count"]` 노출 |
+| `config.py::RewardConfig` | 7절 `w_sametool_setup` 필드 추가 |
 
-`eqp_dedication_enabled=False`면 새 함수들이 호출되지 않고 기존 배정 로직이 그대로 동작한다
-(카운터 계측은 계속 켜둘 수 있음 — 도입 전후 비교용).
+`agent/dedication_agent.py`는 **변경하지 않는다** — 이미 이 설계 의도대로 동작 중이다.
 
 ## 9. 지표 정의
 
@@ -196,7 +256,13 @@ PPK/OPER 전환 페널티, 신규)은 서로 다른 축이다. 기존 필드/동
 
 5개 그룹 × 10개. 참조 계산기 `docs/superpowers/specs/gen_sametool_setup_scenarios.py`가 본
 설계서의 알고리즘 A/B를 그대로 구현해 아래 표의 값을 산출한다(수치는 수기 추정이 아니라 스크립트
-실행 결과). 실제 구현 시 `pytest`로 옮겨 회귀 테스트화한다.
+실행 결과).
+
+**주의(6절 정정 반영)**: 이 50개는 "STAY/SWITCH 판단 로직이 논리적으로 타당한가"를 검증하는
+**분석용 시나리오**이며, `DedicationAgent`가 이미 이 판단을 구현하고 있음을 뒷받침하는 근거
+자료다. 실제 구현 계획(→ 구현 계획 문서)의 pytest는 이 50개를 그대로 옮기는 게 아니라,
+6.5절에서 실제로 변경되는 코드(`_same_setup_reward`의 `same_batch` 분기, `sametool_setup_count`
+카운터, `w_sametool_setup` 페널티)를 직접 검증하는 소수의 집중된 테스트로 작성한다.
 
 | 그룹 | 검증 목적 | 케이스 # |
 |---|---|---|
