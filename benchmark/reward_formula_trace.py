@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 REWARD_LABELS = {
     "same_setup": "동일 셋업",
+    "sametool_setup": "배치 유지·PPK/OPER 전환",
     "pacing": "페이싱",
     "plan_hit": "계획 달성",
     "flow_balance": "흐름 균형",
@@ -22,6 +23,7 @@ REWARD_LABELS = {
 # Bulk-Fill PPT·간트에 표시할 전체 보상 항목 (순서 고정)
 BULK_REWARD_ORDER = [
     "same_setup",
+    "sametool_setup",
     "pacing",
     "plan_hit",
     "bulk_block_bonus",
@@ -48,6 +50,25 @@ REWARD_TERM_PAGES: List[Dict[str, Any]] = [
             "title": "예시 B · 셋업 변경",
             "context": "PPK001→PPK002로 LOT_CD/TEMP 전환",
             "substitution": "셋업 변경 → 1[동일]=0",
+            "value": "0",
+        },
+        "trace_step": 4,
+    },
+    {
+        "key": "sametool_setup",
+        "weight": "−0.5",
+        "formula": "r = −w_sametool_setup · 1[동일 BATCHID(LOT_CD/TEMP) & PPK·OPER 중 하나 이상 전환]",
+        "desc": "TOOL(배치) 전환 없이 같은 설비 위에서 PPK/OPER만 바뀌면 소액 −. 실제 BATCHID 전환(conversion)과는 별개.",
+        "scenario_a": {
+            "title": "예시 A · 배치 유지, PPK/OPER 전환",
+            "context": "EQP001, 직전과 동일 LOT_CD/TEMP인데 PPK001·OPER001 → PPK002·OPER002",
+            "substitution": "−0.5 · 1[LOT_CD/TEMP 동일 & (PPK 또는 OPER) 전환] = −0.5",
+            "value": "−0.5",
+        },
+        "scenario_b": {
+            "title": "예시 B · 셋업/배치 모두 동일",
+            "context": "PPK·OPER·LOT_CD/TEMP 모두 직전과 동일(=same_setup 케이스)",
+            "substitution": "PPK/OPER 전환 없음 → 0",
             "value": "0",
         },
         "trace_step": 4,
@@ -193,6 +214,14 @@ REWARD_ENRICH: Dict[str, Dict[str, Any]] = {
         "plain": "직전과 제품(PPK)·공정(OPER)이 같으면 셋업 변경 없이 +1. 셋업을 이어 붙이라는 신호.",
         "symbols": [("w", "+1.0"), ("1[동일]", "직전 PPK·OPER = 이번 선택")],
         "why": "전환 비용을 피하고 같은 셋업으로 연속 가공하도록 유도.",
+    },
+    "sametool_setup": {
+        "plain": "같은 설비가 배치(BATCHID=LOT_CD/TEMP)는 그대로 두고 PPK/OPER만 바꾸면 소액 −. 실제 TOOL 전환(conversion)은 아님.",
+        "symbols": [
+            ("w_sametool_setup", "+0.5 (페널티로 부호 반전 적용)"),
+            ("1[배치 유지·전환]", "직전 LOT_CD/TEMP = 이번 것 & (PPK 또는 OPER) 변경"),
+        ],
+        "why": "같은 배치를 유지한 채 굳이 PPK/OPER를 바꾸는 낭비성 전환을 줄이도록 유도.",
     },
     "pacing": {
         "plain": "takt 목표선(ideal)에 실제 진척(eff)이 가까워지면 +, 멀어지면 −.",
@@ -365,6 +394,23 @@ def build_reward_formula_details(
             val,
             {"w_same_setup": w, "prev_prod": eqp_prev_prod, "prev_oper": eqp_prev_oper,
              "same_setup": same},
+        )
+
+    # --- sametool_setup ---
+    if cfg.w_sametool_setup > 0 and (include_zero or "sametool_setup" in breakdown):
+        w = cfg.w_sametool_setup
+        val = breakdown.get("sametool_setup", 0.0)
+        switched = val < 0 or (
+            eqp_prev_prod is not None
+            and not (eqp_prev_oper == oper_id and eqp_prev_prod == ppk)
+        )
+        emit(
+            "sametool_setup",
+            "−w_sametool_setup · 1[동일 BATCHID(LOT_CD/TEMP) & PPK·OPER 중 하나 이상 전환]",
+            f"−{w} · 1[배치 유지, {eqp_prev_prod}→{ppk}, {eqp_prev_oper}→{oper_id}] = {-w if switched else 0}",
+            val,
+            {"w_sametool_setup": w, "prev_prod": eqp_prev_prod, "prev_oper": eqp_prev_oper,
+             "sametool_setup": switched},
         )
 
     # --- bulk_block_bonus ---

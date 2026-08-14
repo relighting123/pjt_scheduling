@@ -24,6 +24,7 @@ const BLOCK_REASON_LABELS: Record<string, string> = {
 /** 리워드 항목 한글 라벨 + 부호 의미 */
 const TERM_LABELS: Record<string, string> = {
   same_setup: "동일 셋업 연속",
+  sametool_setup: "같은 배치·PPK/OPER 전환",
   pacing: "페이싱(takt 추종)",
   plan_hit: "계획 달성 진척",
   flow_balance: "Flow balance",

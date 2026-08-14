@@ -1723,6 +1723,10 @@ class SchedulingSimulator:
 
         same_batch = (
             eqp.prev_lot_cd is not None
+            # prev_prod가 None이면(=아직 실제 첫 배정 전) 비교할 이전 PPK/OPER
+            # 정체성이 없으므로, prev_lot_cd만 부분적으로 채워진 초기 상태를
+            # sametool_setup 전환으로 오판하지 않도록 위 switch 카운터와 동일하게 가드.
+            and eqp.prev_prod is not None
             and eqp.prev_lot_cd == lot_cd
             and (eqp.prev_temp or "") == (temp or "")
         )
@@ -2342,7 +2346,13 @@ class SchedulingSimulator:
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
         terms: Dict[str, float] = {}
         t = self._same_setup_reward(eqp, ppk, oper_id, wf_qty, lot_cd, temp)
-        if t: terms["same_setup"] = round(float(t), 4)
+        # 두 branch가 부호 반대: same_oper&&same_prod 보너스(+)는 same_setup,
+        # 배치 유지·PPK/OPER 전환 페널티(−)는 sametool_setup 키로 분리 기록.
+        # (같은 키에 몰아넣으면 downstream(트레이스/프론트 라벨)이 부호를 잘못 해석함)
+        if t > 0:
+            terms["same_setup"] = round(float(t), 4)
+        elif t < 0:
+            terms["sametool_setup"] = round(float(t), 4)
         reward += t
         t = self._pacing_shaping_reward(ppk, oper_id, wf_qty, eqp_id=eqp_id)
         if t: terms["pacing"] = round(float(t), 4)

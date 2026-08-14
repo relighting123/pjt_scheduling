@@ -110,6 +110,55 @@ def test_first_assignment_no_prior_batch_is_not_sametool_setup(sim):
     assert sim.stats["sametool_setup_count"] == before
 
 
+def test_partial_prior_state_prev_prod_none_is_not_sametool_setup(sim):
+    """prev_lot_cd만 채워지고 prev_prod/prev_oper가 아직 None(=실제 첫 배정 전,
+    초기 스냅샷이 일부만 채운 상태)이면 비교할 이전 PPK/OPER 정체성이 없으므로
+    sametool_setup으로 오판하면 안 된다(위 switch 카운터 가드와 동일한 취지)."""
+    eqp = next(iter(sim.eqps.values()))
+    eqp.prev_prod = None
+    eqp.prev_oper = None
+    eqp.prev_lot_cd = "LOTA"
+    eqp.prev_temp = "T1"
+    before = sim.stats["sametool_setup_count"]
+
+    reward = sim._same_setup_reward(eqp, "PPKY", "OP2", 1, "LOTA", "T1")
+
+    assert reward == 0.0
+    assert sim.stats["sametool_setup_count"] == before
+
+
+def test_reward_breakdown_files_penalty_under_sametool_setup_key(sim, monkeypatch):
+    """same_batch 페널티 branch(음수)는 terms['same_setup']이 아니라
+    terms['sametool_setup']에 기록돼야 한다(부호가 반대인 두 항을 같은 키에
+    몰아넣으면 downstream 트레이스/프론트 라벨이 잘못 해석함)."""
+    monkeypatch.setattr(sim, "_same_setup_reward", lambda *a, **k: -0.5)
+    eqp_id = sim.current_idle_eqp()
+    assert eqp_id is not None
+    lots = sim.available_lots(eqp_id)
+    assert lots
+    reward = sim.assign_lot(eqp_id, lots[0]["lot_id"])
+    assert reward != -1.0, "배정이 실패하면 reward_breakdown 자체가 채워지지 않아 테스트가 무의미해짐"
+
+    bd = sim._last_reward_breakdown
+    assert bd.get("sametool_setup") == pytest.approx(-0.5)
+    assert "same_setup" not in bd
+
+
+def test_reward_breakdown_files_bonus_under_same_setup_key(sim, monkeypatch):
+    """same_oper&&same_prod 보너스 branch(양수)는 기존대로 terms['same_setup']에
+    기록돼야 한다(회귀 확인 — sametool_setup 분리로 기존 경로가 깨지지 않았는지)."""
+    monkeypatch.setattr(sim, "_same_setup_reward", lambda *a, **k: 0.5)
+    eqp_id = sim.current_idle_eqp()
+    assert eqp_id is not None
+    lots = sim.available_lots(eqp_id)
+    assert lots
+    sim.assign_lot(eqp_id, lots[0]["lot_id"])
+
+    bd = sim._last_reward_breakdown
+    assert bd.get("same_setup") == pytest.approx(0.5)
+    assert "sametool_setup" not in bd
+
+
 def test_history_snapshot_exposes_sametool_setup(sim):
     """history를 켠 시뮬에서 스냅샷마다 sametool_setup 키가 stats와 일치해야 한다."""
     sim._record_history = True
