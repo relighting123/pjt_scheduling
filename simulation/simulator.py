@@ -58,6 +58,37 @@ def _grade5(ratio: float) -> float:
     return 0.0
 
 
+# reward_breakdown 항목명 → 버킷 선택 사유 코드. terms의 key 그대로 노출하면
+# downstream(Oracle 컬럼)에 소문자/영문 혼용 코드가 남으므로 고정 대문자 코드로 정규화한다.
+_SELECT_REASON_CD_BY_TERM = {
+    "same_setup":          "SAME_SETUP",
+    "sametool_setup":      "TOOL_KEPT_SETUP_CHG",
+    "pacing":               "PACING",
+    "flow_balance":         "FLOW_BALANCE",
+    "conversion":           "CONVERSION",
+    "avoidable_conversion": "AVOIDABLE_CONV",
+    "idle":                 "IDLE_PENALTY",
+    "plan_hit":             "PLAN_HIT",
+}
+
+
+def _select_reason_from_terms(terms: Dict[str, float]) -> Tuple[str, str]:
+    """reward_breakdown(terms) → (사유 코드, 사유 설명).
+
+    절대값이 가장 큰 항목을 '이 배정을 지배한 이유'로 본다. 여러 항목이
+    동시에 기여했을 수 있으니 CTN에는 0이 아닌 항목 전부를 기여도 순으로 남긴다.
+    """
+    nonzero = {k: v for k, v in terms.items() if v}
+    if not nonzero:
+        return "NEUTRAL", "reward 기여 항목 없음"
+    dominant_key = max(nonzero, key=lambda k: abs(nonzero[k]))
+    cd = _SELECT_REASON_CD_BY_TERM.get(dominant_key, dominant_key.upper())
+    ctn = ", ".join(
+        f"{k}:{v:+.4f}" for k, v in sorted(nonzero.items(), key=lambda kv: -abs(kv[1]))
+    )
+    return cd, ctn[:256]
+
+
 class ToolTracker:
     """LOT_CD × EQP_MODEL_CD 동시 가공 상한 추적."""
 
@@ -741,6 +772,17 @@ class SchedulingSimulator:
             "ABSTRACT":      False,
             "OPER_IN_TIME":  0,
             "LOT_STAT_CD":   "FIXED",
+            "SELECT_REASON_CD":       "FORCED_QUEUE_INIT",
+            "SELECT_REASON_CTN":      "eqp_queue_init 실측 상태 강제 배정(정책 미개입)",
+            "SIZE_SELECT_REASON_CD":  "FORCED_QUEUE_INIT",
+            "SIZE_SELECT_REASON_CTN": "실측 큐 그대로 반영, 크기 선택 없음",
+            "BUCKET_WIP_SHARE":      None,
+            "BUCKET_URGENCY":        None,
+            "BUCKET_COVERAGE_RATIO": None,
+            "BUCKET_STARVE_NORM":    None,
+            "BUCKET_NEEDS_CONV":     None,
+            "BUCKET_AVOIDABLE_FRAC": None,
+            "BUCKET_SETUP_CHANGED":  None,
         })
         self._last_assigned = {
             "kind":          "actual",
@@ -2238,6 +2280,12 @@ class SchedulingSimulator:
                 lb.setdefault("reward_breakdown", {})["plan_hit"] = round(float(plan_hit), 4)
                 self._last_reward_breakdown["plan_hit"] = round(float(plan_hit), 4)
 
+        reward_terms = dict(pending.get("reward_terms", {}))
+        if plan_hit:
+            reward_terms["plan_hit"] = round(float(plan_hit), 4)
+        select_reason_cd, select_reason_ctn = _select_reason_from_terms(reward_terms)
+        bucket_snapshot = pending.get("bucket_snapshot") or {}
+
         from_lot_cd = eqp.prev_lot_cd
         from_temp = eqp.prev_temp
 
@@ -2293,6 +2341,17 @@ class SchedulingSimulator:
             "ABSTRACT":      is_abstract,
             "OPER_IN_TIME":  oper_in_time,
             "LOT_STAT_CD":   "WAIT",
+            "SELECT_REASON_CD":       select_reason_cd,
+            "SELECT_REASON_CTN":      select_reason_ctn,
+            "SIZE_SELECT_REASON_CD":  pending.get("size_select_reason_cd", "SINGLE_CARRIER"),
+            "SIZE_SELECT_REASON_CTN": pending.get("size_select_reason_ctn", "블록 없이 1 carrier 단위 배정"),
+            "BUCKET_WIP_SHARE":      bucket_snapshot.get("wip_share"),
+            "BUCKET_URGENCY":        bucket_snapshot.get("urgency"),
+            "BUCKET_COVERAGE_RATIO": bucket_snapshot.get("coverage_ratio"),
+            "BUCKET_STARVE_NORM":    bucket_snapshot.get("starve_norm"),
+            "BUCKET_NEEDS_CONV":     bucket_snapshot.get("needs_conv"),
+            "BUCKET_AVOIDABLE_FRAC": bucket_snapshot.get("avoidable_frac"),
+            "BUCKET_SETUP_CHANGED":  bucket_snapshot.get("setup_changed"),
         })
 
         self._last_assigned = {
@@ -2342,6 +2401,10 @@ class SchedulingSimulator:
         wip = self._wip_for(ppk, oper_id)
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
+
+        # 버킷 선택 사유/특성 적재용 스냅샷 — 상태를 바꾸기 전(_consume_wip 등) 값이어야
+        # '선택 시점에 정책이 본 상태'가 된다.
+        bucket_snapshot = self._bucket_characteristics(ppk, oper_id, row["eqp_model"])
 
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
         terms: Dict[str, float] = {}
@@ -2395,6 +2458,14 @@ class SchedulingSimulator:
             "from_lot_cd": eqp.prev_lot_cd,
             "had_conversion": needs_conv,
             "proc_reward": reward,
+            "reward_terms": dict(terms),
+            "bucket_snapshot": bucket_snapshot,
+            # RL(SchedulingRLEnv)의 블록 크기 결정은 이 함수 밖(env.step())에서
+            # assign_ppk_oper() 반환 이후에 이뤄진다 — 여기서는 "블록 없음"을
+            # 기본값으로 두고, 블록을 실제로 커밋할 때 annotate_last_assignment()로
+            # 덮어쓴다. 사이즈 개념이 없는 SchedulingEnv(휴리스틱)는 이 기본값 그대로 쓴다.
+            "size_select_reason_cd": "SINGLE_CARRIER",
+            "size_select_reason_ctn": "블록 없이 1 carrier 단위 배정",
         }
         self._last_decision_assignment = {
             "eqp_id":        eqp_id,
@@ -2423,6 +2494,30 @@ class SchedulingSimulator:
         return self._finalize_assignment(
             eqp_id, pending, start_time=conv_start, proc_reward=reward,
         )
+
+    def annotate_last_assignment(
+        self,
+        eqp_id: str,
+        *,
+        size_select_reason_cd: str,
+        size_select_reason_ctn: str,
+    ) -> None:
+        """방금 이 EQP에 대해 성사된 배정에 크기(block) 선택 사유를 덧붙인다.
+
+        벌크(블록) 크기는 assign_ppk_oper()가 끝난 '이후'(env.step())에 결정되므로
+        _execute_assignment() 내부에는 아직 그 사유가 없다. conversion이 있으면
+        아직 schedule에 행이 추가되지 않고 _eqp_pending_assign에 대기 중이므로
+        그쪽을 먼저 확인하고, 없으면(즉시 확정된 경우) 방금 append된 마지막
+        schedule 행을 찾아 덮어쓴다.
+        """
+        pending = self._eqp_pending_assign.get(eqp_id)
+        if pending is not None:
+            pending["size_select_reason_cd"] = size_select_reason_cd
+            pending["size_select_reason_ctn"] = size_select_reason_ctn
+            return
+        if self.schedule and self.schedule[-1].get("EQP_ID") == eqp_id:
+            self.schedule[-1]["SIZE_SELECT_REASON_CD"] = size_select_reason_cd
+            self.schedule[-1]["SIZE_SELECT_REASON_CTN"] = size_select_reason_ctn
 
     def assign_lot(self, eqp_id: str, lot_id: str) -> float:
         """LOT 배정. abstract WIP 풀에서 -1, conversion/tool 적용."""
@@ -2801,6 +2896,50 @@ class SchedulingSimulator:
         self._bucket_feats_cache = feats
         self._bucket_feats_state = cache_state
         return feats
+
+    def _bucket_characteristics(
+        self, ppk: str, oper_id: str, eqp_model: str,
+    ) -> Dict[str, Any]:
+        """get_bucket_features()에서 배정 시점에 고른 (ppk, oper, model) 채널만 스냅샷.
+
+        DB 적재(RTS_RSLT_MAS)에 '왜 이 버킷이 매력적이었는지'를 남기기 위한
+        보조 메타데이터라 값을 못 구해도(축 범위 밖 등) 배정 자체를 막지 않고
+        빈 dict를 반환한다 — 호출부는 .get()으로 안전하게 읽는다.
+        """
+        data = self._env_data
+        oper_ids = data.get("oper_ids", [])
+        prod_keys = data.get("prod_keys", [])
+        eqp_models = data.get("eqp_models", [])
+        cfg = CONFIG.env
+        O, P, K = cfg.max_oper_count, cfg.max_prod_count, cfg.max_model_count
+
+        if oper_id not in oper_ids or ppk not in prod_keys:
+            return {}
+        oi, pi = oper_ids.index(oper_id), prod_keys.index(ppk)
+        if not (0 <= oi < O and 0 <= pi < P):
+            return {}
+
+        feats = self.get_bucket_features()
+        po_base = (oi * P + pi) * self.PPK_OPER_FEATURES
+        po = feats[po_base: po_base + self.PPK_OPER_FEATURES]
+        result: Dict[str, Any] = {
+            "wip_share":       float(po[0]),
+            "urgency":         float(po[2]),
+            "coverage_ratio":  float(po[4]),
+            "starve_norm":     float(po[5]),
+            "needs_conv":      None,
+            "avoidable_frac":  None,
+            "setup_changed":   None,
+        }
+
+        mi = eqp_models.index(eqp_model) if eqp_model in eqp_models else -1
+        if 0 <= mi < K:
+            pom_base = O * P * self.PPK_OPER_FEATURES + ((oi * P + pi) * K + mi) * 5
+            pom = feats[pom_base: pom_base + 5]
+            result["needs_conv"] = bool(pom[1] >= 0.5)
+            result["avoidable_frac"] = float(pom[3])
+            result["setup_changed"] = bool(pom[4] >= 0.5)
+        return result
 
     # --- 관측 벡터 생성 (Global + Bucket) ---
 

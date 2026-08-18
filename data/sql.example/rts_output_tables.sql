@@ -30,6 +30,18 @@ CREATE TABLE RTS_RSLT_MAS (
     FUNCTION_NM     VARCHAR2(64)   DEFAULT 'TEST' NOT NULL,
     CRT_USER_ID     VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
     CRT_TM          TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
+    -- 버킷(PPK/OPER) 선택 및 블록 크기 선택 사유 + 선택 시점 버킷 특성 스냅샷
+    SELECT_REASON_CD        VARCHAR2(32),   -- 배정 사유 코드(reward_breakdown 지배 항목, 예: SAME_SETUP/PACING/CONVERSION/NEUTRAL)
+    SELECT_REASON_CTN       VARCHAR2(256),  -- 배정 사유 상세(0이 아닌 reward 항목 전부, 기여도 순)
+    SIZE_SELECT_REASON_CD   VARCHAR2(32),   -- 블록 크기 선택 사유 코드(SIZE_LEVEL/WIP_LIMITED/PLAN_LIMITED/BLOCK_CONTINUE/SINGLE_CARRIER/NO_WIP)
+    SIZE_SELECT_REASON_CTN  VARCHAR2(256),  -- 블록 크기 선택 사유 상세
+    BUCKET_WIP_SHARE        NUMBER(6,4),    -- 선택 시점 (PPK,OPER) 버킷의 전체 WIP 대비 비중(0~1)
+    BUCKET_URGENCY          NUMBER(6,4),    -- 선택 시점 긴급도(계획 대비 잔여/가용시간, 0~1)
+    BUCKET_COVERAGE_RATIO   NUMBER(6,4),    -- 선택 시점 다른 EQP의 커버리지 대비 비율(0~1)
+    BUCKET_STARVE_NORM      NUMBER(6,4),    -- 선택 시점 WIP 소진까지 남은 시간 등급(0~1, 급할수록 작음)
+    BUCKET_NEEDS_CONV       CHAR(1),        -- 선택 시점 conversion 필요 여부(Y/N)
+    BUCKET_AVOIDABLE_FRAC   NUMBER(6,4),    -- 선택 시점 회피 가능했던 conversion 비율(0~1)
+    BUCKET_SETUP_CHANGED    CHAR(1),        -- 선택 시점 직전 셋업(PPK/OPER) 대비 변경 여부(Y/N)
     CONSTRAINT PK_RTS_RSLT_MAS PRIMARY KEY (FAC_ID, RULE_TIMEKEY, EQP_ID, SEQ_NO)
 );
 
@@ -63,6 +75,18 @@ CREATE TABLE RTS_RSLT_HIS (
     CRT_USER_ID     VARCHAR2(32)   DEFAULT 'RTS' NOT NULL,
     CRT_TM          TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
     EXEC_TIMEKEY    VARCHAR2(14)   NOT NULL,
+    -- 버킷(PPK/OPER) 선택 및 블록 크기 선택 사유 + 선택 시점 버킷 특성 스냅샷 (RTS_RSLT_MAS와 동일)
+    SELECT_REASON_CD        VARCHAR2(32),
+    SELECT_REASON_CTN       VARCHAR2(256),
+    SIZE_SELECT_REASON_CD   VARCHAR2(32),
+    SIZE_SELECT_REASON_CTN  VARCHAR2(256),
+    BUCKET_WIP_SHARE        NUMBER(6,4),
+    BUCKET_URGENCY          NUMBER(6,4),
+    BUCKET_COVERAGE_RATIO   NUMBER(6,4),
+    BUCKET_STARVE_NORM      NUMBER(6,4),
+    BUCKET_NEEDS_CONV       CHAR(1),
+    BUCKET_AVOIDABLE_FRAC   NUMBER(6,4),
+    BUCKET_SETUP_CHANGED    CHAR(1),
     CONSTRAINT PK_RTS_RSLT_HIS PRIMARY KEY (FAC_ID, EXEC_TIMEKEY, RULE_TIMEKEY, EQP_ID, SEQ_NO)
 );
 
