@@ -2952,7 +2952,7 @@ class SchedulingSimulator:
 
         get_feasible_ppk_oper()가 주는 목록을 그대로 후보로 쓴다. 실제로 선택된
         (ppk, oper_id)도 is_selected=True로 같이 넣어, 왜 이걸 골랐고 다른 후보는
-        아니었는지 한 목록에서 비교할 수 있게 한다(RTS_RSLT_CANDIDATE_HIS 적재용).
+        아니었는지 한 목록에서 비교할 수 있게 한다(RTS_TRACE_INF/HIS 적재용).
         """
         seen: set = set()
         candidates: List[Dict[str, Any]] = []

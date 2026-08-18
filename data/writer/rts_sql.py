@@ -220,12 +220,16 @@ def _insert_rts_validation(rows: List[dict]) -> List[str]:
     return lines
 
 
-def _insert_rts_candidate_rows(rows: List[dict]) -> List[str]:
+def _insert_rts_trace(rows: List[dict], *, history: bool) -> List[str]:
+    """RTS_TRACE_INF/HIS INSERT — RTS_EQPCONVPLAN_INF/HIS와 동일 패턴(EXEC_TIMEKEY는
+    둘 다 채우지만 PK엔 INF에서만 빠짐 — 호출부(build_writer_sql_scripts)가 INF는
+    같은 FAC_ID+RULE_TIMEKEY 기존 행을 먼저 DELETE해 재실행 시 중복을 막는다)."""
+    table = "RTS_TRACE_HIS" if history else "RTS_TRACE_INF"
     lines: List[str] = []
     exec_timekey = datetime.now().strftime(RULE_TIMEKEY_FMT)
     for r in rows:
         cols = [
-            "FAC_ID", "RULE_TIMEKEY", "EXEC_TIMEKEY", "EQP_ID", "CARRIER_ID",
+            "FAC_ID", "RULE_TIMEKEY", "EQP_ID", "CARRIER_ID",
             "CANDIDATE_PPK", "CANDIDATE_OPER_ID", "IS_SELECTED",
             "WIP_SHARE", "URGENCY", "COVERAGE_RATIO", "STARVE_NORM",
             "NEEDS_CONV", "AVOIDABLE_FRAC", "SETUP_CHANGED", "CRT_USER_ID",
@@ -233,7 +237,6 @@ def _insert_rts_candidate_rows(rows: List[dict]) -> List[str]:
         vals = [
             _sql_str(r["FAC_ID"]),
             _sql_str(r["RULE_TIMEKEY"]),
-            _sql_str(exec_timekey),
             _sql_str(r["EQP_ID"]),
             _sql_str(r["CARRIER_ID"]),
             _sql_str(r["CANDIDATE_PPK"]),
@@ -248,10 +251,10 @@ def _insert_rts_candidate_rows(rows: List[dict]) -> List[str]:
             _sql_bool(r.get("SETUP_CHANGED")),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
         ]
-        cols.append("CRT_TM")
-        vals.append("SYSTIMESTAMP")
+        cols.extend(["CRT_TM", "EXEC_TIMEKEY"])
+        vals.extend(["SYSTIMESTAMP", _sql_str(exec_timekey)])
         lines.append(
-            f"INSERT INTO RTS_RSLT_CANDIDATE_HIS ({', '.join(cols)}) VALUES ({', '.join(vals)});"
+            f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(vals)});"
         )
     return lines
 
@@ -263,7 +266,7 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     fac_id = meta.get("FAC_ID", "")
     rslt_rows = payload.get("RTS_RSLT_MAS", [])
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
-    candidate_rows = payload.get("RTS_RSLT_CANDIDATE_HIS", [])
+    trace_rows = payload.get("RTS_TRACE_INF", [])
     perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
     validation_rows = payload.get("RTS_VALIDATION", [])
 
@@ -282,6 +285,13 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     conv_inf_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=False))
     scripts["rts_eqpconvplan_inf.sql"] = "\n".join(conv_inf_lines) + "\n"
 
+    trace_inf_lines = [f"-- RTS_TRACE_INF FAC_ID={fac_id} RULE_TIMEKEY={rule_timekey}", ""]
+    if rule_timekey:
+        trace_inf_lines.append(_delete_inf_for_rule_timekey("RTS_TRACE_INF", fac_id, rule_timekey))
+        trace_inf_lines.append("")
+    trace_inf_lines.extend(_insert_rts_trace(trace_rows, history=False))
+    scripts["rts_trace_inf.sql"] = "\n".join(trace_inf_lines) + "\n"
+
     if include_history:
         his_lines = [f"-- RTS_RSLT_HIS RULE_TIMEKEY={rule_timekey}", ""]
         his_lines.extend(_insert_rts_rslt_rows(rslt_rows, history=True))
@@ -291,10 +301,9 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
         conv_his_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=True))
         scripts["rts_eqpconvplan_his.sql"] = "\n".join(conv_his_lines) + "\n"
 
-        if candidate_rows:
-            candidate_lines = [f"-- RTS_RSLT_CANDIDATE_HIS RULE_TIMEKEY={rule_timekey}", ""]
-            candidate_lines.extend(_insert_rts_candidate_rows(candidate_rows))
-            scripts["rts_rslt_candidate_his.sql"] = "\n".join(candidate_lines) + "\n"
+        trace_his_lines = [f"-- RTS_TRACE_HIS RULE_TIMEKEY={rule_timekey}", ""]
+        trace_his_lines.extend(_insert_rts_trace(trace_rows, history=True))
+        scripts["rts_trace_his.sql"] = "\n".join(trace_his_lines) + "\n"
 
     if perfmon_rows:
         perfmon_lines = [f"-- RTS_PERFMON_HIS RULE_TIMEKEY={rule_timekey}", ""]

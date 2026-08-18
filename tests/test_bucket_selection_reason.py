@@ -329,12 +329,12 @@ def test_rts_rslt_insert_handles_null_bucket_fields():
     assert "NULL" in insert_line
 
 
-# ── data/writer: RTS_RSLT_CANDIDATE_HIS(다른 선택 가능 버킷 이력) ──────────────
+# ── data/writer: RTS_TRACE_INF/HIS(다른 선택 가능 버킷 이력) ──────────────────
 
-def test_candidate_rows_include_selected_and_unselected_buckets():
+def test_trace_rows_include_selected_and_unselected_buckets():
     result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
     payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
-    rows = payload["RTS_RSLT_CANDIDATE_HIS"]
+    rows = payload["RTS_TRACE_INF"]
 
     assert len(rows) == 2
     by_ppk = {r["CANDIDATE_PPK"]: r for r in rows}
@@ -346,49 +346,60 @@ def test_candidate_rows_include_selected_and_unselected_buckets():
     assert by_ppk["PPK001"]["CARRIER_ID"] == "CAR001"
 
 
-def test_candidate_rows_empty_when_no_candidates_recorded():
+def test_trace_rows_empty_when_no_candidates_recorded():
     row = _schedule_row(CANDIDATE_BUCKETS=[])
     result = {"algorithm": "earliest_st", "schedule": [row], "conversion_plans": []}
     payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
-    assert payload["RTS_RSLT_CANDIDATE_HIS"] == []
+    assert payload["RTS_TRACE_INF"] == []
 
 
-def test_candidate_rows_empty_when_output_disabled():
+def test_trace_rows_empty_when_output_disabled():
     from config import CONFIG
-    original = CONFIG.env.candidate_output_enabled
+    original = CONFIG.env.trace_output_enabled
     try:
-        CONFIG.env.candidate_output_enabled = False
+        CONFIG.env.trace_output_enabled = False
         result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
         payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
-        assert payload["RTS_RSLT_CANDIDATE_HIS"] == []
+        assert payload["RTS_TRACE_INF"] == []
     finally:
-        CONFIG.env.candidate_output_enabled = original
+        CONFIG.env.trace_output_enabled = original
 
 
-def test_candidate_his_insert_sql_includes_expected_columns_and_values():
+def test_trace_inf_and_his_insert_sql_include_expected_columns_and_values():
     result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
     payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
     scripts = build_writer_sql_scripts(payload)
 
-    assert "rts_rslt_candidate_his.sql" in scripts
-    insert_lines = [
-        line for line in scripts["rts_rslt_candidate_his.sql"].splitlines()
-        if line.startswith("INSERT INTO RTS_RSLT_CANDIDATE_HIS")
-    ]
-    assert len(insert_lines) == 2
-    for col in (
-        "FAC_ID", "RULE_TIMEKEY", "EXEC_TIMEKEY", "EQP_ID", "CARRIER_ID",
-        "CANDIDATE_PPK", "CANDIDATE_OPER_ID", "IS_SELECTED",
-        "WIP_SHARE", "URGENCY", "COVERAGE_RATIO", "STARVE_NORM",
-        "NEEDS_CONV", "AVOIDABLE_FRAC", "SETUP_CHANGED",
-    ):
-        assert col in insert_lines[0]
-    assert any("'Y'" in line for line in insert_lines)  # 선택된 후보
-    assert any("'N'" in line for line in insert_lines)  # 선택되지 않은 후보
+    assert "rts_trace_inf.sql" in scripts and "rts_trace_his.sql" in scripts
+    for name, table in (("rts_trace_inf.sql", "RTS_TRACE_INF"), ("rts_trace_his.sql", "RTS_TRACE_HIS")):
+        insert_lines = [
+            line for line in scripts[name].splitlines()
+            if line.startswith(f"INSERT INTO {table}")
+        ]
+        assert len(insert_lines) == 2, name
+        for col in (
+            "FAC_ID", "RULE_TIMEKEY", "EQP_ID", "CARRIER_ID",
+            "CANDIDATE_PPK", "CANDIDATE_OPER_ID", "IS_SELECTED",
+            "WIP_SHARE", "URGENCY", "COVERAGE_RATIO", "STARVE_NORM",
+            "NEEDS_CONV", "AVOIDABLE_FRAC", "SETUP_CHANGED", "EXEC_TIMEKEY",
+        ):
+            assert col in insert_lines[0], f"{col} missing from {name}"
+        assert any("'Y'" in line for line in insert_lines)  # 선택된 후보
+        assert any("'N'" in line for line in insert_lines)  # 선택되지 않은 후보
 
 
-def test_candidate_his_insert_sql_omitted_without_history():
+def test_trace_inf_generated_unconditionally_but_his_omitted_without_history():
     result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
     payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
     scripts = build_writer_sql_scripts(payload, include_history=False)
-    assert "rts_rslt_candidate_his.sql" not in scripts
+    assert "rts_trace_inf.sql" in scripts
+    assert "rts_trace_his.sql" not in scripts
+
+
+def test_trace_inf_deletes_same_rule_timekey_before_insert():
+    result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
+    payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
+    scripts = build_writer_sql_scripts(payload)
+    assert "DELETE FROM RTS_TRACE_INF" in scripts["rts_trace_inf.sql"]
+    assert "FAC001" in scripts["rts_trace_inf.sql"]
+    assert "20260719070000" in scripts["rts_trace_inf.sql"]
