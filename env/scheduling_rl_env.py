@@ -70,26 +70,6 @@ def rl_obs_dim() -> int:
     return compute_obs_dim() + RL_EXTRA_OBS_DIM
 
 
-def _size_select_reason(calc: dict) -> Tuple[str, str]:
-    """simulator.bulk_block_size_breakdown()의 산출 근거 → (사이즈 선택 사유 코드, 설명).
-
-    block_size = max(min(target, cap), 1) (WIP 0/cap≤0이면 0) 이므로, target이
-    cap보다 크거나 같으면 실제로는 cap(WIP/잔여계획)이 블록 길이를 묶은 것이고,
-    target이 더 작으면 정책이 고른 size_level(→takt 예산 비율)이 그대로 반영된 것이다.
-    """
-    if calc["block_size"] <= 0:
-        return "NO_WIP", "가용 WIP 또는 잔여 계획 없음"
-    if calc["target"] >= calc["cap"]:
-        if calc["has_plan"] and calc["plan_carriers"] <= calc["wip_carriers"]:
-            return "PLAN_LIMITED", f"잔여계획 {calc['plan_carriers']}carrier 한도"
-        return "WIP_LIMITED", f"가용 WIP {calc['wip_carriers']}carrier 한도"
-    return (
-        "SIZE_LEVEL",
-        f"level {calc['level'] + 1}/{calc['n_levels']} → takt 예산의 {calc['frac'] * 100:.0f}% "
-        f"({calc['target']}carrier)",
-    )
-
-
 def build_env(env_cls: type, data: dict, **kwargs):
     """학습·BC 시연·KPI 평가가 모두 같은 조건의 env를 쓰도록 하는 팩토리.
 
@@ -378,12 +358,6 @@ class SchedulingRLEnv(gym.Env):
                         reward += self.sim.bulk_decision_shaping(
                             eqp_id, ppk, oper_id, n,
                         )
-                        size_cd, size_ctn = _size_select_reason(block_size_calc)
-                        self.sim.annotate_last_assignment(
-                            eqp_id,
-                            size_select_reason_cd=size_cd,
-                            size_select_reason_ctn=size_ctn,
-                        )
                         if n > 1:
                             self._block[eqp_id] = [flat, n - 1, n]
                         block_progress = {
@@ -408,17 +382,6 @@ class SchedulingRLEnv(gym.Env):
                         self._block.pop(eqp_id, None)
                         if block_progress is not None:
                             block_progress["aborted"] = True
-                    else:
-                        done = block_progress["done"] if block_progress else None
-                        total = block_progress["total"] if block_progress else None
-                        self.sim.annotate_last_assignment(
-                            eqp_id,
-                            size_select_reason_cd="BLOCK_CONTINUE",
-                            size_select_reason_ctn=(
-                                f"블록 진행 {done}/{total}" if done and total
-                                else "블록 진행"
-                            ),
-                        )
             elif feasible:
                 reward = -0.5
             else:

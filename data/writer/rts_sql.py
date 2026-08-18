@@ -66,10 +66,6 @@ def _insert_rts_rslt_rows(rows: List[dict], *, history: bool) -> List[str]:
             "SEQ_NO", "PLAN_PROD_ATTR_VAL", "OPER_ID", "LOT_ID", "CARRIER_ID",
             "LOT_STAT_CD", "FLOW_ID", "WF_QTY", "ST", "PRGS_ENABLE_EQP_LVAL", "PLAN_QTY",
             "START_TIME", "END_TIME", "PRODUCE_QTY", "FUNCTION_NM", "CRT_USER_ID",
-            "SELECT_REASON_CD", "SELECT_REASON_CTN",
-            "SIZE_SELECT_REASON_CD", "SIZE_SELECT_REASON_CTN",
-            "BUCKET_WIP_SHARE", "BUCKET_URGENCY", "BUCKET_COVERAGE_RATIO", "BUCKET_STARVE_NORM",
-            "BUCKET_NEEDS_CONV", "BUCKET_AVOIDABLE_FRAC", "BUCKET_SETUP_CHANGED",
         ]
         vals = [
             _sql_str(r["FAC_ID"]),
@@ -94,17 +90,6 @@ def _insert_rts_rslt_rows(rows: List[dict], *, history: bool) -> List[str]:
             _sql_num(r["PRODUCE_QTY"]),
             _sql_str(r.get("FUNCTION_NM", "TEST")),
             _sql_str(r.get("CRT_USER_ID", "RTS")),
-            _sql_str(r.get("SELECT_REASON_CD")),
-            _sql_str(r.get("SELECT_REASON_CTN")),
-            _sql_str(r.get("SIZE_SELECT_REASON_CD")),
-            _sql_str(r.get("SIZE_SELECT_REASON_CTN")),
-            _sql_float(r.get("BUCKET_WIP_SHARE")),
-            _sql_float(r.get("BUCKET_URGENCY")),
-            _sql_float(r.get("BUCKET_COVERAGE_RATIO")),
-            _sql_float(r.get("BUCKET_STARVE_NORM")),
-            _sql_bool(r.get("BUCKET_NEEDS_CONV")),
-            _sql_float(r.get("BUCKET_AVOIDABLE_FRAC")),
-            _sql_bool(r.get("BUCKET_SETUP_CHANGED")),
         ]
         cols.append("CRT_TM")
         vals.append("SYSTIMESTAMP")

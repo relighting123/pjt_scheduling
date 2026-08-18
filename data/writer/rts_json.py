@@ -147,17 +147,6 @@ def _build_rts_rslt_rows(
                 "PRODUCE_QTY":    int(rec.get("WF_QTY", 0)),
                 "FUNCTION_NM":    "TEST",
                 "CRT_USER_ID":    meta["CRT_USER_ID"],
-                "SELECT_REASON_CD":       rec.get("SELECT_REASON_CD"),
-                "SELECT_REASON_CTN":      rec.get("SELECT_REASON_CTN"),
-                "SIZE_SELECT_REASON_CD":  rec.get("SIZE_SELECT_REASON_CD"),
-                "SIZE_SELECT_REASON_CTN": rec.get("SIZE_SELECT_REASON_CTN"),
-                "BUCKET_WIP_SHARE":      rec.get("BUCKET_WIP_SHARE"),
-                "BUCKET_URGENCY":        rec.get("BUCKET_URGENCY"),
-                "BUCKET_COVERAGE_RATIO": rec.get("BUCKET_COVERAGE_RATIO"),
-                "BUCKET_STARVE_NORM":    rec.get("BUCKET_STARVE_NORM"),
-                "BUCKET_NEEDS_CONV":     rec.get("BUCKET_NEEDS_CONV"),
-                "BUCKET_AVOIDABLE_FRAC": rec.get("BUCKET_AVOIDABLE_FRAC"),
-                "BUCKET_SETUP_CHANGED":  rec.get("BUCKET_SETUP_CHANGED"),
             })
     return rows
 
