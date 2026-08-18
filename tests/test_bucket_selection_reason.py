@@ -113,6 +113,46 @@ def test_successful_assignment_carries_reason_and_bucket_fields(env_data):
     assert -1e-9 <= row["BUCKET_WIP_SHARE"] <= 1.0 + 1e-9
 
 
+def test_successful_assignment_carries_candidate_buckets(env_data):
+    sim = SchedulingSimulator(env_data, record_history=False, record_event_log=False)
+    eqp_id, ppk, oper_id = _first_idle_bucket(sim)
+
+    sim.assign_ppk_oper(eqp_id, ppk, oper_id)
+    candidates = sim.schedule[-1]["CANDIDATE_BUCKETS"]
+
+    assert candidates, "feasible 버킷이 있었으니 후보 목록도 비어있으면 안 됨"
+    selected = [c for c in candidates if c["is_selected"]]
+    assert len(selected) == 1
+    assert selected[0]["ppk"] == ppk and selected[0]["oper_id"] == oper_id
+    for c in candidates:
+        assert "wip_share" in c and "coverage_ratio" in c
+    # 선택 안 된 후보가 최소 하나는 있어야 "다른 후보와 비교" 의미가 있음
+    # (feasible이 1개뿐인 시나리오일 수도 있으므로 존재는 조건부로만 확인)
+    assert all(isinstance(c["is_selected"], bool) for c in candidates)
+
+
+def test_candidate_bucket_characteristics_match_bucket_characteristics(env_data):
+    """후보 목록의 특성값은 _bucket_characteristics()로 직접 계산한 값과 같아야 함."""
+    sim = SchedulingSimulator(env_data, record_history=False, record_event_log=False)
+    eqp_id = sim.current_idle_eqp()
+    feasible = sim.get_feasible_ppk_oper(eqp_id)
+    model = sim._eqp_model_map[eqp_id]
+    expected = {}
+    for flat in feasible:
+        p, o = sim.ppk_oper_from_flat(flat)
+        expected[(p, o)] = sim._bucket_characteristics(p, o, model)
+
+    ppk, oper_id = sim.ppk_oper_from_flat(feasible[0])
+    sim.assign_ppk_oper(eqp_id, ppk, oper_id)
+    candidates = sim.schedule[-1]["CANDIDATE_BUCKETS"]
+
+    for c in candidates:
+        key = (c["ppk"], c["oper_id"])
+        if key in expected:
+            assert c["wip_share"] == pytest.approx(expected[key]["wip_share"])
+            assert c["coverage_ratio"] == pytest.approx(expected[key]["coverage_ratio"])
+
+
 def test_forced_replay_uses_fixed_reason_and_null_bucket_fields(env_data):
     sim = SchedulingSimulator(env_data, record_history=False, record_event_log=False)
     eqp_id = next(iter(sim.eqps))
@@ -127,6 +167,7 @@ def test_forced_replay_uses_fixed_reason_and_null_bucket_fields(env_data):
     assert rec["SELECT_REASON_CD"] == "FORCED_QUEUE_INIT"
     assert rec["SIZE_SELECT_REASON_CD"] == "FORCED_QUEUE_INIT"
     assert rec["BUCKET_WIP_SHARE"] is None
+    assert rec["CANDIDATE_BUCKETS"] == []
 
 
 # ── env.scheduling_rl_env._size_select_reason ───────────────────────────────
@@ -204,6 +245,20 @@ def _schedule_row(**overrides):
         "BUCKET_COVERAGE_RATIO": 0.75, "BUCKET_STARVE_NORM": 1.0,
         "BUCKET_NEEDS_CONV": False, "BUCKET_AVOIDABLE_FRAC": 0.0,
         "BUCKET_SETUP_CHANGED": True,
+        "CANDIDATE_BUCKETS": [
+            {
+                "ppk": "PPK001", "oper_id": "OPER001", "is_selected": True,
+                "wip_share": 0.5, "urgency": 0.25, "coverage_ratio": 0.75,
+                "starve_norm": 1.0, "needs_conv": False, "avoidable_frac": 0.0,
+                "setup_changed": True,
+            },
+            {
+                "ppk": "PPK002", "oper_id": "OPER001", "is_selected": False,
+                "wip_share": 0.2, "urgency": 0.1, "coverage_ratio": 0.4,
+                "starve_norm": 0.5, "needs_conv": True, "avoidable_frac": 0.3,
+                "setup_changed": False,
+            },
+        ],
     }
     row.update(overrides)
     return row
@@ -272,3 +327,68 @@ def test_rts_rslt_insert_handles_null_bucket_fields():
         line for line in scripts["rts_rslt_mas.sql"].splitlines() if line.startswith("INSERT INTO")
     )
     assert "NULL" in insert_line
+
+
+# ── data/writer: RTS_RSLT_CANDIDATE_HIS(다른 선택 가능 버킷 이력) ──────────────
+
+def test_candidate_rows_include_selected_and_unselected_buckets():
+    result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
+    payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
+    rows = payload["RTS_RSLT_CANDIDATE_HIS"]
+
+    assert len(rows) == 2
+    by_ppk = {r["CANDIDATE_PPK"]: r for r in rows}
+    assert by_ppk["PPK001"]["IS_SELECTED"] is True
+    assert by_ppk["PPK002"]["IS_SELECTED"] is False
+    assert by_ppk["PPK002"]["WIP_SHARE"] == 0.2
+    # 부모 배정 행(EQP_ID/CARRIER_ID)으로 RTS_RSLT_MAS와 연결 가능해야 함
+    assert by_ppk["PPK001"]["EQP_ID"] == "EQP001"
+    assert by_ppk["PPK001"]["CARRIER_ID"] == "CAR001"
+
+
+def test_candidate_rows_empty_when_no_candidates_recorded():
+    row = _schedule_row(CANDIDATE_BUCKETS=[])
+    result = {"algorithm": "earliest_st", "schedule": [row], "conversion_plans": []}
+    payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
+    assert payload["RTS_RSLT_CANDIDATE_HIS"] == []
+
+
+def test_candidate_rows_empty_when_output_disabled():
+    from config import CONFIG
+    original = CONFIG.env.candidate_output_enabled
+    try:
+        CONFIG.env.candidate_output_enabled = False
+        result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
+        payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
+        assert payload["RTS_RSLT_CANDIDATE_HIS"] == []
+    finally:
+        CONFIG.env.candidate_output_enabled = original
+
+
+def test_candidate_his_insert_sql_includes_expected_columns_and_values():
+    result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
+    payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
+    scripts = build_writer_sql_scripts(payload)
+
+    assert "rts_rslt_candidate_his.sql" in scripts
+    insert_lines = [
+        line for line in scripts["rts_rslt_candidate_his.sql"].splitlines()
+        if line.startswith("INSERT INTO RTS_RSLT_CANDIDATE_HIS")
+    ]
+    assert len(insert_lines) == 2
+    for col in (
+        "FAC_ID", "RULE_TIMEKEY", "EXEC_TIMEKEY", "EQP_ID", "CARRIER_ID",
+        "CANDIDATE_PPK", "CANDIDATE_OPER_ID", "IS_SELECTED",
+        "WIP_SHARE", "URGENCY", "COVERAGE_RATIO", "STARVE_NORM",
+        "NEEDS_CONV", "AVOIDABLE_FRAC", "SETUP_CHANGED",
+    ):
+        assert col in insert_lines[0]
+    assert any("'Y'" in line for line in insert_lines)  # 선택된 후보
+    assert any("'N'" in line for line in insert_lines)  # 선택되지 않은 후보
+
+
+def test_candidate_his_insert_sql_omitted_without_history():
+    result = {"algorithm": "earliest_st", "schedule": [_schedule_row()], "conversion_plans": []}
+    payload = build_rts_output(result, _writer_env_data(), fac_id="FAC001", rule_timekey="20260719070000")
+    scripts = build_writer_sql_scripts(payload, include_history=False)
+    assert "rts_rslt_candidate_his.sql" not in scripts

@@ -783,6 +783,7 @@ class SchedulingSimulator:
             "BUCKET_NEEDS_CONV":     None,
             "BUCKET_AVOIDABLE_FRAC": None,
             "BUCKET_SETUP_CHANGED":  None,
+            "CANDIDATE_BUCKETS": [],
         })
         self._last_assigned = {
             "kind":          "actual",
@@ -2352,6 +2353,7 @@ class SchedulingSimulator:
             "BUCKET_NEEDS_CONV":     bucket_snapshot.get("needs_conv"),
             "BUCKET_AVOIDABLE_FRAC": bucket_snapshot.get("avoidable_frac"),
             "BUCKET_SETUP_CHANGED":  bucket_snapshot.get("setup_changed"),
+            "CANDIDATE_BUCKETS": pending.get("candidate_buckets", []),
         })
 
         self._last_assigned = {
@@ -2405,6 +2407,7 @@ class SchedulingSimulator:
         # 버킷 선택 사유/특성 적재용 스냅샷 — 상태를 바꾸기 전(_consume_wip 등) 값이어야
         # '선택 시점에 정책이 본 상태'가 된다.
         bucket_snapshot = self._bucket_characteristics(ppk, oper_id, row["eqp_model"])
+        candidate_buckets = self._candidate_bucket_snapshot(eqp_id, ppk, oper_id, row["eqp_model"])
 
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
         terms: Dict[str, float] = {}
@@ -2460,6 +2463,7 @@ class SchedulingSimulator:
             "proc_reward": reward,
             "reward_terms": dict(terms),
             "bucket_snapshot": bucket_snapshot,
+            "candidate_buckets": candidate_buckets,
             # RL(SchedulingRLEnv)의 블록 크기 결정은 이 함수 밖(env.step())에서
             # assign_ppk_oper() 반환 이후에 이뤄진다 — 여기서는 "블록 없음"을
             # 기본값으로 두고, 블록을 실제로 커밋할 때 annotate_last_assignment()로
@@ -2940,6 +2944,38 @@ class SchedulingSimulator:
             result["avoidable_frac"] = float(pom[3])
             result["setup_changed"] = bool(pom[4] >= 0.5)
         return result
+
+    def _candidate_bucket_snapshot(
+        self, eqp_id: str, selected_ppk: str, selected_oper_id: str, eqp_model: str,
+    ) -> List[Dict[str, Any]]:
+        """이 EQP가 이번 결정 시점에 고를 수 있었던 모든 (PPK,OPER) 후보 + 특성.
+
+        get_feasible_ppk_oper()가 주는 목록을 그대로 후보로 쓴다. 실제로 선택된
+        (ppk, oper_id)도 is_selected=True로 같이 넣어, 왜 이걸 골랐고 다른 후보는
+        아니었는지 한 목록에서 비교할 수 있게 한다(RTS_RSLT_CANDIDATE_HIS 적재용).
+        """
+        seen: set = set()
+        candidates: List[Dict[str, Any]] = []
+        for flat in self.get_feasible_ppk_oper(eqp_id):
+            cand_ppk, cand_oper = self.ppk_oper_from_flat(flat)
+            key = (cand_ppk, cand_oper)
+            if key in seen:
+                continue
+            seen.add(key)
+            snap = self._bucket_characteristics(cand_ppk, cand_oper, eqp_model)
+            candidates.append({
+                "ppk": cand_ppk,
+                "oper_id": cand_oper,
+                "is_selected": key == (selected_ppk, selected_oper_id),
+                **snap,
+            })
+        if (selected_ppk, selected_oper_id) not in seen:
+            snap = self._bucket_characteristics(selected_ppk, selected_oper_id, eqp_model)
+            candidates.append({
+                "ppk": selected_ppk, "oper_id": selected_oper_id,
+                "is_selected": True, **snap,
+            })
+        return candidates
 
     # --- 관측 벡터 생성 (Global + Bucket) ---
 

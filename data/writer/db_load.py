@@ -20,8 +20,9 @@ from utils.file_logger import get_daily_file_logger
 _DDL_FILE = "rts_output_tables.sql"
 _INF_SCRIPTS = ("rts_rslt_mas.sql", "rts_eqpconvplan_inf.sql")
 _HIS_SCRIPTS = ("rts_rslt_his.sql", "rts_eqpconvplan_his.sql")
-# save_kpi 옵션 켰을 때만 생성되는 스크립트 — 있으면 적재, 없으면 조용히 생략
-_OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql")
+# candidate_output_enabled=False 이거나 후보가 없으면 생성되지 않는(rts_json._build_rts_candidate_rows
+# 참고) rts_rslt_candidate_his.sql도 save_kpi 스크립트와 같은 이유로 "있으면 적재, 없으면 생략" 취급.
+_OPTIONAL_SCRIPTS = ("rts_perfmon_his.sql", "rts_validation.sql", "rts_rslt_candidate_his.sql")
 
 # 스크립트 파일 → 테이블명 (테이블별 DB 라우팅 조회용)
 _SCRIPT_TABLE = {
@@ -31,6 +32,7 @@ _SCRIPT_TABLE = {
     "rts_eqpconvplan_his.sql":  "RTS_EQPCONVPLAN_HIS",
     "rts_perfmon_his.sql":      "RTS_PERFMON_HIS",
     "rts_validation.sql":       "RTS_VALIDATION",
+    "rts_rslt_candidate_his.sql": "RTS_RSLT_CANDIDATE_HIS",
 }
 
 _OUTPUT_DB_ROUTING_FILE = "config/output_db_routing.yaml"

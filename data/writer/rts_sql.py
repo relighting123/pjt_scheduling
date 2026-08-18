@@ -220,6 +220,42 @@ def _insert_rts_validation(rows: List[dict]) -> List[str]:
     return lines
 
 
+def _insert_rts_candidate_rows(rows: List[dict]) -> List[str]:
+    lines: List[str] = []
+    exec_timekey = datetime.now().strftime(RULE_TIMEKEY_FMT)
+    for r in rows:
+        cols = [
+            "FAC_ID", "RULE_TIMEKEY", "EXEC_TIMEKEY", "EQP_ID", "CARRIER_ID",
+            "CANDIDATE_PPK", "CANDIDATE_OPER_ID", "IS_SELECTED",
+            "WIP_SHARE", "URGENCY", "COVERAGE_RATIO", "STARVE_NORM",
+            "NEEDS_CONV", "AVOIDABLE_FRAC", "SETUP_CHANGED", "CRT_USER_ID",
+        ]
+        vals = [
+            _sql_str(r["FAC_ID"]),
+            _sql_str(r["RULE_TIMEKEY"]),
+            _sql_str(exec_timekey),
+            _sql_str(r["EQP_ID"]),
+            _sql_str(r["CARRIER_ID"]),
+            _sql_str(r["CANDIDATE_PPK"]),
+            _sql_str(r["CANDIDATE_OPER_ID"]),
+            _sql_bool(r.get("IS_SELECTED")),
+            _sql_float(r.get("WIP_SHARE")),
+            _sql_float(r.get("URGENCY")),
+            _sql_float(r.get("COVERAGE_RATIO")),
+            _sql_float(r.get("STARVE_NORM")),
+            _sql_bool(r.get("NEEDS_CONV")),
+            _sql_float(r.get("AVOIDABLE_FRAC")),
+            _sql_bool(r.get("SETUP_CHANGED")),
+            _sql_str(r.get("CRT_USER_ID", "RTS")),
+        ]
+        cols.append("CRT_TM")
+        vals.append("SYSTIMESTAMP")
+        lines.append(
+            f"INSERT INTO RTS_RSLT_CANDIDATE_HIS ({', '.join(cols)}) VALUES ({', '.join(vals)});"
+        )
+    return lines
+
+
 def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> Dict[str, str]:
     """output.json 본문 → {파일명: SQL 텍스트}."""
     meta = payload.get("meta", {})
@@ -227,6 +263,7 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
     fac_id = meta.get("FAC_ID", "")
     rslt_rows = payload.get("RTS_RSLT_MAS", [])
     conv_rows = payload.get("RTS_EQPCONVPLAN_INF", [])
+    candidate_rows = payload.get("RTS_RSLT_CANDIDATE_HIS", [])
     perfmon_rows = payload.get("RTS_PERFMON_HIS", [])
     validation_rows = payload.get("RTS_VALIDATION", [])
 
@@ -253,6 +290,11 @@ def build_writer_sql_scripts(payload: dict, *, include_history: bool = True) -> 
         conv_his_lines = [f"-- RTS_EQPCONVPLAN_HIS RULE_TIMEKEY={rule_timekey}", ""]
         conv_his_lines.extend(_insert_rts_eqpconvplan(conv_rows, history=True))
         scripts["rts_eqpconvplan_his.sql"] = "\n".join(conv_his_lines) + "\n"
+
+        if candidate_rows:
+            candidate_lines = [f"-- RTS_RSLT_CANDIDATE_HIS RULE_TIMEKEY={rule_timekey}", ""]
+            candidate_lines.extend(_insert_rts_candidate_rows(candidate_rows))
+            scripts["rts_rslt_candidate_his.sql"] = "\n".join(candidate_lines) + "\n"
 
     if perfmon_rows:
         perfmon_lines = [f"-- RTS_PERFMON_HIS RULE_TIMEKEY={rule_timekey}", ""]
