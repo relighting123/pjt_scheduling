@@ -12,6 +12,7 @@ from utils.helpers import (
     build_index_map, coerce_int, effective_proc_time, FORCED_LOT_STAT_CDS, FORCED_LOT_STAT_ORDER,
     normalize_lot_stat_cd, normalize_tool_capacity_rows, split_wf_qty,
 )
+from data.loader.axis_map import load_axis_map, order_axis, positional_index_map
 
 
 def _coerce_proc_time(value) -> Optional[int]:
@@ -673,15 +674,28 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     # eqp_queue_init에만 등장하는 EQP(discrete_arrange 자유배정 후보가 전혀
     # 없을 만큼 이미 확정 큐로 꽉 찬 장비)도 EQP 목록에 포함해야 한다 —
     # discrete_arrange만 보면 그런 장비는 시뮬레이터에 아예 등록되지 않는다.
-    eqp_ids  = sorted({r["EQP_ID"] for r in discrete_raw} | set(eqp_fixed_queue))
-    oper_ids = sorted({r["OPER_ID"] for r in flow_raw})
-    prod_keys = sorted({
-        r["PLAN_PROD_ATTR_VAL"]
-        for r in discrete_raw + abstract_raw + plan_raw
-    })
+    # axis_map.json 이 있으면 저장된 슬롯 순서를 그대로 재사용한다. 없으면
+    # 기존과 동일하게 sorted() — order_axis()가 stored=None 일 때 sorted를 돌려준다.
+    # 축 순서가 회차마다 흔들리면 정책의 버킷 대응이 통째로 어긋난다(axis_map.py 참고).
+    _axis_stored = load_axis_map()
+    eqp_ids  = order_axis(
+        sorted({r["EQP_ID"] for r in discrete_raw} | set(eqp_fixed_queue)),
+        _axis_stored, "eqp_ids",
+    )
+    oper_ids = order_axis(
+        sorted({r["OPER_ID"] for r in flow_raw}), _axis_stored, "oper_ids",
+    )
+    prod_keys = order_axis(
+        sorted({
+            r["PLAN_PROD_ATTR_VAL"]
+            for r in discrete_raw + abstract_raw + plan_raw
+        }),
+        _axis_stored, "prod_keys",
+    )
 
-    oper_idx = build_index_map(oper_ids)
-    prod_idx = build_index_map(prod_keys)
+    # 위치 = 인덱스. build_index_map()은 내부에서 다시 정렬하므로 쓰면 안 된다.
+    oper_idx = positional_index_map(oper_ids)
+    prod_idx = positional_index_map(prod_keys)
 
     # discrete_arrange로 EQP별 LOT 및 WF_QTY 조회 (전건 자유배정 후보)
     # discrete_wait_enabled=False면 이 LOT들은 특정 EQP에 고정하지 않는다
@@ -876,7 +890,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
         abstract_arrange_map,
     )
 
-    eqp_idx = build_index_map(eqp_ids)
+    eqp_idx = positional_index_map(eqp_ids)
 
     batch_info_map = _build_batch_info_map(batch_info_raw)
     conv_group_map = _build_conversion_group_map(raw.get("conversion_group", []))
@@ -887,7 +901,9 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     )
     lot_cd_idx = build_index_map(lot_cd_ids)
     temp_idx = build_index_map(temp_ids)
-    eqp_models = sorted(set(eqp_model_map.values()))
+    eqp_models = order_axis(
+        sorted(set(eqp_model_map.values())), _axis_stored, "eqp_models",
+    )
     tool_capacity = _build_tool_capacity_map(tool_capacity_raw, lot_cd_ids, eqp_models)
 
     # ── arrange 테이블 (availability 전체 – 초기 Actual 재공) ────────────────
@@ -914,7 +930,7 @@ def preprocess(raw: Dict[str, List[dict]], period_key: Optional[str] = None) -> 
     max_wf_qty = max((v["wf_qty"] for v in lot_info.values()), default=1)
 
     # ── Bucket(state) 사전계산: model 인덱스 / 공정별 장비 수 / takt 상수 / flow 전후 ──
-    model_idx = build_index_map(eqp_models)
+    model_idx = positional_index_map(eqp_models)
     n_eqp_per_oper: Dict[str, int] = {}
     for opers in eqp_oper_cap.values():
         for op in opers:

@@ -151,6 +151,50 @@ def _build_rts_rslt_rows(
     return rows
 
 
+def _build_rts_trace_rows(
+    schedule: List[dict],
+    meta: Dict[str, str],
+) -> List[dict]:
+    """각 배정 결정 시점에 고를 수 있었던 (PPK,OPER) 후보 전부(선택된 것 포함)
+    → RTS_TRACE_INF/HIS 행.
+
+    CANDIDATE_BUCKETS는 simulator._execute_assignment()가 배정마다 남기는
+    스냅샷(simulator._candidate_bucket_snapshot())이며, CARRIER_ID로 같은
+    FAC_ID+RULE_TIMEKEY+EQP_ID의 RTS_RSLT_MAS/HIS 행과 연결된다.
+    CONFIG.env.trace_output_enabled(옵션, 기본 True)가 False면 저장하지 않는다
+    (배정 건수 × 평균 후보 수만큼 행이 늘어나므로 데이터량이 부담되면 끌 수 있음).
+    """
+    if not CONFIG.env.trace_output_enabled:
+        return []
+
+    rows: List[dict] = []
+    for rec in schedule:
+        candidates = rec.get("CANDIDATE_BUCKETS") or []
+        if not candidates:
+            continue
+        eqp_id = rec.get("EQP_ID", "")
+        carrier_id = rec.get("CARRIER_ID") or rec.get("LOT_ID", "")
+        for cand in candidates:
+            rows.append({
+                "FAC_ID":            meta["FAC_ID"],
+                "RULE_TIMEKEY":      meta["RULE_TIMEKEY"],
+                "EQP_ID":            eqp_id,
+                "CARRIER_ID":        carrier_id,
+                "CANDIDATE_PPK":     cand.get("ppk", ""),
+                "CANDIDATE_OPER_ID": cand.get("oper_id", ""),
+                "IS_SELECTED":       bool(cand.get("is_selected")),
+                "WIP_SHARE":         cand.get("wip_share"),
+                "URGENCY":           cand.get("urgency"),
+                "COVERAGE_RATIO":    cand.get("coverage_ratio"),
+                "STARVE_NORM":       cand.get("starve_norm"),
+                "NEEDS_CONV":        cand.get("needs_conv"),
+                "AVOIDABLE_FRAC":    cand.get("avoidable_frac"),
+                "SETUP_CHANGED":     cand.get("setup_changed"),
+                "CRT_USER_ID":       meta["CRT_USER_ID"],
+            })
+    return rows
+
+
 def _build_rts_conv_rows(
     conversion_plans: List[dict],
     meta: Dict[str, str],
@@ -296,7 +340,8 @@ def build_rts_output(
     """
     추론 결과 → RTS output.json 본문.
 
-    Keys: meta, RTS_RSLT_MAS, RTS_EQPCONVPLAN_INF, (옵션) RTS_PERFMON_HIS, RTS_VALIDATION
+    Keys: meta, RTS_RSLT_MAS, RTS_EQPCONVPLAN_INF, RTS_TRACE_INF,
+          (옵션) RTS_PERFMON_HIS, RTS_VALIDATION
     """
     meta = resolve_writer_meta(
         env_data, fac_id=fac_id, rule_timekey=rule_timekey, crt_user_id=crt_user_id,
@@ -310,6 +355,9 @@ def build_rts_output(
         "meta": meta,
         "RTS_RSLT_MAS": _build_rts_rslt_rows(schedule, meta, base_time, env_data),
         "RTS_EQPCONVPLAN_INF": _build_rts_conv_rows(conversion_plans, meta, base_time),
+        # RTS_EQPCONVPLAN_INF와 같은 방식: INF/HIS 둘 다 이 목록 하나로 빌드한다
+        # (rts_sql.build_writer_sql_scripts에서 history=False/True로 재사용).
+        "RTS_TRACE_INF": _build_rts_trace_rows(schedule, meta),
     }
     if include_kpi:
         payload["RTS_PERFMON_HIS"] = _build_rts_perfmon_rows(result, meta)

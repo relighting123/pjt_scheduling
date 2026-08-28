@@ -741,6 +741,7 @@ class SchedulingSimulator:
             "ABSTRACT":      False,
             "OPER_IN_TIME":  0,
             "LOT_STAT_CD":   "FIXED",
+            "CANDIDATE_BUCKETS": [],
         })
         self._last_assigned = {
             "kind":          "actual",
@@ -1365,20 +1366,36 @@ class SchedulingSimulator:
             return sum(s for _, s in lst) / len(lst)
         return None
 
-    def _eqp_feasible_bucket_keys(self, eqp_id: str) -> set:
-        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합.
+    def _eqp_feasible_bucket_keys(self, eqp_id: str) -> Tuple[tuple, ...]:
+        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 — **정렬된 튜플**.
 
         상태(state_version) 불변인 동안 같은 EQP에 대해 반복 호출되는 일이
         잦아(버킷별 capacity 계산 등) state_version 키 캐시로 재계산을 막는다.
+
+        set이 아니라 정렬된 튜플을 돌려주는 이유(방어적 하드닝):
+        set을 그대로 반환하면 순회 순서가 PYTHONHASHSEED에 좌우되고, 그 순서가
+        `_compute_feasible_ppk_oper()` → `get_feasible_ppk_oper()`를 타고 결과를
+        가르는 폴백/타이브레이크 경로로 새어나간다 — scheduling_rl_env의
+        `in_range[0]`, scheduling_env의 `feasible[0]`, minprogress_agent의
+        `min(...)` 동률 처리가 모두 "첫 원소"에 의존한다.
+
+        주의: 이것이 tests/test_optimal_bench.py `_KNOWN_GAPS_FLAKY` 주석이 말하는
+        재현 불안정의 원인이라고 단정하지 말 것. 실제로 측정해 보면(2026-08,
+        Python 3.11) 해당 3개 케이스는 이 변경 전에도 seed 0~5에서 전환 5/10/6으로
+        동일했다 — 즉 그 flakiness는 여기서 재현되지 않으며, 이 변경으로 고쳐졌다는
+        근거도 없다. 순서 의존성 자체는 실재하는 잠복 위험이라 결정적으로 고정해 둘
+        뿐이고, xfail 목록은 재현을 확인하기 전까지 건드리지 않는다.
+
+        멤버십 검사(`in`)는 버킷 수가 최대 O×P(=72)라 튜플로도 충분히 싸다.
         """
         if self.eqps[eqp_id].status != "idle":
-            return set()
+            return ()
         cached = self._bucket_keys_cache.get(eqp_id)
         if cached is not None and cached[0] == self._state_version:
             return cached[1]
         lots = self.available_lots(eqp_id)
         if not lots:
-            result: set = set()
+            result: Tuple[tuple, ...] = ()
         else:
             feasible: set = set()
             buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
@@ -1396,7 +1413,7 @@ class SchedulingSimulator:
                 if self._assign_blocked(eqp_id, lot_cd, temp):
                     continue
                 feasible.add((bucket_ppk, bucket_oper))
-            result = feasible
+            result = tuple(sorted(feasible))
         self._bucket_keys_cache[eqp_id] = (self._state_version, result)
         return result
 
@@ -2080,11 +2097,15 @@ class SchedulingSimulator:
         return result
 
     def _compute_feasible_ppk_oper(self, eqp_id: str) -> List[int]:
-        """get_feasible_ppk_oper() 실계산 본체."""
-        return [
+        """get_feasible_ppk_oper() 실계산 본체. flat 인덱스 오름차순으로 고정한다.
+
+        폴백 경로들이 `feasible[0]`을 그대로 집으므로(예: scheduling_env._resolve_ppk_oper)
+        순서가 결정적이어야 같은 입력이 같은 결과를 낸다.
+        """
+        return sorted(
             self.ppk_oper_flat_index(oper_id, ppk)
             for ppk, oper_id in self._eqp_feasible_bucket_keys(eqp_id)
-        ]
+        )
 
     def get_feasible_assignments(self) -> List[tuple]:
         """유효 (ppk_oper_flat_idx, eqp_idx) 목록. 하위 호환."""
@@ -2293,6 +2314,7 @@ class SchedulingSimulator:
             "ABSTRACT":      is_abstract,
             "OPER_IN_TIME":  oper_in_time,
             "LOT_STAT_CD":   "WAIT",
+            "CANDIDATE_BUCKETS": pending.get("candidate_buckets", []),
         })
 
         self._last_assigned = {
@@ -2342,6 +2364,10 @@ class SchedulingSimulator:
         wip = self._wip_for(ppk, oper_id)
         if not wip or wip["wip_qty"] <= 0:
             return -1.0
+
+        # 버킷 후보 추적(RTS_TRACE_INF/HIS)용 스냅샷 — 상태를 바꾸기 전(_consume_wip 등)
+        # 값이어야 '선택 시점에 정책이 본 상태'가 된다.
+        candidate_buckets = self._candidate_bucket_snapshot(eqp_id, ppk, oper_id, row["eqp_model"])
 
         # 리워드 항목별 분해(디버그용) — 각 항의 기여분을 개별 기록
         terms: Dict[str, float] = {}
@@ -2395,6 +2421,7 @@ class SchedulingSimulator:
             "from_lot_cd": eqp.prev_lot_cd,
             "had_conversion": needs_conv,
             "proc_reward": reward,
+            "candidate_buckets": candidate_buckets,
         }
         self._last_decision_assignment = {
             "eqp_id":        eqp_id,
@@ -2801,6 +2828,82 @@ class SchedulingSimulator:
         self._bucket_feats_cache = feats
         self._bucket_feats_state = cache_state
         return feats
+
+    def _bucket_characteristics(
+        self, ppk: str, oper_id: str, eqp_model: str,
+    ) -> Dict[str, Any]:
+        """get_bucket_features()에서 배정 시점에 고른 (ppk, oper, model) 채널만 스냅샷.
+
+        DB 적재(RTS_RSLT_MAS)에 '왜 이 버킷이 매력적이었는지'를 남기기 위한
+        보조 메타데이터라 값을 못 구해도(축 범위 밖 등) 배정 자체를 막지 않고
+        빈 dict를 반환한다 — 호출부는 .get()으로 안전하게 읽는다.
+        """
+        data = self._env_data
+        oper_ids = data.get("oper_ids", [])
+        prod_keys = data.get("prod_keys", [])
+        eqp_models = data.get("eqp_models", [])
+        cfg = CONFIG.env
+        O, P, K = cfg.max_oper_count, cfg.max_prod_count, cfg.max_model_count
+
+        if oper_id not in oper_ids or ppk not in prod_keys:
+            return {}
+        oi, pi = oper_ids.index(oper_id), prod_keys.index(ppk)
+        if not (0 <= oi < O and 0 <= pi < P):
+            return {}
+
+        feats = self.get_bucket_features()
+        po_base = (oi * P + pi) * self.PPK_OPER_FEATURES
+        po = feats[po_base: po_base + self.PPK_OPER_FEATURES]
+        result: Dict[str, Any] = {
+            "wip_share":       float(po[0]),
+            "urgency":         float(po[2]),
+            "coverage_ratio":  float(po[4]),
+            "starve_norm":     float(po[5]),
+            "needs_conv":      None,
+            "avoidable_frac":  None,
+            "setup_changed":   None,
+        }
+
+        mi = eqp_models.index(eqp_model) if eqp_model in eqp_models else -1
+        if 0 <= mi < K:
+            pom_base = O * P * self.PPK_OPER_FEATURES + ((oi * P + pi) * K + mi) * 5
+            pom = feats[pom_base: pom_base + 5]
+            result["needs_conv"] = bool(pom[1] >= 0.5)
+            result["avoidable_frac"] = float(pom[3])
+            result["setup_changed"] = bool(pom[4] >= 0.5)
+        return result
+
+    def _candidate_bucket_snapshot(
+        self, eqp_id: str, selected_ppk: str, selected_oper_id: str, eqp_model: str,
+    ) -> List[Dict[str, Any]]:
+        """이 EQP가 이번 결정 시점에 고를 수 있었던 모든 (PPK,OPER) 후보 + 특성.
+
+        get_feasible_ppk_oper()가 주는 목록을 그대로 후보로 쓴다. 실제로 선택된
+        (ppk, oper_id)도 is_selected=True로 같이 넣어, 왜 이걸 골랐고 다른 후보는
+        아니었는지 한 목록에서 비교할 수 있게 한다(RTS_TRACE_INF/HIS 적재용).
+        """
+        seen: set = set()
+        candidates: List[Dict[str, Any]] = []
+        for flat in self.get_feasible_ppk_oper(eqp_id):
+            cand_ppk, cand_oper = self.ppk_oper_from_flat(flat)
+            key = (cand_ppk, cand_oper)
+            if key in seen:
+                continue
+            seen.add(key)
+            snap = self._bucket_characteristics(cand_ppk, cand_oper, eqp_model)
+            candidates.append({
+                "ppk": cand_ppk,
+                "oper_id": cand_oper,
+                "is_selected": key == (selected_ppk, selected_oper_id),
+                **snap,
+            })
+        if (selected_ppk, selected_oper_id) not in seen:
+            snap = self._bucket_characteristics(selected_ppk, selected_oper_id, eqp_model)
+            candidates.append({
+                "ppk": selected_ppk, "oper_id": selected_oper_id,
+                "is_selected": True, **snap,
+            })
+        return candidates
 
     # --- 관측 벡터 생성 (Global + Bucket) ---
 

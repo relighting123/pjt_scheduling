@@ -542,6 +542,12 @@ class EnvConfig:
     # 시작하는 전환만 포함한다. 그보다 먼 미래의 전환은 재계획 여지가 커
     # 추측성이므로 확정 출력에 싣지 않는다(간트/API 응답의 conversion_plans는 영향 없음).
     conv_output_window_minutes: int = 60
+    # RTS_TRACE_INF/HIS 테이블 저장 여부 (옵션). 배정마다 '그 순간 고를 수 있었던
+    # 다른 (PPK,OPER) 후보 전부(선택된 것 포함)'를 RTS_EQPCONVPLAN_INF/HIS와 같은
+    # INF(회차만 교체)/HIS(회차 누적) 패턴으로 남긴다 — 배정 건수 × 평균 후보
+    # 수만큼 행이 늘어나므로 기본은 켜져 있되 데이터량이 부담되는 운영 환경에서는
+    # 끌 수 있게 옵션으로 둔다.
+    trace_output_enabled: bool = True
     # False면 discrete_arrange 행(전건 자유배정 후보 — WAIT만 존재)의 discrete 정보
     # (특정 EQP 고정, 실측 ST)를 배정 로직에서 쓰지 않고 abstract 매칭 경로(모델
     # 평균 ST, 모델이 맞는 아무 장비)만 태운다. LOT의 수량/제품/공정 정체성(WIP
