@@ -90,7 +90,10 @@ def _rollout_expert_episode(
     반환되는 action 라벨은 **교란된 실제 행동이 아니라 전문가가 골랐을 행동**
     이다 — 교란은 상태분포를 넓히는 용도이고 학습 타깃은 언제나 전문가다.
     """
-    env = build_env(env_cls, data)
+    # PPO 학습이 축 순서를 랜덤화하는데(env.scheduling_rl_env.randomize_axis_order)
+    # BC 시연을 고정 순서로만 모으면 워밍스타트 자체가 위치 종속 지름길을
+    # 정책에 새겨버려 뒤이은 랜덤화 학습과 상충한다 — 시연 수집도 같이 섞는다.
+    env = build_env(env_cls, data, randomize_axis_order=True)
     expert: ExpertPolicy = make_expert(expert_name, data)
 
     obs_list: List[np.ndarray] = []
@@ -174,7 +177,7 @@ def collect_expert_dataset(
         if len(candidates) > 1:
             expert_name, scores = select_best_expert(
                 data,
-                env_factory=lambda d: build_env(env_cls, d),
+                env_factory=lambda d: build_env(env_cls, d, randomize_axis_order=True),
                 candidates=candidates,
                 max_steps=max_steps,
             )
