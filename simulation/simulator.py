@@ -1366,20 +1366,36 @@ class SchedulingSimulator:
             return sum(s for _, s in lst) / len(lst)
         return None
 
-    def _eqp_feasible_bucket_keys(self, eqp_id: str) -> set:
-        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 집합.
+    def _eqp_feasible_bucket_keys(self, eqp_id: str) -> Tuple[tuple, ...]:
+        """idle EQP가 지금 배정 가능한 (PPK, OPER) 버킷 — **정렬된 튜플**.
 
         상태(state_version) 불변인 동안 같은 EQP에 대해 반복 호출되는 일이
         잦아(버킷별 capacity 계산 등) state_version 키 캐시로 재계산을 막는다.
+
+        set이 아니라 정렬된 튜플을 돌려주는 이유(방어적 하드닝):
+        set을 그대로 반환하면 순회 순서가 PYTHONHASHSEED에 좌우되고, 그 순서가
+        `_compute_feasible_ppk_oper()` → `get_feasible_ppk_oper()`를 타고 결과를
+        가르는 폴백/타이브레이크 경로로 새어나간다 — scheduling_rl_env의
+        `in_range[0]`, scheduling_env의 `feasible[0]`, minprogress_agent의
+        `min(...)` 동률 처리가 모두 "첫 원소"에 의존한다.
+
+        주의: 이것이 tests/test_optimal_bench.py `_KNOWN_GAPS_FLAKY` 주석이 말하는
+        재현 불안정의 원인이라고 단정하지 말 것. 실제로 측정해 보면(2026-08,
+        Python 3.11) 해당 3개 케이스는 이 변경 전에도 seed 0~5에서 전환 5/10/6으로
+        동일했다 — 즉 그 flakiness는 여기서 재현되지 않으며, 이 변경으로 고쳐졌다는
+        근거도 없다. 순서 의존성 자체는 실재하는 잠복 위험이라 결정적으로 고정해 둘
+        뿐이고, xfail 목록은 재현을 확인하기 전까지 건드리지 않는다.
+
+        멤버십 검사(`in`)는 버킷 수가 최대 O×P(=72)라 튜플로도 충분히 싸다.
         """
         if self.eqps[eqp_id].status != "idle":
-            return set()
+            return ()
         cached = self._bucket_keys_cache.get(eqp_id)
         if cached is not None and cached[0] == self._state_version:
             return cached[1]
         lots = self.available_lots(eqp_id)
         if not lots:
-            result: set = set()
+            result: Tuple[tuple, ...] = ()
         else:
             feasible: set = set()
             buckets = {(l["PLAN_PROD_ATTR_VAL"], l["oper_id"]) for l in lots}
@@ -1397,7 +1413,7 @@ class SchedulingSimulator:
                 if self._assign_blocked(eqp_id, lot_cd, temp):
                     continue
                 feasible.add((bucket_ppk, bucket_oper))
-            result = feasible
+            result = tuple(sorted(feasible))
         self._bucket_keys_cache[eqp_id] = (self._state_version, result)
         return result
 
@@ -2081,11 +2097,15 @@ class SchedulingSimulator:
         return result
 
     def _compute_feasible_ppk_oper(self, eqp_id: str) -> List[int]:
-        """get_feasible_ppk_oper() 실계산 본체."""
-        return [
+        """get_feasible_ppk_oper() 실계산 본체. flat 인덱스 오름차순으로 고정한다.
+
+        폴백 경로들이 `feasible[0]`을 그대로 집으므로(예: scheduling_env._resolve_ppk_oper)
+        순서가 결정적이어야 같은 입력이 같은 결과를 낸다.
+        """
+        return sorted(
             self.ppk_oper_flat_index(oper_id, ppk)
             for ppk, oper_id in self._eqp_feasible_bucket_keys(eqp_id)
-        ]
+        )
 
     def get_feasible_assignments(self) -> List[tuple]:
         """유효 (ppk_oper_flat_idx, eqp_idx) 목록. 하위 호환."""
