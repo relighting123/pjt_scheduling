@@ -10,8 +10,7 @@
   다시 돌리고 baseline 스케줄과 비교한다.
     - `wip-1:<PPK>/<OPER>` : 해당 버킷의 재공 1건 감소 (5분 사이 1장 빠진 상황)
     - `horizon-N`          : sim_end/soft_cutoff 를 N분 단축 (N분 경과한 상황)
-    - `eqp-down:<EQP>`     : 설비 1대 제외 (축 목록이 바뀌는 상황 — 남은 설비의
-                             배정이 유지되는지가 축 고정(axis_map)의 효과를 가른다)
+    - `eqp-down:<EQP>`     : 설비 1대 제외 (축 목록 자체가 바뀌는 상황)
 
 지표 (높을수록 안정적)
   seq_agree   : EQP별 (PPK/OPER) 배정 순서를 앞에서부터 대조한 일치율  ← 주 지표
@@ -29,15 +28,12 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import CONFIG                                    # noqa: E402
-from data.loader.axis_map import save_axis_map                # noqa: E402
 from inference.runner import run_inference                   # noqa: E402
 from data.loader.fetch import load_data                       # noqa: E402
 from data.loader.preprocess import preprocess                 # noqa: E402
@@ -86,7 +82,7 @@ def perturb_drop_eqp(m: dict, eqp_id: str) -> dict:
     """설비 1대를 원시 입력에서 빼고 다시 preprocess.
 
     `eqp_ids` 목록 자체가 바뀌므로 축 인덱스가 재배치될 수 있는 유일한
-    perturbation이다. axis_map 고정의 효과가 여기서 드러난다.
+    perturbation이다.
     """
     raw = load_data(ROOT / m["dir"])
     for key in ("discrete_arrange", "eqp_initial_state", "eqp_queue_init",
@@ -147,8 +143,7 @@ def compare(base_seq: dict, pert_seq: dict) -> dict:
 # ── 러너 ────────────────────────────────────────────────────────────────────
 
 def run_dataset(ed: dict, m: dict, *, algorithm: str, agent, max_wip_perturb: int,
-                horizon_shifts, eqp_down: bool = True,
-                pin_axis: bool = False) -> dict:
+                horizon_shifts, eqp_down: bool = True) -> dict:
     def go(e):
         return run_inference(
             e, algorithm=algorithm,
@@ -168,26 +163,11 @@ def run_dataset(ed: dict, m: dict, *, algorithm: str, agent, max_wip_perturb: in
         cases.append((f"horizon-{mins}", perturb_horizon(ed, mins)))
     if eqp_down:
         victim = sorted(ed.get("eqp_ids", []))[-1:]        # 결정적으로 마지막 1대
-        # pin_axis: 이 데이터셋의 baseline 축 순서를 고정해 두고 perturbation을
-        # 돌린다 = 운영에서 "정상 상태에서 축을 고정해 둔 뒤 설비가 빠지는" 상황.
-        # 축 맵은 FAC 단위 계약이라 데이터셋마다 따로 고정해야 비교가 성립한다.
-        tmpdir = tempfile.mkdtemp(prefix="axis_") if pin_axis else None
-        prev_env = os.environ.get("AXIS_MAP_CONFIG")
-        try:
-            if pin_axis:
-                axis_path = Path(tmpdir) / "axis_map.json"
-                save_axis_map(ed, timestamp="00000000000000", path=axis_path)
-                os.environ["AXIS_MAP_CONFIG"] = str(axis_path)
-            for e in victim:
-                try:
-                    cases.append((f"eqp-down:{e}", perturb_drop_eqp(m, e)))
-                except Exception:
-                    pass                                    # 설비 1대뿐인 데이터셋 등
-        finally:
-            if prev_env is None:
-                os.environ.pop("AXIS_MAP_CONFIG", None)
-            else:
-                os.environ["AXIS_MAP_CONFIG"] = prev_env
+        for e in victim:
+            try:
+                cases.append((f"eqp-down:{e}", perturb_drop_eqp(m, e)))
+            except Exception:
+                pass                                        # 설비 1대뿐인 데이터셋 등
 
     results = []
     for label, ped in cases:
@@ -226,7 +206,6 @@ def run_consistency(*, suite: str = "bench", algorithm: str = "scheduling_rl",
                     max_wip_perturb: int = 4,
                     horizon_shifts=DEFAULT_HORIZON_SHIFTS,
                     eqp_down: bool = True,
-                    pin_axis: bool = False,
                     quiet: bool = False) -> dict:
     meta = load_meta(suite)
     if limit:
@@ -246,7 +225,7 @@ def run_consistency(*, suite: str = "bench", algorithm: str = "scheduling_rl",
     for m, ed in zip(meta, eds):
         r = run_dataset(ed, m, algorithm=algorithm, agent=agent,
                         max_wip_perturb=max_wip_perturb, horizon_shifts=horizon_shifts,
-                        eqp_down=eqp_down, pin_axis=pin_axis)
+                        eqp_down=eqp_down)
         rows.append(r)
         if not quiet:
             cr = f"{r['conv_range'][0]}~{r['conv_range'][1]}"
@@ -259,7 +238,6 @@ def run_consistency(*, suite: str = "bench", algorithm: str = "scheduling_rl",
     firsts = [r["first_agree_mean"] for r in rows if r["first_agree_mean"] is not None]
     summary = {
         "suite": suite,
-        "pin_axis": pin_axis,
         "algorithm": algorithm,
         "n_datasets": len(rows),
         "seq_agree_mean": round(sum(vals) / len(vals), 1) if vals else None,
@@ -295,15 +273,13 @@ def main() -> None:
                     help="데이터셋당 재공 감소 perturbation 개수 상한")
     ap.add_argument("--no-eqp-down", action="store_true",
                     help="설비 down perturbation 생략")
-    ap.add_argument("--pin-axis", action="store_true",
-                    help="데이터셋별 baseline 축 순서를 axis_map으로 고정한 뒤 측정")
     ap.add_argument("--json", default=None, help="결과 JSON 저장 경로")
     args = ap.parse_args()
 
     out = run_consistency(
         suite=args.suite, algorithm=args.algorithm, model_path=args.model,
         limit=args.limit, max_wip_perturb=args.max_wip_perturb,
-        eqp_down=not args.no_eqp_down, pin_axis=args.pin_axis,
+        eqp_down=not args.no_eqp_down,
     )
     if args.json:
         path = Path(args.json)

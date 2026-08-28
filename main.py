@@ -47,7 +47,6 @@ from config import (
     resolve_infer_rule_timekey,
     list_split_folders,
     model_dir_for,
-    rule_timekey_now,
 )
 from data.collector import (
     add_debug_arguments,
@@ -69,7 +68,6 @@ from data.writer.db_load import (
     load_output_sql_files,
     resolve_output_dir,
 )
-from data.loader.axis_map import axis_map_path, load_axis_map, save_axis_map
 from validation.runner import run_validation
 from validation.output_checks import validate_schedule_output
 
@@ -302,47 +300,6 @@ def cmd_test(
         print(f"\n[test] {len(payload['errors'])}개 폴더 오류")
         sys.exit(1)
     print(f"\n[test] 완료 ({len(payload['results'])}개 test)")
-
-
-def cmd_axis_map(
-    fac_id: str,
-    *,
-    split: str = "infer",
-    period: str = None,
-    show: bool = False,
-):
-    """축(공정/제품/설비/모델) 인덱스 순서를 파일에 고정한다.
-
-    축 목록은 매 회차 그 회차 데이터로 재산출되므로, 앞선 키가 빠지면 뒤가 전부
-    한 칸씩 밀려 정책이 학습한 버킷 대응이 어긋난다(실측: 물리 상태가 동일한데
-    제품 축만 한 칸 회전 → 스케줄 일치율 16.9%). 정상 상태에서 한 번 고정해 두면
-    이후 회차는 그 순서를 재사용한다.
-
-    운영 절차: 재공/설비가 정상적으로 다 보이는 시점에 1회 실행 → 이후 추론은
-    자동으로 그 순서를 따른다. 제품·설비가 새로 늘면 뒤에 덧붙으므로 재실행
-    없이도 동작하지만, 라인 구성이 크게 바뀌면 다시 고정하는 편이 낫다.
-    """
-    path = axis_map_path(fac_id)
-    if show:
-        stored = load_axis_map(path)
-        if stored is None:
-            print(f"[axis-map] 고정된 축 없음 (파일 없음): {path}")
-            return
-        print(f"[axis-map] {path}")
-        for axis, entry in stored.items():
-            order = entry.get("order", entry) if isinstance(entry, dict) else entry
-            print(f"  {axis:<12} {len(order):>3}종  {order}")
-        return
-
-    fac_id = validate_path_segment(fac_id, "FAC_ID")
-    folder = f"{fac_id}/{split}" + (f"/{period}" if period else "")
-    env_data = _load_env_data(folder, period_key=period)
-    written = save_axis_map(
-        env_data, timestamp=period or rule_timekey_now(), path=path,
-    )
-    print(f"[axis-map] 축 순서 고정 → {written}")
-    for axis in ("oper_ids", "prod_keys", "eqp_ids", "eqp_models"):
-        print(f"  {axis:<12} {env_data.get(axis, [])}")
 
 
 def cmd_db_load(
@@ -925,15 +882,6 @@ def parse_args():
         help="output.json에서 sql/*.sql 재생성 후 적재",
     )
 
-    axis_p = sub.add_parser(
-        "axis-map",
-        help="축(공정/제품/설비/모델) 인덱스 순서 고정 — 회차 간 결과 일관성용",
-    )
-    axis_p.add_argument("--facid", required=True, help="대상 FAC_ID")
-    axis_p.add_argument("--split", default="infer", help="입력 split (기본 infer)")
-    axis_p.add_argument("--period", default=None, help="RULE_TIMEKEY (train/test용)")
-    axis_p.add_argument("--show", action="store_true", help="쓰지 않고 현재 고정값만 출력")
-
     sub.add_parser("db-check", help="DB alias 설정 진단 (databases.yaml / .env)")
 
     sub.add_parser("ui", help="React UI + API 서버 실행")
@@ -1087,11 +1035,6 @@ def main():
                 from_key=args.from_key,
                 to_key=args.to_key,
                 use_period_count=args.use_period_count,
-            )
-
-        elif args.command == "axis-map":
-            cmd_axis_map(
-                args.facid, split=args.split, period=args.period, show=args.show,
             )
 
         elif args.command == "db-check":
