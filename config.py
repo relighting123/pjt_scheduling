@@ -555,6 +555,12 @@ class EnvConfig:
     # 아니라 eqp_queue_init 입력으로 별도 처리되며 이 옵션과 무관하게 항상 그대로
     # 반영된다.
     discrete_wait_enabled: bool = True
+    # 관측 연속 채널(po_feats/pom_feats/group_global 일부)을 이 단계 수로
+    # 등급화한다(`simulation.simulator.grade_ratio`). RewardConfig.reward_grade_levels
+    # 와 같은 원시값을 공유하는 채널에 함께 적용해 리워드·관측이 일관되게
+    # 미세 변화를 흡수하도록 한다. 0(기본)이면 비활성 — 관측 차원/의미 모두
+    # 현행과 동일. `--env obs_grade_levels=N`으로 A/B 검증 후 승격.
+    obs_grade_levels: int = 0
 
 
 @dataclass
@@ -792,6 +798,29 @@ class RewardConfig:
     # advantage 분포를 망가뜨리는 걸 방지). 0이면 clip 없음.
     terminal_reward_clip: float = 60.0
 
+    # --- 등급화(Grading) — 연속값 미세 증폭에 의한 결과 비일관성 완화 ----------
+    # 5분 주기 재추론에서 관측·리워드가 공유하는 연속 원시값(회피가능
+    # 전환비율, cover/need, block/budget)이 회차마다 미세하게 흔들리는데,
+    # 정책이 그 미세차를 그대로 좇아 스케줄이 크게 뒤바뀐다(실측: 관측 1.5%
+    # 변화 → 스케줄 시퀀스 33% 변화). `simulator.grade_ratio()`로 이 값들을
+    # 이산 등급으로 묶어 미세 진동을 흡수한다. `simulation.simulator._grade5`가
+    # 이미 achievable_ratio 채널에 쓰는 것과 같은 패턴(levels=5)의 일반화다.
+    # 0(비활성, 원값 그대로)이 기본값 — `--reward reward_grade_levels=N`으로
+    # A/B 검증 후 승격.
+    reward_grade_levels: int = 0
+    # --- 전환 페널티 계단화 — 누적 전환 횟수가 늘수록 페널티를 키운다 ---------
+    # 지금은 몇 번째 전환이든 w_conversion이 일률 적용된다. 배수를
+    # `min(1.0 + step * floor(eqp.conversion_count / bucket), max)`로 키우면
+    # "이 장비는 이미 여러 번 전환했다"는 신호가 리워드에 직접 반영돼 전환
+    # 과다를 억제한다(이것 자체가 누적 횟수의 등급화). step=0.0(기본)이면
+    # 배수가 항상 1.0 — 현행과 완전히 동일.
+    conversion_escalation_step: float = 0.0
+    # 배수를 한 단 올릴 때 필요한 누적 전환 횟수 (예: 2 → 2회마다 한 단계).
+    conversion_escalation_bucket: int = 2
+    # 배수 상한. 하드 컷오프(max_conversions*)와 달리 idle을 강제하지 않고
+    # 페널티만 키우는 안전망이라 넉넉하게 잡는다.
+    conversion_escalation_max: float = 2.5
+
 
 def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
     """RewardConfig → API/UI 공유 dict."""
@@ -816,6 +845,10 @@ def reward_params_dict(reward: Optional[RewardConfig] = None) -> dict:
         "w_terminal_throughput": r.w_terminal_throughput,
         "w_terminal_conversion": r.w_terminal_conversion,
         "terminal_reward_clip": r.terminal_reward_clip,
+        "reward_grade_levels": r.reward_grade_levels,
+        "conversion_escalation_step": r.conversion_escalation_step,
+        "conversion_escalation_bucket": r.conversion_escalation_bucket,
+        "conversion_escalation_max": r.conversion_escalation_max,
     }
 
 
@@ -829,10 +862,15 @@ def apply_reward_params(params: dict) -> None:
         "w_bulk_block_bonus", "w_dedication_misuse", "w_redundant_cover",
         "w_flow_balance", "flow_balance_starving_cover_min", "reward_clip",
         "w_terminal_throughput", "w_terminal_conversion", "terminal_reward_clip",
+        "conversion_escalation_step", "conversion_escalation_max",
     )
+    int_keys = ("reward_grade_levels", "conversion_escalation_bucket")
     for key in float_keys:
         if key in params and params[key] is not None:
             setattr(r, key, float(params[key]))
+    for key in int_keys:
+        if key in params and params[key] is not None:
+            setattr(r, key, int(params[key]))
     if "use_achievable_target" in params and params["use_achievable_target"] is not None:
         r.use_achievable_target = bool(params["use_achievable_target"])
 

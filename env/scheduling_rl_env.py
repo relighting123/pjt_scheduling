@@ -24,7 +24,7 @@ import gymnasium as gym
 from gymnasium import spaces
 
 from config import CONFIG
-from simulation.simulator import SchedulingSimulator
+from simulation.simulator import SchedulingSimulator, grade_ratio
 from simulation.decision_log import build_step_decision_entry
 from env.scheduling_env import compute_obs_dim, validate_axis_capacity
 
@@ -250,7 +250,8 @@ class SchedulingRLEnv(gym.Env):
         capacity = self.producible_carriers()
         term = 0.0
         if w_thr:
-            term += w_thr * min(produced / max(capacity, 1), 1.0)
+            ratio = grade_ratio(produced / max(capacity, 1), cfg.reward_grade_levels, cap=1.0)
+            term += w_thr * ratio
         if w_conv:
             term += w_conv * sim.stats.get("conversions", 0)
 

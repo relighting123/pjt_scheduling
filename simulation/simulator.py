@@ -58,6 +58,37 @@ def _grade5(ratio: float) -> float:
     return 0.0
 
 
+def grade_ratio(ratio: float, levels: int, cap: float = 1.0) -> float:
+    """연속 비율(0~cap)을 levels 단계로 등급화(`_grade5`의 일반형).
+
+    levels<=1이면 비활성 — 원값을 그대로 반환한다(리워드/관측 파이프라인이
+    기본값으로는 지금과 동일하게 동작하도록). levels=5, cap=1.0이면 `_grade5`와
+    동일한 0/0.25/0.5/0.75/1.0 결과를 낸다. 경계값에서 부동소수 오차로 한 단계
+    아래로 떨어지지 않도록 작은 epsilon을 더해 floor한다.
+    """
+    if levels <= 1:
+        return ratio
+    if cap <= 0:
+        return 0.0
+    steps = levels - 1
+    r = max(0.0, min(ratio, cap))
+    step_idx = int(r / cap * steps + 1e-9)
+    step_idx = min(step_idx, steps)
+    return step_idx / steps * cap
+
+
+def grade_array(arr: np.ndarray, levels: int, cap: float = 1.0) -> np.ndarray:
+    """`grade_ratio()`의 벡터화 버전 — 관측 배열 채널(pom_feats 등)에 쓴다."""
+    if levels <= 1:
+        return arr
+    if cap <= 0:
+        return np.zeros_like(arr)
+    steps = levels - 1
+    r = np.clip(arr, 0.0, cap)
+    step_idx = np.minimum((r / cap * steps + 1e-9).astype(np.int64), steps)
+    return (step_idx.astype(arr.dtype) / steps * cap).astype(arr.dtype)
+
+
 class ToolTracker:
     """LOT_CD × EQP_MODEL_CD 동시 가공 상한 추적."""
 
@@ -1272,16 +1303,30 @@ class SchedulingSimulator:
         # 변환 필요 판단은 _would_need_conversion 하나로 일원화 (중복 제거)
         needs_conv = self._would_need_conversion(eqp.eqp_id, lot_cd, temp)
         if needs_conv:
-            # 전환 1회당 고정 패널티
-            reward += self._reward_cfg.w_conversion
-            self._cur_conv_terms["conversion"] = round(float(self._reward_cfg.w_conversion), 4)
+            # 전환 1회당 고정 패널티. conversion_escalation_step>0이면 이 장비의
+            # 누적 전환 횟수(증가 전 값)에 따라 배수를 계단식으로 키운다 —
+            # "이미 여러 번 전환한 장비"라는 신호를 리워드에 직접 반영해 전환
+            # 과다를 억제한다. step=0.0(기본)이면 배수 항상 1.0 = 현행과 동일.
+            cfg = self._reward_cfg
+            conv_mult = 1.0
+            if cfg.conversion_escalation_step > 0:
+                bucket = max(int(cfg.conversion_escalation_bucket), 1)
+                conv_mult = min(
+                    1.0 + cfg.conversion_escalation_step * (eqp.conversion_count // bucket),
+                    cfg.conversion_escalation_max,
+                )
+            conv_term = cfg.w_conversion * conv_mult
+            reward += conv_term
+            self._cur_conv_terms["conversion"] = round(float(conv_term), 4)
             if self._reward_cfg.w_avoidable_conversion < 0:
                 # 회피 가능했던 전환이면 추가 패널티 (식: w_avoidable_conversion * avoidable[0,1])
                 # avoidable: 다른 무변환 장비가 커버 가능한 비율 또는 변환 후 가동시간이
                 # 너무 짧아 비용을 못 메우는 비율 중 큰 값 (_conversion_avoidable_fraction)
+                # reward_grade_levels>0이면 등급화해 미세 변화에 의한 스케줄 비일관성을 흡수한다.
                 avoidable = self._conversion_avoidable_fraction(
                     eqp.eqp_id, ppk, oper_id, lot_cd, temp,
                 )
+                avoidable = grade_ratio(avoidable, self._reward_cfg.reward_grade_levels)
                 if avoidable > 0:
                     av_term = self._reward_cfg.w_avoidable_conversion * avoidable
                     reward += av_term
@@ -2029,10 +2074,12 @@ class SchedulingSimulator:
         bulk_terms: Dict[str, float] = {}
 
         # ① 블록 크기 보너스: takt 예산(takt_budget_carriers) 대비 블록 크기 비율
-        #    식: shaping += w_bulk_block_bonus * min(block_size / budget, 1.0)
+        #    식: shaping += w_bulk_block_bonus * grade(block_size / budget, cap=1.0)
+        #    reward_grade_levels>0이면 등급화해 미세 변화에 의한 스케줄 비일관성을 흡수한다.
         if cfg.w_bulk_block_bonus > 0 and block_size > 1:
             budget = max(self._takt_budget_carriers(ppk, oper_id), 1)
-            t = cfg.w_bulk_block_bonus * min(block_size / budget, 1.0)
+            ratio = grade_ratio(block_size / budget, cfg.reward_grade_levels, cap=1.0)
+            t = cfg.w_bulk_block_bonus * ratio
             shaping += t
             bulk_terms["bulk_block_bonus"] = round(float(t), 4)
 
@@ -2047,13 +2094,15 @@ class SchedulingSimulator:
         # ③ 중복 커버: 다른 셋업 장비가 day-end까지 투영 생산할 수 있는 양(cover)이
         #    잔여 필요량(need)을 얼마나 커버하는지 비율로 패널티.
         #    need = max(target-done, 1)  (0-division 방지, 별도 분기 아님)
-        #    shaping += w_redundant_cover * min(cover/need, 2.0)  (cap=2.0)
+        #    shaping += w_redundant_cover * grade(cover/need, cap=2.0)
+        #    reward_grade_levels>0이면 등급화해 미세 변화에 의한 스케줄 비일관성을 흡수한다.
         if cfg.w_redundant_cover < 0:
             done = self.stats["completed_qty"].get((ppk, oper_id), 0)
             target = max(self._achievable_qty(ppk, oper_id), 1)
             need = max(target - done, 1)
             cover = self._bucket_projected_cover(ppk, oper_id, exclude_eqp=eqp_id)
-            t = cfg.w_redundant_cover * min(cover / need, 2.0)
+            ratio = grade_ratio(cover / need, cfg.reward_grade_levels, cap=2.0)
+            t = cfg.w_redundant_cover * ratio
             shaping += t
             bulk_terms["redundant_cover"] = round(float(t), 4)
 
@@ -2755,16 +2804,18 @@ class SchedulingSimulator:
                 # LOT_CD / TEMP (pom_feats의 conversion 관련 채널 계산에 필요)
                 lc, tp = self._bucket_lot_cd_temp(ppk, op)
 
-                # po_feats 할당
-                po_feats[oi, pi, 0] = wip_q / total_wip
-                po_feats[oi, pi, 1] = wip_q / ppk_total
-                po_feats[oi, pi, 2] = urgency
+                # po_feats 할당 (obs_grade_levels>0이면 등급화해 미세 변화 흡수)
+                obs_levels = cfg.obs_grade_levels
+                po_feats[oi, pi, 0] = grade_ratio(wip_q / total_wip, obs_levels, cap=1.0)
+                po_feats[oi, pi, 1] = grade_ratio(wip_q / ppk_total, obs_levels, cap=1.0)
+                po_feats[oi, pi, 2] = grade_ratio(urgency, obs_levels, cap=1.0)
                 po_feats[oi, pi, 3] = _grade5(achievable_ratio)
 
                 done11 = completed.get((ppk, op), 0)
                 need11 = max(self._achievable_qty(ppk, op) - done11, 1.0)
                 cov11 = self._bucket_projected_cover(ppk, op, exclude_eqp=current_eqp)
-                po_feats[oi, pi, 4] = min(cov11 / need11, 2.0) / 2.0
+                cov_ratio = grade_ratio(cov11 / need11, obs_levels, cap=2.0)
+                po_feats[oi, pi, 4] = cov_ratio / 2.0
 
                 consume_rate = self._oper_capacity_per_min(ppk, op)
                 supply_rate = self._oper_supply_rate(ppk, op)
@@ -2803,7 +2854,9 @@ class SchedulingSimulator:
                 vsts = np.array(valid_sts, dtype=np.float32)
 
                 # pom_feats: 채널 4 (index 0) 할당
-                pom_feats[oi, pi, vmis, 0] = vsts / max_arrange_st
+                pom_feats[oi, pi, vmis, 0] = grade_array(
+                    vsts / max_arrange_st, obs_levels, cap=1.0,
+                )
 
                 # pom_feats: 채널 8 (index 1), 채널 9 (index 2), avoidable_frac (index 3),
                 # setup_changed (index 4) 할당
@@ -2820,8 +2873,11 @@ class SchedulingSimulator:
                             or self._tool_tracker.can_assign(lc, current_eqp) else 0.0
                         )
                         if needs_conv:
-                            pom_feats[oi, pi, current_mi, 3] = self._conversion_avoidable_fraction(
+                            avoid_frac = self._conversion_avoidable_fraction(
                                 current_eqp, ppk, op, lc, tp,
+                            )
+                            pom_feats[oi, pi, current_mi, 3] = grade_ratio(
+                                avoid_frac, obs_levels, cap=1.0,
                             )
 
         feats = np.concatenate([po_feats.flatten(), pom_feats.flatten()])
@@ -2924,12 +2980,18 @@ class SchedulingSimulator:
 
         bucket = self.get_bucket_features().flatten()
 
+        obs_levels = CONFIG.env.obs_grade_levels
         group_global = np.zeros(6, dtype=np.float32)
-        group_global[0] = min(self.current_time / max(self.sim_end, 1), 1.0)
-        group_global[1] = min(
-            max(self.soft_cutoff - self.current_time, 0) / max(self.soft_cutoff, 1), 1.0,
+        group_global[0] = grade_ratio(
+            self.current_time / max(self.sim_end, 1), obs_levels, cap=1.0,
         )
-        group_global[2] = min(len(self.lot_pool) / initial_lot_count, 1.0)
+        group_global[1] = grade_ratio(
+            max(self.soft_cutoff - self.current_time, 0) / max(self.soft_cutoff, 1),
+            obs_levels, cap=1.0,
+        )
+        group_global[2] = grade_ratio(
+            len(self.lot_pool) / initial_lot_count, obs_levels, cap=1.0,
+        )
         produced = sum(self.stats["completed_qty"].values())
         if total_plan > 0:
             group_global[3] = _grade5(min(produced / total_plan, 1.0))
@@ -2940,8 +3002,12 @@ class SchedulingSimulator:
             rem = max(eqp.free_at - self.current_time, 0)
             if rem > 0 and eqp.status == "idle" and eqp.prev_lot_cd is not None:
                 conv_eqps += 1
-        group_global[4] = conv_eqps / max(len(self.eqps), 1)
-        group_global[5] = min(self._tool_tracker.utilization(), 1.0)
+        group_global[4] = grade_ratio(
+            conv_eqps / max(len(self.eqps), 1), obs_levels, cap=1.0,
+        )
+        group_global[5] = grade_ratio(
+            self._tool_tracker.utilization(), obs_levels, cap=1.0,
+        )
 
         obs = np.concatenate([
             group_global,
