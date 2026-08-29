@@ -70,36 +70,6 @@ def rl_obs_dim() -> int:
     return compute_obs_dim() + RL_EXTRA_OBS_DIM
 
 
-# 위치(순번)에 축 순서가 종속된 정책 학습을 막기 위한 도메인 랜덤화 대상 축.
-# 각 축 리스트와 그 위치→인덱스 맵을 함께 섞어야 한다(둘이 항상 짝이어야 함).
-_AXIS_IDX_KEYS = {
-    "oper_ids": "oper_idx",
-    "prod_keys": "prod_idx",
-    "eqp_ids": "eqp_idx",
-    "eqp_models": "model_idx",
-}
-
-
-def randomize_axis_order(env_data: dict, rng: np.random.Generator) -> dict:
-    """공정/제품/설비/모델 축 순서를 무작위로 섞은 얕은 복사본을 반환한다.
-
-    학습 전용 — 정책이 "이 슬롯은 항상 이 제품"처럼 축 위치에 의존하는
-    지름길을 배우지 못하게 만드는 도메인 랜덤화다(참고: RandomizedSchedulingRLEnv
-    독스트링의 데이터셋 풀 랜덤화와 같은 이유로, 대상만 시나리오가 아니라 축
-    순서). env_data의 나머지 키는 전부 문자열 이름으로 키가 잡혀 있어 축 순서와
-    무관하므로 그대로 재사용해도 안전하다.
-    """
-    out = dict(env_data)
-    for axis_key, idx_key in _AXIS_IDX_KEYS.items():
-        items = list(env_data.get(axis_key, []))
-        if len(items) > 1:
-            perm = rng.permutation(len(items))
-            items = [items[i] for i in perm]
-        out[axis_key] = items
-        out[idx_key] = {v: i for i, v in enumerate(items)}
-    return out
-
-
 def build_env(env_cls: type, data: dict, **kwargs):
     """학습·BC 시연·KPI 평가가 모두 같은 조건의 env를 쓰도록 하는 팩토리.
 
@@ -133,7 +103,6 @@ class SchedulingRLEnv(gym.Env):
         truncate_on_time: bool = True,
         size_levels: int = BULK_SIZE_LEVELS,
         record_decision_log: bool = False,
-        randomize_axis_order: bool = False,
     ):
         super().__init__()
         self._env_data = env_data
@@ -143,7 +112,6 @@ class SchedulingRLEnv(gym.Env):
         self._decision_log: list = []
         self._truncate_on_time = truncate_on_time
         self._L = max(int(size_levels), 1)
-        self._randomize_axis_order = randomize_axis_order
 
         env_cfg = CONFIG.env
         self._O = env_cfg.max_oper_count
@@ -171,8 +139,6 @@ class SchedulingRLEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None) -> Tuple[np.ndarray, dict]:
         super().reset(seed=seed)
-        if self._randomize_axis_order:
-            self._env_data = randomize_axis_order(self._env_data, self.np_random)
         self.sim = SchedulingSimulator(
             self._env_data, CONFIG.reward,
             record_history=self._record_history,

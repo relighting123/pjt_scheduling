@@ -279,21 +279,20 @@ class SchedulingAgent:
             if progress_state is not None:
                 progress_state.add_log(message)
 
-        def make_env(data: dict, randomize_axis_order: bool = False):
+        def make_env(data: dict):
             def _init():
                 env = ActionMasker(
-                    build_env(env_cls, data, randomize_axis_order=randomize_axis_order),
+                    build_env(env_cls, data),
                     _mask_fn,
                 )
                 return Monitor(env)
             return _init
 
-        def make_pool_env(pool: List[dict], pool_seed: int, randomize_axis_order: bool = False):
+        def make_pool_env(pool: List[dict], pool_seed: int):
             def _init():
                 env = ActionMasker(
                     build_env(
                         RandomizedSchedulingRLEnv, pool, pool_seed=pool_seed,
-                        randomize_axis_order=randomize_axis_order,
                     ),
                     _mask_fn,
                 )
@@ -306,14 +305,10 @@ class SchedulingAgent:
             and env_cls is SchedulingRLEnv
             and len(datasets) > cfg.dataset_sampling_min_pool
         )
-        randomize_axis = bool(cfg.randomize_axis_order)
         if use_pool:
             n_pool_envs = max(cfg.dataset_pool_envs, 1)
             train_fns = [
-                make_pool_env(
-                    datasets, (cfg.seed or 0) * 1000 + i,
-                    randomize_axis_order=randomize_axis,
-                )
+                make_pool_env(datasets, (cfg.seed or 0) * 1000 + i)
                 for i in range(n_pool_envs)
                 for _ in range(n_envs)
             ]
@@ -325,10 +320,7 @@ class SchedulingAgent:
         else:
             # n_envs > 1 이면 같은 데이터를 n_envs 개 프로세스에서 병렬 롤아웃
             # 기간이 여러 개면 기간 × n_envs 조합으로 확장
-            train_fns = [
-                make_env(d, randomize_axis_order=randomize_axis)
-                for d in datasets for _ in range(n_envs)
-            ]
+            train_fns = [make_env(d) for d in datasets for _ in range(n_envs)]
             total_envs = len(datasets) * n_envs
 
         if n_envs > 1:
