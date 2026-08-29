@@ -51,9 +51,6 @@ def main() -> None:
     ap.add_argument("--reward", action="append", default=[], metavar="KEY=VALUE",
                     help="RewardConfig 항목 덮어쓰기 (여러 번 지정 가능). "
                          "예: --reward w_redundant_cover=0 --reward w_bulk_block_bonus=0")
-    ap.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
-                    help="EnvConfig 항목 덮어쓰기 (여러 번 지정 가능). "
-                         "예: --env obs_grade_levels=8")
     ap.add_argument("--no-benchmark", action="store_true")
     ap.add_argument(
         "--train-pool", action="store_true",
@@ -119,20 +116,6 @@ def main() -> None:
                 (raw.strip().lower() in ("1", "true", "yes"))
                 if isinstance(current, bool) else float(raw))
         print(f"  reward override: {key} = {getattr(CONFIG.reward, key)}", flush=True)
-    for item in args.env:
-        key, _, raw = item.partition("=")
-        key = key.strip()
-        if not hasattr(CONFIG.env, key):
-            raise SystemExit(f"알 수 없는 EnvConfig 항목: {key}")
-        current = getattr(CONFIG.env, key)
-        if isinstance(current, bool):
-            value = raw.strip().lower() in ("1", "true", "yes")
-        elif isinstance(current, int):
-            value = int(raw)
-        else:
-            value = float(raw)
-        setattr(CONFIG.env, key, value)
-        print(f"  env override: {key} = {getattr(CONFIG.env, key)}", flush=True)
 
     from agent.rl_agent import SchedulingAgent
     from env.scheduling_rl_env import SchedulingRLEnv

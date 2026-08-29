@@ -114,9 +114,8 @@ REWARD_TERM_PAGES: List[Dict[str, Any]] = [
     {
         "key": "bulk_block_bonus",
         "weight": "+3.0",
-        "formula": "r = w_bulk · grade(N / takt예산, cap=1)   [블록 시작 시에만]",
-        "desc": "큰 블록으로 커밋할수록 +. N=takt 예산 전량이면 최대. "
-                "reward_grade_levels>0이면 비율을 그 단계 수로 등급화(기본 0=비활성, 원 비율 그대로).",
+        "formula": "r = w_bulk · min(N / takt예산, 1)   [블록 시작 시에만]",
+        "desc": "큰 블록으로 커밋할수록 +. N=takt 예산 전량이면 최대.",
         "scenario_a": {
             "title": "예시 A · 블록 시작 N=8",
             "context": "EQP001, PPK001, takt 예산=8",
@@ -134,10 +133,8 @@ REWARD_TERM_PAGES: List[Dict[str, Any]] = [
     {
         "key": "conversion",
         "weight": "−10.0",
-        "formula": "r = w_conversion · mult · 1[LOT_CD/TEMP 셋업 변경]",
-        "desc": "LOT_CD 또는 TEMP가 바뀌는 전환 1회마다 고정 패널티. "
-                "conversion_escalation_step>0이면 이 설비의 누적 전환 횟수(증가 전)에 "
-                "따라 mult = min(1 + step·⌊count/bucket⌋, max)로 커진다(기본 step=0=mult 항상 1).",
+        "formula": "r = w_conversion · 1[LOT_CD/TEMP 셋업 변경]",
+        "desc": "LOT_CD 또는 TEMP가 바뀌는 전환 1회마다 고정 패널티.",
         "scenario_a": {
             "title": "예시 A · 전환 없음",
             "context": "동일 셋업 블록 연속",
@@ -155,9 +152,8 @@ REWARD_TERM_PAGES: List[Dict[str, Any]] = [
     {
         "key": "avoidable_conversion",
         "weight": "−8.0",
-        "formula": "r = w_avoidable · grade(α, cap=1)   ;  α = 회피가능 비율 (0~1)",
-        "desc": "다른 무전환 설비가 커버 가능한데도 전환하면 추가 패널티. "
-                "reward_grade_levels>0이면 α를 그 단계 수로 등급화(기본 0=비활성).",
+        "formula": "r = w_avoidable · α   ;  α = 회피가능 비율 (0~1)",
+        "desc": "다른 무전환 설비가 커버 가능한데도 전환하면 추가 패널티.",
         "scenario_a": {
             "title": "예시 A · 전환 없음",
             "context": "—",
@@ -175,9 +171,8 @@ REWARD_TERM_PAGES: List[Dict[str, Any]] = [
     {
         "key": "redundant_cover",
         "weight": "−5.0",
-        "formula": "r = w_redundant · grade(cover / need, cap=2)",
-        "desc": "다른 셋업 설비가 horizon 내 need를 이미 덮는 버킷을 또 잡으면 −. "
-                "reward_grade_levels>0이면 비율을 그 단계 수로 등급화(기본 0=비활성).",
+        "formula": "r = w_redundant · min(cover / need, 2)",
+        "desc": "다른 셋업 설비가 horizon 내 need를 이미 덮는 버킷을 또 잡으면 −.",
         "scenario_a": {
             "title": "예시 A · cover=0",
             "context": "전담 제품, 다른 설비 커버 없음",
