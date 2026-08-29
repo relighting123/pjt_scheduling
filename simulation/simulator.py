@@ -325,6 +325,8 @@ class SchedulingSimulator:
         self._eqps_by_om: Dict[tuple, List[str]] = self._build_eqps_by_om()
 
         self._apply_eqp_initial_state(data.get("eqp_initial_state", []))
+        self._apply_busy_snapshot(data.get("_busy_snapshot", {}))
+        self._apply_carried_stats(data.get("_carried_stats"))
         self._advance_to_next_decision()
         if self._record_history:
             self._append_initial_history()
@@ -630,6 +632,161 @@ class SchedulingSimulator:
                 eqp.prev_prod = row["PLAN_PROD_ATTR_VAL"]
             if row.get("oper_id"):
                 eqp.prev_oper = row["oper_id"]
+
+    def _apply_busy_snapshot(self, busy: Dict[str, dict]) -> None:
+        """`export_live_snapshot()`가 만든 `_busy_snapshot`을 새 시뮬레이터에 이식.
+
+        롤링 재추론(주기적으로 완전히 새 env_data로 재구성하는 운영 패턴)
+        테스트 전용 내부 채널이다 — 일반 raw 입력에는 없는 키(`_busy_snapshot`)라
+        기본 호출부(빈 dict)에서는 완전히 비활성이다.
+
+        reset()에서 `_advance_to_next_decision()`보다 반드시 먼저 호출해야 한다
+        — 그 전이라면 아직 t=0 EVENT_IDLE_DECISION이 처리되지 않아, 여기서
+        eqp.status를 busy/converting으로 앞당겨 둬도 `_on_idle_decision()`이
+        `status != "idle"`로 보고 그냥 지나친다(정상적으로 idle이 아닌 채로
+        시작). 이후엔 각각 EVENT_PROCESS_END/EVENT_CONV_END를 남은 시간만큼
+        떨어진 시점에 직접 예약해, 마치 원래부터 그 시각에 끝나도록 배정된
+        것처럼 자연스럽게 이어지게 한다.
+        """
+        for eqp_id, info in busy.items():
+            eqp = self.eqps.get(eqp_id)
+            if eqp is None:
+                continue
+            remaining = max(int(info.get("remaining_minutes", 0)), 0)
+            kind = info.get("kind")
+            if kind == "processing":
+                eqp.status = "busy"
+                eqp.free_at = remaining
+                eqp.current_lot = info.get("current_lot")
+                eqp.current_oper = info.get("current_oper")
+                eqp.current_prod = info.get("current_prod")
+                in_flight = info.get("in_flight")
+                if eqp.current_lot and in_flight:
+                    fi = dict(in_flight)
+                    fi["end_time"] = remaining
+                    self._in_flight[eqp.current_lot] = fi
+                self._push_event(remaining, EVENT_PROCESS_END, eqp_id)
+            elif kind == "converting" and info.get("pending"):
+                eqp.status = "converting"
+                eqp.free_at = remaining
+                self._eqp_pending_assign[eqp_id] = dict(info["pending"])
+                self._push_event(remaining, EVENT_CONV_END, eqp_id)
+        if busy:
+            self._invalidate_caches()
+
+    def _apply_carried_stats(self, carried: Optional[dict]) -> None:
+        """`export_live_snapshot()`가 실어보낸 이전 라운드 누적 통계를 이어받는다.
+
+        completed_qty는 '배정 시점(처리 중 포함)'에 증가하는 값이라(위 stats
+        딕셔너리 정의 주석 참고), 이걸 0부터 다시 세면 새 라운드는 실제로는
+        이미 상당히 진행된 계획을 '거의 안 된 것'처럼 오판해 urgency·
+        achievable_ratio 같은 관측 채널이 왜곡된다. 롤링 재추론이 아닌 일반
+        호출은 carried=None이라 완전히 비활성.
+        """
+        if not carried:
+            return
+        for key in ("completed_qty",):
+            if key in carried:
+                self.stats[key] = dict(carried[key])
+        for key in ("conversions", "oper_switches", "prod_switches",
+                    "idle_total", "sametool_setup_count"):
+            if key in carried:
+                self.stats[key] = carried[key]
+        for eqp_id, counters in (carried.get("eqp_counters") or {}).items():
+            eqp = self.eqps.get(eqp_id)
+            if eqp is None:
+                continue
+            eqp.conversion_count = counters.get("conversion_count", eqp.conversion_count)
+            eqp.idle_accum = counters.get("idle_accum", eqp.idle_accum)
+            eqp.oper_switches = counters.get("oper_switches", eqp.oper_switches)
+            eqp.prod_switches = counters.get("prod_switches", eqp.prod_switches)
+
+    def export_live_snapshot(self) -> dict:
+        """현재 라이브 상태를 다음 라운드 env_data에 이식할 필드 묶음으로 반환.
+
+        롤링 재추론(주기적으로 완전히 새 시뮬레이터를 그 시점 상태로 다시
+        구성하는 운영 패턴)을 오프라인에서 재현하기 위한 것 — 실제 MES를
+        다시 조회하는 대신, 살아있는 시뮬레이터의 잔여 WIP·설비 상태를 그대로
+        복사해 '지금 이 순간 다시 조회했다면'을 흉내낸다. 반환된 시간 필드는
+        전부 `self.current_time` 기준 상대값(그만큼 뺀 값)이다 — 호출측이
+        `sim_end_minutes`/`soft_cutoff_minutes`/`sim_base_time`도 같은 양만큼
+        당겨서 다음 라운드 env_data를 구성해야 한다.
+
+        engine_data의 축 목록(oper_ids/prod_keys/eqp_ids 등)·plan·flow 등
+        구조적 필드는 건드리지 않는다 — 호출측이 원본 env_data를 얕은 복사해
+        여기 반환값으로 덮어쓰는 방식으로 쓴다.
+        """
+        t0 = self.current_time
+        lots = [
+            {
+                "lot_id": l.lot_id, "carrier_id": l.carrier_id,
+                "PLAN_PROD_ATTR_VAL": l.PLAN_PROD_ATTR_VAL, "oper_id": l.oper_id,
+                "seq": l.seq, "wf_qty": l.wf_qty, "processing_time": l.processing_time,
+                "priority": l.priority, "original_eqp": l.original_eqp,
+                "parent_lot_id": l.parent_lot_id, "logical_lot_id": l.logical_lot_id,
+                "lot_cd": l.lot_cd, "temp": l.temp,
+            }
+            for l in self.lot_pool.values()
+        ]
+        eqp_lot_map = {eid: list(ids) for eid, ids in self.eqp_queues.items()}
+        abstract_wip_init = copy.deepcopy(self._wip_pool)
+        abstract_lot_meta = copy.deepcopy(self._wip_lot_meta)
+        eqp_initial_state = [
+            {
+                "eqp_id": eid, "lot_cd": e.prev_lot_cd or "", "temp": e.prev_temp or "",
+                "PLAN_PROD_ATTR_VAL": e.prev_prod, "oper_id": e.prev_oper,
+            }
+            for eid, e in self.eqps.items()
+        ]
+
+        busy: Dict[str, dict] = {}
+        for eqp_id, e in self.eqps.items():
+            if e.status == "busy" and e.free_at > t0:
+                busy[eqp_id] = {
+                    "kind": "processing",
+                    "remaining_minutes": e.free_at - t0,
+                    "current_lot": e.current_lot,
+                    "current_oper": e.current_oper,
+                    "current_prod": e.current_prod,
+                    "in_flight": dict(self._in_flight[e.current_lot])
+                    if e.current_lot in self._in_flight else None,
+                }
+            elif e.status == "converting" and e.free_at > t0:
+                pending = self._eqp_pending_assign.get(eqp_id)
+                if pending:
+                    busy[eqp_id] = {
+                        "kind": "converting",
+                        "remaining_minutes": e.free_at - t0,
+                        "pending": dict(pending),
+                    }
+
+        carried_stats = {
+            "completed_qty": dict(self.stats["completed_qty"]),
+            "conversions": self.stats.get("conversions", 0),
+            "oper_switches": self.stats.get("oper_switches", 0),
+            "prod_switches": self.stats.get("prod_switches", 0),
+            "idle_total": self.stats.get("idle_total", 0),
+            "sametool_setup_count": self.stats.get("sametool_setup_count", 0),
+            "eqp_counters": {
+                eid: {
+                    "conversion_count": e.conversion_count,
+                    "idle_accum": e.idle_accum,
+                    "oper_switches": e.oper_switches,
+                    "prod_switches": e.prod_switches,
+                }
+                for eid, e in self.eqps.items()
+            },
+        }
+
+        return {
+            "lots": lots,
+            "eqp_lot_map": eqp_lot_map,
+            "abstract_wip_init": abstract_wip_init,
+            "abstract_lot_meta": abstract_lot_meta,
+            "eqp_initial_state": eqp_initial_state,
+            "_busy_snapshot": busy,
+            "_carried_stats": carried_stats,
+        }
 
     def _apply_due_fixed_queue(self, eqp_id: str) -> bool:
         """eqp_queue_init 입력 반영. SEQ_NO 순서대로, 시작 시각이 되면 즉시 활성화한다.
